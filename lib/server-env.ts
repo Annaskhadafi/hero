@@ -32,38 +32,58 @@ function getBooleanEnv(names: string[]) {
 }
 
 export const serverEnv = {
-  databaseUrl: getRequiredEnv("DATABASE_URL"),
-  s3BucketName: getFirstEnvValue([
-    "S3_BUCKET_NAME",
-    "AWS_S3_BUCKET",
-    "AWS_BUCKET_NAME",
-  ]),
-  s3Region: getFirstEnvValue([
-    "S3_REGION",
-    "AWS_REGION",
-    "AWS_DEFAULT_REGION",
-  ]),
-  s3Endpoint: getFirstEnvValue([
-    "S3_ENDPOINT",
-    "AWS_ENDPOINT_URL_S3",
-    "AWS_ENDPOINT_URL",
-  ]),
-  s3AccessKeyId: getFirstEnvValue([
-    "S3_ACCESS_KEY_ID",
-    "AWS_ACCESS_KEY_ID",
-  ]),
-  s3SecretAccessKey: getFirstEnvValue([
-    "S3_SECRET_ACCESS_KEY",
-    "AWS_SECRET_ACCESS_KEY",
-  ]),
-  s3SessionToken: getFirstEnvValue([
-    "S3_SESSION_TOKEN",
-    "AWS_SESSION_TOKEN",
-  ]),
-  s3PublicBaseUrl: getFirstEnvValue([
-    "S3_PUBLIC_URL_BASE",
-    "NEXT_PUBLIC_S3_PUBLIC_URL_BASE",
-  ]),
-  s3ForcePathStyle: getBooleanEnv(["S3_FORCE_PATH_STYLE"]),
-  s3UploadPrefix: getFirstEnvValue(["S3_UPLOAD_PREFIX", "OBJECT_STORAGE_PREFIX"]),
+  get databaseUrl() {
+    return getRequiredEnv("DATABASE_URL");
+  },
+  get s3BucketName() {
+    return getFirstEnvValue([
+      "S3_BUCKET_NAME",
+      "AWS_S3_BUCKET",
+      "AWS_BUCKET_NAME",
+    ]);
+  },
+  get s3Region() {
+    return getFirstEnvValue([
+      "S3_REGION",
+      "AWS_REGION",
+      "AWS_DEFAULT_REGION",
+    ]);
+  },
+  get s3Endpoint() {
+    return getFirstEnvValue([
+      "S3_ENDPOINT",
+      "AWS_ENDPOINT_URL_S3",
+      "AWS_ENDPOINT_URL",
+    ]);
+  },
+  get s3AccessKeyId() {
+    return getFirstEnvValue([
+      "S3_ACCESS_KEY_ID",
+      "AWS_ACCESS_KEY_ID",
+    ]);
+  },
+  get s3SecretAccessKey() {
+    return getFirstEnvValue([
+      "S3_SECRET_ACCESS_KEY",
+      "AWS_SECRET_ACCESS_KEY",
+    ]);
+  },
+  get s3SessionToken() {
+    return getFirstEnvValue([
+      "S3_SESSION_TOKEN",
+      "AWS_SESSION_TOKEN",
+    ]);
+  },
+  get s3PublicBaseUrl() {
+    return getFirstEnvValue([
+      "S3_PUBLIC_URL_BASE",
+      "NEXT_PUBLIC_S3_PUBLIC_URL_BASE",
+    ]);
+  },
+  get s3ForcePathStyle() {
+    return getBooleanEnv(["S3_FORCE_PATH_STYLE"]);
+  },
+  get s3UploadPrefix() {
+    return getFirstEnvValue(["S3_UPLOAD_PREFIX", "OBJECT_STORAGE_PREFIX"]);
+  },
 };

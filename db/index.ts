@@ -7,10 +7,38 @@ declare global {
   var heroDbPool: Pool | undefined;
 }
 
-const pool = globalThis.heroDbPool ?? new Pool({ connectionString: serverEnv.databaseUrl });
+let drizzleDb: ReturnType<typeof drizzle> | undefined;
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.heroDbPool = pool;
+function getPool() {
+  const existingPool = globalThis.heroDbPool;
+
+  if (existingPool) {
+    return existingPool;
+  }
+
+  const pool = new Pool({ connectionString: serverEnv.databaseUrl });
+
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.heroDbPool = pool;
+  }
+
+  return pool;
 }
 
-export const db = drizzle({ client: pool });
+function getDb() {
+  if (drizzleDb) {
+    return drizzleDb;
+  }
+
+  drizzleDb = drizzle({ client: getPool() });
+  return drizzleDb;
+}
+
+export const db = new Proxy({} as ReturnType<typeof drizzle>, {
+  get(_target, property, receiver) {
+    const instance = getDb();
+    const value = Reflect.get(instance as object, property, receiver);
+
+    return typeof value === "function" ? value.bind(instance) : value;
+  },
+});
