@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, LockKeyhole, Mail } from "lucide-react";
@@ -109,6 +110,18 @@ export default function SignInPage() {
         <AuthShell
             title="Welcome back"
             description="Please enter your details to sign in and continue into your HERO workspace."
+            headerBadge={
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/95 p-2 shadow-[0_12px_30px_rgba(34,211,238,0.16)]">
+                    <Image
+                        src="/logo%20HERO.png"
+                        alt="HERO Logo"
+                        width={40}
+                        height={40}
+                        className="h-10 w-10 object-contain"
+                        priority
+                    />
+                </div>
+            }
             footer={
                 <>
                     Don&apos;t have an account?{" "}

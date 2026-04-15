@@ -41,7 +41,7 @@ export default async function DashboardLayout({
         user={{
           name: session.user.name || "User",
           email: session.user.email,
-          avatar: session.user.image || "/codeguide-logo.png",
+          avatar: session.user.image || "/logo.png",
         }}
         navMain={sidebarData.navMain}
         navSecondary={sidebarData.navSecondary}

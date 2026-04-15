@@ -129,11 +129,11 @@ export function AppSidebar({
               <Link href="/">
                 <div className="flex aspect-square size-9 items-center justify-center overflow-hidden rounded-xl border border-white/50 bg-white shadow-sm">
                   <Image
-                    src="/codeguide-logo.png"
+                    src="/logo.png"
                     alt="HERO"
                     width={36}
                     height={36}
-                    className="rounded-lg"
+                    className="rounded-lg object-contain"
                   />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
