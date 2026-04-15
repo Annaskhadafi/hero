@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, LockKeyhole, Mail } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight, CheckCircle2, Loader2, LockKeyhole, Mail, Sparkles } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signIn, useSession } from "@/lib/auth-client";
+import { authClient, signIn, useSession } from "@/lib/auth-client";
 
 function GoogleIcon() {
     return (
@@ -45,10 +45,13 @@ export default function SignInPage() {
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
+    const [magicLinkLoading, setMagicLinkLoading] = useState(false);
     const [socialLoading, setSocialLoading] = useState<"google" | null>(null);
     const [error, setError] = useState("");
+    const [message, setMessage] = useState("");
     const { data: session, isPending } = useSession();
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     useEffect(() => {
         if (session?.user) {
@@ -56,10 +59,17 @@ export default function SignInPage() {
         }
     }, [router, session]);
 
+    useEffect(() => {
+        if (searchParams.get("reset") === "success") {
+            setMessage("Password berhasil diperbarui. Silakan login dengan password baru.");
+        }
+    }, [searchParams]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         setError("");
+        setMessage("");
 
         try {
             const result = await signIn.email({
@@ -82,15 +92,45 @@ export default function SignInPage() {
         }
     };
 
+    const handleMagicLinkSignIn = async () => {
+        if (!email) {
+            setError("Masukkan email dulu untuk menerima magic link.");
+            return;
+        }
+
+        setMagicLinkLoading(true);
+        setError("");
+        setMessage("");
+
+        try {
+            const result = await authClient.signIn.magicLink({
+                email,
+                callbackURL: "/dashboard",
+                errorCallbackURL: "/sign-in",
+            });
+
+            if (result.error) {
+                setError(result.error.message || "Magic link gagal dikirim.");
+                return;
+            }
+
+            setMessage("Magic link sudah dikirim. Cek inbox email Anda untuk masuk ke HERO.");
+        } catch {
+            setError("Terjadi kendala saat mengirim magic link.");
+        } finally {
+            setMagicLinkLoading(false);
+        }
+    };
+
     const handleGoogleSignIn = async () => {
         setSocialLoading("google");
         setError("");
+        setMessage("");
 
         try {
             const result = await signIn.social({
                 provider: "google",
                 callbackURL: "/dashboard",
-                newUserCallbackURL: "/dashboard",
                 errorCallbackURL: "/sign-in",
             });
 
@@ -108,33 +148,40 @@ export default function SignInPage() {
 
     return (
         <AuthShell
-            title="Welcome back"
-            description="Please enter your details to sign in and continue into your HERO workspace."
+            title={
+                <span className="block text-base font-medium tracking-[0.14em] text-slate-300/82 sm:text-lg">
+                    Hub for Employee Reporting & Operations
+                </span>
+            }
+            description="Setiap pekerjaan tercatat, setiap prestasi dihargai, setiap keputusan berbasis data."
+            panelClassName="max-w-[520px]"
             headerBadge={
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/95 p-2 shadow-[0_12px_30px_rgba(34,211,238,0.16)]">
+                <div className="flex items-center justify-center">
                     <Image
                         src="/logo%20HERO.png"
                         alt="HERO Logo"
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 object-contain"
+                        width={160}
+                        height={160}
+                        className="h-[144px] w-[144px] object-contain sm:h-[160px] sm:w-[160px]"
                         priority
                     />
                 </div>
             }
             footer={
-                <>
-                    Don&apos;t have an account?{" "}
-                    <Link href="/sign-up" className="font-medium text-cyan-300 transition hover:text-cyan-200">
-                        Create Account
-                    </Link>
-                </>
+                <>Akses baru dibuat oleh admin HERO.</>
             }
         >
             <form onSubmit={handleSubmit} className="space-y-5">
                 {error ? (
                     <Alert className="border-rose-400/25 bg-rose-500/10 text-rose-50">
                         <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                ) : null}
+
+                {message ? (
+                    <Alert className="border-emerald-400/25 bg-emerald-500/10 text-emerald-50">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <AlertDescription>{message}</AlertDescription>
                     </Alert>
                 ) : null}
 
@@ -152,21 +199,9 @@ export default function SignInPage() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                disabled={isLoading || isPending || socialLoading !== null}
-                                className="h-14 rounded-2xl border-white/8 bg-white/6 pl-11 pr-14 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
+                                disabled={isLoading || isPending || socialLoading !== null || magicLinkLoading}
+                                className="h-14 rounded-2xl border-white/8 bg-white/6 pl-11 pr-4 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
                             />
-                            <button
-                                type="submit"
-                                disabled={isLoading || isPending || socialLoading !== null}
-                                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl bg-cyan-300 text-slate-950 shadow-[0_10px_30px_rgba(103,232,249,0.35)] transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
-                                aria-label="Submit sign in"
-                            >
-                                {isLoading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <ArrowRight className="h-4 w-4" />
-                                )}
-                            </button>
                         </div>
                     </div>
 
@@ -183,7 +218,7 @@ export default function SignInPage() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                disabled={isLoading || isPending || socialLoading !== null}
+                                disabled={isLoading || isPending || socialLoading !== null || magicLinkLoading}
                                 className="h-14 rounded-2xl border-white/8 bg-white/6 pl-11 pr-4 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
                             />
                         </div>
@@ -200,10 +235,41 @@ export default function SignInPage() {
                         <span>Remember me</span>
                     </label>
 
-                    <Link href="/sign-up" className="text-cyan-300 transition hover:text-cyan-200">
-                        Create account
+                    <Link href="/forgot-password" className="text-cyan-300 transition hover:text-cyan-200">
+                        Forgot password?
                     </Link>
                 </div>
+
+                <Button
+                    type="submit"
+                    disabled={isLoading || isPending || socialLoading !== null || magicLinkLoading}
+                    className="h-14 w-full rounded-2xl bg-cyan-300 text-slate-950 shadow-[0_18px_50px_rgba(103,232,249,0.24)] transition hover:bg-cyan-200"
+                >
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Signing in...
+                        </>
+                    ) : (
+                        <>
+                            Sign in to HERO
+                            <ArrowRight className="h-4 w-4" />
+                        </>
+                    )}
+                </Button>
+
+                <Button
+                    type="button"
+                    onClick={handleMagicLinkSignIn}
+                    disabled={isLoading || isPending || socialLoading !== null || magicLinkLoading}
+                    className="h-14 w-full justify-between rounded-2xl border border-cyan-300/20 bg-cyan-300/8 px-5 text-left text-cyan-50 transition hover:bg-cyan-300/12"
+                >
+                    <span className="flex items-center gap-3">
+                        {magicLinkLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+                        <span>Continue with Magic Link</span>
+                    </span>
+                    <ArrowRight className="h-4 w-4" />
+                </Button>
 
                 <div className="relative py-1">
                     <div className="absolute inset-x-0 top-1/2 border-t border-white/8" />
@@ -215,7 +281,7 @@ export default function SignInPage() {
                 <Button
                     type="button"
                     onClick={handleGoogleSignIn}
-                    disabled={isLoading || isPending || socialLoading !== null}
+                    disabled={isLoading || isPending || socialLoading !== null || magicLinkLoading}
                     className="h-14 w-full justify-between rounded-2xl border border-white/8 bg-white/6 px-5 text-left text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:bg-white/10"
                 >
                     <span className="flex items-center gap-3">

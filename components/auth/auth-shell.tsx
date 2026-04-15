@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type AuthShellProps = {
-    title: string;
-    description: string;
+    title: ReactNode;
+    description: ReactNode;
     children: ReactNode;
     footer?: ReactNode;
     headerBadge?: ReactNode;
@@ -32,10 +32,12 @@ export function AuthShell({
                     )}
                 >
                     <div className="flex flex-col items-center text-center">
-                        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-[24px] border border-cyan-200/18 bg-white/6 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_0_30px_rgba(103,232,249,0.12)]">
+                        <div className="mb-6">
                             {headerBadge ?? (
-                                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/12 ring-1 ring-inset ring-cyan-100/20">
-                                    <div className="h-4 w-4 rounded-full border-2 border-cyan-100/90" />
+                                <div className="flex h-16 w-16 items-center justify-center rounded-[24px] border border-cyan-200/18 bg-white/6 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_0_30px_rgba(103,232,249,0.12)]">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/12 ring-1 ring-inset ring-cyan-100/20">
+                                        <div className="h-4 w-4 rounded-full border-2 border-cyan-100/90" />
+                                    </div>
                                 </div>
                             )}
                         </div>
