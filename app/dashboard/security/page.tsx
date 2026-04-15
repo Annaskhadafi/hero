@@ -1,0 +1,112 @@
+import Link from "next/link";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { getSecurityOverviewData } from "@/lib/hero-admin";
+
+export default async function SecurityOverviewPage() {
+  const { metrics, recentLogs } = await getSecurityOverviewData();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Security Overview</h1>
+        <p className="text-sm text-muted-foreground">
+          Monitor user control, access posture, dan event keamanan terbaru.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {metrics.map((metric) => (
+          <Link key={metric.title} href={metric.href}>
+            <Card className="h-full rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  {metric.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-semibold tracking-tight">{metric.value}</p>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Recent Security Events</CardTitle>
+              <CardDescription>10 audit event terakhir dari modul governance</CardDescription>
+            </div>
+            <Link href="/dashboard/security/audit-logs">
+              <Badge variant="outline" className="rounded-full px-3 py-1">
+                View All
+              </Badge>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {recentLogs.map((log) => (
+            <div
+              key={log.id}
+              className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+            >
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="rounded-full font-mono">
+                    {log.action}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-full capitalize">
+                    {log.severity}
+                  </Badge>
+                </div>
+                <p className="text-sm text-foreground">{log.description}</p>
+                <p className="text-xs text-muted-foreground">
+                  {log.actorName ?? "System"} {log.actorEmail ? `• ${log.actorEmail}` : ""}
+                </p>
+              </div>
+              <p className="shrink-0 text-xs text-muted-foreground">
+                {log.createdAt.toLocaleString("id-ID")}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          {
+            title: "User Management",
+            description: "Kelola user admin, status akses, dan struktur role.",
+            href: "/dashboard/security/users",
+          },
+          {
+            title: "Roles & Permissions",
+            description: "Review izin per role sebelum dibuka ke semua site.",
+            href: "/dashboard/security/roles",
+          },
+          {
+            title: "Audit Logs",
+            description: "Lihat jejak perubahan settings dan kontrol sistem.",
+            href: "/dashboard/security/audit-logs",
+          },
+          {
+            title: "Navbar Setting",
+            description: "Kontrol struktur menu admin seperti referensi One Chitra.",
+            href: "/dashboard/settings/navbar",
+          },
+        ].map((item) => (
+          <Link key={item.href} href={item.href}>
+            <Card className="h-full rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md">
+              <CardHeader>
+                <CardTitle className="text-base">{item.title}</CardTitle>
+                <CardDescription>{item.description}</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}

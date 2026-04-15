@@ -1,0 +1,8 @@
+{
+  "name": "@umrohku/task-manager-cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "task-manager": "index.js"
+  }
+}

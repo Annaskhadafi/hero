@@ -1,0 +1,318 @@
+# HERO - Hub for Employee Reporting & Operations
+**Product Requirements Document (PRD) v1.0**
+
+## Informasi Dokumen
+| Atribut | Keterangan |
+| :--- | :--- |
+| **Perusahaan** | PT Chitra Paratama |
+| **Departemen** | Central Service, HC, HSE, Training Center, Wellness |
+| **Versi Dokumen** | v1.0 - April 2026 |
+| **Status** | Draft untuk Review Internal |
+| **Dibuat oleh** | Tim Product & Technology |
+| **Platform** | Next.js 14, PostgreSQL, Drizzle ORM, BetterAuth, S3, SACDN |
+| **Target Domain** | hero.chitraparatama.com |
+
+---
+
+## 1. Executive Summary
+HERO (Hub for Employee Reporting & Operations) adalah platform digital terpadu milik PT Chitra Paratama yang dirancang untuk menyatukan seluruh alur kerja operasional lapangan, manajemen sumber daya manusia, HSE, training, dan wellness dalam satu ekosistem berbasis web yang *mobile-first*. Sistem ini menjawab tantangan nyata yang dihadapi perusahaan saat ini: pencatatan aktivitas yang tersebar di Excel, kertas, dan WhatsApp; proses *approval* manual yang lambat; *daily report* ke *customer* yang tidak terstandarisasi; dan tidak adanya sistem yang memotivasi karyawan lapangan untuk mendokumentasikan pekerjaan mereka secara konsisten. HERO membangun jembatan antara pekerjaan di lapangan tambang dengan manajemen di kantor pusat melalui sistem gamifikasi berbasis poin dan level yang membuat setiap karyawan termotivasi untuk mencatat, berkembang, dan berprestasi.
+
+### 1.1 Visi Produk
+> "Setiap pekerjaan tercatat, setiap prestasi dihargai, setiap keputusan berbasis data."
+
+### 1.2 Masalah yang Diselesaikan
+| No | Masalah Saat Ini | Solusi HERO |
+| :--- | :--- | :--- |
+| 1 | Aktivitas dicatat manual di Excel & kertas | Input digital *real-time* dari HP di lapangan |
+| 2 | *Daily report* ke *customer* tidak standar & lambat | *Auto-generate* laporan PDF/Excel terstandarisasi |
+| 3 | *Timesheet* & lembur dihitung manual, *error-prone* | Kalkulasi otomatis dari data aktivitas yang sudah di-*approve* |
+| 4 | Karyawan tidak termotivasi mendokumentasikan kerja | Sistem poin, level, *leaderboard* & *reward* per *site* |
+| 5 | Data HSE, *training*, *wellness* tersebar di berbagai tempat | Satu platform terintegrasi semua departemen |
+| 6 | Manajemen tidak punya visibilitas *real-time* ke lapangan | *Dashboard* eksekutif dengan data *live* semua *site* |
+
+---
+
+## 2. Scope & Pengguna Sistem
+
+### 2.1 Skala Deployment
+| Parameter | Detail |
+| :--- | :--- |
+| **Jumlah Site** | 5-20 *site* aktif (lokasi tambang) |
+| **Total Pengguna** | 500+ pengguna aktif |
+| **Industri Customer** | Perusahaan tambang (batu bara, mineral) |
+| **Akses Perangkat** | *Mobile-first* - HP Android pribadi karyawan |
+| **Koneksi Internet** | Bervariasi, sebagian *site remote* dengan sinyal terbatas |
+| **Notifikasi** | WhatsApp otomatis (WA Gateway/Fonnte) |
+| **Domain** | hero.chitraparatama.com |
+
+### 2.2 Struktur Role & Hak Akses
+| Role | Lokasi | Fungsi Utama | Level Akses |
+| :--- | :--- | :--- | :--- |
+| **Technician / Mekanik** | *Site* lapangan | Input aktivitas harian, lihat poin & level pribadi | User (*site only*) |
+| **HSE Officer** | *Site* lapangan | Input observasi HSE, *patrol*, *incident* | User (*site only*) |
+| **Admin Site** | *Site* lapangan | Input data, bantu rekap data *site*, *manage* | Admin (*site only*) |
+| **Foreman / Leader** | *Site* lapangan | Input aktivitas tim, *approval* level 1, *assign job* | Supervisor (*site*) |
+| **PJO (Pjg Jwb Operasional)** | *Site* lapangan | *Approval* level 2, lihat *dashboard site* penuh | Manager (*site*) |
+| **HC/HR Pusat** | Kantor pusat | Kelola karyawan, *approve* lembur, kelola *reward* | Admin (*all sites*) |
+| **HSE Pusat** | Kantor pusat | Monitor HSE semua *site*, *approve* laporan HSE | Admin (*all sites*) |
+| **Training Center** | Kantor pusat | Kelola jadwal *training*, sertifikasi, kompetensi | Admin (*all sites*) |
+| **Wellness / Kesehatan** | Kantor pusat | Monitor BMI, MCU, riwayat sakit karyawan | Admin (*all sites*) |
+| **Direktur / Eksekutif** | Kantor pusat | *Dashboard* eksekutif, laporan strategis | *Read-only* (*all*) |
+| **Super Admin** | Kantor pusat | Konfigurasi sistem, *user management*, master data | *Full access* |
+
+---
+
+## 3. Arsitektur Modul HERO
+HERO terdiri dari 8 modul utama yang saling terintegrasi:
+
+| Modul | Nama | Fungsi Inti |
+| :--- | :--- | :--- |
+| **M1** | Activity Hub | Input & *tracking* aktivitas harian seluruh tim lapangan |
+| **M2** | Approval Engine | Alur *approval multi-level* sesuai struktur organisasi |
+| **M3** | Timesheet & Payroll Support | Rekap jam kerja, lembur, dan kalkulasi nominal |
+| **M4** | Daily Report Generator | *Auto-generate* laporan harian ke *customer* (PDF & Excel) |
+| **M5** | HERO Points & Leveling | Sistem poin, level, *badge*, *leaderboard* & *reward* |
+| **M6** | HSE Module | Observasi, *patrol*, *incident*, kepatuhan APD |
+| **M7** | Human Capital Suite | HR, Training Center, Wellness, Attendance |
+| **M8** | Dashboard & Analytics | *Dashboard* per departemen & eksekutif |
+
+---
+
+## 4. Spesifikasi Modul Detail
+
+### M1 - Activity Hub (Inti Sistem)
+Activity Hub adalah jantung dari HERO. Semua pekerjaan yang dilakukan di *site* dimulai dari modul ini.
+
+**4.1.1 Alur Input Aktivitas**
+1. Leader (Foreman) membuat Job List untuk hari itu (daftar pekerjaan tim).
+2. Setiap anggota tim melihat Job List di HP mereka.
+3. Karyawan men-*checkin* ke pekerjaan yang ditugaskan.
+4. Selama bekerja, karyawan bisa tambah catatan, foto, atau input manual.
+5. Di akhir *shift*, karyawan *submit* aktivitas harian mereka.
+6. Foreman me-*review* dan *approve* aktivitas tersebut.
+
+**4.1.2 Tipe Aktivitas yang Dapat Dicatat**
+| Kode | Tipe Aktivitas | Departemen | Contoh |
+| :--- | :--- | :--- | :--- |
+| **TS** | Tire Service | Central Service | Pemasangan ban OTR unit HD785 |
+| **TR** | Tire Repair | Central Service | Tambal ban bocor unit *dump truck* |
+| **TE** | Technical Engineering | Central Service | Analisa kerusakan *rim* unit *excavator* |
+| **TI** | Tire Inspection | Central Service | Inspeksi rutin kondisi ban 20 unit |
+| **HS** | HSE Activity | HSE | *Safety patrol* area *pit north*, *toolbox meeting* |
+| **TR** | Training Activity | Training Center | Mengikuti *training tire management* |
+| **SB** | Standby/On-Call | Central Service | Standby malam, *on-call emergency* |
+| **AD** | Administrative | Admin | Input data, rekap laporan |
+
+**4.1.3 Data yang Dicatat per Aktivitas**
+* Tipe pekerjaan & deskripsi detail.
+* Nomor unit / *equipment* yang dikerjakan.
+* Waktu mulai dan selesai (*auto-timestamp*).
+* Lokasi GPS (otomatis dari HP).
+* Foto dokumentasi (upload ke S3).
+* Material / *parts* yang digunakan.
+* Catatan / *remarks* tambahan.
+* Status: Normal / Emergency / Breakdown.
+
+### M2 - Approval Engine
+Sistem *approval* berjenjang mengikuti struktur organisasi. Setelah aktivitas di-*approve*, data otomatis masuk ke *timesheet* dan menjadi basis *daily report*.
+
+**4.2.1 Alur Approval Standard**
+| Level | Approver | Scope | Batas Waktu |
+| :--- | :--- | :--- | :--- |
+| **Level 1** | Foreman / Leader | *Approve* aktivitas anggota tim | 24 jam sejak *submit* |
+| **Level 2** | PJO Site | *Approve* rekap harian + lembur | 48 jam sejak Level 1 |
+| **Level 3** | HC Pusat | *Final approve timesheet* bulanan & nominal lembur | 5 hari kerja |
+
+*Catatan:* Konfigurasi level *approval* dapat disesuaikan per *site* oleh Super Admin. Sistem mengirimkan notifikasi WhatsApp otomatis ke *approver* jika ada *pending approval* melewati batas waktu.
+
+### M3 - Timesheet & Payroll Support
+**4.3.1 Komponen Timesheet**
+* **Jam reguler:** Rekap otomatis dari aktivitas yang sudah di-*approve*.
+* **Jam lembur:** Dihitung otomatis berdasarkan jam kerja melebihi batas normal.
+* **Hari kerja & libur:** Dikonfigurasi sesuai kalender nasional + kalender *site*.
+* **Status kehadiran:** Hadir / Izin / Sakit / Alpha (terintegrasi dengan absensi foto).
+
+**4.3.2 Kalkulasi Lembur**
+Mendukung *rate* lembur berbeda sesuai kebijakan HC:
+* Lembur hari kerja: 1.5x *rate* per jam.
+* Lembur hari libur: 2x *rate* per jam.
+* Lembur hari libur nasional: 3x *rate* per jam.
+* **Output:** Rekap jam + nominal Rp per karyawan per bulan. Format export: Excel ke sistem *payroll*.
+
+### M4 - Daily Report Generator
+**4.4.1 Komponen Daily Report**
+*Daily report* di-*generate* otomatis setiap hari berdasarkan aktivitas yang di-*approve*.
+
+| Bagian Report | Konten | Sumber Data |
+| :--- | :--- | :--- |
+| **Header** | Logo, nama *site*, tanggal, nama *customer*, nomor kontrak | Master data *site* |
+| **Ringkasan Manpower** | Jumlah tenaga hadir, izin, sakit, total | Modul kehadiran |
+| **Summary Pekerjaan** | Total unit dikerjakan, *breakdown* per tipe layanan | Activity Hub |
+| **Detail Aktivitas** | List semua pekerjaan: unit, tipe, waktu, teknisi, status | Activity Hub |
+| **HSE Summary** | *Zero incident*/*incident report*, *toolbox meeting* | HSE Module |
+| **Foto Dokumentasi** | Foto pekerjaan terpilih (maks 6 foto) | S3 storage |
+| **Tanda Tangan Digital** | PJO *site* + kolom tanda tangan *customer* | BetterAuth |
+
+**4.4.2 Format & Pengiriman**
+* **Format:** PDF (*branded* PT Chitra Paratama) dan Excel.
+* **Pengiriman:** Download manual atau kirim otomatis via email ke *customer*.
+* **Arsip:** Tersimpan di S3, dapat diakses kapan saja.
+* **Kustomisasi:** Template dapat disesuaikan per *customer*/kontrak.
+
+### M5 - HERO Points & Leveling System
+Sistem gamifikasi untuk mendorong partisipasi aktif dan disiplin kerja.
+
+**4.5.1 Sumber Poin**
+| Kategori | Aksi | Poin | Keterangan |
+| :--- | :--- | :--- | :--- |
+| **Kehadiran** | Hadir tepat waktu (absensi foto) | 10 poin/hari | Max 220 poin/bulan |
+| **Disiplin Input** | Submit aktivitas sebelum jam 17.00 | 5 poin/hari | Bonus kedisiplinan |
+| **Disiplin Input** | Submit aktivitas terlambat (17.00-23.59) | 2 poin/hari | Partial credit |
+| **Volume Kerja** | Selesaikan 1 pekerjaan | 5-20 poin/job | Tergantung kompleksitas |
+| **HSE Compliance** | Zero incident bulan ini | 50 poin/bulan | Bonus keselamatan |
+| **HSE Compliance** | Ikut toolbox meeting | 5 poin/meeting | - |
+| **Training** | Lulus training & dapat sertifikat | 50-200 poin | Tergantung level training |
+| **Penilaian Atasan** | Rating bintang dari Foreman/PJO | 0-50 poin/bulan | Subjektif, dikonfigurasi HR |
+| **Masa Kerja** | Anniversary tahunan | 100 poin/tahun | Loyalitas bonus |
+| **Wellness** | Update BMI dalam range sehat | 20 poin/bulan | Dorongan kesehatan |
+| **Wellness** | Selesaikan MCU tahunan | 100 poin/tahun | - |
+
+**4.5.2 Sistem Level**
+| Level | Nama Level | Poin Minimum | Keuntungan |
+| :--- | :--- | :--- | :--- |
+| **1** | Rookie | 0 poin | Akses fitur dasar |
+| **2** | Skilled | 500 poin | Badge digital + prioritas jadwal training |
+| **3** | Pro | 1.500 poin | Rekomendasi promosi jabatan + reward bulanan |
+| **4** | Expert | 3.500 poin | Mentoring allowance + priority assignment |
+| **5** | Elite | 7.000 poin | Kandidat Senior Tech + reward khusus eksekutif |
+
+*(Konfigurasi level, poin, dan keuntungan diatur sepenuhnya oleh HR via panel admin. Fitur ini juga mencakup leaderboard, reward bulanan, dan notifikasi WA.)*
+
+### M6 - HSE Module
+**4.6.1 Fitur HSE**
+| Fitur | Deskripsi |
+| :--- | :--- |
+| **Safety Observation** | Input observasi kondisi tidak aman, tindakan tidak aman, *near-miss* |
+| **HSE Patrol** | *Checklist patrol* rutin dengan foto & GPS timestamp |
+| **Toolbox Meeting** | Rekam kehadiran *toolbox meeting*, topik, foto dokumentasi |
+| **Incident Report** | Laporan kecelakaan kerja: ringan, sedang, berat, *fatality* |
+| **APD Compliance** | *Checklist* penggunaan APD harian per karyawan |
+| **HSE Dashboard** | Statistik: LTIR, TRIR, *near-miss rate*, tren *incident* per *site* |
+| **STOP Card Digital** | Kartu observasi keselamatan digital yang bisa disubmit dari HP |
+
+### M7 - Human Capital Suite
+**4.7.1 Kehadiran & Absensi**
+* Absensi foto *selfie* + GPS (anti-fraud).
+* Deteksi radius X meter dari *site* untuk bisa absen.
+* *Clock-in* pagi, *clock-out* sore, rekap otomatis untuk *timesheet*.
+
+**4.7.2 Training Center**
+* Integrasi dengan LMS *custom* WordPress.
+* Sinkronisasi data *training*, rekap kompetensi, *reminder* WhatsApp (H-30, H-7, H-1 *expired*), otomatisasi poin *training*.
+
+**4.7.3 Wellness**
+| Data | Cara Input | Frekuensi | Fungsi |
+| :--- | :--- | :--- | :--- |
+| **BMI** | *Self-input* oleh karyawan di app | Bulanan | Monitoring, *trigger* poin *wellness* |
+| **MCU** | Input oleh HC / Admin dari hasil klinik | Tahunan | Rekam status fit/unfit, *trigger* poin |
+| **Riwayat Izin Sakit** | Otomatis dari modul absensi | *Real-time* | Analisis tren kesehatan karyawan |
+| **Status Fit/Unfit** | Input *daily* oleh karyawan/HSE Officer | Harian | Kontrol keamanan kerja |
+
+**4.7.4 HR & Administrasi**
+* Manajemen data profil karyawan, struktur organisasi *site*, manajemen *reward*, dan laporan HC (*turnover*, produktivitas).
+
+### M8 - Dashboard & Analytics
+**4.8.1 Dashboard per Role**
+| Dashboard | Pengguna | Konten Utama |
+| :--- | :--- | :--- |
+| **My Profile** | Semua karyawan | Poin, level, *badge*, aktivitas terbaru, notifikasi personal |
+| **Site Operations** | Foreman, PJO | Job list, status tim, *pending approval*, produktivitas harian |
+| **HC Dashboard** | HR, HC Pusat | *Headcount*, kehadiran, *timesheet pending*, *wellness summary* |
+| **HSE Dashboard** | HSE Officer, HSE Pusat | *Incident* terbaru, *safety observation*, tren HSE |
+| **Training Dashboard** | Training Center | Sertifikat *expired*, jadwal *training*, rekap kompetensi |
+| **Wellness Dashboard** | Wellness Officer | BMI, MCU status, riwayat sakit, *alert* kesehatan |
+| **Executive Dashboard**| Direktur, Manajemen | KPI semua *site*, produktivitas, biaya lembur, ranking *site* |
+
+---
+
+## 5. Arsitektur Teknis
+### 5.1 Tech Stack
+| Layer | Teknologi | Alasan Pemilihan |
+| :--- | :--- | :--- |
+| **Frontend** | Next.js 14 (App Router) | SSR/SSG untuk performa, *mobile-first*, PWA-ready |
+| **Authentication**| BetterAuth | Modern *auth library*, *support multi-role*, session |
+| **Database** | PostgreSQL | Relational DB andal untuk data kompleks *multi-site* |
+| **ORM** | Drizzle ORM | Type-safe, *performant*, cocok dengan Next.js + PostgreSQL |
+| **File Storage** | S3-Compatible (ID Cloud) | Foto dokumentasi, laporan PDF, export Excel |
+| **CDN** | SACDN | Distribusi aset statis cepat untuk akses *site remote* |
+| **Notifikasi** | WhatsApp Gateway (Fonnte) | Notifikasi tanpa perlu install app tambahan |
+| **Hosting** | Indonesian Cloud Provider | Latensi rendah, *data residency* dalam negeri |
+| **LMS Integration**| REST API / Webhook | *Sync* data *training* & sertifikasi secara otomatis |
+
+### 5.2 Pertimbangan Mobile-First & Koneksi Terbatas
+* Desain UI *mobile-first* (320px-428px).
+* *Lazy-loading*, kompresi foto otomatis (maks 500KB).
+* Form aktivitas menggunakan *optimistic UI* untuk koneksi lambat.
+* *Service Worker* untuk *cache* halaman *offline-capable*.
+
+---
+
+## 6. User Stories Prioritas Tinggi (Highlights)
+| ID | Sebagai... | Saya ingin... | Sehingga... | Prioritas |
+| :--- | :--- | :--- | :--- | :--- |
+| **US-01** | Teknisi | input aktivitas dari HP dengan cepat (<2 menit) | tidak perlu isi form panjang di lapangan | P0 |
+| **US-02** | Foreman | lihat semua aktivitas tim dalam satu layar | bisa *approve* dengan cepat sebelum akhir *shift* | P0 |
+| **US-03** | PJO | *approve timesheet* & lembur dari HP | tidak perlu tunggu ke kantor untuk tanda tangan | P0 |
+| **US-06** | Teknisi | lihat poin dan level setiap hari | termotivasi terus aktif mengisi aktivitas | P0 |
+| **US-10** | HSE Officer| input observasi HSE dari HP dengan foto & GPS| bukti patrol terdokumentasi digital | P0 |
+
+*(Lihat spesifikasi lengkap dokumen untuk Epic Gamifikasi dan Wellness tambahan)*
+
+---
+
+## 7. Roadmap Development
+* **Phase 1 (Bulan 1-3): Foundation** - Target: Pilot *site*. Infrastruktur, Activity Hub dasar, Approval L1/L2, Absensi, Notifikasi WA dasar.
+* **Phase 2 (Bulan 4-6): Core Business** - Target: Rollout semua *site*. Timesheet, Laporan PDF/Excel, Poin dasar, Modul HSE.
+* **Phase 3 (Bulan 7-9): Engagement & Intelligence** - Target: Gamifikasi penuh. Leaderboard, integrasi LMS, Wellness, *Executive Dashboard*.
+* **Phase 4 (Bulan 10-12): Optimization** - Target: *Fine-tuning*. API publik, integrasi *payroll*, analitik lanjutan.
+
+---
+
+## 8. Non-Functional Requirements
+| Aspek | Requirement | Target |
+| :--- | :--- | :--- |
+| **Performa** | Page load time (mobile, 4G) | < 3 detik |
+| **Ketersediaan** | Uptime sistem | 99.5% per bulan |
+| **Keamanan** | Autentikasi | BetterAuth dengan JWT + *refresh token* |
+| **Skalabilitas** | Concurrent users | Mampu *handle* 500+ pengguna aktif bersamaan |
+| **Data** | Retensi data aktivitas | Minimum 3 tahun |
+
+---
+
+## 9. Struktur Database (High Level)
+| Tabel | Kolom Kunci Utama | Relasi |
+| :--- | :--- | :--- |
+| `users` | id, name, role, site_id, level, total_points | belongs to site, has many activities |
+| `sites` | id, name, location, customer_id | has many users, activities, reports |
+| `activities` | id, user_id, site_id, type, start_time, end_time | belongs to user & site |
+| `timesheets` | id, user_id, regular_hours, overtime_hours | belongs to user |
+| `points_log` | id, user_id, source_type, points | belongs to user |
+
+*(Terdapat juga entitas pendukung lainnya seperti customers, activity_photos, approvals, daily_reports, levels, rewards, hse_observations, trainings, wellness_records, attendances).*
+
+---
+
+## 10. Risiko & Mitigasi
+* **Resistensi adopsi (Tinggi):** Mitigasi melalui gamifikasi sebagai daya tarik utama dan *training onboarding*.
+* **Koneksi internet tidak stabil (Tinggi):** Mitigasi dengan *Optimistic UI*, *service worker cache*, kompresi foto.
+* **Manipulasi data (Sedang):** Validasi GPS, foto timestamp, *audit trail*, *peer review*.
+
+---
+
+## 11. Glossary
+| Istilah | Definisi |
+| :--- | :--- |
+| **PJO** | Penanggung Jawab Operasional - pemimpin tertinggi *site* lapangan |
+| **LMS** | Learning Management System |
+| **LTIR / TRIR**| Lost Time Injury Rate / Total Recordable Incident Rate (metrik HSE) |
+| **APD / OTR** | Alat Pelindung Diri / Off The Road (Tipe ban besar tambang) |

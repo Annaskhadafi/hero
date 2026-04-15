@@ -1,0 +1,18 @@
+{
+  "id": "TASK-001",
+  "title": "Review User Management and RBAC rollout",
+  "description": "Lakukan review lanjutan untuk fitur User Management compact table, action center user, RBAC checklist role management, dan visibilitas menu berbasis role agar siap dipakai tim operasional.",
+  "status": "completed",
+  "priority": "high",
+  "area": "security",
+  "createdAt": "2026-04-14T06:48:00+08:00",
+  "notes": [
+    "Verifikasi alur create role, duplicate role, delete role, dan save checklist RBAC.",
+    "Verifikasi aksi user: edit, detail, ganti password, ganti role, ban, dan delete.",
+    "Pastikan visibilitas sidebar mengikuti role yang dipilih."
+  ],
+  "updatedAt": "2026-04-14T21:54:47.399Z",
+  "startedAt": "2026-04-14T21:51:07.571Z",
+  "completedAt": "2026-04-14T21:54:47.399Z",
+  "completionDetails": "Redesigned User Management page to match One Chitra theme design with:\n- Updated header with title, subtitle, and dark blue ADD NEW USER button\n- 4 stat cards with accent borders (Total User, Active Access, Join 2026, Visible Result with progress bar)\n- Filter bar with department filter and pagination\n- Redesigned user table with NAMA, SN, DEPARTEMENT, ROLE, ACTION columns\n- User avatars with initials fallback\n- Department badges with muted styling\n- KELOLA action buttons for each user\n- Footer with cloud sync status and encryption level\n- Applied light blue/gray color scheme (#F8FAFC background, #1e293b text)"
+}

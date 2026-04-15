@@ -1,0 +1,18 @@
+{
+  "id": "TASK-003",
+  "title": "Replace landing page with direct login and enable Google sign-in",
+  "description": "Hilangkan landing page, arahkan root langsung ke login, redesign halaman login mengikuti referensi visual yang diberikan, dan aktifkan Better Auth Google sign-in.",
+  "status": "completed",
+  "priority": "high",
+  "area": "auth-ui",
+  "createdAt": "2026-04-14T07:20:00+08:00",
+  "notes": [
+    "Root path harus langsung ke login, tanpa landing page.",
+    "Desain login harus mendekati reference glassmorphism dark card.",
+    "Provider Google harus aktif lewat Better Auth dan tombol login harus terhubung."
+  ],
+  "updatedAt": "2026-04-13T23:24:28.822Z",
+  "startedAt": "2026-04-13T23:16:30.553Z",
+  "completedAt": "2026-04-13T23:24:28.822Z",
+  "completionDetails": "Removed landing page, redesigned sign-in/sign-up auth screens, and wired Better Auth Google provider/env setup."
+}

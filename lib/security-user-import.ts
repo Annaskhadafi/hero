@@ -1,0 +1,125 @@
+export const USER_IMPORT_FIELDS = [
+  { key: "employeeSn", label: "SN", required: true, aliases: ["sn", "employee sn", "employee_sn", "nik", "nrp"] },
+  { key: "joinYear", label: "Tahun Masuk", required: true, aliases: ["tahun masuk", "join year", "tahun_masuk", "year joined"] },
+  { key: "fullName", label: "Nama Lengkap", required: true, aliases: ["nama lengkap", "nama", "full name", "full_name"] },
+  { key: "ttl", label: "TTL", required: true, aliases: ["ttl", "tempat tanggal lahir", "tempat_tanggal_lahir", "birth"] },
+  { key: "domicile", label: "Domisili", required: true, aliases: ["domisili", "alamat", "domicile"] },
+  { key: "directManager", label: "Atasan Langsung", required: false, aliases: ["atasan langsung", "manager", "direct manager", "supervisor"] },
+  { key: "section", label: "Section", required: true, aliases: ["section", "seksi"] },
+  { key: "department", label: "Departement", required: true, aliases: ["departement", "department", "dept"] },
+  { key: "jobTitle", label: "Jabatan", required: true, aliases: ["jabatan", "position", "title", "role"] },
+  { key: "workLocation", label: "Lokasi Kerja", required: true, aliases: ["lokasi kerja", "work location", "site", "lokasi"] },
+  { key: "phoneNumber", label: "Nomor Telp", required: true, aliases: ["nomor telp", "phone", "no hp", "nomor hp", "telephone"] },
+  { key: "email", label: "Email", required: true, aliases: ["email", "email address", "mail"] },
+  { key: "status", label: "Status", required: true, aliases: ["status", "employment status", "employee status"] },
+] as const;
+
+export type UserImportFieldKey = (typeof USER_IMPORT_FIELDS)[number]["key"];
+
+export type UserImportMapping = Partial<Record<UserImportFieldKey, string>>;
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ");
+}
+
+export function parseCsv(raw: string) {
+  const rows: string[][] = [];
+  let currentCell = "";
+  let currentRow: string[] = [];
+  let inQuotes = false;
+
+  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    const nextChar = normalized[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentCell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      currentRow.push(currentCell.trim());
+      currentCell = "";
+      continue;
+    }
+
+    if (char === "\n" && !inQuotes) {
+      currentRow.push(currentCell.trim());
+
+      if (currentRow.some((value) => value.length > 0)) {
+        rows.push(currentRow);
+      }
+
+      currentCell = "";
+      currentRow = [];
+      continue;
+    }
+
+    currentCell += char;
+  }
+
+  currentRow.push(currentCell.trim());
+
+  if (currentRow.some((value) => value.length > 0)) {
+    rows.push(currentRow);
+  }
+
+  if (rows.length === 0) {
+    return {
+      headers: [] as string[],
+      records: [] as Record<string, string>[],
+    };
+  }
+
+  const [headerRow, ...valueRows] = rows;
+  const headers = headerRow.map((header, index) => header || `Column ${index + 1}`);
+  const records = valueRows
+    .filter((row) => row.some((value) => value.length > 0))
+    .map((row) =>
+      Object.fromEntries(
+        headers.map((header, index) => [header, row[index]?.trim() ?? ""]),
+      ),
+    );
+
+  return { headers, records };
+}
+
+export function autoMapHeaders(headers: string[]): UserImportMapping {
+  const normalizedHeaderMap = new Map(
+    headers.map((header) => [normalizeHeader(header), header]),
+  );
+
+  return Object.fromEntries(
+    USER_IMPORT_FIELDS.map((field) => {
+      const directMatch =
+        normalizedHeaderMap.get(normalizeHeader(field.label)) ??
+        field.aliases
+          .map((alias) => normalizedHeaderMap.get(normalizeHeader(alias)))
+          .find(Boolean);
+
+      return [field.key, directMatch ?? ""];
+    }),
+  ) as UserImportMapping;
+}
+
+export function getMappedValue(
+  row: Record<string, string>,
+  mapping: UserImportMapping,
+  key: UserImportFieldKey,
+) {
+  const header = mapping[key];
+
+  if (!header) {
+    return "";
+  }
+
+  return (row[header] ?? "").trim();
+}

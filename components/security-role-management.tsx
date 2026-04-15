@@ -1,0 +1,468 @@
+"use client";
+
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
+import { Copy, Plus, Save, Shield, Trash2 } from "lucide-react";
+import {
+  manageSecurityRoleAction,
+  type AdminMutationState,
+} from "@/app/dashboard/admin-actions";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+type RoleRow = {
+  id: number;
+  name: string;
+  description: string;
+  scope: string;
+  assignedUsers: number;
+};
+
+type MenuRow = {
+  id: number;
+  menuArea: string;
+  section: string;
+  title: string;
+  url: string;
+  resource: string;
+};
+
+type MenuPermissionRow = {
+  id: number;
+  roleId: number;
+  menuItemId: number;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canSelectAll: boolean;
+};
+
+type DraftPermission = {
+  menuItemId: number;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canSelectAll: boolean;
+};
+
+const INITIAL_STATE: AdminMutationState = {
+  status: "idle",
+  message: "",
+};
+
+function SubmitButton({
+  children,
+  variant = "default",
+}: {
+  children: React.ReactNode;
+  variant?: "default" | "outline" | "destructive";
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button type="submit" variant={variant} disabled={pending}>
+      {pending ? "Memproses..." : children}
+    </Button>
+  );
+}
+
+function buildDraftPermissions(
+  roleId: number,
+  menuItems: MenuRow[],
+  menuPermissions: MenuPermissionRow[],
+) {
+  const permissionByMenu = new Map(
+    menuPermissions
+      .filter((permission) => permission.roleId === roleId)
+      .map((permission) => [permission.menuItemId, permission]),
+  );
+
+  return menuItems.map<DraftPermission>((menuItem) => {
+    const permission = permissionByMenu.get(menuItem.id);
+
+    return {
+      menuItemId: menuItem.id,
+      canView: permission?.canView ?? false,
+      canEdit: permission?.canEdit ?? false,
+      canDelete: permission?.canDelete ?? false,
+      canSelectAll: permission?.canSelectAll ?? false,
+    };
+  });
+}
+
+export function SecurityRoleManagement({
+  roles,
+  menuItems,
+  menuPermissions,
+}: {
+  roles: RoleRow[];
+  menuItems: MenuRow[];
+  menuPermissions: MenuPermissionRow[];
+}) {
+  const [selectedRoleId, setSelectedRoleId] = useState<number>(roles[0]?.id ?? 0);
+  const [draftPermissions, setDraftPermissions] = useState<DraftPermission[]>(
+    buildDraftPermissions(roles[0]?.id ?? 0, menuItems, menuPermissions),
+  );
+  const [roleState, roleFormAction] = useActionState(
+    manageSecurityRoleAction,
+    INITIAL_STATE,
+  );
+
+  useEffect(() => {
+    setDraftPermissions(
+      buildDraftPermissions(selectedRoleId, menuItems, menuPermissions),
+    );
+  }, [menuItems, menuPermissions, selectedRoleId]);
+
+  const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0];
+  const groupedMenus = useMemo(() => {
+    return menuItems.reduce<Record<string, MenuRow[]>>((accumulator, menuItem) => {
+      accumulator[menuItem.menuArea] = accumulator[menuItem.menuArea] ?? [];
+      accumulator[menuItem.menuArea].push(menuItem);
+      return accumulator;
+    }, {});
+  }, [menuItems]);
+
+  return (
+    <div className="space-y-6">
+      {roleState.status !== "idle" ? (
+        <Alert
+          className={
+            roleState.status === "error"
+              ? "border-red-200 text-red-700"
+              : "border-emerald-200 text-emerald-700"
+          }
+        >
+          <AlertDescription>{roleState.message}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="rounded-2xl border">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-base">Roles</CardTitle>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button size="sm">
+                    <Plus className="size-4" />
+                    Role Baru
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Buat Role Baru</DialogTitle>
+                    <DialogDescription>
+                      Role baru otomatis mendapat checklist menu kosong.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form action={roleFormAction} className="space-y-4">
+                    <input type="hidden" name="intent" value="create-role" />
+                    <label className="grid gap-2">
+                      <Label>Nama Role</Label>
+                      <Input name="roleName" placeholder="Contoh: Finance Admin" />
+                    </label>
+                    <label className="grid gap-2">
+                      <Label>Deskripsi</Label>
+                      <Input name="description" placeholder="Ringkasan tanggung jawab role" />
+                    </label>
+                    <div className="grid gap-2">
+                      <Label>Scope</Label>
+                      <Select name="scope" defaultValue="site">
+                        <SelectTrigger>
+                          <SelectValue placeholder="Pilih scope" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="site">site</SelectItem>
+                          <SelectItem value="all_sites">all_sites</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex justify-end">
+                      <SubmitButton>Buat Role</SubmitButton>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {roles.map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                onClick={() => setSelectedRoleId(role.id)}
+                className={`w-full rounded-2xl border p-4 text-left transition ${
+                  selectedRoleId === role.id
+                    ? "border-primary bg-primary/5"
+                    : "hover:bg-muted/40"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{role.name}</p>
+                    <p className="text-sm text-muted-foreground">{role.description}</p>
+                  </div>
+                  <Badge variant="outline" className="rounded-full capitalize">
+                    {role.scope.replaceAll("_", " ")}
+                  </Badge>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {role.assignedUsers} user memakai role ini
+                </p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="rounded-2xl border">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle className="text-base">
+                    RBAC Menu Checklist
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Atur visibilitas dan aksi per menu untuk role{" "}
+                    <span className="font-medium text-foreground">
+                      {selectedRole?.name ?? "—"}
+                    </span>
+                    .
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Copy className="size-4" />
+                        Duplikat Role
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Duplikat Role</DialogTitle>
+                        <DialogDescription>
+                          Menyalin seluruh checklist role yang sedang dipilih.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form action={roleFormAction} className="space-y-4">
+                        <input type="hidden" name="intent" value="duplicate-role" />
+                        <input
+                          type="hidden"
+                          name="sourceRoleId"
+                          value={selectedRole ? `${selectedRole.id}` : ""}
+                        />
+                        <label className="grid gap-2">
+                          <Label>Nama Role Baru</Label>
+                          <Input
+                            name="roleName"
+                            defaultValue={selectedRole ? `${selectedRole.name} Copy` : ""}
+                          />
+                        </label>
+                        <label className="grid gap-2">
+                          <Label>Deskripsi</Label>
+                          <Input
+                            name="description"
+                            defaultValue={selectedRole?.description ?? ""}
+                          />
+                        </label>
+                        <div className="grid gap-2">
+                          <Label>Scope</Label>
+                          <Select
+                            name="scope"
+                            defaultValue={selectedRole?.scope ?? "site"}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Pilih scope" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="site">site</SelectItem>
+                              <SelectItem value="all_sites">all_sites</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex justify-end">
+                          <SubmitButton>Duplikat Role</SubmitButton>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+
+                  <form action={roleFormAction}>
+                    <input type="hidden" name="intent" value="delete-role" />
+                    <input
+                      type="hidden"
+                      name="roleId"
+                      value={selectedRole ? `${selectedRole.id}` : ""}
+                    />
+                    <SubmitButton variant="destructive">
+                      <Trash2 className="size-4" />
+                      Delete Role
+                    </SubmitButton>
+                  </form>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setDraftPermissions((current) =>
+                      current.map((permission) => ({
+                        ...permission,
+                        canView: true,
+                        canEdit: true,
+                        canDelete: true,
+                        canSelectAll: true,
+                      })),
+                    )
+                  }
+                >
+                  <Shield className="size-4" />
+                  Aktifkan Semua
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setDraftPermissions((current) =>
+                      current.map((permission) => ({
+                        ...permission,
+                        canView: false,
+                        canEdit: false,
+                        canDelete: false,
+                        canSelectAll: false,
+                      })),
+                    )
+                  }
+                >
+                  Reset Semua
+                </Button>
+              </div>
+
+              <form action={roleFormAction} className="space-y-4">
+                <input type="hidden" name="intent" value="save-menu-permissions" />
+                <input
+                  type="hidden"
+                  name="roleId"
+                  value={selectedRole ? `${selectedRole.id}` : ""}
+                />
+                <input
+                  type="hidden"
+                  name="permissionsJson"
+                  value={JSON.stringify(draftPermissions)}
+                />
+
+                {Object.entries(groupedMenus).map(([menuArea, items]) => (
+                  <div key={menuArea} className="rounded-2xl border">
+                    <div className="border-b px-4 py-3">
+                      <p className="font-medium capitalize">{menuArea} menus</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/40">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium">Menu</th>
+                            <th className="px-4 py-3 text-left font-medium">View</th>
+                            <th className="px-4 py-3 text-left font-medium">Edit</th>
+                            <th className="px-4 py-3 text-left font-medium">Delete</th>
+                            <th className="px-4 py-3 text-left font-medium">Select all</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((menuItem) => {
+                            const currentPermission =
+                              draftPermissions.find(
+                                (permission) => permission.menuItemId === menuItem.id,
+                              ) ?? {
+                                menuItemId: menuItem.id,
+                                canView: false,
+                                canEdit: false,
+                                canDelete: false,
+                                canSelectAll: false,
+                              };
+
+                            return (
+                              <tr key={menuItem.id} className="border-t">
+                                <td className="px-4 py-3">
+                                  <div>
+                                    <p className="font-medium">{menuItem.title}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {menuItem.section} • {menuItem.url}
+                                    </p>
+                                  </div>
+                                </td>
+                                {(
+                                  [
+                                    "canView",
+                                    "canEdit",
+                                    "canDelete",
+                                    "canSelectAll",
+                                  ] as const
+                                ).map((field) => (
+                                  <td key={`${menuItem.id}-${field}`} className="px-4 py-3">
+                                    <Checkbox
+                                      checked={currentPermission[field]}
+                                      onCheckedChange={(checked) =>
+                                        setDraftPermissions((current) =>
+                                          current.map((permission) =>
+                                            permission.menuItemId === menuItem.id
+                                              ? {
+                                                  ...permission,
+                                                  [field]: Boolean(checked),
+                                                }
+                                              : permission,
+                                          ),
+                                        )
+                                      }
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex justify-end">
+                  <SubmitButton>
+                    <Save className="size-4" />
+                    Simpan Checklist RBAC
+                  </SubmitButton>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
