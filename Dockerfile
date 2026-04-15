@@ -45,8 +45,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts ./drizzle.config.ts
 
-# Copy production node_modules for drizzle-kit migrate
-COPY --from=deps --chown=nextjs:nodejs /prod_node_modules ./node_modules_migrate
+# Copy full node_modules for runtime migrations (includes drizzle-kit CLI)
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules_migrate
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
 # Copy startup script
