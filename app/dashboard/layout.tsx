@@ -8,7 +8,7 @@ import {
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { getServerSession } from "@/lib/auth-session"
-import { getSidebarDataForUser } from "@/lib/hero-admin"
+import { getNavbarSettingsData, getSidebarDataForUser } from "@/lib/hero-admin"
 
 import "@/app/dashboard/theme.css"
 
@@ -25,7 +25,10 @@ export default async function DashboardLayout({
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
-  const sidebarData = await getSidebarDataForUser(session.user.email)
+  const [sidebarData, navbarSettings] = await Promise.all([
+    getSidebarDataForUser(session.user.email),
+    getNavbarSettingsData(),
+  ])
 
   return (
     <SidebarProvider
@@ -47,10 +50,12 @@ export default async function DashboardLayout({
         navSecondary={sidebarData.navSecondary}
         documents={sidebarData.documents}
       />
-      <SidebarInset className="bg-[#F5F7F9]">
+      <SidebarInset>
         <SiteHeader
           title="HERO Admin Console"
           subtitle="Desktop-first operations, approvals, reporting, and workforce control"
+          backgroundColor={navbarSettings.theme?.headerBackgroundColor ?? "#FFFFFF"}
+          textColor={navbarSettings.theme?.textColor ?? "#0F172A"}
         />
         <div className="flex flex-1 flex-col">{children}</div>
       </SidebarInset>

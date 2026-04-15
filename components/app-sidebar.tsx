@@ -127,20 +127,20 @@ export function AppSidebar({
               className="data-[slot=sidebar-menu-button]:!p-2"
             >
               <Link href="/">
-                <div className="flex aspect-square size-9 items-center justify-center overflow-hidden rounded-xl border border-white/50 bg-white shadow-sm">
+                <div className="flex aspect-square size-12 items-center justify-center overflow-hidden">
                   <Image
-                    src="/logo.png"
+                    src="/logo%20HERO.png"
                     alt="HERO"
-                    width={36}
-                    height={36}
-                    className="rounded-lg object-contain"
+                    width={48}
+                    height={48}
+                    className="h-12 w-12 object-contain"
                   />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                   <span className="truncate text-base font-semibold font-parkinsans">
                     HERO
                   </span>
-                  <span className="truncate text-xs text-slate-500">
+                  <span className="truncate text-xs text-muted-foreground">
                     Workforce Control Center
                   </span>
                 </div>
@@ -153,7 +153,7 @@ export function AppSidebar({
         {groupedMainItems.map(([section, items], index) => (
           <React.Fragment key={section}>
             {index > 0 ? <SidebarSeparator className="mx-2" /> : null}
-            <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 group-data-[collapsible=icon]:hidden">
+            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               {section}
             </div>
             <NavMain items={items} showQuickCreate={index === 0} />
@@ -162,7 +162,7 @@ export function AppSidebar({
         {documentItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-1" />
-            <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 group-data-[collapsible=icon]:hidden">
+            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               Documents
             </div>
             <NavDocuments items={documentItems} />
@@ -171,7 +171,7 @@ export function AppSidebar({
         {secondaryItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-auto" />
-            <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 group-data-[collapsible=icon]:hidden">
+            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               System
             </div>
             <NavSecondary items={secondaryItems} />

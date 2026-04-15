@@ -30,6 +30,7 @@ export function NavDocuments({
   items,
 }: {
   items: {
+    section?: string
     name: string
     url: string
     icon: Icon
@@ -43,7 +44,7 @@ export function NavDocuments({
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton asChild tooltip={item.section ? `${item.section} • ${item.name}` : item.name}>
               <Link href={item.url}>
                 <item.icon />
                 <span>{item.name}</span>
@@ -84,7 +85,7 @@ export function NavDocuments({
           </SidebarMenuItem>
         ))}
         <SidebarMenuItem>
-          <SidebarMenuButton className="text-sidebar-foreground/70">
+          <SidebarMenuButton tooltip="More documents" className="text-sidebar-foreground/70">
             <IconDots className="text-sidebar-foreground/70" />
             <span>More</span>
           </SidebarMenuButton>

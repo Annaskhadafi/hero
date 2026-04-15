@@ -17,6 +17,7 @@ export function NavSecondary({
   ...props
 }: {
   items: {
+    section?: string
     title: string
     url: string
     icon: Icon
@@ -28,7 +29,7 @@ export function NavSecondary({
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
+              <SidebarMenuButton asChild tooltip={item.section ? `${item.section} • ${item.title}` : item.title}>
                 <Link href={item.url}>
                   <item.icon />
                   <span>{item.title}</span>

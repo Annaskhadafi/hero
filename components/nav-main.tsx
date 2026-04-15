@@ -18,6 +18,7 @@ export function NavMain({
   showQuickCreate = false,
 }: {
   items: {
+    section?: string
     title: string
     url: string
     icon?: Icon
@@ -58,7 +59,7 @@ export function NavMain({
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
                 asChild
-                tooltip={item.title}
+                tooltip={item.section ? `${item.section} • ${item.title}` : item.title}
                 isActive={item.url !== "#" && pathname.startsWith(item.url)}
                 className="rounded-xl"
               >
