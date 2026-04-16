@@ -12,7 +12,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json* ./
 # Install all dependencies (production + development) to ensure drizzle-kit is available
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 
 # Stage 3: Build the application
 FROM base AS builder
