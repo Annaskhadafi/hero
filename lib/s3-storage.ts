@@ -122,6 +122,31 @@ export async function uploadProfilePhotoToS3(file: File) {
   };
 }
 
+export async function uploadAnyFileToS3(file: File) {
+  const contentType = file.type || "application/octet-stream";
+  const extension = getObjectExtension(contentType);
+  const prefix = serverEnv.s3UploadPrefix || "upload";
+  const key = `${prefix}/${randomUUID()}.${extension}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const client = getS3Client();
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: serverEnv.s3BucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000, immutable",
+    }),
+  );
+
+  return {
+    key,
+    url: buildS3PublicUrl(key),
+  };
+}
+
 export function isS3UploadConfigured() {
   return Boolean(
     serverEnv.s3BucketName &&

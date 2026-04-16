@@ -40,6 +40,7 @@ export const serverEnv = {
       "S3_BUCKET_NAME",
       "AWS_S3_BUCKET",
       "AWS_BUCKET_NAME",
+      "OBJECT_STORAGE_BUCKET"
     ]);
   },
   get s3Region() {
@@ -47,6 +48,7 @@ export const serverEnv = {
       "S3_REGION",
       "AWS_REGION",
       "AWS_DEFAULT_REGION",
+      "OBJECT_STORAGE_REGION"
     ]);
   },
   get s3Endpoint() {
@@ -54,18 +56,21 @@ export const serverEnv = {
       "S3_ENDPOINT",
       "AWS_ENDPOINT_URL_S3",
       "AWS_ENDPOINT_URL",
+      "OBJECT_STORAGE_ENDPOINT"
     ]);
   },
   get s3AccessKeyId() {
     return getFirstEnvValue([
       "S3_ACCESS_KEY_ID",
       "AWS_ACCESS_KEY_ID",
+      "OBJECT_STORAGE_ACCESS_KEY_ID",
     ]);
   },
   get s3SecretAccessKey() {
     return getFirstEnvValue([
       "S3_SECRET_ACCESS_KEY",
       "AWS_SECRET_ACCESS_KEY",
+      "OBJECT_STORAGE_SECRET_ACCESS_KEY"
     ]);
   },
   get s3SessionToken() {
@@ -81,7 +86,7 @@ export const serverEnv = {
     ]);
   },
   get s3ForcePathStyle() {
-    return getBooleanEnv(["S3_FORCE_PATH_STYLE"]);
+    return getBooleanEnv(["S3_FORCE_PATH_STYLE", "OBJECT_STORAGE_FORCE_PATH_STYLE"]);
   },
   get s3UploadPrefix() {
     return getFirstEnvValue(["S3_UPLOAD_PREFIX", "OBJECT_STORAGE_PREFIX"]);

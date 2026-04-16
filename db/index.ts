@@ -16,7 +16,16 @@ function getPool() {
     return existingPool;
   }
 
-  const pool = new Pool({ connectionString: serverEnv.databaseUrl });
+  const connectionString = serverEnv.databaseUrl;
+  const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+
+  const pool = new Pool({ 
+    connectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    idleTimeoutMillis: 3000, // Very aggressive for development to prune stale sockets
+    connectionTimeoutMillis: 5000,
+    max: 10,
+  });
 
   if (process.env.NODE_ENV !== "production") {
     globalThis.heroDbPool = pool;

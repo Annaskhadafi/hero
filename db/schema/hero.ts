@@ -168,6 +168,9 @@ export const attendanceRecords = pgTable("hero_attendance_records", {
   eventTime: timestamp("event_time").notNull(),
   status: text("status").notNull(),
   locationNote: text("location_note").notNull(),
+  photoUrl: text("photo_url"),
+  latitude: text("latitude"),
+  longitude: text("longitude"),
 });
 
 export const trainingRecords = pgTable("hero_training_records", {
