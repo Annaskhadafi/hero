@@ -6,6 +6,7 @@ import { Client } from "pg";
 
 const migrationRoot = process.cwd();
 const journalPath = path.join(migrationRoot, "drizzle", "meta", "_journal.json");
+const migrationsSchemaName = "drizzle";
 const migrationsTableName = "__drizzle_migrations";
 
 function logOutput(result) {
@@ -46,34 +47,50 @@ function getMigrationEntries() {
 
     const sql = readFileSync(filePath, "utf8");
     const hash = createHash("sha256").update(sql).digest("hex");
-    const tables = Array.from(sql.matchAll(/CREATE TABLE\s+"([^"]+)"/g), (match) => match[1]);
+    const tables = Array.from(
+      sql.matchAll(/CREATE TABLE\s+"([^"]+)"/g),
+      (match) => match[1],
+    );
 
     return {
       ...entry,
       hash,
       tables,
+      filePath,
     };
   });
 }
 
 function isRecoverableMigrationFailure(output) {
   return (
-    output.includes('relation "account" already exists') ||
     output.includes("already exists") ||
-    output.includes('column "id" is in a primary key') ||
     output.includes("code: '42P07'") ||
-    output.includes("code: '42P16'")
+    output.includes("severity: 'ERROR'")
   );
 }
 
+function getExistingRelationName(output) {
+  const relationMatch = output.match(/relation "([^"]+)" already exists/);
+  return relationMatch?.[1] ?? "";
+}
+
 async function ensureMigrationsTable(client) {
+  await client.query(`CREATE SCHEMA IF NOT EXISTS "${migrationsSchemaName}"`);
   await client.query(`
-    CREATE TABLE IF NOT EXISTS "${migrationsTableName}" (
+    CREATE TABLE IF NOT EXISTS "${migrationsSchemaName}"."${migrationsTableName}" (
       id SERIAL PRIMARY KEY,
       hash text NOT NULL,
       created_at bigint
     )
   `);
+}
+
+async function getAppliedMigrationTimes(client) {
+  const existing = await client.query(
+    `select created_at from "${migrationsSchemaName}"."${migrationsTableName}"`,
+  );
+
+  return new Set(existing.rows.map((row) => Number(row.created_at)));
 }
 
 async function tableExists(client, tableName) {
@@ -85,7 +102,20 @@ async function tableExists(client, tableName) {
   return Boolean(result.rows[0]?.table_name);
 }
 
-async function bootstrapMigrationHistory() {
+async function registerMigration(client, entry) {
+  await client.query(
+    `insert into "${migrationsSchemaName}"."${migrationsTableName}" ("hash", "created_at") values ($1, $2)`,
+    [entry.hash, entry.when],
+  );
+}
+
+async function bootstrapConflictingMigration(output, entries) {
+  const conflictingRelation = getExistingRelationName(output);
+
+  if (!conflictingRelation) {
+    return null;
+  }
+
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
   });
@@ -94,75 +124,68 @@ async function bootstrapMigrationHistory() {
 
   try {
     await ensureMigrationsTable(client);
+    const appliedMigrationTimes = await getAppliedMigrationTimes(client);
 
-    const existing = await client.query(
-      `select created_at from "${migrationsTableName}"`,
+    const targetEntry = entries.find(
+      (entry) =>
+        !appliedMigrationTimes.has(entry.when) &&
+        entry.tables.includes(conflictingRelation),
     );
-    const appliedMigrationTimes = new Set(
-      existing.rows.map((row) => Number(row.created_at)),
-    );
 
-    const entries = getMigrationEntries();
-    let insertedCount = 0;
-
-    for (const entry of entries) {
-      if (appliedMigrationTimes.has(entry.when)) {
-        continue;
-      }
-
-      let migrationAlreadyApplied = true;
-
-      for (const tableName of entry.tables) {
-        if (!(await tableExists(client, tableName))) {
-          migrationAlreadyApplied = false;
-          break;
-        }
-      }
-
-      if (!migrationAlreadyApplied) {
-        continue;
-      }
-
-      await client.query(
-        `insert into "${migrationsTableName}" ("hash", "created_at") values ($1, $2)`,
-        [entry.hash, entry.when],
-      );
-      insertedCount += 1;
+    if (!targetEntry) {
+      return null;
     }
 
-    return insertedCount;
+    const relationExists = await tableExists(client, conflictingRelation);
+
+    if (!relationExists) {
+      return null;
+    }
+
+    await registerMigration(client, targetEntry);
+
+    return targetEntry;
   } finally {
     await client.end();
   }
 }
 
 async function main() {
-  const firstAttempt = runDrizzleMigrate();
+  const entries = getMigrationEntries();
+  const maxAttempts = entries.length + 1;
 
-  if (firstAttempt.status === 0) {
-    return;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = runDrizzleMigrate();
+
+    if (result.status === 0) {
+      return;
+    }
+
+    const combinedOutput = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+
+    if (!isRecoverableMigrationFailure(combinedOutput)) {
+      process.exit(result.status ?? 1);
+    }
+
+    const bootstrappedEntry = await bootstrapConflictingMigration(
+      combinedOutput,
+      entries,
+    );
+
+    if (!bootstrappedEntry) {
+      console.error(
+        "Unable to reconcile existing schema with Drizzle migration history automatically.",
+      );
+      process.exit(result.status ?? 1);
+    }
+
+    console.log(
+      `Detected pre-existing table from migration ${bootstrappedEntry.tag}. Registered it in ${migrationsSchemaName}.${migrationsTableName} and retrying...`,
+    );
   }
 
-  const combinedOutput = `${firstAttempt.stdout ?? ""}\n${firstAttempt.stderr ?? ""}`;
-
-  if (!isRecoverableMigrationFailure(combinedOutput)) {
-    process.exit(firstAttempt.status ?? 1);
-  }
-
-  console.log("Detected existing schema. Bootstrapping Drizzle migration history...");
-  const bootstrappedCount = await bootstrapMigrationHistory();
-
-  if (bootstrappedCount > 0) {
-    console.log(`Registered ${bootstrappedCount} existing migration(s) in ${migrationsTableName}.`);
-  } else {
-    console.log("No existing migrations needed registration.");
-  }
-
-  const secondAttempt = runDrizzleMigrate();
-
-  if (secondAttempt.status !== 0) {
-    process.exit(secondAttempt.status ?? 1);
-  }
+  console.error("Exceeded automatic migration recovery attempts.");
+  process.exit(1);
 }
 
 main().catch((error) => {
