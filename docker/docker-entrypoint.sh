@@ -18,9 +18,12 @@ if [ -n "$DATABASE_URL" ]; then
             exit 1
         fi
 
-        NODE_PATH=/app/node_modules_migrate "$DRIZZLE_BIN" migrate 2>&1 || {
+        # Run migration using the full node_modules and ensuring it can find drizzle-orm
+        NODE_PATH=/app/node_modules:/app/node_modules_migrate \
+        node /app/node_modules_migrate/drizzle-kit/bin.cjs migrate 2>&1 || {
             echo "⚠️  Migration failed - trying push as fallback..."
-            NODE_PATH=/app/node_modules_migrate "$DRIZZLE_BIN" push 2>&1 || {
+            NODE_PATH=/app/node_modules:/app/node_modules_migrate \
+            node /app/node_modules_migrate/drizzle-kit/bin.cjs push 2>&1 || {
                 echo "❌ Database migration failed. Verify DATABASE_URL and ensure PostgreSQL is reachable."
                 exit 1
             }
