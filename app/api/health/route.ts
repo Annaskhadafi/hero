@@ -17,11 +17,10 @@ export async function GET() {
 
         return Response.json(
             {
-                status: "error",
+                status: "degraded",
                 database: "unreachable",
                 timestamp: new Date().toISOString(),
             },
-            { status: 503 },
         );
     }
 }

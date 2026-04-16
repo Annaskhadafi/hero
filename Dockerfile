@@ -44,6 +44,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 RUN mkdir -p /app/migration && chown nextjs:nodejs /app/migration
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle /app/migration/drizzle
 COPY --from=builder --chown=nextjs:nodejs /app/db /app/migration/db
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/run-docker-migrations.mjs /app/migration/scripts/run-docker-migrations.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts /app/migration/drizzle.config.ts
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json /app/migration/tsconfig.json
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules /app/migration/node_modules
@@ -64,7 +65,7 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Health check for Dokploy monitoring
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
