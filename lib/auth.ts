@@ -8,10 +8,31 @@ import { buildMagicLinkEmail, buildResetPasswordEmail, sendAuthEmail } from "@/l
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const authSecret =
+    process.env.BETTER_AUTH_SECRET?.trim() ||
+    process.env.AUTH_SECRET?.trim() ||
+    process.env.NEXTAUTH_SECRET?.trim() ||
+    "";
+const authBaseUrl =
+    process.env.BETTER_AUTH_URL?.trim() ||
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.trim() ||
+    "http://localhost:3000";
+const trustedOrigins = Array.from(
+    new Set(
+        [
+            authBaseUrl,
+            process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.trim(),
+            process.env.BETTER_AUTH_URL?.trim(),
+        ].filter((value): value is string => Boolean(value)),
+    ),
+);
 
 export const isGoogleAuthEnabled = Boolean(googleClientId && googleClientSecret);
 
 export const auth = betterAuth({
+    secret: authSecret || undefined,
+    baseURL: authBaseUrl,
+    trustedOrigins,
     plugins: [
         nextCookies(),
         magicLink({
