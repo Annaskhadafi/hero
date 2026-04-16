@@ -43,6 +43,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Copy drizzle migration files for runtime migration
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+COPY --from=builder --chown=nextjs:nodejs /app/db ./db
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts ./drizzle.config.ts
 
 # Copy full node_modules for runtime migrations (includes drizzle-kit CLI)
