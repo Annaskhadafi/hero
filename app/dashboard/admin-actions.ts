@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
@@ -12,6 +12,7 @@ import {
   approvals,
   employees,
   navbarMenuItems,
+  navbarThemes,
   pointEvents,
   roleMenuPermissions,
   securityRolePermissions,
@@ -66,6 +67,13 @@ export type AdminMutationState = {
   message: string;
 };
 
+const navbarThemeSchema = z.object({
+  headerBackgroundColor: z
+    .string()
+    .trim()
+    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Warna header harus berupa hex color yang valid."),
+});
+
 const manageSecurityUserSchema = z.object({
   intent: z.enum([
     "create-user",
@@ -93,6 +101,7 @@ const manageSecurityUserSchema = z.object({
   phoneNumber: z.string().trim().optional(),
   email: z.string().trim().optional(),
   employmentStatus: z.string().trim().optional(),
+  employeeStatusType: z.string().trim().optional(),
   accessRole: z.string().trim().optional(),
   password: z.string().trim().optional(),
   newPassword: z.string().trim().optional(),
@@ -621,6 +630,7 @@ export async function importSecurityUsersAction(
       const normalizedStatus = normalizeEmploymentStatus(
         getMappedValue(record, mapping, "status"),
       );
+      const employeeStatusType = getMappedValue(record, mapping, "employeeStatusType") || "Permanen | Staff";
       const existing = employeeByEmail.get(email);
 
       const values = {
@@ -639,6 +649,7 @@ export async function importSecurityUsersAction(
           getMappedValue(record, mapping, "workLocation") || defaultSite.name,
         phoneNumber: getMappedValue(record, mapping, "phoneNumber"),
         employmentStatus: normalizedStatus.status,
+        employeeStatusType: employeeStatusType,
         isActive: normalizedStatus.isActive,
       };
 
@@ -765,6 +776,7 @@ export async function manageSecurityUserAction(
       accessRole: formData.get("accessRole"),
       password: formData.get("password"),
       newPassword: formData.get("newPassword"),
+      employeeStatusType: formData.get("employeeStatusType"),
     });
 
     if (payload.intent === "create-user") {
@@ -875,6 +887,7 @@ export async function manageSecurityUserAction(
         workLocation: payload.workLocation?.trim() || defaultSite.name,
         phoneNumber: payload.phoneNumber?.trim() || "",
         employmentStatus: normalizedStatus.status,
+        employeeStatusType: payload.employeeStatusType || "Permanen | Staff",
         accessRole: role.name,
         levelName: "Rookie",
         totalPoints: 0,
@@ -938,6 +951,7 @@ export async function manageSecurityUserAction(
           phoneNumber: payload.phoneNumber || "",
           email,
           employmentStatus: normalizedStatus.status,
+          employeeStatusType: payload.employeeStatusType ?? "Permanen | Staff",
           isActive: normalizedStatus.isActive,
         })
         .where(eq(employees.id, employee.id));
@@ -1343,6 +1357,57 @@ export async function manageSecurityRoleAction(
         error instanceof Error
           ? error.message
           : "Terjadi kendala saat memproses role.",
+    };
+  }
+}
+
+export async function updateNavbarThemeAction(
+  _previousState: AdminMutationState,
+  formData: FormData,
+): Promise<AdminMutationState> {
+  try {
+    const payload = navbarThemeSchema.parse({
+      headerBackgroundColor: formData.get("headerBackgroundColor"),
+    });
+
+    await ensureHeroGovernanceSeedData();
+
+    const [latestTheme] = await db
+      .select()
+      .from(navbarThemes)
+      .orderBy(desc(navbarThemes.createdAt))
+      .limit(1);
+
+    if (!latestTheme) {
+      return { status: "error", message: "Theme navbar belum tersedia." };
+    }
+
+    await db
+      .update(navbarThemes)
+      .set({
+        headerBackgroundColor: payload.headerBackgroundColor,
+      })
+      .where(eq(navbarThemes.id, latestTheme.id));
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/settings/navbar");
+
+    return {
+      status: "success",
+      message: "Warna header navbar berhasil diperbarui.",
+    };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        status: "error",
+        message: error.issues[0]?.message ?? "Input warna header tidak valid.",
+      };
+    }
+
+    console.error("updateNavbarThemeAction error", error);
+    return {
+      status: "error",
+      message: "Gagal memperbarui warna header navbar.",
     };
   }
 }

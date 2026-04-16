@@ -46,6 +46,7 @@ export type SecurityUserRecord = {
   status: string;
   role: string;
   accessRole: string;
+  employeeStatusType: string;
   levelName: string;
   fitStatus: string;
   isActive: boolean;
@@ -105,6 +106,9 @@ async function ensureHeroEmployeeProfileColumns() {
   `);
   await db.execute(sql`
     alter table hero_employees add column if not exists employment_status text not null default 'active';
+  `);
+  await db.execute(sql`
+    alter table hero_employees add column if not exists employee_status_type text not null default 'Permanen | Staff';
   `);
   await db.execute(sql`
     alter table hero_employees add column if not exists access_role text not null default 'Site Admin';
@@ -547,11 +551,17 @@ async function ensureHeroGovernanceTables() {
       theme_name text not null,
       background_style text not null,
       accent_color text not null,
+      header_background_color text not null default '#FFFFFF',
       text_color text not null,
       density text not null default 'comfortable',
       logo_mode text not null default 'hero',
       created_at timestamp not null default now()
     );
+  `);
+
+  await db.execute(sql`
+    alter table hero_navbar_themes
+    add column if not exists header_background_color text not null default '#FFFFFF';
   `);
 
   await db.execute(sql`
@@ -1261,6 +1271,7 @@ export async function ensureHeroGovernanceSeedData() {
         themeName: "HERO Surface",
         backgroundStyle: "Slate gradient",
         accentColor: "#D97706",
+        headerBackgroundColor: "#FFFFFF",
         textColor: "#F8FAFC",
         density: "comfortable",
         logoMode: "hero-badge",
@@ -1662,6 +1673,7 @@ export async function getSecurityUsersData() {
       phoneNumber: employees.phoneNumber,
       email: employees.email,
       employmentStatus: employees.employmentStatus,
+      employeeStatusType: employees.employeeStatusType,
       accessRole: employees.accessRole,
       role: employees.role,
       department: employees.department,
@@ -1678,7 +1690,7 @@ export async function getSecurityUsersData() {
 
   const employeeNameById = new Map(rows.map((row) => [row.id, row.name]));
 
-  return rows.map<SecurityUserRecord>((row) => ({
+  return rows.map<SecurityUserRecord>((row: any) => ({
     id: row.id,
     employeeSn: row.employeeSn,
     joinYear: row.joinYear,
@@ -1694,6 +1706,7 @@ export async function getSecurityUsersData() {
     department: row.department,
     jobTitle: row.jobTitle,
     workLocation: row.workLocation,
+    employeeStatusType: row.employeeStatusType,
     phoneNumber: row.phoneNumber,
     email: row.email,
     status: row.isActive ? row.employmentStatus : "inactive",

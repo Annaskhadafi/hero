@@ -12,6 +12,7 @@ export const USER_IMPORT_FIELDS = [
   { key: "phoneNumber", label: "Nomor Telp", required: true, aliases: ["nomor telp", "phone", "no hp", "nomor hp", "telephone"] },
   { key: "email", label: "Email", required: true, aliases: ["email", "email address", "mail"] },
   { key: "status", label: "Status", required: true, aliases: ["status", "employment status", "employee status"] },
+  { key: "employeeStatusType", label: "Tipe Status Karyawan", required: true, aliases: ["tipe status", "employee status type", "employee_status_type", "tipe status karyawan"] },
 ] as const;
 
 export type UserImportFieldKey = (typeof USER_IMPORT_FIELDS)[number]["key"];

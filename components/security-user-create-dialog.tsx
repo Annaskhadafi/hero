@@ -95,7 +95,7 @@ export function SecurityUserCreateDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="h-10 gap-2 rounded-lg bg-[#1e3a5f] px-5 text-sm font-semibold text-white hover:bg-[#152a45]">
+        <Button variant="default" className="h-10 gap-2 rounded-lg px-5 text-sm font-semibold shadow-sm">
           <Plus className="size-4" />
           ADD NEW USER
         </Button>
@@ -115,8 +115,8 @@ export function SecurityUserCreateDialog({
             <Alert
               className={
                 state.status === "error"
-                  ? "border-red-200 text-red-700"
-                  : "border-emerald-200 text-emerald-700"
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
               }
             >
               <AlertDescription>{state.message}</AlertDescription>
@@ -265,6 +265,20 @@ export function SecurityUserCreateDialog({
                   <SelectItem value="contract">contract</SelectItem>
                   <SelectItem value="on_leave">on_leave</SelectItem>
                   <SelectItem value="inactive">inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Tipe Status Karyawan</Label>
+              <Select name="employeeStatusType" defaultValue="Permanen | Staff">
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih tipe status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
+                  <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
+                  <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
+                  <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
                 </SelectContent>
               </Select>
             </div>

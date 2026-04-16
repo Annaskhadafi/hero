@@ -162,7 +162,7 @@ function MultiSelectDropdown({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-9 min-w-[160px] justify-between rounded-lg border-[#e2e8f0] bg-[#F5F7F9] px-3 text-sm font-normal text-[#475569] hover:bg-white"
+          className="h-9 min-w-[160px] justify-between rounded-lg border-border bg-muted/50 px-3 text-sm font-normal text-muted-foreground hover:bg-background"
         >
           <span className="flex items-center gap-2 truncate">
             {icon}
@@ -206,7 +206,7 @@ function MultiSelectDropdown({
                 variant="ghost"
                 size="sm"
                 onClick={clearSelection}
-                className="h-8 w-full justify-center text-xs text-[#64748b] hover:text-[#ef4444]"
+                className="h-8 w-full justify-center text-xs text-muted-foreground hover:text-destructive"
               >
                 <X className="mr-1 size-3" />
                 Clear selection
@@ -238,6 +238,7 @@ export function SecurityUserManagement({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [rawCsv, setRawCsv] = useState("");
   const [mapping, setMapping] = useState<UserImportMapping>({});
@@ -257,6 +258,11 @@ export function SecurityUserManagement({
   );
   const managerOptions = useMemo(
     () => users.map((user) => ({ id: user.id, name: user.name })),
+    [users],
+  );
+
+  const statusTypeOptions = useMemo(
+    () => getUniqueOptions(users.map((user) => user.employeeStatusType)),
     [users],
   );
 
@@ -316,10 +322,13 @@ export function SecurityUserManagement({
         selectedDepartments.includes(user.department);
       const matchesRole =
         selectedRoles.length === 0 || selectedRoles.includes(user.accessRole);
+      const matchesStatusType =
+        selectedStatusTypes.length === 0 ||
+        selectedStatusTypes.includes(user.employeeStatusType);
 
-      return matchesKeyword && matchesDepartment && matchesRole;
+      return matchesKeyword && matchesDepartment && matchesRole && matchesStatusType;
     });
-  }, [searchQuery, selectedDepartments, selectedRoles, users]);
+  }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, users]);
 
   const currentYear = new Date().getFullYear();
   const activeUsersCount = users.filter(
@@ -338,12 +347,14 @@ export function SecurityUserManagement({
     setSearchQuery("");
     setSelectedDepartments([]);
     setSelectedRoles([]);
+    setSelectedStatusTypes([]);
   };
 
   const hasActiveFilters =
     searchQuery ||
     selectedDepartments.length > 0 ||
-    selectedRoles.length > 0;
+    selectedRoles.length > 0 ||
+    selectedStatusTypes.length > 0;
 
   const missingRequiredMappings = USER_IMPORT_FIELDS.filter(
     (field) => field.required && !mapping[field.key],
@@ -354,10 +365,10 @@ export function SecurityUserManagement({
         {/* Header Section */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#1e293b]">
+            <h1 className="text-2xl font-bold text-foreground">
               User Management
             </h1>
-            <p className="mt-1 text-sm text-[#64748b]">
+            <p className="mt-1 text-sm text-muted-foreground">
               Configure and audit personnel access levels across industrial
               sectors.
             </p>
@@ -602,8 +613,7 @@ export function SecurityUserManagement({
 
             <Button
               variant="outline"
-              size="icon"
-              className="h-10 w-10 rounded-lg border-[#e2e8f0] bg-white text-[#475569] hover:bg-[#F5F7F9] hover:text-[#1e293b]"
+              className="h-10 rounded-lg border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               onClick={() => startRefreshTransition(() => router.refresh())}
               disabled={isRefreshing}
             >
@@ -625,52 +635,52 @@ export function SecurityUserManagement({
         {/* Stats Cards */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Total User Card */}
-          <Card className="relative overflow-hidden border-[#e2e8f0] bg-white shadow-sm">
-            <div className="absolute left-0 top-0 h-full w-1 bg-[#3b82f6]" />
+          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+            <div className="absolute left-0 top-0 h-full w-1 bg-blue-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Total User
                   </p>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-[#1e293b]">
+                    <span className="text-3xl font-bold text-foreground">
                       {users.length.toLocaleString()}
                     </span>
                   </div>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eff6ff]">
-                  <Users2 className="size-5 text-[#3b82f6]" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
+                  <Users2 className="size-5 text-blue-500" />
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-1 text-xs">
-                <span className="font-medium text-[#10b981]">+12%</span>
-                <span className="text-[#94a3b8]">vs last month</span>
+                <span className="font-medium text-emerald-500">+12%</span>
+                <span className="text-muted-foreground">vs last month</span>
               </div>
             </CardContent>
           </Card>
 
           {/* Active Access Card */}
-          <Card className="relative overflow-hidden border-[#e2e8f0] bg-white shadow-sm">
-            <div className="absolute left-0 top-0 h-full w-1 bg-[#f59e0b]" />
+          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+            <div className="absolute left-0 top-0 h-full w-1 bg-amber-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Active Access
                   </p>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-[#1e293b]">
+                    <span className="text-3xl font-bold text-foreground">
                       {activeUsersCount.toLocaleString()}
                     </span>
                   </div>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fffbeb]">
-                  <ShieldCheck className="size-5 text-[#f59e0b]" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
+                  <ShieldCheck className="size-5 text-amber-500" />
                 </div>
               </div>
               <div className="mt-3">
-                <Badge className="rounded-md border-0 bg-[#fef3c7] px-2 py-0.5 text-xs font-medium text-[#92400e]">
+                <Badge className="rounded-md border-0 bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
                   Critical
                 </Badge>
               </div>
@@ -678,53 +688,53 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Join 2026 Card */}
-          <Card className="relative overflow-hidden border-[#e2e8f0] bg-white shadow-sm">
-            <div className="absolute left-0 top-0 h-full w-1 bg-[#8b5cf6]" />
+          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+            <div className="absolute left-0 top-0 h-full w-1 bg-violet-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Join {currentYear}
                   </p>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-[#1e293b]">
+                    <span className="text-3xl font-bold text-foreground">
                       {newHiresCount.toLocaleString()}
                     </span>
                   </div>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f3ff]">
-                  <BriefcaseBusiness className="size-5 text-[#8b5cf6]" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500/10">
+                  <BriefcaseBusiness className="size-5 text-violet-500" />
                 </div>
               </div>
               <div className="mt-3">
-                <span className="text-xs text-[#94a3b8]">New Hires</span>
+                <span className="text-xs text-muted-foreground">New Hires</span>
               </div>
             </CardContent>
           </Card>
 
           {/* Visible Result Card */}
-          <Card className="relative overflow-hidden border-[#e2e8f0] bg-white shadow-sm">
-            <div className="absolute left-0 top-0 h-full w-1 bg-[#0f172a]" />
+          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+            <div className="absolute left-0 top-0 h-full w-1 bg-foreground" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Visible Result
                   </p>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-[#1e293b]">
+                    <span className="text-3xl font-bold text-foreground">
                       {visiblePercentage}%
                     </span>
                   </div>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f1f5f9]">
-                  <MapPin className="size-5 text-[#0f172a]" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                  <MapPin className="size-5 text-foreground" />
                 </div>
               </div>
               <div className="mt-3">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#e2e8f0]">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-[#0f172a] transition-all duration-500"
+                    className="h-full rounded-full bg-foreground transition-all duration-500"
                     style={{ width: `${visiblePercentage}%` }}
                   />
                 </div>
@@ -734,7 +744,7 @@ export function SecurityUserManagement({
         </div>
 
         {/* Filter Bar with Search */}
-        <Card className="mb-6 border-[#e2e8f0] bg-white shadow-sm">
+        <Card className="mb-6 border-border bg-card shadow-sm">
           <CardContent className="p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               {/* Left side: Search and Filters */}
@@ -748,7 +758,7 @@ export function SecurityUserManagement({
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      className="h-9 w-[200px] rounded-lg border-[#e2e8f0] bg-[#F5F7F9] pl-9 text-sm placeholder:text-[#94a3b8]"
+                      className="h-9 w-[200px] rounded-lg border-border bg-muted/50 pl-9 text-sm placeholder:text-muted-foreground/60"
                     />
                   </div>
                   <Button
@@ -777,13 +787,22 @@ export function SecurityUserManagement({
                   label="Role"
                 />
 
+                {/* Multi-select Status Type Filter */}
+                <MultiSelectDropdown
+                  options={statusTypeOptions}
+                  selected={selectedStatusTypes}
+                  onChange={setSelectedStatusTypes}
+                  placeholder="All Status Type"
+                  label="Status Type"
+                />
+
                 {/* Reset button */}
                 {hasActiveFilters && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={resetFilters}
-                    className="h-9 text-xs text-[#64748b] hover:text-[#ef4444]"
+                    className="h-9 text-xs text-muted-foreground hover:text-destructive"
                   >
                     <X className="mr-1 size-3" />
                     Reset
@@ -793,7 +812,7 @@ export function SecurityUserManagement({
 
               {/* Right side: Pagination info */}
               <div className="flex items-center gap-4">
-                <span className="text-sm text-[#64748b]">
+                <span className="text-sm text-muted-foreground">
                   Showing 1-
                   {Math.min(filteredUsers.length, 10)} of {filteredUsers.length}{" "}
                   entries
@@ -803,11 +822,11 @@ export function SecurityUserManagement({
 
             {/* Active filter badges */}
             {hasActiveFilters && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#f1f5f9] pt-3">
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                 {searchQuery && (
                   <Badge
                     variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-[#eff6ff] px-2.5 py-1 text-xs font-medium text-[#3b82f6]"
+                    className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-500"
                   >
                     Search: {searchQuery}
                     <button
@@ -825,7 +844,7 @@ export function SecurityUserManagement({
                   <Badge
                     key={dept}
                     variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-[#f0fdf4] px-2.5 py-1 text-xs font-medium text-[#16a34a]"
+                    className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-500"
                   >
                     Dept: {dept}
                     <button
@@ -844,7 +863,7 @@ export function SecurityUserManagement({
                   <Badge
                     key={role}
                     variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-[#faf5ff] px-2.5 py-1 text-xs font-medium text-[#9333ea]"
+                    className="flex items-center gap-1 rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-500"
                   >
                     Role: {role}
                     <button
@@ -854,6 +873,25 @@ export function SecurityUserManagement({
                         )
                       }
                       className="ml-1 rounded-full hover:bg-[#f3e8ff]"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+                {selectedStatusTypes.map((type) => (
+                  <Badge
+                    key={type}
+                    variant="secondary"
+                    className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+                  >
+                    Status: {type}
+                    <button
+                      onClick={() =>
+                        setSelectedStatusTypes((prev) =>
+                          prev.filter((t) => t !== type),
+                        )
+                      }
+                      className="ml-1 rounded-full hover:bg-[#ffedd5]"
                     >
                       <X className="size-3" />
                     </button>
@@ -869,7 +907,7 @@ export function SecurityUserManagement({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-lg border-[#e2e8f0] bg-white"
+            className="h-8 w-8 rounded-lg border-border bg-card"
             disabled
           >
             <ChevronLeft className="size-4" />
@@ -884,38 +922,41 @@ export function SecurityUserManagement({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 w-8 rounded-lg border-[#e2e8f0] bg-white px-0 text-xs"
+            className="h-8 w-8 rounded-lg border-border bg-card px-0 text-xs"
           >
             2
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-lg border-[#e2e8f0] bg-white"
+            className="h-8 w-8 rounded-lg border-border bg-card"
           >
             <ChevronRight className="size-4" />
           </Button>
         </div>
 
         {/* User Table */}
-        <Card className="overflow-hidden border-[#e2e8f0] bg-white shadow-sm">
+        <Card className="overflow-hidden border-border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-b-[#e2e8f0] bg-[#F5F7F9] hover:bg-[#F5F7F9]">
-                  <TableHead className="w-[280px] py-4 text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                <TableRow className="border-b-border bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="w-[280px] py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Nama
                   </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     SN
                   </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Departement
                   </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Role
                   </TableHead>
-                  <TableHead className="py-4 text-right text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Tipe Status
+                  </TableHead>
+                  <TableHead className="py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Action
                   </TableHead>
                 </TableRow>
@@ -925,47 +966,55 @@ export function SecurityUserManagement({
                   filteredUsers.slice(0, 10).map((user) => (
                     <TableRow
                       key={user.id}
-                      className="border-b-[#f1f5f9] transition-colors hover:bg-[#F5F7F9]"
+                      className="border-b-border transition-colors hover:bg-muted/50"
                     >
                       <TableCell className="py-4">
                         <div className="flex items-center gap-4">
-                          <Avatar className="size-11 rounded-xl border border-[#e2e8f0]">
+                          <Avatar className="size-11 rounded-xl border border-border">
                             <AvatarImage
                               src={user.profileImage || undefined}
                               alt={user.name}
                               className="object-cover"
                             />
-                            <AvatarFallback className="rounded-xl bg-[#eff6ff] text-sm font-semibold text-[#3b82f6]">
+                            <AvatarFallback className="rounded-xl bg-blue-500/10 text-sm font-semibold text-blue-500">
                               {getUserInitials(user.name)}
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-semibold text-[#1e293b]">
+                            <p className="font-semibold text-foreground">
                               {user.name}
                             </p>
-                            <p className="text-sm text-[#64748b]">
+                            <p className="text-sm text-muted-foreground">
                               {user.email}
                             </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
-                        <span className="font-mono text-sm font-medium text-[#475569]">
+                        <span className="font-mono text-sm font-medium text-foreground/80">
                           {user.employeeSn}
                         </span>
                       </TableCell>
                       <TableCell className="py-4">
                         <Badge
                           variant="secondary"
-                          className="rounded-md border-0 bg-[#f1f5f9] px-2.5 py-1 text-xs font-medium text-[#475569]"
+                          className="rounded-md border-0 bg-muted text-muted-foreground"
                         >
                           {user.department}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-4">
-                        <span className="text-sm text-[#475569]">
+                        <span className="text-sm text-foreground/80">
                           {user.accessRole}
                         </span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Badge
+                          variant="outline"
+                          className="rounded-md border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                        >
+                          {user.employeeStatusType}
+                        </Badge>
                       </TableCell>
                       <TableCell className="py-4 text-right">
                         <SecurityUserRowActions
@@ -979,8 +1028,8 @@ export function SecurityUserManagement({
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
-                      className="py-12 text-center text-sm text-[#64748b]"
+                      colSpan={6}
+                      className="py-12 text-center text-sm text-muted-foreground"
                     >
                       No users found matching your filters.
                     </TableCell>
@@ -992,20 +1041,20 @@ export function SecurityUserManagement({
         </Card>
 
         {/* Footer */}
-        <div className="mt-6 flex flex-col gap-4 border-t border-[#e2e8f0] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-4 text-xs text-[#64748b]">
+        <div className="mt-6 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <div className="size-2 rounded-full bg-[#10b981]" />
-              <span className="font-medium text-[#10b981]">
+              <div className="size-2 rounded-full bg-emerald-500" />
+              <span className="font-medium text-emerald-500">
                 CLOUD SYNC ACTIVE
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Lock className="size-3 text-[#64748b]" />
+              <Lock className="size-3 text-muted-foreground" />
               <span>ENCRYPTION LEVEL: AES-256</span>
             </div>
           </div>
-          <p className="text-xs text-[#94a3b8]">
+          <p className="text-xs text-muted-foreground/60">
             © 2024 HERO Platform - Industrial Intelligence Console v2.4.0
           </p>
         </div>

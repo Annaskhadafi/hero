@@ -11,8 +11,8 @@
     "Utamakan halaman User Management terlebih dahulu.",
     "Pastikan tetap kompatibel dengan RBAC dan menu visibility yang sudah ada."
   ],
-  "updatedAt": "2026-04-14T00:20:07.621Z",
+  "updatedAt": "2026-04-15T23:03:02.610Z",
   "startedAt": "2026-04-14T00:17:36.222Z",
-  "completedAt": "2026-04-14T00:20:07.621Z",
-  "completionDetails": "Tambah upload foto profile untuk user management: picker + preview di create/edit user, simpan ke user.image, lalu tampilkan avatar di action center dan tabel user."
+  "completedAt": "2026-04-15T23:03:02.610Z",
+  "completionDetails": "Refactored sidebar wrapper to restore the group-based collapse selectors so icon collapse works again."
 }

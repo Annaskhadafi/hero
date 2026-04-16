@@ -107,13 +107,13 @@ export function SecurityUserRowActions({
           <div className="space-y-4 rounded-2xl border p-4 xl:sticky xl:top-0">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <Avatar className="size-14 border border-slate-200">
+                <Avatar className="size-14 border border-border">
                   <AvatarImage
                     src={user.profileImage || undefined}
                     alt={user.name}
                     className="object-cover"
                   />
-                  <AvatarFallback className="bg-slate-100 font-semibold text-slate-700">
+                  <AvatarFallback className="bg-muted font-semibold text-muted-foreground">
                     {getUserInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -168,6 +168,19 @@ export function SecurityUserRowActions({
                 <p className="text-xs text-muted-foreground">Nomor Telp</p>
                 <p>{user.phoneNumber || "—"}</p>
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Tipe Status Karyawan</p>
+                {user.employeeStatusType ? (
+                  <Badge
+                    variant="secondary"
+                    className="mt-1 rounded-full bg-muted font-medium text-muted-foreground"
+                  >
+                    {user.employeeStatusType}
+                  </Badge>
+                ) : (
+                  <p className="font-medium">—</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -176,8 +189,8 @@ export function SecurityUserRowActions({
               <Alert
                 className={
                   state.status === "error"
-                    ? "border-red-200 text-red-700"
-                    : "border-emerald-200 text-emerald-700"
+                    ? "border-destructive/30 bg-destructive/10 text-destructive"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 }
               >
                 <AlertDescription>{state.message}</AlertDescription>
@@ -240,9 +253,23 @@ export function SecurityUserRowActions({
                             {manager.name}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Tipe Status Karyawan</Label>
+              <Select name="employeeStatusType" defaultValue={user.employeeStatusType || "Permanen | Staff"}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Pilih tipe status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
+                  <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
+                  <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
+                  <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
                 <label className="grid gap-2">
                   <Label>Section</Label>
                   <Input name="section" defaultValue={user.section} />
@@ -340,10 +367,10 @@ export function SecurityUserRowActions({
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <form action={formAction} className="space-y-4 rounded-2xl border border-amber-200 p-4">
+              <form action={formAction} className="space-y-4 rounded-2xl border border-amber-500/30 p-4">
                 <input type="hidden" name="intent" value="ban-user" />
                 <input type="hidden" name="employeeId" value={user.id} />
-                <div className="flex items-center gap-2 text-amber-700">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
                   <ShieldBan className="size-4" />
                   <p className="font-medium">Ban User</p>
                 </div>
@@ -355,10 +382,10 @@ export function SecurityUserRowActions({
                 </div>
               </form>
 
-              <form action={formAction} className="space-y-4 rounded-2xl border border-red-200 p-4">
+              <form action={formAction} className="space-y-4 rounded-2xl border border-destructive/30 p-4">
                 <input type="hidden" name="intent" value="delete-user" />
                 <input type="hidden" name="employeeId" value={user.id} />
-                <div className="flex items-center gap-2 text-red-700">
+                <div className="flex items-center gap-2 text-destructive">
                   <Trash2 className="size-4" />
                   <p className="font-medium">Delete User</p>
                 </div>

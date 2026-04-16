@@ -1,0 +1,18 @@
+{
+  "id": "TASK-004",
+  "title": "Add Employee Status Type to User Management",
+  "description": "Add 'tipe status karyawan' field to User Management form and details view with options: Permanen | Non Staff, Permanen | Staff, Kontrak | Non Staff, Kontrak | Staff.",
+  "status": "completed",
+  "priority": "medium",
+  "area": "user-management",
+  "createdAt": "2026-04-16T16:15:00+08:00",
+  "notes": [
+    "Update database schema if needed.",
+    "Update user creation/edit form.",
+    "Update user detail view."
+  ],
+  "startedAt": "2026-04-16T08:15:05.121Z",
+  "updatedAt": "2026-04-16T08:17:42.379Z",
+  "completedAt": "2026-04-16T08:17:42.379Z",
+  "completionDetails": "Added Employee Status Type to form, detail view, and table list. Fixed server actions for creation and import."
+}

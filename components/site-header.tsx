@@ -53,23 +53,7 @@ export function SiteHeader({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className={cn(
-            "hidden rounded-full border px-3 py-1.5 text-xs md:flex",
-            isDark
-              ? "border-current/10 bg-current/10 text-current/70"
-              : "border-current/10 bg-black/5 text-current/70"
-          )}>
-            RBAC synced workspace
-          </div>
           <HeaderThemeControls />
-          <Button asChild variant="outline" size="sm" className={cn(
-            "rounded-full px-4",
-            isDark
-              ? "border-current/15 bg-current/10 text-current hover:bg-current/20"
-              : "border-current/15 bg-white/60 text-current hover:bg-white/80"
-          )}>
-            <Link href="/">Dashboard Home</Link>
-          </Button>
         </div>
       </div>
     </header>
