@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -24,7 +24,7 @@ function GoogleIcon() {
     );
 }
 
-export default function SignInPage() {
+function SignInContent() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(true);
@@ -438,5 +438,19 @@ export default function SignInPage() {
                 </AuthShell>
             </div>
         </>
+    );
+}
+
+export default function SignInPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex h-screen items-center justify-center bg-[#0a0f1a]">
+                    <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+                </div>
+            }
+        >
+            <SignInContent />
+        </Suspense>
     );
 }

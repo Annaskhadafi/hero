@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const token = useMemo(() => searchParams.get("token") ?? "", [searchParams]);
@@ -129,5 +129,19 @@ export default function ResetPasswordPage() {
                 </Button>
             </form>
         </AuthShell>
+    );
+}
+
+export default function ResetPasswordPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex h-screen items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+                </div>
+            }
+        >
+            <ResetPasswordContent />
+        </Suspense>
     );
 }
