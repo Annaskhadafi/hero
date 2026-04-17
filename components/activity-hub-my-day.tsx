@@ -95,7 +95,7 @@ export function ActivityHubMyDay() {
         </Button>
         <Button
           variant="outline"
-          className="h-auto justify-start rounded-2xl border-slate-200 bg-white px-4 py-4 text-left shadow-sm"
+          className="h-auto justify-start rounded-2xl bg-surface-container-lowest px-4 py-4 text-left text-foreground shadow-sm"
         >
           <div>
             <div className="inline-flex items-center gap-2 text-sm font-semibold">
@@ -125,7 +125,7 @@ export function ActivityHubMyDay() {
         {myDayJobs.map((job) => (
           <Card
             key={job.id}
-            className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+            className="surface-module-card rounded-[1.5rem] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -174,7 +174,7 @@ export function ActivityHubMyDay() {
           </p>
         </div>
 
-        <Card className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+        <Card className="surface-module-card rounded-[1.5rem] p-4">
           <div className="space-y-4">
             {myDayTimeline.map((item, index) => (
               <div key={`${item.time}-${item.title}`} className="flex gap-3">

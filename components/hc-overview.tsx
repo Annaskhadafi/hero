@@ -92,7 +92,7 @@ export function HcOverview() {
       </div>
 
       <Tabs defaultValue="attendance" className="gap-4">
-        <TabsList className="grid h-auto grid-cols-3 rounded-2xl bg-slate-100 p-1">
+        <TabsList className="surface-tab-shell grid h-auto grid-cols-3 rounded-2xl p-1">
           <TabsTrigger value="attendance" className="rounded-xl py-2 text-xs sm:text-sm">
             Attendance
           </TabsTrigger>
@@ -106,7 +106,7 @@ export function HcOverview() {
 
         <TabsContent value="attendance" className="space-y-3">
           {attendanceFeed.map((item) => (
-            <Card key={`${item.name}-${item.time}`} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={`${item.name}-${item.time}`} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-slate-900">{item.name}</p>
@@ -134,7 +134,7 @@ export function HcOverview() {
 
         <TabsContent value="training" className="space-y-3">
           {trainingStatus.map((item) => (
-            <Card key={`${item.employee}-${item.training}`} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={`${item.employee}-${item.training}`} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-slate-900">{item.employee}</p>
@@ -156,7 +156,7 @@ export function HcOverview() {
 
         <TabsContent value="wellness" className="space-y-3">
           {wellnessStatus.map((item) => (
-            <Card key={`${item.employee}-${item.metric}`} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={`${item.employee}-${item.metric}`} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-slate-900">{item.employee}</p>
@@ -208,7 +208,7 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+    <Card className="surface-module-card rounded-[1.4rem] p-4">
       <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
         {icon}
         {label}

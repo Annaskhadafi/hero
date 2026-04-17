@@ -68,7 +68,7 @@ const MOCK_NOTIFICATIONS = [
 export function HeaderThemeControls() {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [notifications, setNotifications] = React.useState(MOCK_NOTIFICATIONS);
+  const notifications = React.useMemo(() => MOCK_NOTIFICATIONS, []);
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -90,17 +90,19 @@ export function HeaderThemeControls() {
 
   return (
     <div className="flex w-full items-center justify-end gap-2 lg:gap-3">
-      <div 
-        className="relative hidden min-w-[220px] max-w-[320px] flex-1 cursor-pointer lg:block"
+      <button
+        type="button"
         onClick={() => setOpen(true)}
+        className="hidden min-w-[240px] flex-1 items-center gap-3 rounded-2xl bg-white/12 px-4 py-3 text-left text-white/82 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 lg:flex"
       >
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search menu, page, or command... (⌘K)"
-          readOnly
-          className="h-10 cursor-pointer rounded-full border-border bg-muted/50 pl-10 text-sm text-foreground shadow-none backdrop-blur transition-all hover:bg-muted"
-        />
-      </div>
+        <Search className="h-4 w-4 text-white/65" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">Search page, command, or module</p>
+        </div>
+        <span className="rounded-full bg-white/12 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-white/72">
+          Ctrl K
+        </span>
+      </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput placeholder="Type a command or search..." />
@@ -157,9 +159,9 @@ export function HeaderThemeControls() {
         <PopoverTrigger asChild>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="icon"
-            className="relative rounded-full border-border bg-muted/50 text-foreground transition-all hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30"
+            className="relative size-11 rounded-2xl bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 hover:text-white"
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
@@ -171,53 +173,67 @@ export function HeaderThemeControls() {
             <span className="sr-only">Notifications</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[380px] p-0" align="end">
-          <div className="flex items-center justify-between border-b border-border p-4">
-            <h4 className="text-sm font-semibold">Notifications</h4>
-            {unreadCount > 0 && (
-              <Badge variant="secondary" className="rounded-full bg-rose-50 text-rose-600">
-                {unreadCount} New
-              </Badge>
-            )}
-          </div>
-          <div className="max-h-[400px] overflow-auto">
-            {notifications.length > 0 ? (
-              notifications.map((n) => (
-                <div 
-                  key={n.id} 
-                  className={`flex items-start gap-3 border-b border-border p-4 transition-colors hover:bg-muted/50 ${n.unread ? "bg-muted/20" : ""}`}
-                >
-                  <div className={`mt-0.5 rounded-full p-2 ${n.color}`}>
-                    <n.icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium leading-none">{n.title}</p>
-                      <span className="text-xs text-muted-foreground">{n.time}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{n.description}</p>
-                  </div>
-                  {n.unread && (
-                    <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Bell className="mb-2 h-8 w-8 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No notifications yet</p>
+        <PopoverContent className="w-[390px] p-2" align="end">
+          <div className="surface-module-card rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="industrial-label">Signal Queue</p>
+                <h4 className="mt-1 font-display text-lg font-semibold">Notifications</h4>
               </div>
+              {unreadCount > 0 && (
+                <Badge variant="secondary" className="rounded-full">
+                  {unreadCount} New
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="mt-2 max-h-[420px] space-y-2 overflow-auto pr-1">
+            {unreadCount > 0 && (
+              notifications.length > 0 ? (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`surface-module-card rounded-2xl p-4 transition-transform hover:-translate-y-0.5 ${n.unread ? "bg-surface-container-lowest" : ""}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 rounded-2xl p-2.5 ${n.color}`}>
+                        <n.icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold leading-none text-foreground">{n.title}</p>
+                          <span className="text-xs text-muted-foreground">{n.time}</span>
+                        </div>
+                        <p className="text-sm leading-6 text-muted-foreground">{n.description}</p>
+                      </div>
+                      {n.unread && (
+                        <div className="mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="surface-module-card flex flex-col items-center justify-center rounded-2xl py-12 text-center">
+                  <Bell className="mb-2 h-8 w-8 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">No notifications yet</p>
+                </div>
+              )
             )}
           </div>
-          <div className="border-t border-border p-3 text-center">
-            <Button variant="ghost" size="sm" className="w-full text-xs font-medium text-muted-foreground hover:text-foreground">
+          <div className="mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full rounded-2xl text-xs text-foreground"
+              onClick={() => router.push("/dashboard/notifications")}
+            >
               View all notifications
             </Button>
           </div>
         </PopoverContent>
       </Popover>
 
-      <div className="[&_button]:rounded-full [&_button]:border-border [&_button]:bg-muted/50 [&_button]:text-foreground [&_button]:hover:bg-muted">
+      <div className="[&_button]:size-11 [&_button]:rounded-2xl [&_button]:bg-white/12 [&_button]:text-white [&_button]:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] [&_button]:hover:bg-white/16 [&_button]:hover:text-white">
         <SimpleThemeToggle />
       </div>
     </div>

@@ -1,19 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  approvalMatrices,
+  approvalMatrixSteps,
+  employees,
   masterSections,
   masterDepartments,
   masterPositions,
-  orgStructures,
   orgChartStructures,
   orgChartNodes,
+  orgNodeAssignments,
   sites,
 } from "@/db/schema/hero";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
+import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
 
 // Validation Schemas
 // Section is a child of Department
@@ -64,13 +68,60 @@ const orgStructureSchema = z.object({
   id: z.coerce.number().int().positive().optional(),
   name: z.string().trim().min(1).max(100),
   jobType: z.string().trim().min(1).max(50).default("custom"),
-  positionId: z.coerce.number().int().positive().optional(),
-  managerPositionId: z.coerce.number().int().positive().optional(),
-  approvalLevel: z.coerce.number().int().min(1).max(99).default(1),
+  version: z.coerce.number().int().min(1).max(999).default(1),
+  effectiveFrom: z.string().trim().optional(),
+  effectiveTo: z.string().trim().optional(),
+  isDefault: z.coerce.boolean().default(false),
   scopeValue: z.string().trim().max(100).optional(),
   description: z.string().trim().max(500).optional(),
   nodesJson: z.string().trim().optional(),
   isActive: z.coerce.boolean().default(true),
+});
+
+const approvalMatrixSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: z.coerce.number().int().positive().optional(),
+  name: z.string().trim().min(1).max(100),
+  structureId: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  transactionType: z.string().trim().min(1).max(50).default("activity"),
+  siteId: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  departmentId: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  sectionId: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  requesterPositionId: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  activityType: z.string().trim().max(100).optional(),
+  priority: z.string().trim().max(50).optional(),
+  minOvertimeMinutes: z.coerce.number().int().min(0).max(1440).default(0),
+  maxOvertimeMinutes: z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.coerce.number().int().min(0).max(1440).optional(),
+  ),
+  description: z.string().trim().max(500).optional(),
+  effectiveFrom: z.string().trim().optional(),
+  effectiveTo: z.string().trim().optional(),
+  stepsJson: z.string().trim().optional(),
+  isActive: z.coerce.boolean().default(true),
+});
+
+const simulateApprovalRouteSchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  activityType: z.string().trim().min(1).max(100),
+  priority: z.string().trim().min(1).max(50),
+  overtimeMinutes: z.coerce.number().int().min(0).max(1440).default(0),
 });
 
 // Types
@@ -83,6 +134,15 @@ export type MasterDataActionState = {
 // Helper function for timestamps
 function now() {
   return new Date();
+}
+
+function parseOptionalTimestamp(value?: string | null) {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export async function manageSiteAction(
@@ -477,16 +537,29 @@ export async function managePositionAction(
         return { status: "error", message: "ID is required for delete" };
       }
 
-      // Check if position is used in org structure
-      const usedInOrg = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(orgStructures)
-        .where(eq(orgStructures.positionId, id));
+      const [usedInNodes, usedInMatrices, usedByEmployees] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(orgChartNodes)
+          .where(eq(orgChartNodes.positionId, id)),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(approvalMatrices)
+          .where(eq(approvalMatrices.requesterPositionId, id)),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(employees)
+          .where(eq(employees.positionId, id)),
+      ]);
 
-      if ((usedInOrg[0]?.count ?? 0) > 0) {
+      if (
+        (usedInNodes[0]?.count ?? 0) > 0 ||
+        (usedInMatrices[0]?.count ?? 0) > 0 ||
+        (usedByEmployees[0]?.count ?? 0) > 0
+      ) {
         return {
           status: "error",
-          message: "Cannot delete position that is used in organizational structure",
+          message: "Cannot delete position that is still used by employees, org nodes, or approval matrix",
         };
       }
 
@@ -521,14 +594,35 @@ export async function manageOrgStructureAction(
     };
   }
 
-  const { intent, id, name, jobType, scopeValue, description, nodesJson, isActive } = parsed.data;
+  const {
+    intent,
+    id,
+    name,
+    jobType,
+    version,
+    effectiveFrom,
+    effectiveTo,
+    isDefault,
+    scopeValue,
+    description,
+    nodesJson,
+    isActive,
+  } = parsed.data;
 
   try {
     if (intent === "create") {
+      if (isDefault) {
+        await db.update(orgChartStructures).set({ isDefault: false });
+      }
+
       await db.insert(orgChartStructures).values({
         name,
         scopeType: jobType,
         scopeValue: scopeValue || "",
+        version,
+        effectiveFrom: parseOptionalTimestamp(effectiveFrom) ?? now(),
+        effectiveTo: parseOptionalTimestamp(effectiveTo),
+        isDefault,
         description: description || "",
         isActive,
         createdAt: now(),
@@ -544,12 +638,23 @@ export async function manageOrgStructureAction(
         return { status: "error", message: "ID is required for update" };
       }
 
+      if (isDefault) {
+        await db
+          .update(orgChartStructures)
+          .set({ isDefault: false, updatedAt: now() })
+          .where(sql`${orgChartStructures.id} != ${id}`);
+      }
+
       await db
         .update(orgChartStructures)
         .set({
           name,
           scopeType: jobType,
           scopeValue: scopeValue || "",
+          version,
+          effectiveFrom: parseOptionalTimestamp(effectiveFrom) ?? now(),
+          effectiveTo: parseOptionalTimestamp(effectiveTo),
+          isDefault,
           description: description || "",
           isActive,
           updatedAt: now(),
@@ -571,9 +676,29 @@ export async function manageOrgStructureAction(
           parentNodeId: z.number().nullable(),
           positionId: z.number().nullable(),
           employeeId: z.number().nullable().optional(),
+          nodeCode: z.string().trim().max(50).default(""),
+          nodeType: z.string().trim().max(50).default("position"),
+          approvalRole: z.string().trim().max(100).default(""),
+          canApprove: z.boolean().default(false),
+          canDelegate: z.boolean().default(true),
+          isEscalationTarget: z.boolean().default(false),
+          slaHours: z.number().int().min(1).max(240).default(24),
+          fallbackNodeId: z.number().nullable().optional(),
           label: z.string().trim().min(1).max(100),
           sortOrder: z.number().int().min(0),
           isActive: z.boolean().default(true),
+          assignments: z
+            .array(
+              z.object({
+                employeeId: z.number().nullable().optional(),
+                assignmentType: z.string().trim().max(50).default("primary"),
+                notes: z.string().trim().max(300).optional(),
+                effectiveFrom: z.string().trim().optional(),
+                effectiveTo: z.string().trim().optional(),
+                isActive: z.boolean().default(true),
+              }),
+            )
+            .default([]),
         })
       ).safeParse(JSON.parse(nodesJson || "[]"));
 
@@ -581,7 +706,37 @@ export async function manageOrgStructureAction(
         return { status: "error", message: "Nodes payload is invalid" };
       }
 
+      const existingStructureNodeIds = (
+        await db
+          .select({ id: orgChartNodes.id })
+          .from(orgChartNodes)
+          .where(eq(orgChartNodes.structureId, id))
+      ).map((row) => row.id);
+
       await db.transaction(async (tx) => {
+        if (isDefault) {
+          await tx
+            .update(orgChartStructures)
+            .set({ isDefault: false, updatedAt: now() })
+            .where(sql`${orgChartStructures.id} != ${id}`);
+        }
+
+        await tx
+          .update(orgChartStructures)
+          .set({
+            name,
+            scopeType: jobType,
+            scopeValue: scopeValue || "",
+            version,
+            effectiveFrom: parseOptionalTimestamp(effectiveFrom) ?? now(),
+            effectiveTo: parseOptionalTimestamp(effectiveTo),
+            isDefault,
+            description: description || "",
+            isActive,
+            updatedAt: now(),
+          })
+          .where(eq(orgChartStructures.id, id));
+
         await tx.delete(orgChartNodes).where(eq(orgChartNodes.structureId, id));
 
         if (parsedNodes.data.length > 0) {
@@ -593,6 +748,14 @@ export async function manageOrgStructureAction(
                 parentNodeId: null,
                 positionId: node.positionId,
                 employeeId: node.employeeId || null,
+                nodeCode: node.nodeCode || "",
+                nodeType: node.nodeType || "position",
+                approvalRole: node.approvalRole || "",
+                canApprove: node.canApprove,
+                canDelegate: node.canDelegate,
+                isEscalationTarget: node.isEscalationTarget,
+                slaHours: node.slaHours,
+                fallbackNodeId: null,
                 label: node.label,
                 sortOrder: node.sortOrder,
                 isActive: node.isActive,
@@ -600,7 +763,10 @@ export async function manageOrgStructureAction(
                 updatedAt: now(),
               }))
             )
-            .returning({ id: orgChartNodes.id });
+            .returning({
+              id: orgChartNodes.id,
+              employeeId: orgChartNodes.employeeId,
+            });
 
           const oldToNewId = new Map<number, number>();
           parsedNodes.data.forEach((node, index) => {
@@ -616,17 +782,106 @@ export async function manageOrgStructureAction(
 
             const parentNodeId =
               node.parentNodeId == null ? null : oldToNewId.get(node.parentNodeId) ?? null;
+            const fallbackNodeId =
+              node.fallbackNodeId == null ? null : oldToNewId.get(node.fallbackNodeId) ?? null;
 
             await tx
               .update(orgChartNodes)
               .set({
                 parentNodeId,
+                fallbackNodeId,
                 updatedAt: now(),
               })
               .where(eq(orgChartNodes.id, insertedNode.id));
           }
+
+          const assignmentsToInsert = parsedNodes.data.flatMap((node, index) => {
+            const insertedNode = inserted[index];
+            if (!insertedNode) {
+              return [];
+            }
+
+            const normalizedAssignments =
+              node.assignments.length > 0
+                ? node.assignments
+                : node.employeeId != null
+                  ? [
+                      {
+                        employeeId: node.employeeId,
+                        assignmentType: "primary",
+                        notes: "Primary assignee from org canvas",
+                        effectiveFrom: effectiveFrom || "",
+                        effectiveTo: effectiveTo || "",
+                        isActive: true,
+                      },
+                    ]
+                  : [];
+
+            return normalizedAssignments
+              .filter((assignment) => assignment.employeeId != null)
+              .map((assignment) => ({
+                nodeId: insertedNode.id,
+                employeeId: assignment.employeeId ?? null,
+                assignmentType: assignment.assignmentType || "primary",
+                notes: assignment.notes || "",
+                effectiveFrom:
+                  parseOptionalTimestamp(assignment.effectiveFrom) ??
+                  parseOptionalTimestamp(effectiveFrom) ??
+                  now(),
+                effectiveTo: parseOptionalTimestamp(assignment.effectiveTo),
+                isActive: assignment.isActive,
+                createdAt: now(),
+                updatedAt: now(),
+              }));
+          });
+
+          if (assignmentsToInsert.length > 0) {
+            await tx.insert(orgNodeAssignments).values(assignmentsToInsert);
+          }
+
+          const assignedEmployeePairs = parsedNodes.data.flatMap((node, index) => {
+            const insertedNode = inserted[index];
+            if (!insertedNode) {
+              return [];
+            }
+
+            const primaryAssignment =
+              node.assignments.find((assignment) => assignment.assignmentType === "primary" && assignment.employeeId != null) ??
+              (node.employeeId != null
+                ? {
+                    employeeId: node.employeeId,
+                  }
+                : null);
+
+            if (!primaryAssignment?.employeeId) {
+              return [];
+            }
+
+            return [
+              {
+                employeeId: primaryAssignment.employeeId,
+                orgNodeId: insertedNode.id,
+              },
+            ];
+          });
+
+          if (assignedEmployeePairs.length > 0) {
+            for (const pair of assignedEmployeePairs) {
+              await tx
+                .update(employees)
+                .set({ orgNodeId: pair.orgNodeId })
+                .where(eq(employees.id, pair.employeeId));
+            }
+          }
         }
       });
+
+      if (existingStructureNodeIds.length > 0) {
+        await db
+          .update(employees)
+          .set({ orgNodeId: null })
+          .where(inArray(employees.orgNodeId, existingStructureNodeIds));
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Organizational canvas saved successfully" };
@@ -647,5 +902,232 @@ export async function manageOrgStructureAction(
   } catch (error) {
     console.error("Org structure action error:", error);
     return { status: "error", message: "An error occurred while processing your request" };
+  }
+}
+
+export async function manageApprovalMatrixAction(
+  _state: MasterDataActionState,
+  formData: FormData
+): Promise<MasterDataActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = z
+      .object({
+        intent: z.literal("delete"),
+        id: z.coerce.number().int().positive(),
+      })
+      .safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db.delete(approvalMatrices).where(eq(approvalMatrices.id, deletePayload.data.id));
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Approval matrix deleted successfully" };
+    } catch (error) {
+      console.error("Approval matrix action error:", error);
+      return { status: "error", message: "An error occurred while processing your request" };
+    }
+  }
+
+  const parsed = approvalMatrixSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Validation failed",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const {
+    intent,
+    id,
+    name,
+    structureId,
+    transactionType,
+    siteId,
+    departmentId,
+    sectionId,
+    requesterPositionId,
+    activityType,
+    priority,
+    minOvertimeMinutes,
+    maxOvertimeMinutes,
+    description,
+    effectiveFrom,
+    effectiveTo,
+    stepsJson,
+    isActive,
+  } = parsed.data;
+
+  try {
+    const parsedSteps = z
+      .array(
+        z.object({
+          stepOrder: z.number().int().min(1),
+          label: z.string().trim().max(100).default(""),
+          nodeId: z.number().nullable().optional(),
+          fallbackNodeId: z.number().nullable().optional(),
+          escalationNodeId: z.number().nullable().optional(),
+          approvalMode: z.string().trim().max(50).default("sequential"),
+          slaHours: z.number().int().min(1).max(240).default(24),
+          canDelegate: z.boolean().default(true),
+          isRequired: z.boolean().default(true),
+        }),
+      )
+      .safeParse(JSON.parse(stepsJson || "[]"));
+
+    if (!parsedSteps.success) {
+      return { status: "error", message: "Approval step payload is invalid" };
+    }
+
+    if (intent === "create") {
+      const [createdMatrix] = await db
+        .insert(approvalMatrices)
+        .values({
+          name,
+          structureId: structureId || null,
+          transactionType,
+          siteId: siteId || null,
+          departmentId: departmentId || null,
+          sectionId: sectionId || null,
+          requesterPositionId: requesterPositionId || null,
+          activityType: activityType || "",
+          priority: priority || "any",
+          minOvertimeMinutes,
+          maxOvertimeMinutes: maxOvertimeMinutes ?? null,
+          description: description || "",
+          effectiveFrom: parseOptionalTimestamp(effectiveFrom) ?? now(),
+          effectiveTo: parseOptionalTimestamp(effectiveTo),
+          isActive,
+          createdAt: now(),
+          updatedAt: now(),
+        })
+        .returning({ id: approvalMatrices.id });
+
+      if (parsedSteps.data.length > 0) {
+        await db.insert(approvalMatrixSteps).values(
+          parsedSteps.data.map((step) => ({
+            matrixId: createdMatrix.id,
+            stepOrder: step.stepOrder,
+            label: step.label || `Step ${step.stepOrder}`,
+            nodeId: step.nodeId ?? null,
+            fallbackNodeId: step.fallbackNodeId ?? null,
+            escalationNodeId: step.escalationNodeId ?? null,
+            approvalMode: step.approvalMode,
+            slaHours: step.slaHours,
+            canDelegate: step.canDelegate,
+            isRequired: step.isRequired,
+            createdAt: now(),
+            updatedAt: now(),
+          })),
+        );
+      }
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Approval matrix created successfully" };
+    }
+
+    if (!id) {
+      return { status: "error", message: "ID is required for update" };
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(approvalMatrices)
+        .set({
+          name,
+          structureId: structureId || null,
+          transactionType,
+          siteId: siteId || null,
+          departmentId: departmentId || null,
+          sectionId: sectionId || null,
+          requesterPositionId: requesterPositionId || null,
+          activityType: activityType || "",
+          priority: priority || "any",
+          minOvertimeMinutes,
+          maxOvertimeMinutes: maxOvertimeMinutes ?? null,
+          description: description || "",
+          effectiveFrom: parseOptionalTimestamp(effectiveFrom) ?? now(),
+          effectiveTo: parseOptionalTimestamp(effectiveTo),
+          isActive,
+          updatedAt: now(),
+        })
+        .where(eq(approvalMatrices.id, id));
+
+      await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, id));
+
+      if (parsedSteps.data.length > 0) {
+        await tx.insert(approvalMatrixSteps).values(
+          parsedSteps.data.map((step) => ({
+            matrixId: id,
+            stepOrder: step.stepOrder,
+            label: step.label || `Step ${step.stepOrder}`,
+            nodeId: step.nodeId ?? null,
+            fallbackNodeId: step.fallbackNodeId ?? null,
+            escalationNodeId: step.escalationNodeId ?? null,
+            approvalMode: step.approvalMode,
+            slaHours: step.slaHours,
+            canDelegate: step.canDelegate,
+            isRequired: step.isRequired,
+            createdAt: now(),
+            updatedAt: now(),
+          })),
+        );
+      }
+    });
+
+    revalidatePath("/dashboard/master-data");
+    return { status: "success", message: "Approval matrix updated successfully" };
+  } catch (error) {
+    console.error("Approval matrix action error:", error);
+    return { status: "error", message: "An error occurred while processing your request" };
+  }
+}
+
+export async function simulateApprovalRouteAction(formData: FormData) {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = simulateApprovalRouteSchema.safeParse({
+    employeeId: formData.get("employeeId"),
+    activityType: formData.get("activityType"),
+    priority: formData.get("priority"),
+    overtimeMinutes: formData.get("overtimeMinutes"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "error" as const,
+      message: "Simulasi belum lengkap.",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    const route = await resolveApprovalRouteForActivity(parsed.data);
+
+    return {
+      status: "success" as const,
+      message: route.matrixName
+        ? `Route ditemukan dari matrix ${route.matrixName}.`
+        : "Route fallback legacy dipakai.",
+      route,
+    };
+  } catch (error) {
+    console.error("Approval simulation error:", error);
+    return {
+      status: "error" as const,
+      message: error instanceof Error ? error.message : "Gagal mensimulasikan approval route.",
+    };
   }
 }

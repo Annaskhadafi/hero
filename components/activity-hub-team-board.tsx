@@ -46,7 +46,7 @@ export function ActivityHubTeamBoard() {
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
-        <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+        <Card className="surface-module-card rounded-[1.4rem] p-4">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
             <Flame className="h-4 w-4 text-amber-600" />
             Emergency
@@ -56,7 +56,7 @@ export function ActivityHubTeamBoard() {
           </p>
           <p className="mt-1 text-xs text-slate-500">Job breakdown aktif</p>
         </Card>
-        <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+        <Card className="surface-module-card rounded-[1.4rem] p-4">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
             <Clock3 className="h-4 w-4 text-sky-600" />
             Overtime
@@ -85,7 +85,7 @@ export function ActivityHubTeamBoard() {
         {teamMembers.map((member) => (
           <Card
             key={member.name}
-            className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+            className="surface-module-card rounded-[1.5rem] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -138,7 +138,7 @@ export function ActivityHubTeamBoard() {
         {pendingApprovals.map((approval) => (
           <Card
             key={approval.id}
-            className="rounded-[1.5rem] border-slate-200 bg-white p-4"
+            className="surface-module-card rounded-[1.5rem] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>

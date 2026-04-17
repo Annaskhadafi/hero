@@ -613,7 +613,7 @@ export function SecurityUserManagement({
 
             <Button
               variant="outline"
-              className="h-10 rounded-lg border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="h-10 rounded-lg bg-surface-container-low text-sm font-medium text-muted-foreground hover:bg-surface-container-highest hover:text-foreground"
               onClick={() => startRefreshTransition(() => router.refresh())}
               disabled={isRefreshing}
             >
@@ -635,7 +635,7 @@ export function SecurityUserManagement({
         {/* Stats Cards */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Total User Card */}
-          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-blue-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -661,7 +661,7 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Active Access Card */}
-          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-amber-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -688,7 +688,7 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Join 2026 Card */}
-          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-violet-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -713,7 +713,7 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Visible Result Card */}
-          <Card className="relative overflow-hidden border-border bg-card shadow-sm">
+          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-foreground" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -744,7 +744,7 @@ export function SecurityUserManagement({
         </div>
 
         {/* Filter Bar with Search */}
-        <Card className="mb-6 border-border bg-card shadow-sm">
+        <Card className="mb-6 bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
           <CardContent className="p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               {/* Left side: Search and Filters */}
@@ -822,7 +822,7 @@ export function SecurityUserManagement({
 
             {/* Active filter badges */}
             {hasActiveFilters && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-container-low p-3">
                 {searchQuery && (
                   <Badge
                     variant="secondary"
@@ -907,7 +907,7 @@ export function SecurityUserManagement({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-lg border-border bg-card"
+            className="h-8 w-8 rounded-lg bg-surface-container-low"
             disabled
           >
             <ChevronLeft className="size-4" />
@@ -922,21 +922,21 @@ export function SecurityUserManagement({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 w-8 rounded-lg border-border bg-card px-0 text-xs"
+            className="h-8 w-8 rounded-lg bg-surface-container-low px-0 text-xs"
           >
             2
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-lg border-border bg-card"
+            className="h-8 w-8 rounded-lg bg-surface-container-low"
           >
             <ChevronRight className="size-4" />
           </Button>
         </div>
 
         {/* User Table */}
-        <Card className="overflow-hidden border-border bg-card shadow-sm">
+        <Card className="overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -1050,7 +1050,7 @@ export function SecurityUserManagement({
         </Card>
 
         {/* Footer */}
-        <div className="mt-6 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-4 rounded-[1.2rem] bg-surface-container-low p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <div className="size-2 rounded-full bg-emerald-500" />

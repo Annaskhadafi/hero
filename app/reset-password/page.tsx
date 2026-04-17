@@ -63,7 +63,7 @@ function ResetPasswordContent() {
             footer={
                 <>
                     Kembali ke{" "}
-                    <Link href="/sign-in" className="font-medium text-cyan-300 transition hover:text-cyan-200">
+                    <Link href="/sign-in" className="font-medium text-[#9ac8ec] transition hover:text-[#bedef2]">
                         Sign in
                     </Link>
                 </>
@@ -71,7 +71,7 @@ function ResetPasswordContent() {
         >
             <form onSubmit={handleSubmit} className="space-y-5">
                 {error ? (
-                    <Alert className="border-rose-400/25 bg-rose-500/10 text-rose-50">
+                    <Alert className="border-0 bg-[#5a2200]/24 text-[#ffd7c1] ring-1 ring-[#ffb288]/18">
                         <AlertDescription>{error}</AlertDescription>
                     </Alert>
                 ) : null}
@@ -89,7 +89,7 @@ function ResetPasswordContent() {
                             onChange={(event) => setPassword(event.target.value)}
                             required
                             disabled={isLoading}
-                            className="h-14 rounded-2xl border-white/8 bg-white/6 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
+                            className="h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
                         />
                     </div>
 
@@ -105,7 +105,7 @@ function ResetPasswordContent() {
                             onChange={(event) => setConfirmPassword(event.target.value)}
                             required
                             disabled={isLoading}
-                            className="h-14 rounded-2xl border-white/8 bg-white/6 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
+                            className="h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
                         />
                     </div>
                 </div>
@@ -113,7 +113,7 @@ function ResetPasswordContent() {
                 <Button
                     type="submit"
                     disabled={isLoading || !token}
-                    className="h-14 w-full rounded-2xl bg-cyan-300 text-slate-950 shadow-[0_18px_50px_rgba(103,232,249,0.24)] transition hover:bg-cyan-200"
+                    className="h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-white shadow-[0_18px_50px_rgba(0,52,97,0.28)] transition hover:brightness-110"
                 >
                     {isLoading ? (
                         <>
@@ -137,7 +137,7 @@ export default function ResetPasswordPage() {
         <Suspense
             fallback={
                 <div className="flex h-screen items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[#9ac8ec]" />
                 </div>
             }
         >

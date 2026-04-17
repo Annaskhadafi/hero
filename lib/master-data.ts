@@ -1,18 +1,24 @@
-import { eq, asc, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
+import { aliasedTable } from "drizzle-orm/alias";
 import { db } from "@/db";
 import {
-  masterSections,
+  approvalMatrices,
+  approvalMatrixSteps,
+  employees,
   masterDepartments,
   masterPositions,
-  orgStructures,
-  orgChartStructures,
+  masterSections,
   orgChartNodes,
-  employees,
+  orgChartStructures,
+  orgNodeAssignments,
   sites,
 } from "@/db/schema/hero";
 import { ensureHeroGovernanceSeedData } from "./hero-admin";
 
-// Types for Master Data
+const fallbackNodes = aliasedTable(orgChartNodes, "fallback_nodes");
+const fallbackStepNodes = aliasedTable(orgChartNodes, "fallback_step_nodes");
+const escalationStepNodes = aliasedTable(orgChartNodes, "escalation_step_nodes");
+
 export type MasterSection = {
   id: number;
   code: string;
@@ -63,6 +69,18 @@ export type MasterPosition = {
   updatedAt: Date;
 };
 
+export type OrgStructureNodeAssignment = {
+  id: number;
+  nodeId: number;
+  employeeId: number | null;
+  employeeName: string | null;
+  assignmentType: string;
+  notes: string;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+  isActive: boolean;
+};
+
 export type OrgStructureNode = {
   id: number;
   structureId: number;
@@ -72,18 +90,34 @@ export type OrgStructureNode = {
   positionCode: string | null;
   employeeId: number | null;
   employeeName: string | null;
+  nodeCode: string;
+  nodeType: string;
+  approvalRole: string;
+  canApprove: boolean;
+  canDelegate: boolean;
+  isEscalationTarget: boolean;
+  slaHours: number;
+  fallbackNodeId: number | null;
+  fallbackNodeLabel: string | null;
   label: string;
   sortOrder: number;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  assignments: OrgStructureNodeAssignment[];
 };
+
+type OrgStructureNodeRow = Omit<OrgStructureNode, "assignments">;
 
 export type OrgStructure = {
   id: number;
   name: string;
   scopeType: string;
   scopeValue: string;
+  version: number;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+  isDefault: boolean;
   description: string;
   isActive: boolean;
   createdAt: Date;
@@ -91,22 +125,76 @@ export type OrgStructure = {
   nodes: OrgStructureNode[];
 };
 
-// Get all master data for the page
+export type ApprovalMatrixStep = {
+  id: number;
+  matrixId: number;
+  stepOrder: number;
+  label: string;
+  nodeId: number | null;
+  nodeLabel: string | null;
+  nodeApprovalRole: string | null;
+  fallbackNodeId: number | null;
+  fallbackNodeLabel: string | null;
+  escalationNodeId: number | null;
+  escalationNodeLabel: string | null;
+  approvalMode: string;
+  slaHours: number;
+  canDelegate: boolean;
+  isRequired: boolean;
+};
+
+export type ApprovalMatrix = {
+  id: number;
+  name: string;
+  structureId: number | null;
+  structureName: string | null;
+  transactionType: string;
+  siteId: number | null;
+  siteName: string | null;
+  departmentId: number | null;
+  departmentName: string | null;
+  sectionId: number | null;
+  sectionName: string | null;
+  requesterPositionId: number | null;
+  requesterPositionName: string | null;
+  activityType: string;
+  priority: string;
+  minOvertimeMinutes: number;
+  maxOvertimeMinutes: number | null;
+  description: string;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  steps: ApprovalMatrixStep[];
+};
+
 export async function getMasterDataPageData() {
   await ensureHeroGovernanceSeedData();
 
-  const [sections, departments, sitesData, positions, orgStructuresData, employeesData] = await Promise.all([
-    getMasterSections(),
-    getMasterDepartments(),
-    getMasterSites(),
-    getMasterPositions(),
-    getOrgStructures(),
-    db
-      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
-      .from(employees)
-      .where(eq(employees.isActive, true))
-      .orderBy(asc(employees.name)),
-  ]);
+  const [sections, departments, sitesData, positions, orgStructuresData, approvalMatricesData, employeesData] =
+    await Promise.all([
+      getMasterSections(),
+      getMasterDepartments(),
+      getMasterSites(),
+      getMasterPositions(),
+      getOrgStructures(),
+      getApprovalMatrices(),
+      db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          jobTitle: employees.jobTitle,
+          departmentId: employees.departmentId,
+          sectionId: employees.sectionId,
+          positionId: employees.positionId,
+          orgNodeId: employees.orgNodeId,
+        })
+        .from(employees)
+        .where(eq(employees.isActive, true))
+        .orderBy(asc(employees.name)),
+    ]);
 
   return {
     sections,
@@ -114,6 +202,7 @@ export async function getMasterDataPageData() {
     sites: sitesData,
     positions,
     orgStructures: orgStructuresData,
+    approvalMatrices: approvalMatricesData,
     employees: employeesData,
   };
 }
@@ -121,29 +210,30 @@ export async function getMasterDataPageData() {
 export async function getMasterSites(): Promise<MasterSite[]> {
   await ensureHeroGovernanceSeedData();
 
-  const siteRows = await db
-    .select({
-      id: sites.id,
-      name: sites.name,
-      location: sites.location,
-      customerName: sites.customerName,
-      contractNumber: sites.contractNumber,
-      isActive: sites.isActive,
-      createdAt: sites.createdAt,
-    })
-    .from(sites)
-    .orderBy(asc(sites.name));
+  const [siteRows, employeeCounts] = await Promise.all([
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+        location: sites.location,
+        customerName: sites.customerName,
+        contractNumber: sites.contractNumber,
+        isActive: sites.isActive,
+        createdAt: sites.createdAt,
+      })
+      .from(sites)
+      .orderBy(asc(sites.name)),
+    db
+      .select({
+        siteId: employees.siteId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .groupBy(employees.siteId),
+  ]);
 
-  const employeeCounts = await db
-    .select({
-      siteId: employees.siteId,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .groupBy(employees.siteId);
-
-  const countMap = new Map(employeeCounts.map((r) => [r.siteId, r.count]));
+  const countMap = new Map(employeeCounts.map((row) => [row.siteId, row.count]));
 
   return siteRows.map((site) => ({
     ...site,
@@ -165,82 +255,89 @@ export async function getSiteOptions(): Promise<Array<{ id: number; name: string
     .orderBy(asc(sites.name));
 }
 
-// Get Departments (parent entity) with employee count from User Management
 export async function getMasterDepartments(): Promise<MasterDepartment[]> {
   await ensureHeroGovernanceSeedData();
 
-  const deptRows = await db
-    .select({
-      id: masterDepartments.id,
-      code: masterDepartments.code,
-      name: masterDepartments.name,
-      description: masterDepartments.description,
-      isActive: masterDepartments.isActive,
-      createdAt: masterDepartments.createdAt,
-      updatedAt: masterDepartments.updatedAt,
-    })
-    .from(masterDepartments)
-    .orderBy(asc(masterDepartments.code));
+  const [departmentRows, employeeCounts] = await Promise.all([
+    db
+      .select({
+        id: masterDepartments.id,
+        code: masterDepartments.code,
+        name: masterDepartments.name,
+        description: masterDepartments.description,
+        isActive: masterDepartments.isActive,
+        createdAt: masterDepartments.createdAt,
+        updatedAt: masterDepartments.updatedAt,
+      })
+      .from(masterDepartments)
+      .orderBy(asc(masterDepartments.code)),
+    db
+      .select({
+        departmentId: employees.departmentId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .groupBy(employees.departmentId),
+  ]);
 
-  // Get employee count per department from user management
-  const employeeCounts = await db
-    .select({
-      department: employees.department,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .groupBy(employees.department);
+  const countMap = new Map(
+    employeeCounts
+      .filter((row) => row.departmentId != null)
+      .map((row) => [row.departmentId as number, row.count]),
+  );
 
-  const countMap = new Map(employeeCounts.map((r) => [r.department, r.count]));
-
-  return deptRows.map((dept) => ({
-    ...dept,
-    employeeCount: countMap.get(dept.name) ?? 0,
+  return departmentRows.map((department) => ({
+    ...department,
+    employeeCount: countMap.get(department.id) ?? 0,
   }));
 }
 
-// Get Sections (child of Department) with employee count
 export async function getMasterSections(): Promise<MasterSection[]> {
   await ensureHeroGovernanceSeedData();
 
-  const sectionRows = await db
-    .select({
-      id: masterSections.id,
-      code: masterSections.code,
-      name: masterSections.name,
-      departmentId: masterSections.departmentId,
-      departmentName: masterDepartments.name,
-      description: masterSections.description,
-      isActive: masterSections.isActive,
-      createdAt: masterSections.createdAt,
-      updatedAt: masterSections.updatedAt,
-    })
-    .from(masterSections)
-    .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
-    .orderBy(asc(masterSections.code));
+  const [sectionRows, employeeCounts] = await Promise.all([
+    db
+      .select({
+        id: masterSections.id,
+        code: masterSections.code,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+        departmentName: masterDepartments.name,
+        description: masterSections.description,
+        isActive: masterSections.isActive,
+        createdAt: masterSections.createdAt,
+        updatedAt: masterSections.updatedAt,
+      })
+      .from(masterSections)
+      .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
+      .orderBy(asc(masterSections.code)),
+    db
+      .select({
+        sectionId: employees.sectionId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .groupBy(employees.sectionId),
+  ]);
 
-  // Get employee count per section from user management
-  const employeeCounts = await db
-    .select({
-      section: employees.section,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .groupBy(employees.section);
+  const countMap = new Map(
+    employeeCounts
+      .filter((row) => row.sectionId != null)
+      .map((row) => [row.sectionId as number, row.count]),
+  );
 
-  const countMap = new Map(employeeCounts.map((r) => [r.section, r.count]));
-
-  return sectionRows.map((row) => ({
-    ...row,
-    departmentName: row.departmentName ?? null,
-    employeeCount: countMap.get(row.name) ?? 0,
+  return sectionRows.map((section) => ({
+    ...section,
+    departmentName: section.departmentName ?? null,
+    employeeCount: countMap.get(section.id) ?? 0,
   }));
 }
 
-// Get Section Options (for dropdowns)
-export async function getSectionOptions(departmentId?: number): Promise<Array<{ id: number; code: string; name: string; departmentId: number | null }>> {
+export async function getSectionOptions(
+  departmentId?: number,
+): Promise<Array<{ id: number; code: string; name: string; departmentId: number | null }>> {
   await ensureHeroGovernanceSeedData();
 
   if (departmentId) {
@@ -267,7 +364,6 @@ export async function getSectionOptions(departmentId?: number): Promise<Array<{ 
     .orderBy(asc(masterSections.name));
 }
 
-// Get Department Options (for dropdowns)
 export async function getDepartmentOptions(): Promise<Array<{ id: number; code: string; name: string }>> {
   await ensureHeroGovernanceSeedData();
 
@@ -282,49 +378,53 @@ export async function getDepartmentOptions(): Promise<Array<{ id: number; code: 
     .orderBy(asc(masterDepartments.name));
 }
 
-// Get Positions (Jabatan) with employee count
 export async function getMasterPositions(): Promise<MasterPosition[]> {
   await ensureHeroGovernanceSeedData();
 
-  const posRows = await db
-    .select({
-      id: masterPositions.id,
-      code: masterPositions.code,
-      name: masterPositions.name,
-      departmentId: masterPositions.departmentId,
-      departmentName: masterDepartments.name,
-      siteLocation: masterPositions.siteLocation,
-      level: masterPositions.level,
-      description: masterPositions.description,
-      isActive: masterPositions.isActive,
-      createdAt: masterPositions.createdAt,
-      updatedAt: masterPositions.updatedAt,
-    })
-    .from(masterPositions)
-    .leftJoin(masterDepartments, eq(masterPositions.departmentId, masterDepartments.id))
-    .orderBy(asc(masterPositions.code));
+  const [positionRows, employeeCounts] = await Promise.all([
+    db
+      .select({
+        id: masterPositions.id,
+        code: masterPositions.code,
+        name: masterPositions.name,
+        departmentId: masterPositions.departmentId,
+        departmentName: masterDepartments.name,
+        siteLocation: masterPositions.siteLocation,
+        level: masterPositions.level,
+        description: masterPositions.description,
+        isActive: masterPositions.isActive,
+        createdAt: masterPositions.createdAt,
+        updatedAt: masterPositions.updatedAt,
+      })
+      .from(masterPositions)
+      .leftJoin(masterDepartments, eq(masterPositions.departmentId, masterDepartments.id))
+      .orderBy(asc(masterPositions.code)),
+    db
+      .select({
+        positionId: employees.positionId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .groupBy(employees.positionId),
+  ]);
 
-  // Get employee count per job title from user management
-  const employeeCounts = await db
-    .select({
-      jobTitle: employees.jobTitle,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .groupBy(employees.jobTitle);
+  const countMap = new Map(
+    employeeCounts
+      .filter((row) => row.positionId != null)
+      .map((row) => [row.positionId as number, row.count]),
+  );
 
-  const countMap = new Map(employeeCounts.map((r) => [r.jobTitle, r.count]));
-
-  return posRows.map((row) => ({
-    ...row,
-    departmentName: row.departmentName ?? null,
-    employeeCount: countMap.get(row.name) ?? 0,
+  return positionRows.map((position) => ({
+    ...position,
+    departmentName: position.departmentName ?? null,
+    employeeCount: countMap.get(position.id) ?? 0,
   }));
 }
 
-// Get Position Options
-export async function getPositionOptions(departmentId?: number): Promise<Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>> {
+export async function getPositionOptions(
+  departmentId?: number,
+): Promise<Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>> {
   await ensureHeroGovernanceSeedData();
 
   if (departmentId) {
@@ -355,24 +455,27 @@ export async function getPositionOptions(departmentId?: number): Promise<Array<{
     .orderBy(asc(masterPositions.name));
 }
 
-// Get Organizational Structures
 export async function getOrgStructures(): Promise<OrgStructure[]> {
   await ensureHeroGovernanceSeedData();
 
-  const [structures, nodes] = await Promise.all([
+  const [structures, nodes, assignments] = await Promise.all([
     db
       .select({
         id: orgChartStructures.id,
         name: orgChartStructures.name,
         scopeType: orgChartStructures.scopeType,
         scopeValue: orgChartStructures.scopeValue,
+        version: orgChartStructures.version,
+        effectiveFrom: orgChartStructures.effectiveFrom,
+        effectiveTo: orgChartStructures.effectiveTo,
+        isDefault: orgChartStructures.isDefault,
         description: orgChartStructures.description,
         isActive: orgChartStructures.isActive,
         createdAt: orgChartStructures.createdAt,
         updatedAt: orgChartStructures.updatedAt,
       })
       .from(orgChartStructures)
-      .orderBy(asc(orgChartStructures.name)),
+      .orderBy(asc(orgChartStructures.scopeType), asc(orgChartStructures.name)),
     db
       .select({
         id: orgChartNodes.id,
@@ -383,6 +486,15 @@ export async function getOrgStructures(): Promise<OrgStructure[]> {
         positionCode: masterPositions.code,
         employeeId: orgChartNodes.employeeId,
         employeeName: employees.name,
+        nodeCode: orgChartNodes.nodeCode,
+        nodeType: orgChartNodes.nodeType,
+        approvalRole: orgChartNodes.approvalRole,
+        canApprove: orgChartNodes.canApprove,
+        canDelegate: orgChartNodes.canDelegate,
+        isEscalationTarget: orgChartNodes.isEscalationTarget,
+        slaHours: orgChartNodes.slaHours,
+        fallbackNodeId: orgChartNodes.fallbackNodeId,
+        fallbackNodeLabel: fallbackNodes.label,
         label: orgChartNodes.label,
         sortOrder: orgChartNodes.sortOrder,
         isActive: orgChartNodes.isActive,
@@ -392,11 +504,44 @@ export async function getOrgStructures(): Promise<OrgStructure[]> {
       .from(orgChartNodes)
       .leftJoin(masterPositions, eq(orgChartNodes.positionId, masterPositions.id))
       .leftJoin(employees, eq(orgChartNodes.employeeId, employees.id))
-      .orderBy(asc(orgChartNodes.structureId), asc(orgChartNodes.sortOrder), asc(orgChartNodes.id)),
+      .leftJoin(fallbackNodes, eq(fallbackNodes.id, orgChartNodes.fallbackNodeId))
+      .orderBy(asc(orgChartNodes.structureId), asc(orgChartNodes.sortOrder), asc(orgChartNodes.id)) as Promise<
+        OrgStructureNodeRow[]
+      >,
+    db
+      .select({
+        id: orgNodeAssignments.id,
+        nodeId: orgNodeAssignments.nodeId,
+        employeeId: orgNodeAssignments.employeeId,
+        employeeName: employees.name,
+        assignmentType: orgNodeAssignments.assignmentType,
+        notes: orgNodeAssignments.notes,
+        effectiveFrom: orgNodeAssignments.effectiveFrom,
+        effectiveTo: orgNodeAssignments.effectiveTo,
+        isActive: orgNodeAssignments.isActive,
+      })
+      .from(orgNodeAssignments)
+      .leftJoin(employees, eq(orgNodeAssignments.employeeId, employees.id))
+      .orderBy(
+        asc(orgNodeAssignments.nodeId),
+        asc(orgNodeAssignments.assignmentType),
+        asc(orgNodeAssignments.effectiveFrom),
+      ),
   ]);
 
-  const nodesByStructureId = new Map<number, OrgStructureNode[]>();
+  const assignmentsByNodeId = new Map<number, OrgStructureNodeAssignment[]>();
+  for (const assignment of assignments) {
+    const list = assignmentsByNodeId.get(assignment.nodeId) ?? [];
+    list.push({
+      ...assignment,
+      employeeId: assignment.employeeId ?? null,
+      employeeName: assignment.employeeName ?? null,
+      effectiveTo: assignment.effectiveTo ?? null,
+    });
+    assignmentsByNodeId.set(assignment.nodeId, list);
+  }
 
+  const nodesByStructureId = new Map<number, OrgStructureNode[]>();
   for (const node of nodes) {
     const list = nodesByStructureId.get(node.structureId) ?? [];
     list.push({
@@ -407,17 +552,115 @@ export async function getOrgStructures(): Promise<OrgStructure[]> {
       positionCode: node.positionCode ?? null,
       employeeId: node.employeeId ?? null,
       employeeName: node.employeeName ?? null,
+      fallbackNodeId: node.fallbackNodeId ?? null,
+      fallbackNodeLabel: node.fallbackNodeLabel ?? null,
+      assignments: assignmentsByNodeId.get(node.id) ?? [],
     });
     nodesByStructureId.set(node.structureId, list);
   }
 
   return structures.map((structure) => ({
     ...structure,
+    effectiveTo: structure.effectiveTo ?? null,
     nodes: nodesByStructureId.get(structure.id) ?? [],
   }));
 }
 
-// Legacy Get Org Structure Options
+export async function getApprovalMatrices(): Promise<ApprovalMatrix[]> {
+  await ensureHeroGovernanceSeedData();
+
+  const [matrices, steps] = await Promise.all([
+    db
+      .select({
+        id: approvalMatrices.id,
+        name: approvalMatrices.name,
+        structureId: approvalMatrices.structureId,
+        structureName: orgChartStructures.name,
+        transactionType: approvalMatrices.transactionType,
+        siteId: approvalMatrices.siteId,
+        siteName: sites.name,
+        departmentId: approvalMatrices.departmentId,
+        departmentName: masterDepartments.name,
+        sectionId: approvalMatrices.sectionId,
+        sectionName: masterSections.name,
+        requesterPositionId: approvalMatrices.requesterPositionId,
+        requesterPositionName: masterPositions.name,
+        activityType: approvalMatrices.activityType,
+        priority: approvalMatrices.priority,
+        minOvertimeMinutes: approvalMatrices.minOvertimeMinutes,
+        maxOvertimeMinutes: approvalMatrices.maxOvertimeMinutes,
+        description: approvalMatrices.description,
+        effectiveFrom: approvalMatrices.effectiveFrom,
+        effectiveTo: approvalMatrices.effectiveTo,
+        isActive: approvalMatrices.isActive,
+        createdAt: approvalMatrices.createdAt,
+        updatedAt: approvalMatrices.updatedAt,
+      })
+      .from(approvalMatrices)
+      .leftJoin(orgChartStructures, eq(approvalMatrices.structureId, orgChartStructures.id))
+      .leftJoin(sites, eq(approvalMatrices.siteId, sites.id))
+      .leftJoin(masterDepartments, eq(approvalMatrices.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(approvalMatrices.sectionId, masterSections.id))
+      .leftJoin(masterPositions, eq(approvalMatrices.requesterPositionId, masterPositions.id))
+      .orderBy(asc(approvalMatrices.name), asc(approvalMatrices.id)),
+    db
+      .select({
+        id: approvalMatrixSteps.id,
+        matrixId: approvalMatrixSteps.matrixId,
+        stepOrder: approvalMatrixSteps.stepOrder,
+        label: approvalMatrixSteps.label,
+        nodeId: approvalMatrixSteps.nodeId,
+        nodeLabel: orgChartNodes.label,
+        nodeApprovalRole: orgChartNodes.approvalRole,
+        fallbackNodeId: approvalMatrixSteps.fallbackNodeId,
+        fallbackNodeLabel: fallbackStepNodes.label,
+        escalationNodeId: approvalMatrixSteps.escalationNodeId,
+        escalationNodeLabel: escalationStepNodes.label,
+        approvalMode: approvalMatrixSteps.approvalMode,
+        slaHours: approvalMatrixSteps.slaHours,
+        canDelegate: approvalMatrixSteps.canDelegate,
+        isRequired: approvalMatrixSteps.isRequired,
+      })
+      .from(approvalMatrixSteps)
+      .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+      .leftJoin(fallbackStepNodes, eq(fallbackStepNodes.id, approvalMatrixSteps.fallbackNodeId))
+      .leftJoin(escalationStepNodes, eq(escalationStepNodes.id, approvalMatrixSteps.escalationNodeId))
+      .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder), asc(approvalMatrixSteps.id)),
+  ]);
+
+  const stepsByMatrixId = new Map<number, ApprovalMatrixStep[]>();
+  for (const step of steps) {
+    const list = stepsByMatrixId.get(step.matrixId) ?? [];
+    list.push({
+      ...step,
+      nodeId: step.nodeId ?? null,
+      nodeLabel: step.nodeLabel ?? null,
+      nodeApprovalRole: step.nodeApprovalRole ?? null,
+      fallbackNodeId: step.fallbackNodeId ?? null,
+      fallbackNodeLabel: step.fallbackNodeLabel ?? null,
+      escalationNodeId: step.escalationNodeId ?? null,
+      escalationNodeLabel: step.escalationNodeLabel ?? null,
+    });
+    stepsByMatrixId.set(step.matrixId, list);
+  }
+
+  return matrices.map((matrix) => ({
+    ...matrix,
+    structureId: matrix.structureId ?? null,
+    structureName: matrix.structureName ?? null,
+    siteId: matrix.siteId ?? null,
+    siteName: matrix.siteName ?? null,
+    departmentId: matrix.departmentId ?? null,
+    departmentName: matrix.departmentName ?? null,
+    sectionId: matrix.sectionId ?? null,
+    sectionName: matrix.sectionName ?? null,
+    requesterPositionId: matrix.requesterPositionId ?? null,
+    requesterPositionName: matrix.requesterPositionName ?? null,
+    effectiveTo: matrix.effectiveTo ?? null,
+    steps: stepsByMatrixId.get(matrix.id) ?? [],
+  }));
+}
+
 export async function getOrgStructureOptions(): Promise<
   Array<{
     id: number;
@@ -435,7 +678,7 @@ export async function getOrgStructureOptions(): Promise<
       name: orgChartStructures.name,
       jobType: orgChartStructures.scopeType,
       positionId: sql<number>`coalesce(min(${orgChartNodes.positionId}), 0)::int`,
-      approvalLevel: sql<number>`coalesce(count(${orgChartNodes.id}), 0)::int`,
+      approvalLevel: sql<number>`coalesce(count(case when ${orgChartNodes.canApprove} then 1 end), 0)::int`,
     })
     .from(orgChartStructures)
     .leftJoin(orgChartNodes, eq(orgChartStructures.id, orgChartNodes.structureId))

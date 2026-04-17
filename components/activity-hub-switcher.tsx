@@ -9,7 +9,7 @@ export function ActivityHubSwitcher() {
   const pathname = usePathname();
 
   return (
-    <div className="grid grid-cols-2 gap-2 rounded-3xl bg-slate-950/10 p-1 backdrop-blur-sm">
+    <div className="surface-tab-shell grid grid-cols-2 gap-2 rounded-3xl p-1">
       {activityHubViews.map((view) => {
         const isActive = pathname === view.href;
 
@@ -20,15 +20,15 @@ export function ActivityHubSwitcher() {
             className={cn(
               "rounded-[1.25rem] px-3 py-3 text-left transition-all",
               isActive
-                ? "bg-white text-slate-950 shadow-[0_10px_30px_rgba(15,23,42,0.18)]"
-                : "text-white/80 hover:bg-white/10 hover:text-white",
+                ? "bg-surface-container-lowest text-foreground shadow-[0_10px_30px_rgba(15,23,42,0.12)]"
+                : "text-muted-foreground hover:bg-surface-container-lowest/70 hover:text-foreground",
             )}
           >
             <div className="text-sm font-semibold">{view.label}</div>
             <p
               className={cn(
                 "mt-1 text-[11px] leading-4",
-                isActive ? "text-slate-600" : "text-white/70",
+                isActive ? "text-muted-foreground" : "text-muted-foreground/80",
               )}
             >
               {view.description}

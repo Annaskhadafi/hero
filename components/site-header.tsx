@@ -27,38 +27,53 @@ export function SiteHeader({
 
   const isDark = mounted && resolvedTheme === "dark"
 
-  // Light mode: force dark text (DB may store light colors intended for dark headers)
-  // Dark mode: force light text on dark background
-  const resolvedBg = isDark ? "#0F172A" : backgroundColor
-  const resolvedText = isDark ? "#F8FAFC" : "#0F172A"
-
   return (
     <header
-      className="sticky top-0 z-30 flex h-(--header-height) shrink-0 items-center border-b backdrop-blur-xl"
+      className="sticky top-0 z-30 mx-3 mt-3"
       style={{
-        backgroundColor: resolvedBg,
-        color: resolvedText,
-        borderColor: `${resolvedText}18`,
+        ["--header-accent" as string]: isDark ? "#1b415b" : backgroundColor,
+        ["--header-text" as string]: isDark ? "#f3faff" : textColor,
       }}
     >
-      <div className="flex w-full items-center justify-between gap-4 px-4 lg:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <SidebarTrigger className={cn(
-            "size-9 rounded-xl shadow-sm",
-            isDark
-              ? "bg-slate-50 text-slate-900 hover:bg-slate-200 hover:text-slate-800"
-              : "bg-slate-950 text-white hover:bg-slate-800 hover:text-white"
-          )} />
-          <Separator orientation="vertical" className="h-5 bg-current/15" />
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold">{title}</h1>
-            {subtitle ? (
-              <p className="truncate text-sm text-current/65">{subtitle}</p>
-            ) : null}
+      <div
+        className="glass-command flex min-h-(--header-height) items-center rounded-[1.35rem] px-4 py-3 shadow-[0_18px_34px_rgba(0,52,97,0.12)] ring-1 ring-white/10 lg:px-6"
+        style={{
+          background: isDark
+            ? "linear-gradient(135deg, rgba(8,24,38,0.94) 0%, rgba(15,38,56,0.9) 55%, rgba(27,65,91,0.84) 100%)"
+            : "linear-gradient(135deg, rgba(0,52,97,0.94) 0%, rgba(0,75,135,0.88) 56%, color-mix(in srgb, var(--header-accent) 48%, transparent) 100%)",
+          color: "var(--header-text)",
+        }}
+      >
+        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <SidebarTrigger
+              className={cn(
+                "size-11 rounded-2xl border-0 shadow-[0_14px_26px_rgba(0,0,0,0.18)]",
+                isDark
+                  ? "bg-surface-container-lowest text-slate-950 hover:bg-surface-bright hover:text-slate-900"
+                  : "bg-surface-container-lowest text-primary hover:bg-surface-bright hover:text-primary-container",
+              )}
+            />
+            <Separator orientation="vertical" className="hidden h-8 bg-white/14 lg:block" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="industrial-label text-white/68">Operations Network</p>
+                <span className="surface-chip hidden rounded-full px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-foreground lg:inline-flex">
+                  Live Command
+                </span>
+              </div>
+              <h1 className="font-display truncate text-xl font-semibold tracking-[-0.04em] lg:text-2xl">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="max-w-3xl truncate text-sm text-white/72">{subtitle}</p>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <HeaderThemeControls />
+
+          <div className="flex items-center gap-2 lg:min-w-[420px] lg:justify-end">
+            <HeaderThemeControls />
+          </div>
         </div>
       </div>
     </header>

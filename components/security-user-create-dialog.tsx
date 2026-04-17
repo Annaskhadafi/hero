@@ -312,7 +312,7 @@ export function SecurityUserCreateDialog({
             </div>
           </div>
 
-          <div className="rounded-2xl border bg-muted/30 p-4">
+          <div className="rounded-[1.2rem] bg-surface-container-low p-4">
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2">
                 <Label>Password Awal</Label>

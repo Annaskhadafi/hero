@@ -19,29 +19,32 @@ export function AuthShell({
     panelClassName,
 }: AuthShellProps) {
     return (
-        <div className="relative min-h-screen overflow-hidden bg-[#07111e] px-4 py-10 text-slate-50">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(101,196,255,0.2),_transparent_20%),radial-gradient(circle_at_20%_20%,_rgba(23,85,160,0.26),_transparent_32%),linear-gradient(180deg,_#0a1526_0%,_#07111d_52%,_#040913_100%)]" />
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:96px_96px] opacity-25" />
-            <div className="absolute left-1/2 top-16 h-36 w-36 -translate-x-1/2 rounded-full bg-cyan-300/15 blur-3xl" />
+        <div className="relative min-h-screen overflow-hidden bg-[#081826] px-4 py-10 text-slate-50">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(74,130,178,0.28),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(90,34,0,0.14),_transparent_24%),linear-gradient(180deg,_#0d2030_0%,_#081826_52%,_#06111b_100%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(154,200,236,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(154,200,236,0.06)_1px,transparent_1px)] bg-[size:110px_110px] opacity-30" />
+            <div className="absolute left-1/2 top-16 h-40 w-40 -translate-x-1/2 rounded-full bg-[#4f83b0]/18 blur-3xl" />
 
             <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
                 <div
                     className={cn(
-                        "w-full max-w-[460px] rounded-[36px] border border-white/12 bg-[linear-gradient(180deg,rgba(27,45,71,0.86)_0%,rgba(12,24,41,0.94)_100%)] p-8 shadow-[0_28px_90px_rgba(2,8,23,0.65)] backdrop-blur-2xl sm:p-10",
+                        "w-full max-w-[460px] rounded-[32px] border-0 bg-[linear-gradient(180deg,rgba(16,39,57,0.88)_0%,rgba(10,28,43,0.95)_100%)] p-8 shadow-[0_28px_90px_rgba(2,8,23,0.58)] ring-1 ring-white/10 backdrop-blur-2xl sm:p-10",
                         panelClassName
                     )}
                 >
                     <div className="flex flex-col items-center text-center">
                         <div className="mb-6">
                             {headerBadge ?? (
-                                <div className="flex h-16 w-16 items-center justify-center rounded-[24px] border border-cyan-200/18 bg-white/6 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_0_30px_rgba(103,232,249,0.12)]">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-300/12 ring-1 ring-inset ring-cyan-100/20">
-                                        <div className="h-4 w-4 rounded-full border-2 border-cyan-100/90" />
+                                <div className="flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] shadow-[0_18px_40px_rgba(0,52,97,0.35)]">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-inset ring-white/18">
+                                        <div className="h-4 w-4 rounded-full border-2 border-white/85" />
                                     </div>
                                 </div>
                             )}
                         </div>
-                        <h1 className="text-3xl font-semibold tracking-tight text-white">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
+                            Industrial Authority
+                        </p>
+                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
                             {title}
                         </h1>
                         <p className="mt-3 max-w-sm text-sm leading-6 text-slate-300/80">
@@ -52,7 +55,7 @@ export function AuthShell({
                     <div className="mt-8">{children}</div>
 
                     {footer ? (
-                        <div className="mt-8 border-t border-white/8 pt-6 text-center text-sm text-slate-300/70">
+                        <div className="mt-8 pt-6 text-center text-sm text-slate-300/70">
                             {footer}
                         </div>
                     ) : null}

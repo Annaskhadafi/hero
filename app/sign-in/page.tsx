@@ -133,17 +133,15 @@ function SignInContent() {
     return (
         <>
             {/* ===== MOBILE TERMINAL LAYOUT ===== */}
-            <div className="flex min-h-screen flex-col bg-[#0a0f1a] px-6 py-8 sm:hidden">
+            <div className="flex min-h-screen flex-col bg-[#081826] px-6 py-8 sm:hidden">
                 <div className="relative flex flex-1 flex-col">
-                    {/* Corner Brackets */}
                     <div className="pointer-events-none fixed inset-4">
-                        <div className="absolute left-0 top-0 h-6 w-6 border-l-2 border-t-2 border-cyan-400/30" />
-                        <div className="absolute right-0 top-0 h-6 w-6 border-r-2 border-t-2 border-cyan-400/30" />
-                        <div className="absolute bottom-0 left-0 h-6 w-6 border-b-2 border-l-2 border-cyan-400/30" />
-                        <div className="absolute bottom-0 right-0 h-6 w-6 border-b-2 border-r-2 border-cyan-400/30" />
+                        <div className="absolute left-0 top-0 h-6 w-6 border-l-2 border-t-2 border-[#7fb6df]/30" />
+                        <div className="absolute right-0 top-0 h-6 w-6 border-r-2 border-t-2 border-[#7fb6df]/30" />
+                        <div className="absolute bottom-0 left-0 h-6 w-6 border-b-2 border-l-2 border-[#7fb6df]/30" />
+                        <div className="absolute bottom-0 right-0 h-6 w-6 border-b-2 border-r-2 border-[#7fb6df]/30" />
                     </div>
 
-                    {/* Header */}
                     <div className="mb-8 flex flex-col items-center pt-8">
                         <Image
                             src="/logo-hero.png"
@@ -153,21 +151,20 @@ function SignInContent() {
                             className="h-28 w-28 object-contain"
                             priority
                         />
-                        <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                        <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
                             Hub for Employee Reporting & Operations
                         </p>
                     </div>
 
-                    {/* Form */}
                     <div className="flex-1 space-y-6">
                         {error ? (
-                            <Alert className="border-rose-500/30 bg-rose-500/10 text-rose-200">
+                            <Alert className="border-0 bg-[#5a2200]/24 text-[#ffd7c1] ring-1 ring-[#ffb288]/18">
                                 <AlertDescription className="text-xs">{error}</AlertDescription>
                             </Alert>
                         ) : null}
 
                         {message ? (
-                            <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-200">
+                            <Alert className="border-0 bg-[#0b3f5f]/34 text-[#dcefff] ring-1 ring-[#9ac8ec]/18">
                                 <CheckCircle2 className="h-4 w-4" />
                                 <AlertDescription className="text-xs">{message}</AlertDescription>
                             </Alert>
@@ -180,7 +177,7 @@ function SignInContent() {
                                 </Label>
                                 <div className="group relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-4">
-                                        <Mail className="h-4 w-4 text-slate-500 transition group-focus-within:text-cyan-400" />
+                                        <Mail className="h-4 w-4 text-slate-500 transition group-focus-within:text-[#9ac8ec]" />
                                     </div>
                                     <Input
                                         id="m-email"
@@ -190,7 +187,7 @@ function SignInContent() {
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-xl border-slate-700/50 bg-slate-800/50 pl-11 pr-4 text-sm text-slate-200 placeholder:text-slate-600 focus-visible:border-cyan-400/50 focus-visible:ring-1 focus-visible:ring-cyan-400/25"
+                                        className="h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -201,7 +198,7 @@ function SignInContent() {
                                 </Label>
                                 <div className="group relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-4">
-                                        <LockKeyhole className="h-4 w-4 text-slate-500 transition group-focus-within:text-cyan-400" />
+                                        <LockKeyhole className="h-4 w-4 text-slate-500 transition group-focus-within:text-[#9ac8ec]" />
                                     </div>
                                     <Input
                                         id="m-password"
@@ -211,7 +208,7 @@ function SignInContent() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-xl border-slate-700/50 bg-slate-800/50 pl-11 pr-4 text-sm text-slate-200 placeholder:text-slate-600 focus-visible:border-cyan-400/50 focus-visible:ring-1 focus-visible:ring-cyan-400/25"
+                                        className="h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -221,12 +218,12 @@ function SignInContent() {
                                     <Checkbox
                                         checked={rememberMe}
                                         onCheckedChange={(checked) => setRememberMe(checked === true)}
-                                        className="h-4 w-4 border-slate-600 bg-slate-800 data-[state=checked]:border-cyan-400 data-[state=checked]:bg-cyan-400 data-[state=checked]:text-slate-900"
+                                        className="h-4 w-4 border-[#7fb6df]/28 bg-[#10283a] data-[state=checked]:border-[#9ac8ec] data-[state=checked]:bg-[#9ac8ec] data-[state=checked]:text-slate-900"
                                     />
                                     <span>Remember me</span>
                                 </label>
 
-                                <Link href="/forgot-password" className="text-cyan-400 transition hover:text-cyan-300">
+                                <Link href="/forgot-password" className="text-[#9ac8ec] transition hover:text-[#bedef2]">
                                     Forgot?
                                 </Link>
                             </div>
@@ -234,7 +231,7 @@ function SignInContent() {
                             <Button
                                 type="submit"
                                 disabled={isDisabled}
-                                className="h-14 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-sm font-semibold uppercase tracking-[0.1em] text-white shadow-[0_8px_30px_rgba(6,182,212,0.4)] transition hover:from-cyan-400 hover:to-blue-500 hover:shadow-[0_8px_35px_rgba(6,182,212,0.5)] active:scale-[0.98]"
+                                className="h-14 w-full rounded-xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-sm text-white shadow-[0_18px_34px_rgba(0,52,97,0.28)] transition hover:brightness-110 active:scale-[0.98]"
                             >
                                 {isLoading ? (
                                     <span className="flex items-center gap-2">
@@ -248,8 +245,8 @@ function SignInContent() {
                         </form>
 
                         <div className="relative py-2">
-                            <div className="absolute inset-x-0 top-1/2 border-t border-slate-700/50" />
-                            <span className="relative mx-auto block w-fit bg-[#0a0f1a] px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                            <div className="absolute inset-x-0 top-1/2 border-t border-[#7fb6df]/16" />
+                            <span className="relative mx-auto block w-fit bg-[#081826] px-3 text-[10px] uppercase tracking-[0.2em] text-slate-500">
                                 or
                             </span>
                         </div>
@@ -259,7 +256,7 @@ function SignInContent() {
                                 type="button"
                                 onClick={handleMagicLinkSignIn}
                                 disabled={isDisabled}
-                                className="h-14 rounded-xl border border-slate-700/50 bg-slate-800/50 text-xs font-medium uppercase tracking-[0.05em] text-slate-300 transition hover:border-cyan-400/30 hover:bg-slate-700/50 hover:text-cyan-400"
+                                className="h-14 rounded-xl bg-[#10283a]/92 text-xs text-slate-200 transition hover:bg-[#143044]"
                             >
                                 <span className="flex items-center gap-2">
                                     {magicLinkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
@@ -271,7 +268,7 @@ function SignInContent() {
                                 type="button"
                                 onClick={handleGoogleSignIn}
                                 disabled={isDisabled}
-                                className="h-14 rounded-xl border border-slate-700/50 bg-slate-800/50 text-xs font-medium uppercase tracking-[0.05em] text-slate-300 transition hover:border-cyan-400/30 hover:bg-slate-700/50 hover:text-cyan-400"
+                                className="h-14 rounded-xl bg-[#10283a]/92 text-xs text-slate-200 transition hover:bg-[#143044]"
                             >
                                 <span className="flex items-center gap-2">
                                     {socialLoading === "google" ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
@@ -281,7 +278,6 @@ function SignInContent() {
                         </div>
                     </div>
 
-                    {/* Footer */}
                     <div className="mt-8 pt-4 text-center">
                         <p className="text-[10px] text-slate-600">
                             Akses baru dibuat oleh admin HERO.
@@ -294,7 +290,7 @@ function SignInContent() {
             <div className="hidden sm:block">
                 <AuthShell
                     title={
-                        <span className="block text-base font-medium tracking-[0.14em] text-slate-300/82 sm:text-lg">
+                        <span className="block text-base font-medium tracking-[0.14em] text-slate-200/86 sm:text-lg">
                             Hub for Employee Reporting & Operations
                         </span>
                     }
@@ -316,13 +312,13 @@ function SignInContent() {
                 >
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {error ? (
-                            <Alert className="border-rose-400/25 bg-rose-500/10 text-rose-50">
+                            <Alert className="border-0 bg-[#5a2200]/24 text-[#ffd7c1] ring-1 ring-[#ffb288]/18">
                                 <AlertDescription>{error}</AlertDescription>
                             </Alert>
                         ) : null}
 
                         {message ? (
-                            <Alert className="border-emerald-400/25 bg-emerald-500/10 text-emerald-50">
+                            <Alert className="border-0 bg-[#0b3f5f]/34 text-[#dcefff] ring-1 ring-[#9ac8ec]/18">
                                 <CheckCircle2 className="h-4 w-4" />
                                 <AlertDescription>{message}</AlertDescription>
                             </Alert>
@@ -334,7 +330,7 @@ function SignInContent() {
                                     Email
                                 </Label>
                                 <div className="group relative">
-                                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-cyan-300" />
+                                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-[#9ac8ec]" />
                                     <Input
                                         id="d-email"
                                         type="email"
@@ -343,7 +339,7 @@ function SignInContent() {
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-2xl border-white/8 bg-white/6 pl-11 pr-4 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
+                                        className="h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -353,7 +349,7 @@ function SignInContent() {
                                     Password
                                 </Label>
                                 <div className="group relative">
-                                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-cyan-300" />
+                                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-[#9ac8ec]" />
                                     <Input
                                         id="d-password"
                                         type="password"
@@ -362,7 +358,7 @@ function SignInContent() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-2xl border-white/8 bg-white/6 pl-11 pr-4 text-base text-white placeholder:text-slate-500 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-300/25"
+                                        className="h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -373,12 +369,12 @@ function SignInContent() {
                                 <Checkbox
                                     checked={rememberMe}
                                     onCheckedChange={(checked) => setRememberMe(checked === true)}
-                                    className="border-white/16 bg-white/6 data-[state=checked]:border-cyan-300 data-[state=checked]:bg-cyan-300 data-[state=checked]:text-slate-950"
+                                    className="border-white/16 bg-[#10283a] data-[state=checked]:border-[#9ac8ec] data-[state=checked]:bg-[#9ac8ec] data-[state=checked]:text-slate-950"
                                 />
                                 <span>Remember me</span>
                             </label>
 
-                            <Link href="/forgot-password" className="text-cyan-300 transition hover:text-cyan-200">
+                            <Link href="/forgot-password" className="text-[#9ac8ec] transition hover:text-[#bedef2]">
                                 Forgot password?
                             </Link>
                         </div>
@@ -386,7 +382,7 @@ function SignInContent() {
                         <Button
                             type="submit"
                             disabled={isDisabled}
-                            className="h-14 w-full rounded-2xl bg-cyan-300 text-slate-950 shadow-[0_18px_50px_rgba(103,232,249,0.24)] transition hover:bg-cyan-200"
+                            className="h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-white shadow-[0_18px_50px_rgba(0,52,97,0.28)] transition hover:brightness-110"
                         >
                             {isLoading ? (
                                 <>
@@ -405,7 +401,7 @@ function SignInContent() {
                             type="button"
                             onClick={handleMagicLinkSignIn}
                             disabled={isDisabled}
-                            className="h-14 w-full justify-between rounded-2xl border border-cyan-300/20 bg-cyan-300/8 px-5 text-left text-cyan-50 transition hover:bg-cyan-300/12"
+                            className="h-14 w-full justify-between rounded-2xl bg-[#10283a]/92 px-5 text-left text-slate-100 transition hover:bg-[#143044]"
                         >
                             <span className="flex items-center gap-3">
                                 {magicLinkLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
@@ -415,7 +411,7 @@ function SignInContent() {
 
                         <div className="relative py-1">
                             <div className="absolute inset-x-0 top-1/2 border-t border-white/8" />
-                            <span className="relative mx-auto block w-fit bg-[#13233a] px-4 text-xs uppercase tracking-[0.32em] text-slate-400">
+                            <span className="relative mx-auto block w-fit bg-[#10283a] px-4 text-xs uppercase tracking-[0.32em] text-slate-400">
                                 Or
                             </span>
                         </div>
@@ -424,7 +420,7 @@ function SignInContent() {
                             type="button"
                             onClick={handleGoogleSignIn}
                             disabled={isDisabled}
-                            className="h-14 w-full justify-between rounded-2xl border border-white/8 bg-white/6 px-5 text-left text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:bg-white/10"
+                            className="h-14 w-full justify-between rounded-2xl bg-[#10283a]/92 px-5 text-left text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:bg-[#143044]"
                         >
                             <span className="flex items-center gap-3">
                                 {socialLoading === "google" ? <Loader2 className="h-5 w-5 animate-spin" /> : <GoogleIcon />}
@@ -445,8 +441,8 @@ export default function SignInPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex h-screen items-center justify-center bg-[#0a0f1a]">
-                    <Loader2 className="h-8 w-8 animate-spin text-cyan-300" />
+                <div className="flex h-screen items-center justify-center bg-[#081826]">
+                    <Loader2 className="h-8 w-8 animate-spin text-[#9ac8ec]" />
                 </div>
             }
         >

@@ -158,8 +158,8 @@ export function SecurityRoleManagement({
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="rounded-2xl border">
-          <CardHeader className="pb-3">
+        <Card className="rounded-[1.6rem] bg-surface-container-lowest">
+          <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base">Roles</CardTitle>
               <Dialog>
@@ -212,10 +212,10 @@ export function SecurityRoleManagement({
                 key={role.id}
                 type="button"
                 onClick={() => setSelectedRoleId(role.id)}
-                className={`w-full rounded-2xl border p-4 text-left transition ${
+                className={`w-full rounded-[1.05rem] px-4 py-4 text-left transition ${
                   selectedRoleId === role.id
-                    ? "border-primary bg-primary/5"
-                    : "hover:bg-muted/40"
+                    ? "bg-primary/5"
+                    : "bg-surface-container-low hover:bg-surface-container-highest"
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -236,8 +236,8 @@ export function SecurityRoleManagement({
         </Card>
 
         <div className="space-y-4">
-          <Card className="rounded-2xl border">
-            <CardHeader className="pb-3">
+          <Card className="rounded-[1.6rem] bg-surface-container-lowest">
+            <CardHeader>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="text-base">
@@ -379,8 +379,8 @@ export function SecurityRoleManagement({
                 />
 
                 {Object.entries(groupedMenus).map(([menuArea, items]) => (
-                  <div key={menuArea} className="rounded-2xl border">
-                    <div className="border-b px-4 py-3">
+                  <div key={menuArea} className="overflow-hidden rounded-[1.2rem] bg-surface-container-low">
+                    <div className="bg-surface-container-high px-4 py-4">
                       <p className="font-medium capitalize">{menuArea} menus</p>
                     </div>
                     <div className="overflow-x-auto">
@@ -408,7 +408,7 @@ export function SecurityRoleManagement({
                               };
 
                             return (
-                              <tr key={menuItem.id} className="border-t">
+                              <tr key={menuItem.id} className="bg-surface-container-lowest">
                                 <td className="px-4 py-3">
                                   <div>
                                     <p className="font-medium">{menuItem.title}</p>

@@ -442,13 +442,13 @@ export default function AttendancePage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] md:p-6">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col overflow-hidden bg-white md:min-h-0 md:rounded-[2rem] md:border md:border-slate-200 md:shadow-[0_30px_120px_rgba(15,23,42,0.12)]">
-        <div className="flex items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 py-4 backdrop-blur-xl md:px-8 md:py-5">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col overflow-hidden bg-surface-container-lowest md:min-h-0 md:rounded-[2rem] md:shadow-[0_30px_120px_rgba(15,23,42,0.12)]">
+        <div className="flex items-center justify-between bg-surface-container-low px-5 py-4 backdrop-blur-xl md:px-8 md:py-5">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Attendance Console</p>
             <h1 className="mt-1 text-xl font-semibold text-slate-950 md:text-2xl">Selfie + GPS Verification</h1>
           </div>
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-right">
+          <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-right">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Status</p>
             <p className="text-sm font-semibold text-emerald-900">{canSubmit ? "Ready to Submit" : "Waiting Permission"}</p>
           </div>
@@ -465,7 +465,7 @@ export default function AttendancePage() {
                     Pastikan wajah terlihat jelas, pencahayaan cukup, dan lokasi GPS sudah terkunci sebelum clock in atau clock out.
                   </p>
                 </div>
-                <div className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-3 md:block">
+                <div className="hidden rounded-2xl bg-white/10 px-4 py-3 md:block">
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Current time</p>
                   <p className="mt-1 text-3xl font-semibold tracking-tight">{timeStr || "--:--"}</p>
                   <p className="mt-1 text-xs font-medium text-slate-400">{dateStr || "-"}</p>
@@ -529,9 +529,9 @@ export default function AttendancePage() {
             </div>
           </section>
 
-          <aside className="flex flex-col bg-white px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 md:px-6 md:py-8">
+          <aside className="flex flex-col bg-surface-container-lowest px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 md:px-6 md:py-8">
             <div className="mx-auto flex w-full max-w-md flex-1 flex-col md:max-w-none">
-              <div className="rounded-[2rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm">
+              <div className="rounded-[2rem] bg-surface-container-low p-5 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
                     <UserRound className="h-6 w-6" />
@@ -543,7 +543,7 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mt-4 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">Current time</p>
                 <div className="mt-2 flex items-end gap-2">
                   <span className="text-5xl font-semibold tracking-tight text-slate-950">{timeStr.split(" ")[0] || "--:--"}</span>
@@ -595,7 +595,7 @@ export default function AttendancePage() {
                   onClick={() => handleClock("checked-out")}
                   disabled={!canSubmit}
                   variant="outline"
-                  className="h-16 rounded-[1.4rem] border-slate-200 bg-white text-slate-900 shadow-sm hover:bg-slate-50"
+                  className="h-16 rounded-[1.4rem] bg-surface-container-low text-foreground shadow-sm hover:bg-surface-container-highest"
                 >
                   {isSubmitting === "checked-out" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                   Clock Out
@@ -603,7 +603,7 @@ export default function AttendancePage() {
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-1">
-                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-[1.75rem] bg-surface-container-low p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
                       <ShieldCheck className="h-5 w-5" />
@@ -620,7 +620,7 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mt-4 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-950">Capture Preview</h3>
@@ -632,7 +632,7 @@ export default function AttendancePage() {
                 </div>
 
                 {capturedPreviewUrl ? (
-                  <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-950">
+                    <div className="mt-4 overflow-hidden rounded-[1.5rem] bg-slate-950">
                     <img
                       src={capturedPreviewUrl}
                       alt="Preview capture attendance"
@@ -640,13 +640,13 @@ export default function AttendancePage() {
                     />
                   </div>
                 ) : (
-                  <div className="mt-4 rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  <div className="mt-4 rounded-[1.5rem] bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground">
                     Belum ada foto yang di-capture. Tekan tombol kamera di preview untuk melihat hasilnya di sini.
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 flex-1 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mt-4 flex-1 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-950">Today&apos;s Log</h3>
@@ -659,7 +659,7 @@ export default function AttendancePage() {
 
                 <div className="mt-5 space-y-4">
                   {logs.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    <div className="rounded-2xl bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground">
                       Belum ada attendance yang tercatat hari ini.
                     </div>
                   ) : (
@@ -689,7 +689,7 @@ export default function AttendancePage() {
                         });
 
                         return (
-                          <div key={log.id} className="relative rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                          <div key={log.id} className="relative rounded-2xl bg-surface-container-low px-4 py-4">
                             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                               {format(new Date(log.eventTime), "hh:mm a")}
                             </p>

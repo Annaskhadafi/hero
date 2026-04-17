@@ -98,7 +98,7 @@ export function ProfilePhotoField({
     <div className="grid gap-3">
       <input type="hidden" name={name} value={value} />
       <Label htmlFor={inputId}>{label}</Label>
-      <div className="flex flex-col gap-3 rounded-2xl border border-dashed p-4 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 rounded-[1.2rem] bg-surface-container-low p-4 sm:flex-row sm:items-center">
         <Avatar className="size-20 border border-slate-200">
           <AvatarImage src={value || undefined} alt={fallbackName} className="object-cover" />
           <AvatarFallback className="bg-slate-100 font-semibold text-slate-700">

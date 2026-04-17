@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { attendanceRecords, employees, sites } from "@/db/schema/hero";
 import { uploadFile } from "@/app/actions/upload";
 import { auth } from "@/lib/auth";
+import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { headers } from "next/headers";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { startOfDay, endOfDay } from "date-fns";
@@ -119,6 +120,12 @@ function buildLocationNote(
   longitude: string | null,
   fallbackLocation: string,
 ) {
+  const resolvedLocationName = locationName?.trim();
+
+  if (resolvedLocationName && resolvedLocationName !== "Lokasi GPS") {
+    return resolvedLocationName;
+  }
+
   if (latitude && longitude) {
     return `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
   }
@@ -226,5 +233,12 @@ export async function getTodayAttendanceLogs() {
     )
     .orderBy(desc(attendanceRecords.eventTime));
 
-  return { success: true, logs };
+  const logsWithPhotoPreview = await Promise.all(
+    logs.map(async (log) => ({
+      ...log,
+      photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl),
+    })),
+  );
+
+  return { success: true, logs: logsWithPhotoPreview };
 }

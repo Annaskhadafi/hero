@@ -1,0 +1,19 @@
+{
+  "id": "TASK-005",
+  "title": "Turn Organizational Structure into Approval Engine Foundation",
+  "description": "Enhance Master Data organizational structure so it can drive approval routing, approval matrix rules, delegation/fallback, effective dating, and approval path simulation.",
+  "status": "completed",
+  "priority": "high",
+  "area": "master-data",
+  "createdAt": "2026-04-17T18:10:00+08:00",
+  "notes": [
+    "Unify approval routing around org chart structures and nodes.",
+    "Add approval rule data model with assignment, fallback, and validity period.",
+    "Wire activity approval creation to resolve approvers from approval rules.",
+    "Add master data UI for approval matrix and route simulation."
+  ],
+  "startedAt": "2026-04-17T12:56:22.718Z",
+  "updatedAt": "2026-04-17T13:41:10.521Z",
+  "completedAt": "2026-04-17T13:41:10.521Z",
+  "completionDetails": "Implemented approval-engine foundation with versioned org structures, node assignments, approval matrices, route simulation, and matrix-based approval routing for activities."
+}

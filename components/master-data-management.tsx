@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Layers, Building2, Users, GitBranch, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin } from "lucide-react";
+import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import type { MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite } from "@/lib/master-data";
+import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite } from "@/lib/master-data";
 import {
   manageSectionAction,
   manageDepartmentAction,
@@ -47,6 +47,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { OrgStructureBuilder } from "@/components/org-structure-builder";
+import { ApprovalMatrixManager } from "@/components/approval-matrix-manager";
+import { ApprovalRouteSimulator } from "@/components/approval-route-simulator";
 
 interface MasterDataManagementProps {
   sections: MasterSection[];
@@ -54,6 +56,7 @@ interface MasterDataManagementProps {
   sites: MasterSite[];
   positions: MasterPosition[];
   orgStructures: OrgStructure[];
+  approvalMatrices: ApprovalMatrix[];
   employees: any[];
 }
 
@@ -68,6 +71,7 @@ export function MasterDataManagement({
   sites,
   positions,
   orgStructures,
+  approvalMatrices,
   employees,
 }: MasterDataManagementProps) {
   const [activeTab, setActiveTab] = useState("sections");
@@ -79,14 +83,14 @@ export function MasterDataManagement({
         <div>
           <h1 className="text-2xl font-bold text-[#1e293b]">Master Data</h1>
           <p className="mt-1 text-sm text-[#64748b]">
-            Kelola data master Section, Department, Jabatan, dan Struktur Organisasi untuk Approval Engine
+            Kelola fondasi Approval Engine: master organisasi, approval matrix, dan simulasi route approval.
           </p>
         </div>
       </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 bg-white p-1">
+        <TabsList className="grid w-full grid-cols-2 bg-surface-container-low p-2 lg:grid-cols-7">
           <TabsTrigger value="sections" className="flex items-center gap-2">
             <Layers className="size-4" />
             <span>Section</span>
@@ -122,6 +126,17 @@ export function MasterDataManagement({
               {orgStructures.length}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="approval-matrices" className="flex items-center gap-2">
+            <GitPullRequest className="size-4" />
+            <span>Approval Matrix</span>
+            <Badge variant="secondary" className="ml-1 bg-[#ecfeff] text-[#0f766e]">
+              {approvalMatrices.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="route-simulation" className="flex items-center gap-2">
+            <Search className="size-4" />
+            <span>Simulasi Route</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="sections" className="space-y-4">
@@ -148,6 +163,22 @@ export function MasterDataManagement({
             sites={sites}
             employees={employees}
           />
+        </TabsContent>
+
+        <TabsContent value="approval-matrices" className="space-y-4">
+          <ApprovalMatrixManager
+            approvalMatrices={approvalMatrices}
+            orgStructures={orgStructures}
+            departments={departments}
+            sections={sections}
+            positions={positions}
+            sites={sites}
+            employees={employees}
+          />
+        </TabsContent>
+
+        <TabsContent value="route-simulation" className="space-y-4">
+          <ApprovalRouteSimulator employees={employees} />
         </TabsContent>
       </Tabs>
     </div>

@@ -9,17 +9,15 @@ export default function SignUpPage() {
     return (
         <>
             {/* ===== MOBILE TERMINAL LAYOUT ===== */}
-            <div className="flex min-h-screen flex-col bg-[#0a0f1a] px-6 py-8 sm:hidden">
+            <div className="flex min-h-screen flex-col bg-[#081826] px-6 py-8 sm:hidden">
                 <div className="relative flex flex-1 flex-col">
-                    {/* Corner Brackets */}
                     <div className="pointer-events-none fixed inset-4">
-                        <div className="absolute left-0 top-0 h-6 w-6 border-l-2 border-t-2 border-cyan-400/30" />
-                        <div className="absolute right-0 top-0 h-6 w-6 border-r-2 border-t-2 border-cyan-400/30" />
-                        <div className="absolute bottom-0 left-0 h-6 w-6 border-b-2 border-l-2 border-cyan-400/30" />
-                        <div className="absolute bottom-0 right-0 h-6 w-6 border-b-2 border-r-2 border-cyan-400/30" />
+                        <div className="absolute left-0 top-0 h-6 w-6 border-l-2 border-t-2 border-[#7fb6df]/30" />
+                        <div className="absolute right-0 top-0 h-6 w-6 border-r-2 border-t-2 border-[#7fb6df]/30" />
+                        <div className="absolute bottom-0 left-0 h-6 w-6 border-b-2 border-l-2 border-[#7fb6df]/30" />
+                        <div className="absolute bottom-0 right-0 h-6 w-6 border-b-2 border-r-2 border-[#7fb6df]/30" />
                     </div>
 
-                    {/* Header */}
                     <div className="mb-8 flex flex-col items-center pt-8">
                         <Image
                             src="/logo-hero.png"
@@ -34,10 +32,9 @@ export default function SignUpPage() {
                         </p>
                     </div>
 
-                    {/* Content */}
                     <div className="flex-1">
-                        <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-6 text-center">
-                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-400">
+                        <div className="rounded-2xl bg-[#10283a]/92 p-6 text-center ring-1 ring-white/8">
+                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-white shadow-[0_14px_28px_rgba(0,52,97,0.24)]">
                                 <Lock className="h-7 w-7" />
                             </div>
                             <h2 className="mb-2 text-lg font-semibold text-slate-200">
@@ -51,17 +48,16 @@ export default function SignUpPage() {
                         <div className="mt-6 grid grid-cols-2 gap-3">
                             <Link
                                 href="/sign-in"
-                                className="flex h-14 items-center justify-center rounded-xl border border-cyan-400/30 bg-gradient-to-r from-cyan-500/20 to-blue-600/20 text-xs font-semibold uppercase tracking-[0.1em] text-cyan-400 transition hover:from-cyan-500/30 hover:to-blue-600/30"
+                                className="flex h-14 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-xs font-semibold uppercase tracking-[0.1em] text-white transition hover:brightness-110"
                             >
                                 SIGN_IN
                             </Link>
-                            <div className="flex h-14 items-center justify-center rounded-xl border border-slate-700/50 bg-slate-800/30 text-xs font-medium uppercase tracking-[0.05em] text-slate-500">
+                            <div className="flex h-14 items-center justify-center rounded-xl bg-[#10283a]/92 text-xs font-medium uppercase tracking-[0.05em] text-slate-500 ring-1 ring-white/8">
                                 ADMIN_ONLY
                             </div>
                         </div>
                     </div>
 
-                    {/* Footer */}
                     <div className="mt-8 pt-4 text-center">
                         <p className="text-[10px] text-slate-600">
                             Hubungi admin untuk akses baru.
@@ -79,14 +75,14 @@ export default function SignUpPage() {
                     footer={
                         <>
                             Sudah punya akun?{" "}
-                            <Link href="/sign-in" className="font-medium text-cyan-300 transition hover:text-cyan-200">
+                            <Link href="/sign-in" className="font-medium text-[#9ac8ec] transition hover:text-[#bedef2]">
                                 Sign in
                             </Link>
                         </>
                     }
                 >
-                    <div className="rounded-[28px] border border-white/8 bg-white/6 p-6 text-center text-slate-200">
-                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-300/12 text-cyan-200">
+                    <div className="rounded-[28px] bg-[#10283a]/92 p-6 text-center text-slate-200 ring-1 ring-white/8">
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-white shadow-[0_14px_28px_rgba(0,52,97,0.24)]">
                             <ShieldCheck className="h-7 w-7" />
                         </div>
                         <p className="text-sm leading-7 text-slate-300/82">

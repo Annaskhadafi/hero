@@ -50,7 +50,7 @@ export function AnalyticsOverview() {
 
       <div className="grid grid-cols-2 gap-3">
         {analyticsKpis.map((kpi) => (
-          <Card key={kpi.label} className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+          <Card key={kpi.label} className="surface-module-card rounded-[1.4rem] p-4">
             <p className="text-sm font-medium text-slate-500">{kpi.label}</p>
             <p className="mt-2 text-xl font-semibold text-slate-900">{kpi.value}</p>
             <p className="mt-1 text-xs text-slate-500">{kpi.note}</p>
@@ -75,7 +75,7 @@ export function AnalyticsOverview() {
         {analyticsSections.map((section) => (
           <Card
             key={section.title}
-            className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+            className="surface-module-card rounded-[1.5rem] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -104,7 +104,7 @@ export function AnalyticsOverview() {
 
         <div className="grid gap-3 md:grid-cols-3">
           {analyticsHighlights.map((item, index) => (
-            <Card key={item.label} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={item.label} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
                 {index === 0 ? (
                   <Sparkles className="h-4 w-4 text-amber-600" />

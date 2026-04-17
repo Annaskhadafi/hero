@@ -36,7 +36,7 @@ export function NavMain({
               <SidebarMenuButton
                 asChild
                 tooltip="Quick Create"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 rounded-xl duration-200 ease-linear"
+                className="bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)] text-primary-foreground hover:text-primary-foreground active:text-primary-foreground min-w-8 rounded-xl duration-200 ease-linear"
               >
                 <Link href="/dashboard/activity-hub/my-day">
                   <IconCirclePlusFilled />
@@ -45,7 +45,7 @@ export function NavMain({
               </SidebarMenuButton>
               <Button
                 size="icon"
-                className="size-8 rounded-xl border-slate-200 bg-white group-data-[collapsible=icon]:opacity-0"
+                className="size-10 rounded-xl bg-surface-container-low group-data-[collapsible=icon]:opacity-0"
                 variant="outline"
               >
                 <IconMail />

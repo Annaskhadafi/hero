@@ -117,7 +117,7 @@ export function SecurityUserRowActions({
         </DialogHeader>
 
         <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="space-y-4 rounded-2xl border p-4 xl:sticky xl:top-0">
+          <div className="space-y-4 rounded-[1.2rem] bg-surface-container-low p-4 xl:sticky xl:top-0">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar className="size-14 border border-border">
@@ -214,7 +214,7 @@ export function SecurityUserRowActions({
               </Alert>
             ) : null}
 
-            <form action={formAction} className="space-y-4 rounded-2xl border p-4">
+            <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-surface-container-low p-4">
               <div className="flex items-center gap-2">
                 <Pencil className="size-4 text-muted-foreground" />
                 <p className="font-medium">Edit Profil User</p>
@@ -356,7 +356,7 @@ export function SecurityUserRowActions({
             </form>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <form action={formAction} className="space-y-4 rounded-2xl border p-4">
+              <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-surface-container-low p-4">
                 <input type="hidden" name="intent" value="change-role" />
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2">
@@ -383,7 +383,7 @@ export function SecurityUserRowActions({
                 </div>
               </form>
 
-              <form action={formAction} className="space-y-4 rounded-2xl border p-4">
+              <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-surface-container-low p-4">
                 <input type="hidden" name="intent" value="change-password" />
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2">
@@ -405,7 +405,7 @@ export function SecurityUserRowActions({
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <form action={formAction} className="space-y-4 rounded-2xl border border-amber-500/30 p-4">
+              <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fffbeb] p-4">
                 <input type="hidden" name="intent" value="ban-user" />
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
@@ -420,7 +420,7 @@ export function SecurityUserRowActions({
                 </div>
               </form>
 
-              <form action={formAction} className="space-y-4 rounded-2xl border border-destructive/30 p-4">
+              <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-[#fef2f2] p-4">
                 <input type="hidden" name="intent" value="delete-user" />
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2 text-destructive">

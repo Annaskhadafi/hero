@@ -20,16 +20,17 @@ export function AdminTableCard({
   rows: (string | React.ReactNode)[][];
 }) {
   return (
-    <Card className="rounded-2xl border bg-card p-0 shadow-sm">
-      <div className="border-b px-6 py-5">
-        <h3 className="text-lg font-semibold">{title}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    <Card className="rounded-2xl p-0">
+      <div className="bg-surface-container-low px-6 py-5">
+        <p className="industrial-label">Command Module</p>
+        <h3 className="mt-2 font-display text-xl font-semibold tracking-[-0.03em]">{title}</h3>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
       <Table>
         <TableHeader>
           <TableRow>
             {columns.map((column) => (
-              <TableHead key={column} className="px-4 py-3 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+              <TableHead key={column}>
                 {column}
               </TableHead>
             ))}
@@ -39,7 +40,7 @@ export function AdminTableCard({
           {rows.map((row, rowIndex) => (
             <TableRow key={rowIndex}>
               {row.map((cell, cellIndex) => (
-                <TableCell key={cellIndex} className="px-4 py-3 align-top">
+                <TableCell key={cellIndex} className="align-top whitespace-normal">
                   {cell}
                 </TableCell>
               ))}

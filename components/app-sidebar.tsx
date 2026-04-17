@@ -29,9 +29,6 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 
@@ -116,44 +113,26 @@ export function AppSidebar({
       suppressHydrationWarning
       style={{
         ...props.style,
-        fontFamily: "var(--font-parkinsans), var(--font-geist-sans), sans-serif",
+        fontFamily: "var(--font-inter), sans-serif",
       }}
     >
-      <SidebarHeader className="pb-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-2"
-            >
-              <Link href="/">
-                <div className="flex aspect-square size-12 items-center justify-center overflow-hidden">
-                  <Image
-                    src="/logo-hero.png"
-                    alt="HERO"
-                    width={48}
-                    height={48}
-                    className="h-12 w-12 object-contain"
-                  />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                  <span className="truncate text-base font-semibold font-parkinsans">
-                    HERO
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    Workforce Control Center
-                  </span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarHeader className="px-4 pb-3 pt-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
+        <Link href="/" aria-label="HERO" className="flex w-fit items-center">
+          <Image
+            src="/logo-hero.png"
+            alt="HERO"
+            width={132}
+            height={48}
+            className="h-12 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-9"
+            priority
+          />
+        </Link>
       </SidebarHeader>
       <SidebarContent className="gap-1">
         {groupedMainItems.map(([section, items], index) => (
           <React.Fragment key={section}>
             {index > 0 ? <SidebarSeparator className="mx-2" /> : null}
-            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
+            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               {section}
             </div>
             <NavMain items={items} showQuickCreate={index === 0} />
@@ -162,7 +141,7 @@ export function AppSidebar({
         {documentItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-1" />
-            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
+            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               Documents
             </div>
             <NavDocuments items={documentItems} />
@@ -171,7 +150,7 @@ export function AppSidebar({
         {secondaryItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-auto" />
-            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
+            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               System
             </div>
             <NavSecondary items={secondaryItems} />

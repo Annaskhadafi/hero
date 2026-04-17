@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { serverEnv } from "@/lib/server-env";
 
 const PROFILE_PHOTO_PREFIX = "profile-photos";
@@ -24,6 +25,73 @@ function encodeObjectKey(key: string) {
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+function decodeObjectKey(pathname: string) {
+  return pathname
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment))
+    .join("/");
+}
+
+function getObjectKeyFromUrl(objectUrl: string) {
+  try {
+    const normalizedObjectUrl = ensureLeadingProtocol(objectUrl.trim());
+    const targetUrl = new URL(normalizedObjectUrl);
+    const bucketName = serverEnv.s3BucketName;
+    const objectPath = decodeObjectKey(targetUrl.pathname);
+
+    if (serverEnv.s3PublicBaseUrl) {
+      const publicBaseUrl = new URL(
+        `${trimTrailingSlashes(ensureLeadingProtocol(serverEnv.s3PublicBaseUrl))}/`,
+      );
+
+      if (
+        targetUrl.origin === publicBaseUrl.origin &&
+        targetUrl.pathname.startsWith(publicBaseUrl.pathname)
+      ) {
+        return decodeObjectKey(
+          targetUrl.pathname.slice(publicBaseUrl.pathname.length),
+        );
+      }
+    }
+
+    if (serverEnv.s3Endpoint) {
+      const endpointUrl = new URL(
+        trimTrailingSlashes(ensureLeadingProtocol(serverEnv.s3Endpoint)),
+      );
+
+      if (targetUrl.host === endpointUrl.host) {
+        return objectPath.startsWith(`${bucketName}/`)
+          ? objectPath.slice(bucketName.length + 1)
+          : objectPath;
+      }
+
+      if (targetUrl.host === `${bucketName}.${endpointUrl.host}`) {
+        return objectPath;
+      }
+    }
+
+    if (targetUrl.host === `${bucketName}.s3.${serverEnv.s3Region}.amazonaws.com`) {
+      return objectPath;
+    }
+
+    const knownPrefixMatch = objectPath.match(
+      /(?:^|\/)((?:attendance-photos|profile-photos|upload)\/.+)$/,
+    );
+
+    if (knownPrefixMatch) {
+      return knownPrefixMatch[1];
+    }
+
+    return objectPath.startsWith(`${bucketName}/`)
+      ? objectPath.slice(bucketName.length + 1)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function getObjectExtension(contentType: string) {
@@ -150,6 +218,36 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
 
 export async function uploadAttendancePhotoToS3(file: File) {
   return uploadAnyFileToS3(file, ATTENDANCE_PHOTO_PREFIX);
+}
+
+export async function getS3ObjectReadUrl(objectUrl: string | null, expiresIn = 3600) {
+  if (!objectUrl) {
+    return null;
+  }
+
+  if (!isS3UploadConfigured()) {
+    return objectUrl;
+  }
+
+  const key = getObjectKeyFromUrl(objectUrl);
+
+  if (!key) {
+    return objectUrl;
+  }
+
+  try {
+    return await getSignedUrl(
+      getS3Client(),
+      new GetObjectCommand({
+        Bucket: serverEnv.s3BucketName,
+        Key: key,
+      }),
+      { expiresIn },
+    );
+  } catch (error) {
+    console.error("Failed to create signed S3 read URL:", error);
+    return objectUrl;
+  }
 }
 
 export function isS3UploadConfigured() {

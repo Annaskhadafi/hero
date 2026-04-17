@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   integer,
   pgTable,
@@ -33,6 +34,10 @@ export const employees = pgTable("hero_employees", {
   birthPlaceDate: text("birth_place_date").notNull().default(""),
   domicile: text("domicile").notNull().default(""),
   directManagerId: integer("direct_manager_id"),
+  departmentId: integer("department_id"),
+  sectionId: integer("section_id"),
+  positionId: integer("position_id"),
+  orgNodeId: integer("org_node_id"),
   section: text("section").notNull().default(""),
   role: text("role").notNull(),
   department: text("department").notNull(),
@@ -77,10 +82,17 @@ export const approvals = pgTable("hero_approvals", {
     .references(() => activities.id, { onDelete: "cascade" }),
   level: integer("level").notNull(),
   approverName: text("approver_name").notNull(),
+  approverEmployeeId: integer("approver_employee_id"),
+  approverNodeId: integer("approver_node_id"),
+  approvalMatrixId: integer("approval_matrix_id"),
+  approvalStepId: integer("approval_step_id"),
   status: text("status").notNull(),
   submittedAt: timestamp("submitted_at").notNull(),
   reviewedAt: timestamp("reviewed_at"),
   overtimeMinutes: integer("overtime_minutes").notNull().default(0),
+  resolutionSource: text("resolution_source").notNull().default("matrix"),
+  routeSnapshot: text("route_snapshot").notNull().default(""),
+  decisionNote: text("decision_note").notNull().default(""),
 });
 
 export const timesheetEntries = pgTable("hero_timesheet_entries", {
@@ -356,6 +368,10 @@ export const orgChartStructures = pgTable("hero_org_chart_structures", {
   name: text("name").notNull(),
   scopeType: text("scope_type").notNull().default("custom"),
   scopeValue: text("scope_value").notNull().default(""),
+  version: integer("version").notNull().default(1),
+  effectiveFrom: timestamp("effective_from").notNull().defaultNow(),
+  effectiveTo: timestamp("effective_to"),
+  isDefault: boolean("is_default").notNull().default(false),
   description: text("description").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -367,12 +383,485 @@ export const orgChartNodes = pgTable("hero_org_chart_nodes", {
   structureId: integer("structure_id")
     .notNull()
     .references(() => orgChartStructures.id, { onDelete: "cascade" }),
-  parentNodeId: integer("parent_node_id"),
+  parentNodeId: integer("parent_node_id").references((): AnyPgColumn => orgChartNodes.id, {
+    onDelete: "set null",
+  }),
   positionId: integer("position_id").references(() => masterPositions.id, { onDelete: "set null" }),
   employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }),
+  nodeCode: text("node_code").notNull().default(""),
+  nodeType: text("node_type").notNull().default("position"),
+  approvalRole: text("approval_role").notNull().default(""),
+  canApprove: boolean("can_approve").notNull().default(false),
+  canDelegate: boolean("can_delegate").notNull().default(true),
+  isEscalationTarget: boolean("is_escalation_target").notNull().default(false),
+  slaHours: integer("sla_hours").notNull().default(24),
+  fallbackNodeId: integer("fallback_node_id").references((): AnyPgColumn => orgChartNodes.id, {
+    onDelete: "set null",
+  }),
   label: text("label").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const orgNodeAssignments = pgTable("hero_org_node_assignments", {
+  id: serial("id").primaryKey(),
+  nodeId: integer("node_id")
+    .notNull()
+    .references(() => orgChartNodes.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }),
+  assignmentType: text("assignment_type").notNull().default("primary"),
+  notes: text("notes").notNull().default(""),
+  effectiveFrom: timestamp("effective_from").notNull().defaultNow(),
+  effectiveTo: timestamp("effective_to"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const approvalMatrices = pgTable("hero_approval_matrices", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  structureId: integer("structure_id").references(() => orgChartStructures.id, {
+    onDelete: "set null",
+  }),
+  transactionType: text("transaction_type").notNull().default("activity"),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  departmentId: integer("department_id").references(() => masterDepartments.id, {
+    onDelete: "set null",
+  }),
+  sectionId: integer("section_id").references(() => masterSections.id, { onDelete: "set null" }),
+  requesterPositionId: integer("requester_position_id").references(() => masterPositions.id, {
+    onDelete: "set null",
+  }),
+  activityType: text("activity_type").notNull().default(""),
+  priority: text("priority").notNull().default("any"),
+  minOvertimeMinutes: integer("min_overtime_minutes").notNull().default(0),
+  maxOvertimeMinutes: integer("max_overtime_minutes"),
+  description: text("description").notNull().default(""),
+  effectiveFrom: timestamp("effective_from").notNull().defaultNow(),
+  effectiveTo: timestamp("effective_to"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const approvalMatrixSteps = pgTable("hero_approval_matrix_steps", {
+  id: serial("id").primaryKey(),
+  matrixId: integer("matrix_id")
+    .notNull()
+    .references(() => approvalMatrices.id, { onDelete: "cascade" }),
+  stepOrder: integer("step_order").notNull(),
+  label: text("label").notNull().default(""),
+  nodeId: integer("node_id").references(() => orgChartNodes.id, { onDelete: "set null" }),
+  fallbackNodeId: integer("fallback_node_id").references(() => orgChartNodes.id, {
+    onDelete: "set null",
+  }),
+  escalationNodeId: integer("escalation_node_id").references(() => orgChartNodes.id, {
+    onDelete: "set null",
+  }),
+  approvalMode: text("approval_mode").notNull().default("sequential"),
+  slaHours: integer("sla_hours").notNull().default(24),
+  canDelegate: boolean("can_delegate").notNull().default(true),
+  isRequired: boolean("is_required").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formTemplates = pgTable("hero_form_templates", {
+  id: serial("id").primaryKey(),
+  templateKey: text("template_key").notNull().unique(),
+  category: text("category").notNull(),
+  name: text("name").notNull(),
+  workflowMode: text("workflow_mode").notNull().default("org_template"),
+  description: text("description").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formTemplateVersions = pgTable("hero_form_template_versions", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id")
+    .notNull()
+    .references(() => formTemplates.id, { onDelete: "cascade" }),
+  versionNumber: integer("version_number").notNull().default(1),
+  publishStatus: text("publish_status").notNull().default("draft"),
+  workflowSnapshot: text("workflow_snapshot").notNull().default(""),
+  schemaSnapshot: text("schema_snapshot").notNull().default(""),
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+  createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formTemplateSections = pgTable("hero_form_template_sections", {
+  id: serial("id").primaryKey(),
+  versionId: integer("version_id")
+    .notNull()
+    .references(() => formTemplateVersions.id, { onDelete: "cascade" }),
+  sectionKey: text("section_key").notNull(),
+  label: text("label").notNull(),
+  description: text("description").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isCollapsible: boolean("is_collapsible").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formTemplateFields = pgTable("hero_form_template_fields", {
+  id: serial("id").primaryKey(),
+  versionId: integer("version_id")
+    .notNull()
+    .references(() => formTemplateVersions.id, { onDelete: "cascade" }),
+  sectionId: integer("section_id").references(() => formTemplateSections.id, {
+    onDelete: "set null",
+  }),
+  fieldKey: text("field_key").notNull(),
+  fieldType: text("field_type").notNull(),
+  label: text("label").notNull(),
+  placeholder: text("placeholder").notNull().default(""),
+  helpText: text("help_text").notNull().default(""),
+  defaultValue: text("default_value").notNull().default(""),
+  configJson: text("config_json").notNull().default(""),
+  validationJson: text("validation_json").notNull().default(""),
+  optionSourceJson: text("option_source_json").notNull().default(""),
+  isRequired: boolean("is_required").notNull().default(false),
+  isHidden: boolean("is_hidden").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formFieldOptions = pgTable("hero_form_field_options", {
+  id: serial("id").primaryKey(),
+  fieldId: integer("field_id")
+    .notNull()
+    .references(() => formTemplateFields.id, { onDelete: "cascade" }),
+  optionValue: text("option_value").notNull(),
+  optionLabel: text("option_label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formValidationRules = pgTable("hero_form_validation_rules", {
+  id: serial("id").primaryKey(),
+  fieldId: integer("field_id")
+    .notNull()
+    .references(() => formTemplateFields.id, { onDelete: "cascade" }),
+  ruleType: text("rule_type").notNull(),
+  operator: text("operator").notNull().default("="),
+  ruleValue: text("rule_value").notNull().default(""),
+  errorMessage: text("error_message").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowTemplates = pgTable("hero_workflow_templates", {
+  id: serial("id").primaryKey(),
+  templateKey: text("template_key").notNull().unique(),
+  name: text("name").notNull(),
+  mode: text("mode").notNull().default("org_template"),
+  description: text("description").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowTemplateVersions = pgTable("hero_workflow_template_versions", {
+  id: serial("id").primaryKey(),
+  workflowTemplateId: integer("workflow_template_id")
+    .notNull()
+    .references(() => workflowTemplates.id, { onDelete: "cascade" }),
+  versionNumber: integer("version_number").notNull().default(1),
+  publishStatus: text("publish_status").notNull().default("draft"),
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowConditions = pgTable("hero_workflow_conditions", {
+  id: serial("id").primaryKey(),
+  workflowVersionId: integer("workflow_version_id")
+    .notNull()
+    .references(() => workflowTemplateVersions.id, { onDelete: "cascade" }),
+  parentConditionId: integer("parent_condition_id").references((): AnyPgColumn => workflowConditions.id, {
+    onDelete: "cascade",
+  }),
+  fieldKey: text("field_key").notNull(),
+  operator: text("operator").notNull().default("="),
+  compareValue: text("compare_value").notNull().default(""),
+  logicalJoin: text("logical_join").notNull().default("AND"),
+  groupLabel: text("group_label").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowBranches = pgTable("hero_workflow_branches", {
+  id: serial("id").primaryKey(),
+  workflowVersionId: integer("workflow_version_id")
+    .notNull()
+    .references(() => workflowTemplateVersions.id, { onDelete: "cascade" }),
+  branchKey: text("branch_key").notNull(),
+  label: text("label").notNull(),
+  outcomeType: text("outcome_type").notNull().default("route"),
+  routeMode: text("route_mode").notNull().default("sequential"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowStepRules = pgTable("hero_workflow_step_rules", {
+  id: serial("id").primaryKey(),
+  workflowVersionId: integer("workflow_version_id")
+    .notNull()
+    .references(() => workflowTemplateVersions.id, { onDelete: "cascade" }),
+  branchId: integer("branch_id").references(() => workflowBranches.id, {
+    onDelete: "set null",
+  }),
+  approvalMatrixStepId: integer("approval_matrix_step_id").references(() => approvalMatrixSteps.id, {
+    onDelete: "set null",
+  }),
+  stepOrder: integer("step_order").notNull().default(1),
+  label: text("label").notNull(),
+  approvalMode: text("approval_mode").notNull().default("sequential"),
+  assignmentSource: text("assignment_source").notNull().default("matrix"),
+  isRequired: boolean("is_required").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowNotificationRules = pgTable("hero_workflow_notification_rules", {
+  id: serial("id").primaryKey(),
+  workflowVersionId: integer("workflow_version_id")
+    .notNull()
+    .references(() => workflowTemplateVersions.id, { onDelete: "cascade" }),
+  branchId: integer("branch_id").references(() => workflowBranches.id, {
+    onDelete: "set null",
+  }),
+  eventType: text("event_type").notNull(),
+  channel: text("channel").notNull().default("in_app"),
+  recipientMode: text("recipient_mode").notNull().default("approver"),
+  ccMode: text("cc_mode").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowReminderRules = pgTable("hero_workflow_reminder_rules", {
+  id: serial("id").primaryKey(),
+  workflowVersionId: integer("workflow_version_id")
+    .notNull()
+    .references(() => workflowTemplateVersions.id, { onDelete: "cascade" }),
+  stepRuleId: integer("step_rule_id").references(() => workflowStepRules.id, {
+    onDelete: "set null",
+  }),
+  reminderType: text("reminder_type").notNull().default("before_due"),
+  offsetHours: integer("offset_hours").notNull().default(2),
+  channel: text("channel").notNull().default("email"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formSubmissions = pgTable("hero_form_submissions", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id")
+    .notNull()
+    .references(() => formTemplates.id, { onDelete: "restrict" }),
+  templateVersionId: integer("template_version_id")
+    .notNull()
+    .references(() => formTemplateVersions.id, { onDelete: "restrict" }),
+  requesterEmployeeId: integer("requester_employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "restrict" }),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  legacyActivityId: integer("legacy_activity_id").references(() => activities.id, {
+    onDelete: "set null",
+  }),
+  requestNumber: text("request_number").notNull().default(""),
+  requestStatus: text("request_status").notNull().default("draft"),
+  workflowSnapshot: text("workflow_snapshot").notNull().default(""),
+  payloadSnapshot: text("payload_snapshot").notNull().default(""),
+  previewSnapshot: text("preview_snapshot").notNull().default(""),
+  submittedAt: timestamp("submitted_at"),
+  completedAt: timestamp("completed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const formSubmissionValues = pgTable("hero_form_submission_values", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id")
+    .notNull()
+    .references(() => formSubmissions.id, { onDelete: "cascade" }),
+  fieldKey: text("field_key").notNull(),
+  fieldType: text("field_type").notNull(),
+  valueText: text("value_text").notNull().default(""),
+  displayValue: text("display_value").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const approvalComments = pgTable("hero_approval_comments", {
+  id: serial("id").primaryKey(),
+  approvalId: integer("approval_id")
+    .notNull()
+    .references(() => approvals.id, { onDelete: "cascade" }),
+  actorEmployeeId: integer("actor_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  commentKind: text("comment_kind").notNull().default("comment"),
+  message: text("message").notNull(),
+  isInternal: boolean("is_internal").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const approvalRequestActors = pgTable("hero_approval_request_actors", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id")
+    .notNull()
+    .references(() => formSubmissions.id, { onDelete: "cascade" }),
+  approvalId: integer("approval_id").references(() => approvals.id, {
+    onDelete: "set null",
+  }),
+  actorEmployeeId: integer("actor_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  actorRole: text("actor_role").notNull().default("approver"),
+  assignmentType: text("assignment_type").notNull().default("primary"),
+  status: text("status").notNull().default("pending"),
+  dueAt: timestamp("due_at"),
+  actedAt: timestamp("acted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const approvalAttachments = pgTable("hero_approval_attachments", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id")
+    .notNull()
+    .references(() => formSubmissions.id, { onDelete: "cascade" }),
+  approvalId: integer("approval_id").references(() => approvals.id, {
+    onDelete: "set null",
+  }),
+  attachmentKind: text("attachment_kind").notNull().default("file"),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull().default("application/octet-stream"),
+  fileUrl: text("file_url").notNull(),
+  uploadedByEmployeeId: integer("uploaded_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const inboxItems = pgTable("hero_inbox_items", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id")
+    .notNull()
+    .references(() => formSubmissions.id, { onDelete: "cascade" }),
+  approvalId: integer("approval_id").references(() => approvals.id, {
+    onDelete: "set null",
+  }),
+  assigneeEmployeeId: integer("assignee_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  inboxType: text("inbox_type").notNull().default("approval"),
+  status: text("status").notNull().default("pending"),
+  dueAt: timestamp("due_at"),
+  snoozedUntil: timestamp("snoozed_until"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const notificationEvents = pgTable("hero_notification_events", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id").references(() => formSubmissions.id, {
+    onDelete: "cascade",
+  }),
+  inboxItemId: integer("inbox_item_id").references(() => inboxItems.id, {
+    onDelete: "cascade",
+  }),
+  approvalId: integer("approval_id").references(() => approvals.id, {
+    onDelete: "set null",
+  }),
+  channel: text("channel").notNull().default("email"),
+  eventType: text("event_type").notNull(),
+  recipient: text("recipient").notNull(),
+  payloadSnapshot: text("payload_snapshot").notNull().default(""),
+  deliveryStatus: text("delivery_status").notNull().default("queued"),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const notificationDeliveries = pgTable("hero_notification_deliveries", {
+  id: serial("id").primaryKey(),
+  notificationEventId: integer("notification_event_id")
+    .notNull()
+    .references(() => notificationEvents.id, { onDelete: "cascade" }),
+  deliveryChannel: text("delivery_channel").notNull().default("in_app"),
+  recipient: text("recipient").notNull(),
+  status: text("status").notNull().default("queued"),
+  sentAt: timestamp("sent_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const reminderJobs = pgTable("hero_reminder_jobs", {
+  id: serial("id").primaryKey(),
+  inboxItemId: integer("inbox_item_id")
+    .notNull()
+    .references(() => inboxItems.id, { onDelete: "cascade" }),
+  reminderType: text("reminder_type").notNull().default("before_due"),
+  reminderAt: timestamp("reminder_at").notNull(),
+  status: text("status").notNull().default("scheduled"),
+  executionLog: text("execution_log").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const requestStatusHistories = pgTable("hero_request_status_histories", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id")
+    .notNull()
+    .references(() => formSubmissions.id, { onDelete: "cascade" }),
+  approvalId: integer("approval_id").references(() => approvals.id, {
+    onDelete: "set null",
+  }),
+  actorEmployeeId: integer("actor_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  fromStatus: text("from_status").notNull().default(""),
+  toStatus: text("to_status").notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const stepDecisionHistories = pgTable("hero_step_decision_histories", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id")
+    .notNull()
+    .references(() => formSubmissions.id, { onDelete: "cascade" }),
+  approvalId: integer("approval_id")
+    .notNull()
+    .references(() => approvals.id, { onDelete: "cascade" }),
+  actorEmployeeId: integer("actor_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  decision: text("decision").notNull(),
+  decisionNote: text("decision_note").notNull().default(""),
+  decidedAt: timestamp("decided_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });

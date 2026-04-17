@@ -10,9 +10,17 @@ import {
   employees,
   hseIncidents,
   hseObservations,
+  masterDepartments,
+  masterPositions,
+  masterSections,
   navbarMenuItems,
   navbarThemes,
+  orgChartNodes,
+  orgChartStructures,
+  orgNodeAssignments,
   pointEvents,
+  approvalMatrices,
+  approvalMatrixSteps,
   roleMenuPermissions,
   securityPermissions,
   securityRolePermissions,
@@ -23,6 +31,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { session, user as authUser } from "@/db/schema/auth";
+import { ensureApprovalBlueprintSeedData } from "@/lib/approval-blueprint";
 
 let seedPromise: Promise<void> | null = null;
 let governanceSeedPromise: Promise<void> | null = null;
@@ -74,6 +83,633 @@ function toCurrency(amount: number) {
 
 function minutesToHours(minutes: number) {
   return `${(minutes / 60).toFixed(1)} jam`;
+}
+
+function normalizeLookupValue(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+async function ensureApprovalEngineFoundation(site: { id: number; name: string }) {
+  const now = new Date("2026-04-17T08:00:00+08:00");
+
+  const [currentEmployees, departmentCount, sectionCount, positionCount] = await Promise.all([
+    db.select().from(employees).orderBy(employees.name),
+    db.select({ count: sql<number>`count(*)::int` }).from(masterDepartments),
+    db.select({ count: sql<number>`count(*)::int` }).from(masterSections),
+    db.select({ count: sql<number>`count(*)::int` }).from(masterPositions),
+  ]);
+
+  const employeeByName = new Map(currentEmployees.map((employee) => [employee.name, employee]));
+
+  if (!employeeByName.has("Dedi Pranata")) {
+    const [inserted] = await db
+      .insert(employees)
+      .values({
+        siteId: site.id,
+        name: "Dedi Pranata",
+        email: "dedi.pranata@hero.local",
+        employeeSn: "HERO-PJO-001",
+        role: "PJO Site",
+        department: "Site Management",
+        section: "Site Leadership",
+        jobTitle: "PJO Site",
+        workLocation: site.name,
+        employmentStatus: "active",
+        employeeStatusType: "Permanen | Staff",
+        accessRole: "Super Admin",
+        levelName: "Expert",
+        totalPoints: 1650,
+        fitStatus: "fit",
+        isActive: true,
+      })
+      .returning();
+
+    employeeByName.set(inserted.name, inserted);
+    currentEmployees.push(inserted);
+  }
+
+  if ((departmentCount[0]?.count ?? 0) === 0) {
+    await db.insert(masterDepartments).values([
+      {
+        code: "OPS",
+        name: "Central Service",
+        description: "Operasional service utama site.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "HSE",
+        name: "HSE",
+        description: "Fungsi keselamatan, governance, dan compliance site.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "HC",
+        name: "HC",
+        description: "Human capital dan people operations site.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "MGT",
+        name: "Site Management",
+        description: "Pimpinan site dan final approver lintas fungsi.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  }
+
+  const departments = await db.select().from(masterDepartments);
+  const departmentByCode = new Map(departments.map((department) => [department.code, department]));
+  const departmentByName = new Map(
+    departments.map((department) => [normalizeLookupValue(department.name), department]),
+  );
+
+  if ((sectionCount[0]?.count ?? 0) === 0) {
+    await db.insert(masterSections).values([
+      {
+        code: "FIELD_OPS",
+        name: "Field Operations",
+        departmentId: departmentByCode.get("OPS")?.id ?? null,
+        description: "Koordinasi manpower lapangan dan supervisor operasional.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "TYRE_OPS",
+        name: "Tyre Operations",
+        departmentId: departmentByCode.get("OPS")?.id ?? null,
+        description: "Pelaksanaan pekerjaan tyre service dan inspection.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "GOV",
+        name: "Governance",
+        departmentId: departmentByCode.get("HSE")?.id ?? null,
+        description: "Governance HSE, review risiko, dan eskalasi safety.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "PEOPLE_OPS",
+        name: "People Operations",
+        departmentId: departmentByCode.get("HC")?.id ?? null,
+        description: "Operasional HC, administrasi, dan support daily recap.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "SITE_LEAD",
+        name: "Site Leadership",
+        departmentId: departmentByCode.get("MGT")?.id ?? null,
+        description: "Lapisan pimpinan site dan final approver.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  }
+
+  if ((positionCount[0]?.count ?? 0) === 0) {
+    await db.insert(masterPositions).values([
+      {
+        code: "PJO_SITE",
+        name: "PJO Site",
+        departmentId: departmentByCode.get("MGT")?.id ?? null,
+        siteLocation: site.name,
+        level: 4,
+        description: "Final approver site untuk aktivitas dan overtime.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "FOREMAN",
+        name: "Foreman",
+        departmentId: departmentByCode.get("OPS")?.id ?? null,
+        siteLocation: site.name,
+        level: 3,
+        description: "Approver level 1 untuk operasional lapangan.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "TECHNICIAN",
+        name: "Technician",
+        departmentId: departmentByCode.get("OPS")?.id ?? null,
+        siteLocation: site.name,
+        level: 1,
+        description: "Pelaksana aktivitas di site.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "HSE_OFF",
+        name: "HSE Officer",
+        departmentId: departmentByCode.get("HSE")?.id ?? null,
+        siteLocation: site.name,
+        level: 2,
+        description: "Reviewer risiko dan escalation target safety.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        code: "ADMIN_SITE",
+        name: "Admin Site",
+        departmentId: departmentByCode.get("HC")?.id ?? null,
+        siteLocation: site.name,
+        level: 1,
+        description: "Support admin site dan daily recap.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  }
+
+  const [sections, positions] = await Promise.all([
+    db.select().from(masterSections),
+    db.select().from(masterPositions),
+  ]);
+
+  const sectionByName = new Map(sections.map((section) => [normalizeLookupValue(section.name), section]));
+  const positionByName = new Map(
+    positions.map((position) => [normalizeLookupValue(position.name), position]),
+  );
+
+  for (const employee of currentEmployees) {
+    const departmentId =
+      departmentByName.get(normalizeLookupValue(employee.department))?.id ?? null;
+    const sectionId = sectionByName.get(normalizeLookupValue(employee.section))?.id ?? null;
+    const positionId = positionByName.get(normalizeLookupValue(employee.jobTitle))?.id ?? null;
+
+    if (
+      employee.departmentId !== departmentId ||
+      employee.sectionId !== sectionId ||
+      employee.positionId !== positionId
+    ) {
+      await db
+        .update(employees)
+        .set({
+          departmentId,
+          sectionId,
+          positionId,
+        })
+        .where(eq(employees.id, employee.id));
+    }
+  }
+
+  const [structureCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orgChartStructures);
+
+  if ((structureCount?.count ?? 0) === 0) {
+    const [structure] = await db
+      .insert(orgChartStructures)
+      .values({
+        name: `Struktur Approval ${site.name} v1`,
+        scopeType: "site",
+        scopeValue: site.name,
+        version: 1,
+        effectiveFrom: now,
+        effectiveTo: null,
+        isDefault: true,
+        description: "Struktur organisasi default untuk approval activity dan overtime.",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const [pjoNode] = await db
+      .insert(orgChartNodes)
+      .values({
+        structureId: structure.id,
+        parentNodeId: null,
+        positionId: positionByName.get("pjo site")?.id ?? null,
+        employeeId: employeeByName.get("Dedi Pranata")?.id ?? null,
+        nodeCode: "SITE-PJO",
+        nodeType: "approver",
+        approvalRole: "Final Site Approver",
+        canApprove: true,
+        canDelegate: true,
+        isEscalationTarget: true,
+        slaHours: 24,
+        fallbackNodeId: null,
+        label: "PJO Site",
+        sortOrder: 0,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const [foremanNode] = await db
+      .insert(orgChartNodes)
+      .values({
+        structureId: structure.id,
+        parentNodeId: pjoNode.id,
+        positionId: positionByName.get("foreman")?.id ?? null,
+        employeeId: employeeByName.get("Rian Kurniawan")?.id ?? null,
+        nodeCode: "OPS-FOREMAN",
+        nodeType: "approver",
+        approvalRole: "Level 1 Foreman",
+        canApprove: true,
+        canDelegate: true,
+        isEscalationTarget: false,
+        slaHours: 8,
+        fallbackNodeId: pjoNode.id,
+        label: "Foreman",
+        sortOrder: 1,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const [technicianNode, hseNode, adminNode] = await db
+      .insert(orgChartNodes)
+      .values([
+        {
+          structureId: structure.id,
+          parentNodeId: foremanNode.id,
+          positionId: positionByName.get("technician")?.id ?? null,
+          employeeId: employeeByName.get("Arman Saputra")?.id ?? null,
+          nodeCode: "OPS-TECH",
+          nodeType: "worker",
+          approvalRole: "Requester",
+          canApprove: false,
+          canDelegate: false,
+          isEscalationTarget: false,
+          slaHours: 24,
+          fallbackNodeId: null,
+          label: "Technician",
+          sortOrder: 2,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          structureId: structure.id,
+          parentNodeId: pjoNode.id,
+          positionId: positionByName.get("hse officer")?.id ?? null,
+          employeeId: employeeByName.get("Soni Darmawan")?.id ?? null,
+          nodeCode: "HSE-REVIEW",
+          nodeType: "approver",
+          approvalRole: "HSE Reviewer",
+          canApprove: true,
+          canDelegate: true,
+          isEscalationTarget: true,
+          slaHours: 6,
+          fallbackNodeId: pjoNode.id,
+          label: "HSE Officer",
+          sortOrder: 3,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          structureId: structure.id,
+          parentNodeId: pjoNode.id,
+          positionId: positionByName.get("admin site")?.id ?? null,
+          employeeId: employeeByName.get("Mira Andini")?.id ?? null,
+          nodeCode: "HC-ADMIN",
+          nodeType: "support",
+          approvalRole: "Admin Site Support",
+          canApprove: false,
+          canDelegate: false,
+          isEscalationTarget: false,
+          slaHours: 24,
+          fallbackNodeId: pjoNode.id,
+          label: "Admin Site",
+          sortOrder: 4,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .returning();
+
+    const assignmentsToInsert = [
+      {
+        nodeId: pjoNode.id,
+        employeeId: employeeByName.get("Dedi Pranata")?.id ?? null,
+        assignmentType: "primary",
+        notes: "Final approver site",
+      },
+      {
+        nodeId: pjoNode.id,
+        employeeId: employeeByName.get("Rian Kurniawan")?.id ?? null,
+        assignmentType: "delegate",
+        notes: "Acting approver when PJO is unavailable",
+      },
+      {
+        nodeId: foremanNode.id,
+        employeeId: employeeByName.get("Rian Kurniawan")?.id ?? null,
+        assignmentType: "primary",
+        notes: "Default level 1 approver",
+      },
+      {
+        nodeId: technicianNode.id,
+        employeeId: employeeByName.get("Arman Saputra")?.id ?? null,
+        assignmentType: "primary",
+        notes: "Requester anchor",
+      },
+      {
+        nodeId: hseNode.id,
+        employeeId: employeeByName.get("Soni Darmawan")?.id ?? null,
+        assignmentType: "primary",
+        notes: "Safety reviewer and escalation target",
+      },
+      {
+        nodeId: adminNode.id,
+        employeeId: employeeByName.get("Mira Andini")?.id ?? null,
+        assignmentType: "primary",
+        notes: "Admin support",
+      },
+    ].filter((assignment) => assignment.employeeId != null);
+
+    if (assignmentsToInsert.length > 0) {
+      await db.insert(orgNodeAssignments).values(
+        assignmentsToInsert.map((assignment) => ({
+          nodeId: assignment.nodeId,
+          employeeId: assignment.employeeId,
+          assignmentType: assignment.assignmentType,
+          notes: assignment.notes,
+          effectiveFrom: now,
+          effectiveTo: null,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+    }
+
+    const [technicianStandardMatrix, foremanMatrix, hseMatrix, adminMatrix] = await db
+      .insert(approvalMatrices)
+      .values([
+        {
+          name: "Technician Activity Standard",
+          structureId: structure.id,
+          transactionType: "activity",
+          siteId: site.id,
+          departmentId: departmentByCode.get("OPS")?.id ?? null,
+          sectionId: null,
+          requesterPositionId: positionByName.get("technician")?.id ?? null,
+          activityType: "",
+          priority: "any",
+          minOvertimeMinutes: 0,
+          maxOvertimeMinutes: 720,
+          description: "Aktivitas teknisi lewat Foreman lalu final approver site.",
+          effectiveFrom: now,
+          effectiveTo: null,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          name: "Foreman Self Submission",
+          structureId: structure.id,
+          transactionType: "activity",
+          siteId: site.id,
+          departmentId: departmentByCode.get("OPS")?.id ?? null,
+          sectionId: null,
+          requesterPositionId: positionByName.get("foreman")?.id ?? null,
+          activityType: "",
+          priority: "any",
+          minOvertimeMinutes: 0,
+          maxOvertimeMinutes: 720,
+          description: "Foreman submit aktivitas langsung ke PJO site.",
+          effectiveFrom: now,
+          effectiveTo: null,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          name: "HSE Officer Submission",
+          structureId: structure.id,
+          transactionType: "activity",
+          siteId: site.id,
+          departmentId: departmentByCode.get("HSE")?.id ?? null,
+          sectionId: null,
+          requesterPositionId: positionByName.get("hse officer")?.id ?? null,
+          activityType: "",
+          priority: "any",
+          minOvertimeMinutes: 0,
+          maxOvertimeMinutes: 720,
+          description: "HSE officer submit aktivitas langsung ke final approver.",
+          effectiveFrom: now,
+          effectiveTo: null,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          name: "Admin Site Daily Recap",
+          structureId: structure.id,
+          transactionType: "activity",
+          siteId: site.id,
+          departmentId: departmentByCode.get("HC")?.id ?? null,
+          sectionId: sectionByName.get("people operations")?.id ?? null,
+          requesterPositionId: positionByName.get("admin site")?.id ?? null,
+          activityType: "Daily Recap",
+          priority: "any",
+          minOvertimeMinutes: 0,
+          maxOvertimeMinutes: 720,
+          description: "Daily recap admin site langsung ke PJO site.",
+          effectiveFrom: now,
+          effectiveTo: null,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .returning();
+
+    await db.insert(approvalMatrixSteps).values([
+      {
+        matrixId: technicianStandardMatrix.id,
+        stepOrder: 1,
+        label: "Foreman Review",
+        nodeId: foremanNode.id,
+        fallbackNodeId: pjoNode.id,
+        escalationNodeId: null,
+        approvalMode: "sequential",
+        slaHours: 8,
+        canDelegate: true,
+        isRequired: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        matrixId: technicianStandardMatrix.id,
+        stepOrder: 2,
+        label: "Final Site Approval",
+        nodeId: pjoNode.id,
+        fallbackNodeId: null,
+        escalationNodeId: null,
+        approvalMode: "sequential",
+        slaHours: 24,
+        canDelegate: true,
+        isRequired: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        matrixId: foremanMatrix.id,
+        stepOrder: 1,
+        label: "Final Site Approval",
+        nodeId: pjoNode.id,
+        fallbackNodeId: null,
+        escalationNodeId: null,
+        approvalMode: "sequential",
+        slaHours: 24,
+        canDelegate: true,
+        isRequired: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        matrixId: hseMatrix.id,
+        stepOrder: 1,
+        label: "Final Site Approval",
+        nodeId: pjoNode.id,
+        fallbackNodeId: null,
+        escalationNodeId: hseNode.id,
+        approvalMode: "sequential",
+        slaHours: 24,
+        canDelegate: true,
+        isRequired: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        matrixId: adminMatrix.id,
+        stepOrder: 1,
+        label: "Final Site Approval",
+        nodeId: pjoNode.id,
+        fallbackNodeId: foremanNode.id,
+        escalationNodeId: null,
+        approvalMode: "sequential",
+        slaHours: 24,
+        canDelegate: true,
+        isRequired: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  }
+
+  const [nodesWithAssignments, structures] = await Promise.all([
+    db
+      .select({
+        nodeId: orgChartNodes.id,
+        structureId: orgChartNodes.structureId,
+        positionId: orgChartNodes.positionId,
+        employeeId: orgNodeAssignments.employeeId,
+        assignmentType: orgNodeAssignments.assignmentType,
+        effectiveFrom: orgNodeAssignments.effectiveFrom,
+        effectiveTo: orgNodeAssignments.effectiveTo,
+        isActive: orgNodeAssignments.isActive,
+      })
+      .from(orgChartNodes)
+      .leftJoin(orgNodeAssignments, eq(orgChartNodes.id, orgNodeAssignments.nodeId)),
+    db.select().from(orgChartStructures).orderBy(orgChartStructures.isDefault, orgChartStructures.id),
+  ]);
+
+  const defaultStructureId =
+    structures.find((structure) => structure.isDefault)?.id ?? structures[0]?.id ?? null;
+  const positionNodeMap = new Map<number, number>();
+  const directAssignmentNodeMap = new Map<number, number>();
+
+  for (const row of nodesWithAssignments) {
+    if (
+      row.positionId != null &&
+      row.structureId === defaultStructureId &&
+      !positionNodeMap.has(row.positionId)
+    ) {
+      positionNodeMap.set(row.positionId, row.nodeId);
+    }
+
+    if (
+      row.employeeId != null &&
+      row.isActive &&
+      row.assignmentType === "primary" &&
+      row.structureId === defaultStructureId
+    ) {
+      directAssignmentNodeMap.set(row.employeeId, row.nodeId);
+    }
+  }
+
+  const refreshedEmployees = await db.select().from(employees).orderBy(employees.name);
+
+  for (const employee of refreshedEmployees) {
+    const orgNodeId =
+      directAssignmentNodeMap.get(employee.id) ??
+      (employee.positionId != null ? positionNodeMap.get(employee.positionId) ?? null : null);
+
+    if (employee.orgNodeId !== (orgNodeId ?? null)) {
+      await db
+        .update(employees)
+        .set({ orgNodeId: orgNodeId ?? null })
+        .where(eq(employees.id, employee.id));
+    }
+  }
 }
 
 async function ensureHeroEmployeeProfileColumns() {
@@ -333,11 +969,44 @@ const SIDEBAR_MENU_SEEDS = [
   {
     menuArea: "main",
     section: "Approval",
-    title: "Approval",
+    title: "Approval Inbox",
     url: "/dashboard/approval",
     iconName: "mail",
     resource: "approval_inbox",
-    sortOrder: 7,
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Approval",
+    title: "Request Center",
+    url: "/dashboard/request-center",
+    iconName: "folder",
+    resource: "request_center",
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Approval",
+    title: "Workflow Studio",
+    url: "/dashboard/workflow-studio",
+    iconName: "list-details",
+    resource: "workflow_studio",
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Approval",
+    title: "Notifications",
+    url: "/dashboard/notifications",
+    iconName: "mail",
+    resource: "notification_center",
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -452,6 +1121,17 @@ const SIDEBAR_MENU_SEEDS = [
     iconName: "database",
     resource: "master_data",
     sortOrder: 4,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "secondary",
+    section: "Administrator",
+    title: "Form Studio",
+    url: "/dashboard/form-studio",
+    iconName: "file-word",
+    resource: "form_studio",
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -620,8 +1300,63 @@ async function ensureHeroGovernanceTables() {
   `);
 
   await db.execute(sql`
+    create table if not exists hero_master_departments (
+      id serial primary key,
+      code text not null unique,
+      name text not null,
+      description text not null default '',
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_master_sections (
+      id serial primary key,
+      code text not null unique,
+      name text not null,
+      department_id integer references hero_master_departments(id) on delete set null,
+      description text not null default '',
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_master_positions (
+      id serial primary key,
+      code text not null unique,
+      name text not null,
+      department_id integer references hero_master_departments(id) on delete set null,
+      site_location text not null default '',
+      level integer not null default 1,
+      description text not null default '',
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
     alter table hero_master_positions
     add column if not exists site_location text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_employees
+    add column if not exists department_id integer;
+  `);
+
+  await db.execute(sql`
+    alter table hero_employees
+    add column if not exists section_id integer;
+  `);
+
+  await db.execute(sql`
+    alter table hero_employees
+    add column if not exists position_id integer;
   `);
 
   await db.execute(sql`
@@ -630,6 +1365,10 @@ async function ensureHeroGovernanceTables() {
       name text not null,
       scope_type text not null default 'custom',
       scope_value text not null default '',
+      version integer not null default 1,
+      effective_from timestamp not null default now(),
+      effective_to timestamp,
+      is_default boolean not null default false,
       description text not null default '',
       is_active boolean not null default true,
       created_at timestamp not null default now(),
@@ -643,6 +1382,15 @@ async function ensureHeroGovernanceTables() {
       structure_id integer not null references hero_org_chart_structures(id) on delete cascade,
       parent_node_id integer,
       position_id integer references hero_master_positions(id) on delete set null,
+      employee_id integer references hero_employees(id) on delete set null,
+      node_code text not null default '',
+      node_type text not null default 'position',
+      approval_role text not null default '',
+      can_approve boolean not null default false,
+      can_delegate boolean not null default true,
+      is_escalation_target boolean not null default false,
+      sla_hours integer not null default 24,
+      fallback_node_id integer,
       label text not null,
       sort_order integer not null default 0,
       is_active boolean not null default true,
@@ -650,7 +1398,168 @@ async function ensureHeroGovernanceTables() {
       updated_at timestamp not null default now()
     );
   `);
-}
+
+  await db.execute(sql`
+    alter table hero_org_chart_structures
+    add column if not exists version integer not null default 1;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_structures
+    add column if not exists effective_from timestamp not null default now();
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_structures
+    add column if not exists effective_to timestamp;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_structures
+    add column if not exists is_default boolean not null default false;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists employee_id integer references hero_employees(id) on delete set null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists node_code text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists node_type text not null default 'position';
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists approval_role text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists can_approve boolean not null default false;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists can_delegate boolean not null default true;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists is_escalation_target boolean not null default false;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists sla_hours integer not null default 24;
+  `);
+
+  await db.execute(sql`
+    alter table hero_org_chart_nodes
+    add column if not exists fallback_node_id integer;
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_org_node_assignments (
+      id serial primary key,
+      node_id integer not null references hero_org_chart_nodes(id) on delete cascade,
+      employee_id integer references hero_employees(id) on delete set null,
+      assignment_type text not null default 'primary',
+      notes text not null default '',
+      effective_from timestamp not null default now(),
+      effective_to timestamp,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_approval_matrices (
+      id serial primary key,
+      name text not null,
+      structure_id integer references hero_org_chart_structures(id) on delete set null,
+      transaction_type text not null default 'activity',
+      site_id integer references hero_sites(id) on delete set null,
+      department_id integer references hero_master_departments(id) on delete set null,
+      section_id integer references hero_master_sections(id) on delete set null,
+      requester_position_id integer references hero_master_positions(id) on delete set null,
+      activity_type text not null default '',
+      priority text not null default 'any',
+      min_overtime_minutes integer not null default 0,
+      max_overtime_minutes integer,
+      description text not null default '',
+      effective_from timestamp not null default now(),
+      effective_to timestamp,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_approval_matrix_steps (
+      id serial primary key,
+      matrix_id integer not null references hero_approval_matrices(id) on delete cascade,
+      step_order integer not null,
+      label text not null default '',
+      node_id integer references hero_org_chart_nodes(id) on delete set null,
+      fallback_node_id integer references hero_org_chart_nodes(id) on delete set null,
+      escalation_node_id integer references hero_org_chart_nodes(id) on delete set null,
+      approval_mode text not null default 'sequential',
+      sla_hours integer not null default 24,
+      can_delegate boolean not null default true,
+      is_required boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    alter table hero_employees
+    add column if not exists org_node_id integer;
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists approver_employee_id integer references hero_employees(id) on delete set null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists approver_node_id integer references hero_org_chart_nodes(id) on delete set null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists approval_matrix_id integer references hero_approval_matrices(id) on delete set null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists approval_step_id integer references hero_approval_matrix_steps(id) on delete set null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists resolution_source text not null default 'matrix';
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists route_snapshot text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_approvals
+    add column if not exists decision_note text not null default '';
+  `);
+  }
 
 export async function ensureHeroSeedData() {
   if (seedPromise) {
@@ -666,6 +1575,7 @@ export async function ensureHeroSeedData() {
 
     if ((existingSites[0]?.count ?? 0) > 0) {
       await seedSecurityUserProfiles();
+      await ensureApprovalBlueprintSeedData();
       return;
     }
 
@@ -1037,6 +1947,8 @@ export async function ensureHeroSeedData() {
         recordedAt: new Date("2026-04-13T18:00:00+08:00"),
       },
     ]);
+
+    await ensureApprovalBlueprintSeedData();
   })().catch((error) => {
     seedPromise = null;
     throw error;
@@ -1060,6 +1972,10 @@ export async function ensureHeroGovernanceSeedData() {
     const employeeByName = Object.fromEntries(
       currentEmployees.map((employee) => [employee.name, employee]),
     );
+
+    if (site) {
+      await ensureApprovalEngineFoundation(site);
+    }
 
     const [permissionCount, rolePermissionCount, emailLogCount, auditLogCount, themeCount] =
       await Promise.all([

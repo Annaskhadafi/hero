@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
@@ -11,8 +11,13 @@ import {
   activities,
   approvals,
   employees,
+  masterDepartments,
+  masterPositions,
+  masterSections,
   navbarMenuItems,
   navbarThemes,
+  orgChartNodes,
+  orgChartStructures,
   pointEvents,
   roleMenuPermissions,
   securityRolePermissions,
@@ -30,6 +35,25 @@ import {
   type UserImportMapping,
 } from "@/lib/security-user-import";
 import { normalizeBirthDateValue } from "@/lib/birth-date";
+import {
+  type ApprovalRouteResolution,
+  type ResolvedApprovalStep,
+  resolveApprovalRouteForActivity,
+  serializeApprovalRoute,
+} from "@/lib/approval-engine";
+import {
+  cancelFormSubmissionDraft,
+  cloneFormTemplateVersion,
+  createFormTemplateField,
+  createFormTemplateSection,
+  createWorkflowCondition,
+  publishFormTemplateVersion,
+  runApprovalAutomationTick,
+  saveFormTemplateLayout,
+  saveActivityDraftSubmission,
+  syncActivityWorkflowArtifacts,
+} from "@/lib/approval-blueprint";
+import { appendApprovalNoteEntry } from "@/lib/approval-notes";
 
 const createActivitySchema = z.object({
   employeeId: z.coerce.number().int().positive(),
@@ -44,9 +68,83 @@ const createActivitySchema = z.object({
   remarks: z.string().trim().min(3),
 });
 
+const saveActivityDraftSchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  activityCode: z.string().trim().max(4).optional().default(""),
+  activityType: z.string().trim().max(100).optional().default(""),
+  title: z.string().trim().max(200).optional().default(""),
+  unitNumber: z.string().trim().max(100).optional().default(""),
+  startTime: z.string().trim().optional().default(""),
+  endTime: z.string().trim().optional().default(""),
+  priority: z.string().trim().max(50).optional().default("Normal"),
+  overtimeMinutes: z.coerce.number().int().min(0).max(720).optional().default(0),
+  remarks: z.string().trim().max(1000).optional().default(""),
+});
+
 const reviewApprovalSchema = z.object({
   approvalId: z.coerce.number().int().positive(),
-  decision: z.enum(["approved", "needs_correction"]),
+  decision: z.enum(["approved", "rejected", "needs_correction"]),
+  note: z.string().trim().max(1000).optional().default(""),
+});
+
+const approvalCommentSchema = z.object({
+  approvalId: z.coerce.number().int().positive(),
+  comment: z.string().trim().min(3).max(1000),
+});
+
+const cancelDraftSchema = z.object({
+  submissionId: z.coerce.number().int().positive(),
+});
+
+const createFormSectionSchema = z.object({
+  versionId: z.coerce.number().int().positive(),
+  label: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).optional().default(""),
+  isCollapsible: z.preprocess((value) => value === "on" || value === "true", z.boolean()).optional().default(false),
+});
+
+const createFormFieldSchema = z.object({
+  versionId: z.coerce.number().int().positive(),
+  sectionId: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.coerce.number().int().positive().nullable(),
+  ),
+  label: z.string().trim().min(2).max(120),
+  fieldKey: z.string().trim().max(80).optional().default(""),
+  fieldType: z.string().trim().min(2).max(80),
+  placeholder: z.string().trim().max(200).optional().default(""),
+  helpText: z.string().trim().max(500).optional().default(""),
+  defaultValue: z.string().trim().max(500).optional().default(""),
+  isRequired: z.preprocess((value) => value === "on" || value === "true", z.boolean()).optional().default(false),
+  optionLines: z.string().trim().max(3000).optional().default(""),
+  validationRuleType: z.string().trim().max(80).optional().default(""),
+  validationOperator: z.string().trim().max(40).optional().default("="),
+  validationValue: z.string().trim().max(500).optional().default(""),
+  validationMessage: z.string().trim().max(500).optional().default(""),
+  allowedMimeTypes: z.string().trim().max(300).optional().default(""),
+  maxSizeMb: z.coerce.number().min(0).max(100).optional().default(10),
+});
+
+const formTemplateVersionSchema = z.object({
+  versionId: z.coerce.number().int().positive(),
+});
+
+const saveFormLayoutSchema = z.object({
+  versionId: z.coerce.number().int().positive(),
+  layoutJson: z.string().trim().min(2),
+});
+
+const createWorkflowConditionSchema = z.object({
+  workflowVersionId: z.coerce.number().int().positive(),
+  parentConditionId: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.coerce.number().int().positive().nullable(),
+  ),
+  fieldKey: z.string().trim().min(2).max(120),
+  operator: z.string().trim().min(1).max(40),
+  compareValue: z.string().trim().max(500).optional().default(""),
+  logicalJoin: z.enum(["AND", "OR"]).optional().default("AND"),
+  groupLabel: z.string().trim().max(120).optional().default("Custom Condition Group"),
 });
 
 const importUsersSchema = z.object({
@@ -149,6 +247,96 @@ function getPeriodLabel(date: Date) {
   return `${month} ${date.getFullYear()} • Week ${week}`;
 }
 
+function getPendingActivityStatus(level: number) {
+  if (level > 0) {
+    return `Pending L${level}`;
+  }
+
+  return "Pending Approval";
+}
+
+function getRouteStepGroup(steps: ResolvedApprovalStep[], stepOrder: number) {
+  return steps.filter((step) => step.stepOrder === stepOrder);
+}
+
+function getNextRouteStepGroup(steps: ResolvedApprovalStep[], currentStepOrder: number) {
+  const nextStepOrder =
+    steps
+      .map((step) => step.stepOrder)
+      .filter((stepOrder) => stepOrder > currentStepOrder)
+      .sort((left, right) => left - right)[0] ?? null;
+
+  return nextStepOrder == null ? [] : getRouteStepGroup(steps, nextStepOrder);
+}
+
+async function createPendingApprovalsForStepGroup(params: {
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0];
+  activityId: number;
+  stepGroup: ResolvedApprovalStep[];
+  approvalRoute: ApprovalRouteResolution;
+  submittedAt: Date;
+  overtimeMinutes: number;
+}) {
+  if (params.stepGroup.length === 0) {
+    return;
+  }
+
+  const existingApprovals = await params.tx
+    .select({
+      id: approvals.id,
+      level: approvals.level,
+      approvalStepId: approvals.approvalStepId,
+    })
+    .from(approvals)
+    .where(
+      and(
+        eq(approvals.activityId, params.activityId),
+        eq(approvals.level, params.stepGroup[0].stepOrder),
+      ),
+    );
+
+  const existingStepIds = new Set(
+    existingApprovals.map((row) => `${row.level}:${row.approvalStepId ?? "none"}`),
+  );
+
+  const rowsToInsert = params.stepGroup
+    .filter(
+      (step) => !existingStepIds.has(`${step.stepOrder}:${step.approvalMatrixStepId ?? "none"}`),
+    )
+    .map((step) => ({
+      activityId: params.activityId,
+      level: step.stepOrder,
+      approverName: step.approverName,
+      approverEmployeeId: step.approverEmployeeId,
+      approverNodeId: step.approverNodeId,
+      approvalMatrixId: params.approvalRoute.matrixId,
+      approvalStepId: step.approvalMatrixStepId,
+      status: "pending",
+      submittedAt: params.submittedAt,
+      overtimeMinutes: params.overtimeMinutes,
+      resolutionSource: step.resolutionSource,
+      routeSnapshot: serializeApprovalRoute(params.approvalRoute),
+    }));
+
+  if (rowsToInsert.length > 0) {
+    await params.tx.insert(approvals).values(rowsToInsert);
+  }
+}
+
+function parseApprovalRouteSnapshot(routeSnapshot: string) {
+  const trimmedSnapshot = routeSnapshot.trim();
+
+  if (!trimmedSnapshot) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
@@ -205,6 +393,100 @@ function parseOptionalManagerId(value: string | undefined) {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeLookupValue(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function extractActivitySupplementalPayload(formData: FormData) {
+  const checklistCompletion = formData
+    .getAll("checklistCompletion")
+    .map((value) => `${value}`.trim())
+    .filter(Boolean);
+  const additionalWatchers = formData
+    .getAll("additionalWatchers")
+    .map((value) => `${value}`.trim())
+    .filter(Boolean);
+
+  return {
+    workDate: `${formData.get("workDate") ?? ""}`.trim(),
+    shift: `${formData.get("shift") ?? ""}`.trim(),
+    riskCategory: `${formData.get("riskCategory") ?? ""}`.trim(),
+    referenceCode: `${formData.get("referenceCode") ?? ""}`.trim(),
+    manpowerInvolved: `${formData.get("manpowerInvolved") ?? ""}`.trim(),
+    checklistCompletion,
+    department: `${formData.get("department") ?? ""}`.trim(),
+    section: `${formData.get("section") ?? ""}`.trim(),
+    photoAttachmentUrl: `${formData.get("photoAttachmentUrl") ?? ""}`.trim(),
+    documentAttachmentUrl: `${formData.get("documentAttachmentUrl") ?? ""}`.trim(),
+    signatureName: `${formData.get("signatureName") ?? ""}`.trim(),
+    latitude: `${formData.get("latitude") ?? ""}`.trim(),
+    longitude: `${formData.get("longitude") ?? ""}`.trim(),
+    additionalWatchers,
+  };
+}
+
+async function resolveEmployeeGovernanceIds(params: {
+  department: string;
+  section: string;
+  jobTitle: string;
+}) {
+  const [departments, sections, positions] = await Promise.all([
+    db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments),
+    db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+      })
+      .from(masterSections),
+    db
+      .select({
+        id: masterPositions.id,
+        name: masterPositions.name,
+        departmentId: masterPositions.departmentId,
+      })
+      .from(masterPositions),
+  ]);
+
+  const department =
+    departments.find((item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.department)) ??
+    null;
+  const section =
+    sections.find(
+      (item) =>
+        normalizeLookupValue(item.name) === normalizeLookupValue(params.section) &&
+        (department?.id == null || item.departmentId === department.id),
+    ) ?? null;
+  const position =
+    positions.find(
+      (item) =>
+        normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle) &&
+        (department?.id == null || item.departmentId === department.id),
+    ) ?? null;
+
+  return {
+    departmentId: department?.id ?? null,
+    sectionId: section?.id ?? null,
+    positionId: position?.id ?? null,
+  };
+}
+
+async function resolveDefaultOrgNodeId(positionId: number | null) {
+  if (positionId == null) {
+    return null;
+  }
+
+  const [node] = await db
+    .select({ id: orgChartNodes.id })
+    .from(orgChartNodes)
+    .leftJoin(orgChartStructures, eq(orgChartNodes.structureId, orgChartStructures.id))
+    .where(eq(orgChartNodes.positionId, positionId))
+    .orderBy(desc(orgChartStructures.isDefault), asc(orgChartNodes.id))
+    .limit(1);
+
+  return node?.id ?? null;
 }
 
 function parseRoleId(value: string | undefined) {
@@ -312,6 +594,10 @@ function revalidateAdminSurfaces() {
     "/dashboard/activity-hub/my-day",
     "/dashboard/activity-hub/team-board",
     "/dashboard/approval",
+    "/dashboard/request-center",
+    "/dashboard/form-studio",
+    "/dashboard/workflow-studio",
+    "/dashboard/notifications",
     "/dashboard/timesheet",
     "/dashboard/reports",
     "/dashboard/leaderboard",
@@ -327,6 +613,7 @@ function revalidateAdminSurfaces() {
 export async function createActivityAction(formData: FormData) {
   await ensureHeroSeedData();
 
+  const supplementalPayload = extractActivitySupplementalPayload(formData);
   const payload = createActivitySchema.parse({
     employeeId: formData.get("employeeId"),
     activityCode: formData.get("activityCode"),
@@ -362,15 +649,23 @@ export async function createActivityAction(formData: FormData) {
     throw new Error("Karyawan tidak ditemukan.");
   }
 
-  const [foreman] = await db
-    .select({
-      name: employees.name,
-    })
-    .from(employees)
-    .where(and(eq(employees.siteId, employee.siteId), eq(employees.role, "Foreman")))
-    .limit(1);
+  const approvalRoute = await resolveApprovalRouteForActivity({
+    employeeId: employee.id,
+    activityType: payload.activityType,
+    priority: payload.priority,
+    overtimeMinutes: payload.overtimeMinutes,
+    transactionType: "activity",
+    at: endTime,
+  });
+  const firstStep = approvalRoute.steps[0];
+
+  if (!firstStep) {
+    throw new Error("Approval route untuk aktivitas ini tidak ditemukan.");
+  }
+  const firstGroup = getRouteStepGroup(approvalRoute.steps, firstStep.stepOrder);
 
   const points = getPointsForPriority(payload.priority);
+  let createdActivityId: number | null = null;
 
   await db.transaction(async (tx) => {
     const [activity] = await tx
@@ -384,18 +679,19 @@ export async function createActivityAction(formData: FormData) {
         unitNumber: payload.unitNumber,
         startTime,
         endTime,
-        status: "Submitted",
+        status: getPendingActivityStatus(firstStep.stepOrder),
         priority: payload.priority,
         remarks: payload.remarks,
         pointsAwarded: points,
       })
       .returning({ id: activities.id });
+    createdActivityId = activity.id;
 
-    await tx.insert(approvals).values({
+    await createPendingApprovalsForStepGroup({
+      tx,
       activityId: activity.id,
-      level: 1,
-      approverName: foreman?.name ?? "Foreman Site",
-      status: "pending",
+      stepGroup: firstGroup,
+      approvalRoute,
       submittedAt: endTime,
       overtimeMinutes: payload.overtimeMinutes,
     });
@@ -415,6 +711,34 @@ export async function createActivityAction(formData: FormData) {
       .where(eq(employees.id, employee.id));
   });
 
+  if (createdActivityId != null) {
+    await syncActivityWorkflowArtifacts(createdActivityId, supplementalPayload);
+  }
+
+  revalidateAdminSurfaces();
+}
+
+export async function saveActivityDraftAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = saveActivityDraftSchema.parse({
+    employeeId: formData.get("employeeId"),
+    activityCode: formData.get("activityCode"),
+    activityType: formData.get("activityType"),
+    title: formData.get("title"),
+    unitNumber: formData.get("unitNumber"),
+    startTime: formData.get("startTime"),
+    endTime: formData.get("endTime"),
+    priority: formData.get("priority"),
+    overtimeMinutes: formData.get("overtimeMinutes"),
+    remarks: formData.get("remarks"),
+  });
+
+  await saveActivityDraftSubmission({
+    ...payload,
+    supplementalPayload: extractActivitySupplementalPayload(formData),
+  });
+
   revalidateAdminSurfaces();
 }
 
@@ -424,6 +748,7 @@ export async function reviewApprovalAction(formData: FormData) {
   const payload = reviewApprovalSchema.parse({
     approvalId: formData.get("approvalId"),
     decision: formData.get("decision"),
+    note: formData.get("note"),
   });
 
   const [approval] = await db
@@ -431,9 +756,16 @@ export async function reviewApprovalAction(formData: FormData) {
       approvalId: approvals.id,
       level: approvals.level,
       status: approvals.status,
+      approverName: approvals.approverName,
+      approvalMatrixId: approvals.approvalMatrixId,
+      approvalStepId: approvals.approvalStepId,
+      routeSnapshot: approvals.routeSnapshot,
+      decisionNote: approvals.decisionNote,
       overtimeMinutes: approvals.overtimeMinutes,
       activityId: activities.id,
       activityTitle: activities.title,
+      activityType: activities.activityType,
+      priority: activities.priority,
       startTime: activities.startTime,
       endTime: activities.endTime,
       employeeId: activities.employeeId,
@@ -454,17 +786,63 @@ export async function reviewApprovalAction(formData: FormData) {
   }
 
   const now = new Date();
+  const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot);
+  const currentStepIndex =
+    approvalRoute?.steps.findIndex(
+      (step) =>
+        step.stepOrder === approval.level &&
+        (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId),
+    ) ?? -1;
+  const currentStep =
+    approvalRoute != null && currentStepIndex >= 0 ? approvalRoute.steps[currentStepIndex] ?? null : null;
+  const currentStepGroup =
+    approvalRoute != null && currentStep != null
+      ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
+      : [];
+  const nextStepGroup =
+    approvalRoute != null && currentStep != null
+      ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
+      : [];
 
   await db.transaction(async (tx) => {
+    const defaultDecisionMessage =
+      payload.decision === "approved"
+        ? "Approval diteruskan sesuai workflow."
+        : payload.decision === "rejected"
+          ? "Request ditolak pada step ini."
+          : "Request dikembalikan untuk revisi.";
+
     await tx
       .update(approvals)
       .set({
         status: payload.decision,
         reviewedAt: now,
+        decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
+          kind: payload.decision,
+          actor: approval.approverName,
+          message: payload.note || defaultDecisionMessage,
+          at: now.toISOString(),
+        }),
       })
       .where(eq(approvals.id, approval.approvalId));
 
     if (payload.decision === "needs_correction") {
+      if (currentStepGroup.length > 1) {
+        await tx
+          .update(approvals)
+          .set({
+            status: "skipped",
+            reviewedAt: now,
+          })
+          .where(
+            and(
+              eq(approvals.activityId, approval.activityId),
+              eq(approvals.level, approval.level),
+              eq(approvals.status, "pending"),
+            ),
+          );
+      }
+
       await tx
         .update(activities)
         .set({
@@ -475,32 +853,140 @@ export async function reviewApprovalAction(formData: FormData) {
       return;
     }
 
-    if (approval.level === 1) {
-      const [existingLevelTwo] = await tx
-        .select({ id: approvals.id })
-        .from(approvals)
-        .where(and(eq(approvals.activityId, approval.activityId), eq(approvals.level, 2)))
-        .limit(1);
-
-      if (!existingLevelTwo) {
-        await tx.insert(approvals).values({
-          activityId: approval.activityId,
-          level: 2,
-          approverName: "PJO Site",
-          status: "pending",
-          submittedAt: now,
-          overtimeMinutes: approval.overtimeMinutes,
-        });
+    if (payload.decision === "rejected") {
+      if (currentStepGroup.length > 1) {
+        await tx
+          .update(approvals)
+          .set({
+            status: "skipped",
+            reviewedAt: now,
+          })
+          .where(
+            and(
+              eq(approvals.activityId, approval.activityId),
+              eq(approvals.level, approval.level),
+              eq(approvals.status, "pending"),
+            ),
+          );
       }
 
       await tx
         .update(activities)
         .set({
-          status: "Pending L2",
+          status: "Rejected",
         })
         .where(eq(activities.id, approval.activityId));
 
       return;
+    }
+
+    if (
+      currentStep != null &&
+      normalizeLookupValue(currentStep.approvalMode) !== "parallel_any" &&
+      normalizeLookupValue(currentStep.approvalMode) !== "any_one"
+    ) {
+      const sameLevelApprovals = await tx
+        .select({
+          id: approvals.id,
+          status: approvals.status,
+        })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.activityId, approval.activityId),
+            eq(approvals.level, approval.level),
+          ),
+        );
+
+      if (sameLevelApprovals.some((row) => row.status === "pending")) {
+        await tx
+          .update(activities)
+          .set({
+            status: getPendingActivityStatus(approval.level),
+          })
+          .where(eq(activities.id, approval.activityId));
+
+        return;
+      }
+    }
+
+    if (
+      currentStep != null &&
+      (normalizeLookupValue(currentStep.approvalMode) === "parallel_any" ||
+        normalizeLookupValue(currentStep.approvalMode) === "any_one")
+    ) {
+      await tx
+        .update(approvals)
+        .set({
+          status: "skipped",
+          reviewedAt: now,
+          decisionNote: appendApprovalNoteEntry("", {
+            kind: "system",
+            actor: approval.approverName,
+            message: "Step parallel-any diselesaikan oleh approver lain pada level yang sama.",
+            at: now.toISOString(),
+          }),
+        })
+        .where(
+          and(
+            eq(approvals.activityId, approval.activityId),
+            eq(approvals.level, approval.level),
+            eq(approvals.status, "pending"),
+          ),
+        );
+    }
+
+    if (nextStepGroup.length > 0 && approvalRoute != null) {
+      await createPendingApprovalsForStepGroup({
+        tx,
+        activityId: approval.activityId,
+        stepGroup: nextStepGroup,
+        approvalRoute,
+        submittedAt: now,
+        overtimeMinutes: approval.overtimeMinutes,
+      });
+
+      await tx
+        .update(activities)
+        .set({
+          status: getPendingActivityStatus(nextStepGroup[0].stepOrder),
+        })
+        .where(eq(activities.id, approval.activityId));
+
+      return;
+    }
+
+    if (approvalRoute == null || currentStepIndex < 0) {
+      const fallbackRoute = await resolveApprovalRouteForActivity({
+        employeeId: approval.employeeId,
+        activityType: approval.activityType,
+        priority: approval.priority,
+        overtimeMinutes: approval.overtimeMinutes,
+        transactionType: "activity",
+        at: approval.endTime,
+      });
+      const fallbackNextStep = fallbackRoute.steps.find((step) => step.stepOrder > approval.level);
+
+      if (fallbackNextStep) {
+        const fallbackNextGroup = getRouteStepGroup(fallbackRoute.steps, fallbackNextStep.stepOrder);
+        await createPendingApprovalsForStepGroup({
+          tx,
+          activityId: approval.activityId,
+          stepGroup: fallbackNextGroup,
+          approvalRoute: fallbackRoute,
+          submittedAt: now,
+          overtimeMinutes: approval.overtimeMinutes,
+        });
+
+        await tx
+          .update(activities)
+          .set({
+            status: getPendingActivityStatus(fallbackNextStep.stepOrder),
+          })
+          .where(eq(activities.id, approval.activityId));
+
+        return;
+      }
     }
 
     const durationMinutes = Math.max(
@@ -562,6 +1048,178 @@ export async function reviewApprovalAction(formData: FormData) {
       .where(eq(activities.id, approval.activityId));
   });
 
+  await syncActivityWorkflowArtifacts(approval.activityId);
+
+  revalidateAdminSurfaces();
+}
+
+export async function addApprovalCommentAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = approvalCommentSchema.parse({
+    approvalId: formData.get("approvalId"),
+    comment: formData.get("comment"),
+  });
+
+  const [approval] = await db
+    .select({
+      id: approvals.id,
+      approverName: approvals.approverName,
+      decisionNote: approvals.decisionNote,
+    })
+    .from(approvals)
+    .where(eq(approvals.id, payload.approvalId))
+    .limit(1);
+
+  if (!approval) {
+    throw new Error("Approval tidak ditemukan untuk ditambahkan komentar.");
+  }
+
+  await db
+    .update(approvals)
+    .set({
+      decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
+        kind: "comment",
+        actor: approval.approverName,
+        message: payload.comment,
+      }),
+    })
+    .where(eq(approvals.id, approval.id));
+
+  const [activityApproval] = await db
+    .select({ activityId: approvals.activityId })
+    .from(approvals)
+    .where(eq(approvals.id, approval.id))
+    .limit(1);
+
+  if (activityApproval) {
+    await syncActivityWorkflowArtifacts(activityApproval.activityId);
+  }
+
+  revalidateAdminSurfaces();
+}
+
+export async function cancelDraftSubmissionAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = cancelDraftSchema.parse({
+    submissionId: formData.get("submissionId"),
+  });
+
+  await cancelFormSubmissionDraft(payload.submissionId);
+  revalidateAdminSurfaces();
+}
+
+export async function createFormSectionAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = createFormSectionSchema.parse({
+    versionId: formData.get("versionId"),
+    label: formData.get("label"),
+    description: formData.get("description"),
+    isCollapsible: formData.get("isCollapsible"),
+  });
+
+  await createFormTemplateSection(payload);
+  revalidateAdminSurfaces();
+}
+
+export async function createFormFieldAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = createFormFieldSchema.parse({
+    versionId: formData.get("versionId"),
+    sectionId: formData.get("sectionId"),
+    label: formData.get("label"),
+    fieldKey: formData.get("fieldKey"),
+    fieldType: formData.get("fieldType"),
+    placeholder: formData.get("placeholder"),
+    helpText: formData.get("helpText"),
+    defaultValue: formData.get("defaultValue"),
+    isRequired: formData.get("isRequired"),
+    optionLines: formData.get("optionLines"),
+    validationRuleType: formData.get("validationRuleType"),
+    validationOperator: formData.get("validationOperator"),
+    validationValue: formData.get("validationValue"),
+    validationMessage: formData.get("validationMessage"),
+    allowedMimeTypes: formData.get("allowedMimeTypes"),
+    maxSizeMb: formData.get("maxSizeMb"),
+  });
+
+  await createFormTemplateField(payload);
+  revalidateAdminSurfaces();
+}
+
+export async function saveFormTemplateLayoutAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = saveFormLayoutSchema.parse({
+    versionId: formData.get("versionId"),
+    layoutJson: formData.get("layoutJson"),
+  });
+  const layout = z
+    .object({
+      sections: z.array(z.object({ id: z.number().int().positive(), sortOrder: z.number().int().positive() })),
+      fields: z.array(
+        z.object({
+          id: z.number().int().positive(),
+          sectionId: z.number().int().positive().nullable(),
+          sortOrder: z.number().int().positive(),
+        }),
+      ),
+    })
+    .parse(JSON.parse(payload.layoutJson));
+
+  await saveFormTemplateLayout({
+    versionId: payload.versionId,
+    sections: layout.sections,
+    fields: layout.fields,
+  });
+  revalidateAdminSurfaces();
+}
+
+export async function publishFormTemplateVersionAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = formTemplateVersionSchema.parse({
+    versionId: formData.get("versionId"),
+  });
+
+  await publishFormTemplateVersion(payload.versionId);
+  revalidateAdminSurfaces();
+}
+
+export async function cloneFormTemplateVersionAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = formTemplateVersionSchema.parse({
+    versionId: formData.get("versionId"),
+  });
+
+  await cloneFormTemplateVersion(payload.versionId);
+  revalidateAdminSurfaces();
+}
+
+export async function createWorkflowConditionAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = createWorkflowConditionSchema.parse({
+    workflowVersionId: formData.get("workflowVersionId"),
+    parentConditionId: formData.get("parentConditionId"),
+    fieldKey: formData.get("fieldKey"),
+    operator: formData.get("operator"),
+    compareValue: formData.get("compareValue"),
+    logicalJoin: formData.get("logicalJoin"),
+    groupLabel: formData.get("groupLabel"),
+  });
+
+  await createWorkflowCondition(payload);
+  revalidateAdminSurfaces();
+}
+
+export async function runApprovalAutomationAction() {
+  await ensureHeroSeedData();
+  await runApprovalAutomationTick();
   revalidateAdminSurfaces();
 }
 
@@ -626,11 +1284,18 @@ export async function importSecurityUsersAction(
 
       const managerLabel = getMappedValue(record, mapping, "directManager");
       const department = getMappedValue(record, mapping, "department") || "General";
+      const section = getMappedValue(record, mapping, "section") || department;
       const jobTitle = getMappedValue(record, mapping, "jobTitle") || "Staff";
       const normalizedStatus = normalizeEmploymentStatus(
         getMappedValue(record, mapping, "status"),
       );
       const employeeStatusType = getMappedValue(record, mapping, "employeeStatusType") || "Permanen | Staff";
+      const governanceIds = await resolveEmployeeGovernanceIds({
+        department,
+        section,
+        jobTitle,
+      });
+      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
       const existing = employeeByEmail.get(email);
 
       const values = {
@@ -641,8 +1306,12 @@ export async function importSecurityUsersAction(
         joinYear: parseJoinYear(getMappedValue(record, mapping, "joinYear")),
         birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, mapping, "ttl")),
         domicile: getMappedValue(record, mapping, "domicile") || "Belum diisi",
-        section: getMappedValue(record, mapping, "section") || department,
+        sectionId: governanceIds.sectionId,
+        section,
+        departmentId: governanceIds.departmentId,
         department,
+        positionId: governanceIds.positionId,
+        orgNodeId,
         role: jobTitle,
         jobTitle,
         workLocation:
@@ -784,12 +1453,19 @@ export async function manageSecurityUserAction(
       const email = normalizeEmail(payload.email ?? "");
       const password = payload.password ?? "";
       const department = payload.department?.trim() || "General";
+      const section = payload.section?.trim() || department;
       const jobTitle = payload.jobTitle?.trim() || "Staff";
       const directManagerId = parseOptionalManagerId(payload.directManagerId);
       const normalizedStatus = normalizeEmploymentStatus(
         payload.employmentStatus ?? "active",
       );
       const profileImage = normalizeProfileImageValue(payload.profileImage);
+      const governanceIds = await resolveEmployeeGovernanceIds({
+        department,
+        section,
+        jobTitle,
+      });
+      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
 
       if (!fullName || !email || !payload.accessRole) {
         return {
@@ -880,7 +1556,11 @@ export async function manageSecurityUserAction(
         birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ""),
         domicile: payload.domicile?.trim() || "Belum diisi",
         directManagerId,
-        section: payload.section?.trim() || department,
+        departmentId: governanceIds.departmentId,
+        sectionId: governanceIds.sectionId,
+        positionId: governanceIds.positionId,
+        orgNodeId,
+        section,
         department,
         role: jobTitle,
         jobTitle,
@@ -920,12 +1600,21 @@ export async function manageSecurityUserAction(
 
     if (payload.intent === "update-profile") {
       const email = payload.email?.toLowerCase() ?? employee.email;
+      const department = payload.department || "General";
+      const section = payload.section || department;
+      const jobTitle = payload.jobTitle || "Staff";
       const normalizedStatus = normalizeEmploymentStatus(
         payload.employmentStatus ?? "active",
       );
       const joinYear = parseJoinYear(payload.joinYear ?? "");
       const directManagerId = parseOptionalManagerId(payload.directManagerId);
       const profileImage = normalizeProfileImageValue(payload.profileImage);
+      const governanceIds = await resolveEmployeeGovernanceIds({
+        department,
+        section,
+        jobTitle,
+      });
+      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
 
       if (directManagerId === employee.id) {
         return {
@@ -943,10 +1632,14 @@ export async function manageSecurityUserAction(
           birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate || ""),
           domicile: payload.domicile || "Belum diisi",
           directManagerId,
-          section: payload.section || payload.department || "General",
-          department: payload.department || "General",
-          role: payload.jobTitle || "Staff",
-          jobTitle: payload.jobTitle || "Staff",
+          departmentId: governanceIds.departmentId,
+          sectionId: governanceIds.sectionId,
+          positionId: governanceIds.positionId,
+          orgNodeId,
+          section,
+          department,
+          role: jobTitle,
+          jobTitle,
           workLocation: payload.workLocation || "",
           phoneNumber: payload.phoneNumber || "",
           email,

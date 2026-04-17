@@ -99,7 +99,7 @@ export function PointsOverview() {
       </div>
 
       <Tabs defaultValue="sources" className="gap-4">
-        <TabsList className="grid h-auto grid-cols-3 rounded-2xl bg-slate-100 p-1">
+        <TabsList className="surface-tab-shell grid h-auto grid-cols-3 rounded-2xl p-1">
           <TabsTrigger value="sources" className="rounded-xl py-2 text-xs sm:text-sm">
             Sumber poin
           </TabsTrigger>
@@ -113,7 +113,7 @@ export function PointsOverview() {
 
         <TabsContent value="sources" className="space-y-3">
           {pointsSources.map((item) => (
-            <Card key={item.label} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={item.label} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-slate-900">{item.label}</p>
@@ -130,7 +130,7 @@ export function PointsOverview() {
 
         <TabsContent value="badges" className="space-y-3">
           {badgeCollection.map((badge) => (
-            <Card key={badge.name} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={badge.name} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-slate-900">{badge.name}</p>
@@ -148,7 +148,7 @@ export function PointsOverview() {
           {siteLeaderboard.map((entry) => (
             <Card
               key={entry.rank}
-              className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+              className="surface-module-card rounded-[1.5rem] p-4"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -179,7 +179,7 @@ export function PointsOverview() {
         </div>
 
         {rewardTracker.map((reward) => (
-          <Card key={reward.title} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+          <Card key={reward.title} className="surface-module-card rounded-[1.5rem] p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-base font-semibold text-slate-900">{reward.title}</p>
@@ -222,7 +222,7 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+    <Card className="surface-module-card rounded-[1.4rem] p-4">
       <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
         {icon}
         {label}

@@ -96,7 +96,7 @@ export function DailyReportOverview() {
         </div>
 
         {dailyReportSections.map((section) => (
-          <Card key={section.title} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+          <Card key={section.title} className="surface-module-card rounded-[1.5rem] p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-base font-semibold text-slate-900">{section.title}</p>
@@ -127,7 +127,7 @@ export function DailyReportOverview() {
         {reportActivities.map((item) => (
           <Card
             key={`${item.unit}-${item.service}`}
-            className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+            className="surface-module-card rounded-[1.5rem] p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -155,7 +155,7 @@ export function DailyReportOverview() {
         </div>
 
         {reportExports.map((item) => (
-          <Card key={item.id} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+          <Card key={item.id} className="surface-module-card rounded-[1.5rem] p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
@@ -204,7 +204,7 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+    <Card className="surface-module-card rounded-[1.4rem] p-4">
       <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
         {icon}
         {label}

@@ -22,6 +22,20 @@ const INITIAL_ACTION_STATE: MasterDataActionState = {
   message: "",
 };
 
+function toDateTimeLocalValue(value?: Date | string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const offset = parsed.getTimezoneOffset();
+  return new Date(parsed.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
 type Props = {
   orgStructures: OrgStructure[];
   positions: MasterPosition[];
@@ -41,12 +55,24 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
   const [canvasNodes, setCanvasNodes] = useState<OrgStructure["nodes"]>(orgStructures[0]?.nodes ?? []);
   const [newNodeLabel, setNewNodeLabel] = useState("");
+  const [newNodeCode, setNewNodeCode] = useState("");
   const [newNodePositionId, setNewNodePositionId] = useState("");
   const [newNodeEmployeeId, setNewNodeEmployeeId] = useState("");
+  const [newNodeDelegateEmployeeId, setNewNodeDelegateEmployeeId] = useState("");
+  const [newNodeType, setNewNodeType] = useState("position");
+  const [newNodeApprovalRole, setNewNodeApprovalRole] = useState("");
+  const [newNodeCanApprove, setNewNodeCanApprove] = useState(false);
+  const [newNodeCanDelegate, setNewNodeCanDelegate] = useState(true);
+  const [newNodeIsEscalationTarget, setNewNodeIsEscalationTarget] = useState(false);
+  const [newNodeSlaHours, setNewNodeSlaHours] = useState(24);
   const [formData, setFormData] = useState({
     name: "",
     jobType: "custom",
     scopeValue: "",
+    version: 1,
+    effectiveFrom: "",
+    effectiveTo: "",
+    isDefault: false,
     description: "",
     isActive: true,
   });
@@ -76,6 +102,41 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         ? departments.filter((department) => department.isActive).map((department) => department.name)
         : [];
 
+  const getNodeAssignmentEmployeeId = (
+    node: OrgStructure["nodes"][number],
+    assignmentType: string,
+  ) => node.assignments.find((assignment) => assignment.assignmentType === assignmentType)?.employeeId?.toString() ?? "";
+
+  const updateNodeAssignments = (
+    node: OrgStructure["nodes"][number],
+    assignmentType: string,
+    employeeIdValue: string,
+  ) => {
+    const employee = employees?.find((item) => item.id.toString() === employeeIdValue);
+    const remainingAssignments = node.assignments.filter(
+      (assignment) => assignment.assignmentType !== assignmentType,
+    );
+
+    if (!employeeIdValue || employeeIdValue === "none" || !employee) {
+      return remainingAssignments;
+    }
+
+    return [
+      ...remainingAssignments,
+      {
+        id: Date.now(),
+        nodeId: node.id,
+        employeeId: employee.id,
+        employeeName: employee.name,
+        assignmentType,
+        notes: assignmentType === "delegate" ? "Delegate approver" : "Primary assignee",
+        effectiveFrom: new Date(),
+        effectiveTo: null,
+        isActive: true,
+      },
+    ];
+  };
+
   const handleOpenDialog = (org?: OrgStructure) => {
     if (org) {
       setEditingOrg(org);
@@ -83,12 +144,26 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         name: org.name,
         jobType: org.scopeType,
         scopeValue: org.scopeValue,
+        version: org.version,
+        effectiveFrom: toDateTimeLocalValue(org.effectiveFrom),
+        effectiveTo: toDateTimeLocalValue(org.effectiveTo),
+        isDefault: org.isDefault,
         description: org.description,
         isActive: org.isActive,
       });
     } else {
       setEditingOrg(null);
-      setFormData({ name: "", jobType: "custom", scopeValue: "", description: "", isActive: true });
+      setFormData({
+        name: "",
+        jobType: "custom",
+        scopeValue: "",
+        version: 1,
+        effectiveFrom: "",
+        effectiveTo: "",
+        isDefault: false,
+        description: "",
+        isActive: true,
+      });
     }
     setIsDialogOpen(true);
   };
@@ -103,6 +178,10 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
     form.append("name", formData.name);
     form.append("jobType", formData.jobType);
     form.append("scopeValue", formData.scopeValue);
+    form.append("version", formData.version.toString());
+    form.append("effectiveFrom", formData.effectiveFrom);
+    form.append("effectiveTo", formData.effectiveTo);
+    form.append("isDefault", formData.isDefault.toString());
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
 
@@ -112,7 +191,17 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingOrg(null);
-      setFormData({ name: "", jobType: "custom", scopeValue: "", description: "", isActive: true });
+      setFormData({
+        name: "",
+        jobType: "custom",
+        scopeValue: "",
+        version: 1,
+        effectiveFrom: "",
+        effectiveTo: "",
+        isDefault: false,
+        description: "",
+        isActive: true,
+      });
       router.refresh();
     } else {
       toast.error(result.message);
@@ -169,6 +258,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
 
     const position = positions.find((item) => item.id.toString() === newNodePositionId);
     const employee = employees?.find((item) => item.id.toString() === newNodeEmployeeId);
+    const delegateEmployee = employees?.find((item) => item.id.toString() === newNodeDelegateEmployeeId);
     const nextId = Math.max(0, ...canvasNodes.map((node) => node.id)) + 1;
 
     setCanvasNodes((current) => [
@@ -182,16 +272,65 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         positionCode: position?.code ?? null,
         employeeId: employee?.id ?? null,
         employeeName: employee?.name ?? null,
+        nodeCode: newNodeCode.trim(),
+        nodeType: newNodeType,
+        approvalRole: newNodeApprovalRole.trim(),
+        canApprove: newNodeCanApprove,
+        canDelegate: newNodeCanDelegate,
+        isEscalationTarget: newNodeIsEscalationTarget,
+        slaHours: newNodeSlaHours,
+        fallbackNodeId: null,
+        fallbackNodeLabel: null,
         label: newNodeLabel.trim(),
         sortOrder: current.length,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
+        assignments: [
+          ...(employee
+            ? [
+                {
+                  id: nextId * 10 + 1,
+                  nodeId: nextId,
+                  employeeId: employee.id,
+                  employeeName: employee.name,
+                  assignmentType: "primary",
+                  notes: "Primary assignee",
+                  effectiveFrom: new Date(),
+                  effectiveTo: null,
+                  isActive: true,
+                },
+              ]
+            : []),
+          ...(delegateEmployee
+            ? [
+                {
+                  id: nextId * 10 + 2,
+                  nodeId: nextId,
+                  employeeId: delegateEmployee.id,
+                  employeeName: delegateEmployee.name,
+                  assignmentType: "delegate",
+                  notes: "Delegate approver",
+                  effectiveFrom: new Date(),
+                  effectiveTo: null,
+                  isActive: true,
+                },
+              ]
+            : []),
+        ],
       },
     ]);
     setNewNodeLabel("");
+    setNewNodeCode("");
     setNewNodePositionId("");
     setNewNodeEmployeeId("");
+    setNewNodeDelegateEmployeeId("");
+    setNewNodeType("position");
+    setNewNodeApprovalRole("");
+    setNewNodeCanApprove(false);
+    setNewNodeCanDelegate(true);
+    setNewNodeIsEscalationTarget(false);
+    setNewNodeSlaHours(24);
   };
 
   const updateNode = (nodeId: number, changes: Partial<OrgStructure["nodes"][number]>) => {
@@ -221,8 +360,41 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
     form.append("name", selectedStructure.name);
     form.append("jobType", selectedStructure.scopeType);
     form.append("scopeValue", selectedStructure.scopeValue);
+    form.append("version", selectedStructure.version.toString());
+    form.append("effectiveFrom", toDateTimeLocalValue(selectedStructure.effectiveFrom));
+    form.append("effectiveTo", toDateTimeLocalValue(selectedStructure.effectiveTo));
+    form.append("isDefault", selectedStructure.isDefault.toString());
     form.append("description", selectedStructure.description);
-    form.append("nodesJson", JSON.stringify(canvasNodes.map((node, index) => ({ ...node, sortOrder: index }))));
+    form.append(
+      "nodesJson",
+      JSON.stringify(
+        canvasNodes.map((node, index) => ({
+          id: node.id,
+          parentNodeId: node.parentNodeId,
+          positionId: node.positionId,
+          employeeId: node.employeeId,
+          nodeCode: node.nodeCode,
+          nodeType: node.nodeType,
+          approvalRole: node.approvalRole,
+          canApprove: node.canApprove,
+          canDelegate: node.canDelegate,
+          isEscalationTarget: node.isEscalationTarget,
+          slaHours: node.slaHours,
+          fallbackNodeId: node.fallbackNodeId,
+          label: node.label,
+          sortOrder: index,
+          isActive: node.isActive,
+          assignments: node.assignments.map((assignment) => ({
+            employeeId: assignment.employeeId,
+            assignmentType: assignment.assignmentType,
+            notes: assignment.notes,
+            effectiveFrom: toDateTimeLocalValue(assignment.effectiveFrom),
+            effectiveTo: toDateTimeLocalValue(assignment.effectiveTo),
+            isActive: assignment.isActive,
+          })),
+        })),
+      ),
+    );
     form.append("isActive", selectedStructure.isActive.toString());
 
     const result = await manageOrgStructureAction(INITIAL_ACTION_STATE, form);
@@ -284,6 +456,34 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   placeholder="Nama / Label"
                   className="h-8 text-[13px]"
                 />
+                <Input
+                  value={node.nodeCode}
+                  onChange={(e) => updateNode(node.id, { nodeCode: e.target.value })}
+                  placeholder="Kode node"
+                  className="h-8 text-[13px]"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Select
+                    value={node.nodeType || "position"}
+                    onValueChange={(value) => updateNode(node.id, { nodeType: value })}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Tipe node" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="position">Position</SelectItem>
+                      <SelectItem value="approver">Approver</SelectItem>
+                      <SelectItem value="support">Support</SelectItem>
+                      <SelectItem value="worker">Worker</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={node.approvalRole}
+                    onChange={(e) => updateNode(node.id, { approvalRole: e.target.value })}
+                    placeholder="Approval role"
+                    className="h-8 text-[13px]"
+                  />
+                </div>
                 <Select
                   value={node.positionId?.toString() ?? "none"}
                   onValueChange={(value) => {
@@ -308,17 +508,18 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   </SelectContent>
                 </Select>
                 <Select
-                  value={(node as any).employeeId?.toString() ?? "none"}
+                  value={getNodeAssignmentEmployeeId(node, "primary") || "none"}
                   onValueChange={(value) => {
                     const employee = employees?.find((item) => item.id.toString() === value);
                     updateNode(node.id, {
                       employeeId: value === "none" ? null : employee?.id ?? null,
                       employeeName: value === "none" ? null : employee?.name ?? null,
+                      assignments: updateNodeAssignments(node, "primary", value),
                     } as any);
                   }}
                 >
                   <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Pilih pengguna" />
+                    <SelectValue placeholder="Primary assignee" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Tanpa pengguna</SelectItem>
@@ -329,6 +530,87 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     ))}
                   </SelectContent>
                 </Select>
+                <Select
+                  value={getNodeAssignmentEmployeeId(node, "delegate") || "none"}
+                  onValueChange={(value) =>
+                    updateNode(node.id, {
+                      assignments: updateNodeAssignments(node, "delegate", value),
+                    } as any)
+                  }
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Delegate approver" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa delegate</SelectItem>
+                    {employees?.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.id.toString()}>
+                        {emp.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="grid grid-cols-2 gap-2">
+                  <Select
+                    value={node.fallbackNodeId?.toString() ?? "none"}
+                    onValueChange={(value) => {
+                      const fallbackNode = canvasNodes.find((item) => item.id.toString() === value);
+                      updateNode(node.id, {
+                        fallbackNodeId: value === "none" ? null : fallbackNode?.id ?? null,
+                        fallbackNodeLabel: value === "none" ? null : fallbackNode?.label ?? null,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Fallback node" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Tanpa fallback</SelectItem>
+                      {canvasNodes
+                        .filter((candidate) => candidate.id !== node.id)
+                        .map((candidate) => (
+                          <SelectItem key={candidate.id} value={candidate.id.toString()}>
+                            {candidate.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={node.slaHours}
+                    onChange={(e) =>
+                      updateNode(node.id, { slaHours: Number(e.target.value || "24") })
+                    }
+                    placeholder="SLA (jam)"
+                    className="h-8 text-[13px]"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2 rounded-lg bg-surface-container-low p-2">
+                  <label className="flex items-center gap-2 text-xs text-[#475569]">
+                    <Switch
+                      checked={node.canApprove}
+                      onCheckedChange={(checked) => updateNode(node.id, { canApprove: checked })}
+                    />
+                    Approver
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-[#475569]">
+                    <Switch
+                      checked={node.canDelegate}
+                      onCheckedChange={(checked) => updateNode(node.id, { canDelegate: checked })}
+                    />
+                    Delegate
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-[#475569]">
+                    <Switch
+                      checked={node.isEscalationTarget}
+                      onCheckedChange={(checked) =>
+                        updateNode(node.id, { isEscalationTarget: checked })
+                      }
+                    />
+                    Escalation
+                  </label>
+                </div>
 
                 <div className="flex items-center justify-between mt-1">
                   {depth > 0 ? (
@@ -348,18 +630,18 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[13px] font-semibold text-[#1e293b] leading-tight">
-                    {(node as any).employeeName || node.label}
+                    {node.employeeName || node.label}
                   </span>
                   {node.positionName && (
                     <span className="truncate text-[11px] text-[#64748b] mt-0.5">
                       {node.positionName}
                     </span>
                   )}
-                  {!(node as any).employeeName && node.label !== node.positionName && (
-                    <span className="truncate text-[11px] font-medium text-[#3b82f6] mt-0.5">
-                      {node.label}
-                    </span>
-                  )}
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {node.canApprove ? <Badge variant="outline" className="bg-[#eff6ff] text-[#1d4ed8]">Approver</Badge> : null}
+                    {node.approvalRole ? <Badge variant="outline">{node.approvalRole}</Badge> : null}
+                    {node.isEscalationTarget ? <Badge variant="outline" className="bg-[#fef3c7] text-[#92400e]">Escalation</Badge> : null}
+                  </div>
                 </div>
 
                 <div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 group-hover/card:opacity-100 bg-white/90 p-1 shadow-sm border rounded-md transition-opacity duration-200 backdrop-blur-sm">
@@ -425,7 +707,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
               <Input placeholder="Cari struktur organisasi..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9" />
             </div>
 
-            <div className="space-y-3 rounded-2xl border bg-[#f8fafc] p-3">
+            <div className="space-y-3 rounded-[1.2rem] bg-surface-container-low p-3">
               {filteredOrgStructures.length > 0 ? filteredOrgStructures.map((org) => (
                 <div
                   key={org.id}
@@ -433,12 +715,14 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") selectStructure(org.id.toString()); }}
                   onClick={() => selectStructure(org.id.toString())}
-                  className={`w-full rounded-2xl border p-4 text-left cursor-pointer transition ${selectedStructureId === org.id.toString() ? "border-[#3b82f6] bg-[#eff6ff]" : "border-[#e2e8f0] bg-white hover:border-[#bfdbfe]"}`}
+                  className={`w-full rounded-[1.05rem] px-4 py-4 text-left cursor-pointer transition ${selectedStructureId === org.id.toString() ? "bg-[#eff6ff]" : "bg-surface-container-lowest hover:bg-surface-container-highest"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-[#1e293b]">{org.name}</p>
-                      <p className="mt-1 text-xs text-[#64748b]">{org.scopeType} {org.scopeValue ? `• ${org.scopeValue}` : ""}</p>
+                      <p className="mt-1 text-xs text-[#64748b]">
+                        v{org.version} • {org.scopeType} {org.scopeValue ? `• ${org.scopeValue}` : ""}
+                      </p>
                       <p className="mt-2 text-xs text-[#94a3b8]">{org.nodes.length} node</p>
                     </div>
                     <div className="flex items-center gap-1">
@@ -452,14 +736,14 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   </div>
                 </div>
               )) : (
-                <div className="rounded-2xl border border-dashed border-[#cbd5e1] bg-white p-6 text-center text-sm text-[#64748b]">
+                <div className="rounded-[1.05rem] bg-surface-container-lowest p-6 text-center text-sm text-muted-foreground">
                   Belum ada struktur organisasi.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-2xl border bg-white p-4">
+          <div className="rounded-[1.3rem] bg-surface-container-lowest p-4 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             {selectedStructure ? (
               <div className="space-y-4">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -468,14 +752,34 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     <p className="text-sm text-[#64748b]">
                       Scope: <span className="capitalize">{selectedStructure.scopeType}</span>{selectedStructure.scopeValue ? ` • ${selectedStructure.scopeValue}` : ""}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#64748b]">
+                      <Badge variant="outline">v{selectedStructure.version}</Badge>
+                      {selectedStructure.isDefault ? <Badge variant="outline" className="bg-[#ecfeff] text-[#0f766e]">Default</Badge> : null}
+                      <Badge variant="outline">
+                        Berlaku {toDateTimeLocalValue(selectedStructure.effectiveFrom) || "-"}
+                      </Badge>
+                    </div>
                   </div>
                   <Button type="button" onClick={saveCanvas} disabled={isSubmitting} className="bg-[#1d4ed8] hover:bg-[#1e40af]">
                     {isSubmitting ? "Menyimpan..." : "Simpan Canvas"}
                   </Button>
                 </div>
 
-                <div className="grid gap-3 rounded-2xl border border-dashed border-[#cbd5e1] bg-[#f8fafc] p-4 lg:grid-cols-[1.2fr_180px_180px_auto]">
+                <div className="grid gap-3 rounded-[1.2rem] bg-surface-container-low p-4 lg:grid-cols-3">
                   <Input value={newNodeLabel} onChange={(e) => setNewNodeLabel(e.target.value)} placeholder="Label custom node" />
+                  <Input value={newNodeCode} onChange={(e) => setNewNodeCode(e.target.value)} placeholder="Kode node" />
+                  <Input value={newNodeApprovalRole} onChange={(e) => setNewNodeApprovalRole(e.target.value)} placeholder="Approval role" />
+                  <Select value={newNodeType} onValueChange={setNewNodeType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tipe node" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="position">Position</SelectItem>
+                      <SelectItem value="approver">Approver</SelectItem>
+                      <SelectItem value="support">Support</SelectItem>
+                      <SelectItem value="worker">Worker</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={newNodePositionId || "none"} onValueChange={(value) => setNewNodePositionId(value === "none" ? "" : value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Pilih jabatan" />
@@ -502,7 +806,43 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button type="button" onClick={addNodeToCanvas}>Tambah Node</Button>
+                  <Select value={newNodeDelegateEmployeeId || "none"} onValueChange={(value) => setNewNodeDelegateEmployeeId(value === "none" ? "" : value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih delegate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Tanpa delegate</SelectItem>
+                      {employees?.map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id.toString()}>
+                          {emp.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={newNodeSlaHours}
+                    onChange={(e) => setNewNodeSlaHours(Number(e.target.value || "24"))}
+                    placeholder="SLA (jam)"
+                  />
+                  <div className="col-span-full grid gap-3 md:grid-cols-3">
+                    <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
+                      <Switch checked={newNodeCanApprove} onCheckedChange={setNewNodeCanApprove} />
+                      <span className="text-sm text-[#475569]">Bisa approve</span>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
+                      <Switch checked={newNodeCanDelegate} onCheckedChange={setNewNodeCanDelegate} />
+                      <span className="text-sm text-[#475569]">Bisa delegate</span>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
+                      <Switch checked={newNodeIsEscalationTarget} onCheckedChange={setNewNodeIsEscalationTarget} />
+                      <span className="text-sm text-[#475569]">Escalation target</span>
+                    </div>
+                  </div>
+                  <div className="col-span-full">
+                    <Button type="button" onClick={addNodeToCanvas}>Tambah Node</Button>
+                  </div>
                 </div>
 
                 <div
@@ -517,21 +857,21 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                 >
                   <div className="mb-4 flex items-center justify-between sticky left-0 top-0 z-30">
                     <p className="text-[13px] font-semibold tracking-wide text-[#334155] uppercase">Canvas Tree</p>
-                    <Badge variant="outline" className="bg-white">{canvasNodes.length} node</Badge>
+                    <Badge variant="outline" className="bg-surface-container-lowest">{canvasNodes.length} node</Badge>
                   </div>
                   {canvasNodes.length > 0 ? (
                     <div className="flex flex-row items-start gap-12 min-w-max pb-16 pt-4 px-4 overflow-visible">
                       {renderTree()}
                     </div>
                   ) : (
-                    <div className="flex h-[320px] items-center justify-center rounded-3xl border border-dashed border-[#dbe4f0] bg-white/70 text-center text-sm text-[#64748b]">
+                    <div className="flex h-[320px] items-center justify-center rounded-3xl bg-surface-container-lowest/70 text-center text-sm text-muted-foreground">
                       Tambah node pertama lalu drag ke node lain untuk membentuk tree struktur organisasi.
                     </div>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-[520px] items-center justify-center rounded-[28px] border border-dashed border-[#cbd5e1] bg-[#f8fafc] p-10 text-center text-sm text-[#64748b]">
+              <div className="flex min-h-[520px] items-center justify-center rounded-[28px] bg-surface-container-low p-10 text-center text-sm text-muted-foreground">
                 Pilih atau buat struktur baru untuk mulai menyusun tree organisasi.
               </div>
             )}
@@ -583,6 +923,46 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                 ) : (
                   <Input id="org-scope-value" value={formData.scopeValue} onChange={(e) => setFormData({ ...formData, scopeValue: e.target.value })} placeholder="Mis. Custom Holding Structure" />
                 )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="org-version">Versi Struktur</Label>
+                <Input
+                  id="org-version"
+                  type="number"
+                  min={1}
+                  value={formData.version}
+                  onChange={(e) => setFormData({ ...formData, version: Number(e.target.value || "1") })}
+                />
+              </div>
+              <div className="flex items-center space-x-2 pt-8">
+                <Switch
+                  id="org-isDefault"
+                  checked={formData.isDefault}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isDefault: checked })}
+                />
+                <Label htmlFor="org-isDefault">Jadikan struktur default</Label>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="org-effective-from">Effective From</Label>
+                <Input
+                  id="org-effective-from"
+                  type="datetime-local"
+                  value={formData.effectiveFrom}
+                  onChange={(e) => setFormData({ ...formData, effectiveFrom: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="org-effective-to">Effective To</Label>
+                <Input
+                  id="org-effective-to"
+                  type="datetime-local"
+                  value={formData.effectiveTo}
+                  onChange={(e) => setFormData({ ...formData, effectiveTo: e.target.value })}
+                />
               </div>
             </div>
             <div className="space-y-2">

@@ -29,6 +29,20 @@
       "when": 1776404156388,
       "tag": "0003_sad_ultron",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776434086554,
+      "tag": "0004_fat_lila_cheney",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776435736150,
+      "tag": "0005_fine_firedrake",
+      "breakpoints": true
     }
   ]
 }

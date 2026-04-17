@@ -75,7 +75,7 @@ export function ApprovalQueue() {
       </Card>
 
       <Tabs defaultValue="review" className="gap-4">
-        <TabsList className="grid h-auto grid-cols-3 rounded-2xl bg-slate-100 p-1">
+        <TabsList className="surface-tab-shell grid h-auto grid-cols-3 rounded-2xl p-1">
           <TabsTrigger value="review" className="rounded-xl py-2 text-xs sm:text-sm">
             Need Review
           </TabsTrigger>
@@ -115,7 +115,7 @@ function ApprovalCard({
   item: (typeof approvalQueue)[number];
 }) {
   return (
-    <Card className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+    <Card className="surface-module-card rounded-[1.5rem] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
@@ -133,22 +133,22 @@ function ApprovalCard({
         </Badge>
       </div>
 
-      <div className="mt-4 rounded-2xl bg-slate-50 p-3">
+      <div className="surface-muted-card mt-4 rounded-2xl p-3">
         <p className="text-sm font-medium text-slate-900">{item.type}</p>
         <p className="mt-1 text-sm text-slate-600">{item.unit}</p>
         <p className="mt-2 text-sm leading-6 text-slate-600">{item.notes}</p>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-        <div className="rounded-2xl bg-slate-50 p-3">
+        <div className="surface-muted-card rounded-2xl p-3">
           <p className="text-slate-500">Submit</p>
           <p className="mt-1 font-semibold text-slate-900">{item.submittedAt}</p>
         </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
+        <div className="surface-muted-card rounded-2xl p-3">
           <p className="text-slate-500">Kerja</p>
           <p className="mt-1 font-semibold text-slate-900">{item.workedHours}</p>
         </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
+        <div className="surface-muted-card rounded-2xl p-3">
           <p className="text-slate-500">Lembur</p>
           <p className="mt-1 font-semibold text-slate-900">{item.overtime}</p>
         </div>
@@ -193,12 +193,12 @@ function ApprovalCard({
                 />
               </div>
 
-              <Card className="rounded-[1.5rem] border-slate-200 p-4">
+              <Card className="surface-module-card rounded-[1.5rem] p-4">
                 <p className="text-sm font-semibold text-slate-900">Catatan pekerjaan</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{item.notes}</p>
               </Card>
 
-              <Card className="rounded-[1.5rem] border-slate-200 p-4">
+              <Card className="surface-module-card rounded-[1.5rem] p-4">
                 <p className="text-sm font-semibold text-slate-900">
                   Checklist approval
                 </p>
@@ -213,7 +213,7 @@ function ApprovalCard({
               </Card>
             </div>
 
-            <SheetFooter className="border-t bg-background/95">
+            <SheetFooter className="mt-2 rounded-t-2xl bg-surface-container-low p-4">
               <Button variant="outline" className="rounded-full">
                 Request revision
               </Button>
@@ -247,7 +247,7 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <Card className="rounded-[1.25rem] border-slate-200 bg-slate-50 p-3 shadow-none">
+    <Card className="surface-muted-card rounded-[1.25rem] p-3 shadow-none">
       <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
         {icon}
         {label}

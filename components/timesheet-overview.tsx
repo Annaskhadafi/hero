@@ -66,7 +66,7 @@ export function TimesheetOverview() {
       </Card>
 
       <div className="grid grid-cols-2 gap-3">
-        <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+        <Card className="surface-module-card rounded-[1.4rem] p-4">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
             <WalletCards className="h-4 w-4 text-emerald-600" />
             Estimasi lembur
@@ -76,7 +76,7 @@ export function TimesheetOverview() {
           </p>
           <p className="mt-1 text-xs text-slate-500">Support untuk payroll bulanan</p>
         </Card>
-        <Card className="rounded-[1.4rem] border-slate-200 bg-white p-4">
+        <Card className="surface-module-card rounded-[1.4rem] p-4">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
             <ReceiptText className="h-4 w-4 text-sky-600" />
             Ready employees
@@ -95,7 +95,7 @@ export function TimesheetOverview() {
       </Button>
 
       <Tabs defaultValue="crew" className="gap-4">
-        <TabsList className="grid h-auto grid-cols-3 rounded-2xl bg-slate-100 p-1">
+        <TabsList className="surface-tab-shell grid h-auto grid-cols-3 rounded-2xl p-1">
           <TabsTrigger value="crew" className="rounded-xl py-2 text-xs sm:text-sm">
             Crew recap
           </TabsTrigger>
@@ -111,7 +111,7 @@ export function TimesheetOverview() {
           {timesheetCrew.map((member) => (
             <Card
               key={member.name}
-              className="rounded-[1.5rem] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+              className="surface-module-card rounded-[1.5rem] p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -160,7 +160,7 @@ export function TimesheetOverview() {
 
         <TabsContent value="rules" className="space-y-3">
           {overtimeRules.map((rule) => (
-            <Card key={rule.label} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={rule.label} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-base font-semibold text-slate-900">{rule.label}</p>
@@ -176,7 +176,7 @@ export function TimesheetOverview() {
 
         <TabsContent value="exports" className="space-y-3">
           {exportQueue.map((item) => (
-            <Card key={item.id} className="rounded-[1.5rem] border-slate-200 bg-white p-4">
+            <Card key={item.id} className="surface-module-card rounded-[1.5rem] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
@@ -222,7 +222,7 @@ function MetricTile({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-3">
+    <div className="surface-muted-card rounded-2xl p-3">
       <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
         {icon}
         {label}
