@@ -51,11 +51,21 @@ function getMigrationEntries() {
       sql.matchAll(/CREATE TABLE\s+"([^"]+)"/g),
       (match) => match[1],
     );
+    const addedColumns = Array.from(
+      sql.matchAll(
+        /ALTER TABLE\s+"([^"]+)"\s+ADD COLUMN\s+"([^"]+)"/g,
+      ),
+      (match) => ({
+        tableName: match[1],
+        columnName: match[2],
+      }),
+    );
 
     return {
       ...entry,
       hash,
       tables,
+      addedColumns,
       filePath,
     };
   });
@@ -72,6 +82,21 @@ function isRecoverableMigrationFailure(output) {
 function getExistingRelationName(output) {
   const relationMatch = output.match(/relation "([^"]+)" already exists/);
   return relationMatch?.[1] ?? "";
+}
+
+function getExistingColumnConflict(output) {
+  const columnMatch = output.match(
+    /column "([^"]+)" of relation "([^"]+)" already exists/,
+  );
+
+  if (!columnMatch) {
+    return null;
+  }
+
+  return {
+    columnName: columnMatch[1],
+    tableName: columnMatch[2],
+  };
 }
 
 async function ensureMigrationsTable(client) {
@@ -102,6 +127,22 @@ async function tableExists(client, tableName) {
   return Boolean(result.rows[0]?.table_name);
 }
 
+async function columnExists(client, tableName, columnName) {
+  const result = await client.query(
+    `
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = $1
+        and column_name = $2
+      limit 1
+    `,
+    [tableName, columnName],
+  );
+
+  return result.rowCount > 0;
+}
+
 async function registerMigration(client, entry) {
   await client.query(
     `insert into "${migrationsSchemaName}"."${migrationsTableName}" ("hash", "created_at") values ($1, $2)`,
@@ -111,8 +152,9 @@ async function registerMigration(client, entry) {
 
 async function bootstrapConflictingMigration(output, entries) {
   const conflictingRelation = getExistingRelationName(output);
+  const conflictingColumn = getExistingColumnConflict(output);
 
-  if (!conflictingRelation) {
+  if (!conflictingRelation && !conflictingColumn) {
     return null;
   }
 
@@ -126,17 +168,36 @@ async function bootstrapConflictingMigration(output, entries) {
     await ensureMigrationsTable(client);
     const appliedMigrationTimes = await getAppliedMigrationTimes(client);
 
-    const targetEntry = entries.find(
-      (entry) =>
-        !appliedMigrationTimes.has(entry.when) &&
-        entry.tables.includes(conflictingRelation),
-    );
+    const targetEntry = conflictingRelation
+      ? entries.find(
+          (entry) =>
+            !appliedMigrationTimes.has(entry.when) &&
+            entry.tables.includes(conflictingRelation),
+        )
+      : entries.find((entry) => {
+          if (appliedMigrationTimes.has(entry.when)) {
+            return false;
+          }
+
+          return (
+            entry.tables.length === 0 &&
+            entry.addedColumns.length === 1 &&
+            entry.addedColumns[0].tableName === conflictingColumn?.tableName &&
+            entry.addedColumns[0].columnName === conflictingColumn?.columnName
+          );
+        });
 
     if (!targetEntry) {
       return null;
     }
 
-    const relationExists = await tableExists(client, conflictingRelation);
+    const relationExists = conflictingRelation
+      ? await tableExists(client, conflictingRelation)
+      : await columnExists(
+          client,
+          conflictingColumn.tableName,
+          conflictingColumn.columnName,
+        );
 
     if (!relationExists) {
       return null;

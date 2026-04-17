@@ -28,7 +28,7 @@ ALTER TABLE "hero_attendance_records" ADD COLUMN "photo_url" text;--> statement-
 ALTER TABLE "hero_attendance_records" ADD COLUMN "latitude" text;--> statement-breakpoint
 ALTER TABLE "hero_attendance_records" ADD COLUMN "longitude" text;--> statement-breakpoint
 ALTER TABLE "hero_employees" ADD COLUMN "employee_status_type" text DEFAULT 'Permanen | Staff' NOT NULL;--> statement-breakpoint
-ALTER TABLE "hero_master_positions" ADD COLUMN "site_location" text DEFAULT '' NOT NULL;--> statement-breakpoint
+ALTER TABLE "hero_master_positions" ADD COLUMN IF NOT EXISTS "site_location" text DEFAULT '' NOT NULL;--> statement-breakpoint
 ALTER TABLE "hero_master_sections" ADD COLUMN "department_id" integer;--> statement-breakpoint
 ALTER TABLE "hero_navbar_themes" ADD COLUMN "header_background_color" text DEFAULT '#FFFFFF' NOT NULL;--> statement-breakpoint
 ALTER TABLE "hero_org_chart_nodes" ADD CONSTRAINT "hero_org_chart_nodes_structure_id_hero_org_chart_structures_id_fk" FOREIGN KEY ("structure_id") REFERENCES "public"."hero_org_chart_structures"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
