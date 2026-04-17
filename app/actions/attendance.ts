@@ -1,44 +1,191 @@
 "use server";
 
 import { db } from "@/db";
-import { attendanceRecords } from "@/db/schema/hero";
+import { attendanceRecords, employees, sites } from "@/db/schema/hero";
 import { uploadFile } from "@/app/actions/upload";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { startOfDay, endOfDay } from "date-fns";
 
-export async function submitAttendance(formData: FormData) {
-  try {
-    const session = await auth.api.getSession({
-      headers: await headers()
+async function getCurrentEmployee() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session?.user) {
+    return null;
+  }
+
+  const [employee] = await db
+    .select({
+      id: employees.id,
+      authUserId: employees.authUserId,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      siteId: employees.siteId,
+      siteName: sites.name,
+    })
+    .from(employees)
+    .innerJoin(sites, eq(employees.siteId, sites.id))
+    .where(
+      session.user.id
+        ? eq(employees.authUserId, session.user.id)
+        : eq(employees.email, session.user.email),
+    )
+    .limit(1);
+
+  if (employee) {
+    return employee;
+  }
+
+  const [employeeByEmail] = await db
+    .select({
+      id: employees.id,
+      authUserId: employees.authUserId,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      siteId: employees.siteId,
+      siteName: sites.name,
+    })
+    .from(employees)
+    .innerJoin(sites, eq(employees.siteId, sites.id))
+    .where(eq(employees.email, session.user.email))
+    .limit(1);
+
+  if (employeeByEmail) {
+    if (!employeeByEmail.authUserId && session.user.id) {
+      await db
+        .update(employees)
+        .set({ authUserId: session.user.id })
+        .where(eq(employees.id, employeeByEmail.id));
+    }
+
+    return employeeByEmail;
+  }
+
+  const [defaultSite] = await db
+    .select({
+      id: sites.id,
+      name: sites.name,
+    })
+    .from(sites)
+    .limit(1);
+
+  if (!defaultSite) {
+    return null;
+  }
+
+  const [createdEmployee] = await db
+    .insert(employees)
+    .values({
+      authUserId: session.user.id,
+      siteId: defaultSite.id,
+      name: session.user.name?.trim() || session.user.email.split("@")[0],
+      email: session.user.email,
+      role: "Site Team",
+      department: "Operations",
+      jobTitle: "Site Team",
+      workLocation: defaultSite.name,
+      accessRole: "Site Admin",
+      employmentStatus: "active",
+      isActive: true,
+    })
+    .returning({
+      id: employees.id,
+      authUserId: employees.authUserId,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      siteId: employees.siteId,
     });
 
-    if (!session || !session.user) {
+  return createdEmployee
+    ? {
+        ...createdEmployee,
+        siteName: defaultSite.name,
+      }
+    : null;
+}
+
+function buildLocationNote(
+  locationName: string | null,
+  latitude: string | null,
+  longitude: string | null,
+  fallbackLocation: string,
+) {
+  if (latitude && longitude) {
+    return `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
+  }
+
+  return locationName?.trim() || fallbackLocation || "Lokasi GPS";
+}
+
+export async function getAttendancePageData() {
+  const employee = await getCurrentEmployee();
+
+  if (!employee) {
+    return {
+      success: false,
+      employee: null,
+      logs: [],
+    };
+  }
+
+  const todayStart = startOfDay(new Date());
+  const todayEnd = endOfDay(new Date());
+
+  const logs = await db
+    .select()
+    .from(attendanceRecords)
+    .where(
+      and(
+        eq(attendanceRecords.employeeId, employee.id),
+        gte(attendanceRecords.eventTime, todayStart),
+        lte(attendanceRecords.eventTime, todayEnd),
+      ),
+    )
+    .orderBy(desc(attendanceRecords.eventTime));
+
+  return {
+    success: true,
+    employee,
+    logs,
+  };
+}
+
+export async function submitAttendance(formData: FormData) {
+  try {
+    const employee = await getCurrentEmployee();
+
+    if (!employee) {
       return { success: false, error: "Unauthorized" };
     }
 
-    // In a real scenario we'd do a look up to hero_employees
-    // For now we assume employeeId = 1 or something but we should get it properly
-    // This is boilerplate, we can leave employeeId as placeholder 1 or fetch it
-    const employeeId = 1; // TO-DO: get correct employee ID from users lookup
-    const siteId = 1; // TO-DO: get correct site ID for user
-
     const photoUrlResult = await uploadFile(formData);
-    let photoUrl = "";
-    if (photoUrlResult.success) {
-      photoUrl = photoUrlResult.url!;
+    if (!photoUrlResult.success || !photoUrlResult.url) {
+      return {
+        success: false,
+        error: photoUrlResult.error || "Upload foto ke Object Storage gagal.",
+      };
     }
+    const photoUrl = photoUrlResult.url;
 
     const eventType = formData.get("type") as string;
-    const latitude = formData.get("latitude") as string;
-    const longitude = formData.get("longitude") as string;
-    const locationNote = formData.get("locationName") as string || "Site Operation";
+    const latitude = formData.get("latitude") as string | null;
+    const longitude = formData.get("longitude") as string | null;
+    const locationName = formData.get("locationName") as string | null;
+    const locationNote = buildLocationNote(locationName, latitude, longitude, employee.workLocation);
 
     await db.insert(attendanceRecords).values({
-      employeeId,
-      siteId,
-      eventType, // "checked-in" or "checked-out"
+      employeeId: employee.id,
+      siteId: employee.siteId,
+      eventType,
       eventTime: new Date(),
       status: "pending",
       locationNote,
@@ -50,20 +197,19 @@ export async function submitAttendance(formData: FormData) {
     return { success: true };
   } catch (err) {
     console.error("Attendance submission error:", err);
-    return { success: false, error: "Failed to submit attendance" };
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to submit attendance",
+    };
   }
 }
 
 export async function getTodayAttendanceLogs() {
-  const session = await auth.api.getSession({
-    headers: await headers()
-  });
+  const employee = await getCurrentEmployee();
 
-  if (!session || !session.user) {
+  if (!employee) {
     return { success: false, logs: [] };
   }
-
-  const employeeId = 1; 
 
   const todayStart = startOfDay(new Date());
   const todayEnd = endOfDay(new Date());
@@ -73,7 +219,7 @@ export async function getTodayAttendanceLogs() {
     .from(attendanceRecords)
     .where(
       and(
-        eq(attendanceRecords.employeeId, employeeId),
+        eq(attendanceRecords.employeeId, employee.id),
         gte(attendanceRecords.eventTime, todayStart),
         lte(attendanceRecords.eventTime, todayEnd)
       )

@@ -4,6 +4,7 @@ import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { db } from "@/db";
 import { account, session, user, verification } from "@/db/schema/auth";
+import { getServerAuthBaseUrl, getTrustedOrigins } from "@/lib/auth-config";
 import { buildMagicLinkEmail, buildResetPasswordEmail, sendAuthEmail } from "@/lib/auth-email";
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -13,26 +14,13 @@ const authSecret =
     process.env.AUTH_SECRET?.trim() ||
     process.env.NEXTAUTH_SECRET?.trim() ||
     "";
-const authBaseUrl =
-    process.env.BETTER_AUTH_URL?.trim() ||
-    process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.trim() ||
-    "http://localhost:3000";
-const trustedOrigins = Array.from(
-    new Set(
-        [
-            authBaseUrl,
-            process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.trim(),
-            process.env.BETTER_AUTH_URL?.trim(),
-        ].filter((value): value is string => Boolean(value)),
-    ),
-);
 
 export const isGoogleAuthEnabled = Boolean(googleClientId && googleClientSecret);
 
 export const auth = betterAuth({
     secret: authSecret || undefined,
-    baseURL: authBaseUrl,
-    trustedOrigins,
+    baseURL: getServerAuthBaseUrl(),
+    trustedOrigins: async (request) => getTrustedOrigins(request),
     plugins: [
         nextCookies(),
         magicLink({

@@ -9,6 +9,34 @@ declare global {
 
 let drizzleDb: ReturnType<typeof drizzle> | undefined;
 
+function getSslConfig(connectionString: string) {
+  const url = new URL(connectionString);
+  const sslMode =
+    url.searchParams.get("sslmode")?.toLowerCase() ||
+    process.env.PGSSLMODE?.trim().toLowerCase() ||
+    process.env.DATABASE_SSL_MODE?.trim().toLowerCase();
+  const sslOverride = process.env.DATABASE_SSL?.trim().toLowerCase();
+  const isLocal = ["localhost", "127.0.0.1"].includes(url.hostname);
+
+  if (sslOverride === "false" || sslOverride === "0" || sslOverride === "no") {
+    return false;
+  }
+
+  if (sslOverride === "true" || sslOverride === "1" || sslOverride === "yes") {
+    return { rejectUnauthorized: false };
+  }
+
+  if (sslMode === "disable") {
+    return false;
+  }
+
+  if (sslMode === "require" || sslMode === "prefer" || sslMode === "allow") {
+    return { rejectUnauthorized: false };
+  }
+
+  return isLocal ? false : { rejectUnauthorized: false };
+}
+
 function getPool() {
   const existingPool = globalThis.heroDbPool;
 
@@ -17,11 +45,10 @@ function getPool() {
   }
 
   const connectionString = serverEnv.databaseUrl;
-  const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
 
   const pool = new Pool({ 
     connectionString,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    ssl: getSslConfig(connectionString),
     idleTimeoutMillis: 3000, // Very aggressive for development to prune stale sockets
     connectionTimeoutMillis: 5000,
     max: 10,

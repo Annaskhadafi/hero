@@ -3,6 +3,7 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { serverEnv } from "@/lib/server-env";
 
 const PROFILE_PHOTO_PREFIX = "profile-photos";
+const ATTENDANCE_PHOTO_PREFIX = "attendance-photos";
 
 let s3Client: S3Client | null = null;
 
@@ -122,10 +123,10 @@ export async function uploadProfilePhotoToS3(file: File) {
   };
 }
 
-export async function uploadAnyFileToS3(file: File) {
+export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
   const contentType = file.type || "application/octet-stream";
   const extension = getObjectExtension(contentType);
-  const prefix = serverEnv.s3UploadPrefix || "upload";
+  const prefix = prefixOverride || serverEnv.s3UploadPrefix || "upload";
   const key = `${prefix}/${randomUUID()}.${extension}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -145,6 +146,10 @@ export async function uploadAnyFileToS3(file: File) {
     key,
     url: buildS3PublicUrl(key),
   };
+}
+
+export async function uploadAttendancePhotoToS3(file: File) {
+  return uploadAnyFileToS3(file, ATTENDANCE_PHOTO_PREFIX);
 }
 
 export function isS3UploadConfigured() {

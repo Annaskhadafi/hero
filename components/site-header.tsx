@@ -1,12 +1,11 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { HeaderThemeControls } from "@/components/header-theme-controls"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import Link from "next/link"
 
 export function SiteHeader({
   title,
@@ -20,7 +19,13 @@ export function SiteHeader({
   textColor?: string
 }) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const isDark = mounted && resolvedTheme === "dark"
 
   // Light mode: force dark text (DB may store light colors intended for dark headers)
   // Dark mode: force light text on dark background

@@ -8,7 +8,7 @@ import {
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { getServerSession } from "@/lib/auth-session"
-import { getNavbarSettingsData, getSidebarDataForUser } from "@/lib/hero-admin"
+import { getEmployeeDisplayDataByEmail, getNavbarSettingsData, getSidebarDataForUser } from "@/lib/hero-admin"
 
 import "@/app/dashboard/theme.css"
 
@@ -25,9 +25,10 @@ export default async function DashboardLayout({
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
-  const [sidebarData, navbarSettings] = await Promise.all([
+  const [sidebarData, navbarSettings, employeeDisplay] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
+    getEmployeeDisplayDataByEmail(session.user.email),
   ])
 
   return (
@@ -42,8 +43,8 @@ export default async function DashboardLayout({
       <AppSidebar
         variant="inset"
         user={{
-          name: session.user.name || "User",
-          email: session.user.email,
+          name: employeeDisplay?.name || session.user.name || "User",
+          email: employeeDisplay?.email || session.user.email,
           avatar: session.user.image || "/logo.png",
         }}
         navMain={sidebarData.navMain}

@@ -1957,6 +1957,23 @@ export async function getSidebarDataForUser(email: string) {
   };
 }
 
+export async function getEmployeeDisplayDataByEmail(email: string) {
+  await ensureHeroGovernanceSeedData();
+
+  const [employee] = await db
+    .select({
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+    })
+    .from(employees)
+    .where(eq(employees.email, email))
+    .limit(1);
+
+  return employee ?? null;
+}
+
 export async function getExecutiveHighlights() {
   await ensureHeroSeedData();
 
