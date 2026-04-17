@@ -144,6 +144,26 @@ async function columnExists(client, tableName, columnName) {
   return result.rowCount > 0;
 }
 
+async function entryAlreadyMaterialized(client, entry) {
+  for (const tableName of entry.tables) {
+    const exists = await tableExists(client, tableName);
+
+    if (!exists) {
+      return false;
+    }
+  }
+
+  for (const { tableName, columnName } of entry.addedColumns) {
+    const exists = await columnExists(client, tableName, columnName);
+
+    if (!exists) {
+      return false;
+    }
+  }
+
+  return entry.tables.length > 0 || entry.addedColumns.length > 0;
+}
+
 async function registerMigration(client, entry) {
   await client.query(
     `insert into "${migrationsSchemaName}"."${migrationsTableName}" ("hash", "created_at") values ($1, $2)`,
@@ -180,11 +200,10 @@ async function bootstrapConflictingMigration(output, entries) {
             return false;
           }
 
-          return (
-            entry.tables.length === 0 &&
-            entry.addedColumns.length === 1 &&
-            entry.addedColumns[0].tableName === conflictingColumn?.tableName &&
-            entry.addedColumns[0].columnName === conflictingColumn?.columnName
+          return entry.addedColumns.some(
+            ({ tableName, columnName }) =>
+              tableName === conflictingColumn?.tableName &&
+              columnName === conflictingColumn?.columnName,
           );
         });
 
@@ -194,11 +213,7 @@ async function bootstrapConflictingMigration(output, entries) {
 
     const relationExists = conflictingRelation
       ? await tableExists(client, conflictingRelation)
-      : await columnExists(
-          client,
-          conflictingColumn.tableName,
-          conflictingColumn.columnName,
-        );
+      : await entryAlreadyMaterialized(client, targetEntry);
 
     if (!relationExists) {
       return null;

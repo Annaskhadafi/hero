@@ -1,2 +1,2 @@
 ALTER TABLE "hero_master_positions"
-ADD COLUMN "site_location" text DEFAULT '' NOT NULL;
+ADD COLUMN IF NOT EXISTS "site_location" text DEFAULT '' NOT NULL;
