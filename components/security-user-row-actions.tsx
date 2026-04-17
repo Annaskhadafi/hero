@@ -73,19 +73,32 @@ export function SecurityUserRowActions({
   user,
   managerOptions,
   roleOptions,
+  positions,
 }: {
   user: SecurityUserRecord;
   managerOptions: Array<{ id: number; name: string }>;
   roleOptions: Array<{ id: number; name: string }>;
+  positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(manageSecurityUserAction, INITIAL_STATE);
+  const [selectedJobTitle, setSelectedJobTitle] = useState(user.jobTitle);
+
+  const selectedPosition =
+    positions.find((position) => position.name === selectedJobTitle) ?? null;
+  const resolvedWorkLocation = selectedPosition?.siteLocation || user.workLocation || "";
 
   useEffect(() => {
     if (state.status === "success" && state.message.toLowerCase().includes("dihapus")) {
       setOpen(false);
     }
   }, [state]);
+
+  useEffect(() => {
+    if (open) {
+      setSelectedJobTitle(user.jobTitle);
+    }
+  }, [open, user.jobTitle]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -139,6 +152,10 @@ export function SecurityUserRowActions({
               <div>
                 <p className="text-xs text-muted-foreground">Jabatan</p>
                 <p>{user.jobTitle}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Lokasi Site Jabatan</p>
+                <p>{selectedPosition?.siteLocation || user.workLocation || "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Departement</p>
@@ -278,13 +295,34 @@ export function SecurityUserRowActions({
                   <Label>Departement</Label>
                   <Input name="department" defaultValue={user.department} />
                 </label>
-                <label className="grid gap-2">
+                <div className="grid gap-2">
                   <Label>Jabatan</Label>
-                  <Input name="jobTitle" defaultValue={user.jobTitle} />
-                </label>
+                  <Select
+                    name="jobTitle"
+                    value={selectedJobTitle}
+                    onValueChange={setSelectedJobTitle}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Pilih jabatan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {positions.map((position) => (
+                        <SelectItem key={position.id} value={position.name}>
+                          {position.name} ({position.code}) - {position.siteLocation || "Semua Site"} - Level {position.level}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <label className="grid gap-2">
                   <Label>Lokasi Kerja</Label>
-                  <Input name="workLocation" defaultValue={user.workLocation} />
+                  <Input
+                    name="workLocationDisplay"
+                    value={resolvedWorkLocation}
+                    readOnly
+                    disabled
+                  />
+                  <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
                 </label>
                 <label className="grid gap-2">
                   <Label>Nomor Telp</Label>

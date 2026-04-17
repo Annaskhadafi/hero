@@ -40,6 +40,7 @@ const positionSchema = z.object({
   code: z.string().trim().min(1).max(20),
   name: z.string().trim().min(1).max(100),
   departmentId: z.coerce.number().int().positive().optional(),
+  siteLocation: z.string().trim().max(100).optional(),
   level: z.coerce.number().int().min(1).max(10).default(1),
   description: z.string().trim().max(500).optional(),
   isActive: z.coerce.boolean().default(true),
@@ -314,7 +315,7 @@ export async function managePositionAction(
     };
   }
 
-  const { intent, id, code, name, departmentId, level, description, isActive } = parsed.data;
+  const { intent, id, code, name, departmentId, siteLocation, level, description, isActive } = parsed.data;
 
   try {
     if (intent === "create") {
@@ -335,6 +336,7 @@ export async function managePositionAction(
         code,
         name,
         departmentId: departmentId || null,
+        siteLocation: siteLocation || "",
         level,
         description: description || "",
         isActive,
@@ -370,6 +372,7 @@ export async function managePositionAction(
           code,
           name,
           departmentId: departmentId || null,
+          siteLocation: siteLocation || "",
           level,
           description: description || "",
           isActive,

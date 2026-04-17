@@ -40,6 +40,7 @@ export type MasterPosition = {
   name: string;
   departmentId: number | null;
   departmentName: string | null;
+  siteLocation: string;
   level: number;
   description: string;
   isActive: boolean;
@@ -210,6 +211,7 @@ export async function getMasterPositions(): Promise<MasterPosition[]> {
       name: masterPositions.name,
       departmentId: masterPositions.departmentId,
       departmentName: masterDepartments.name,
+      siteLocation: masterPositions.siteLocation,
       level: masterPositions.level,
       description: masterPositions.description,
       isActive: masterPositions.isActive,
@@ -240,7 +242,7 @@ export async function getMasterPositions(): Promise<MasterPosition[]> {
 }
 
 // Get Position Options
-export async function getPositionOptions(departmentId?: number): Promise<Array<{ id: number; code: string; name: string; level: number; departmentId: number | null }>> {
+export async function getPositionOptions(departmentId?: number): Promise<Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>> {
   await ensureHeroGovernanceSeedData();
 
   if (departmentId) {
@@ -249,6 +251,7 @@ export async function getPositionOptions(departmentId?: number): Promise<Array<{
         id: masterPositions.id,
         code: masterPositions.code,
         name: masterPositions.name,
+        siteLocation: masterPositions.siteLocation,
         level: masterPositions.level,
         departmentId: masterPositions.departmentId,
       })
@@ -262,6 +265,7 @@ export async function getPositionOptions(departmentId?: number): Promise<Array<{
       id: masterPositions.id,
       code: masterPositions.code,
       name: masterPositions.name,
+      siteLocation: masterPositions.siteLocation,
       level: masterPositions.level,
       departmentId: masterPositions.departmentId,
     })

@@ -637,6 +637,7 @@ function PositionManagement({
     code: "",
     name: "",
     departmentId: "",
+    siteLocation: "",
     level: 1,
     description: "",
     isActive: true,
@@ -657,13 +658,14 @@ function PositionManagement({
         code: position.code,
         name: position.name,
         departmentId: position.departmentId?.toString() || "",
+        siteLocation: position.siteLocation,
         level: position.level,
         description: position.description,
         isActive: position.isActive,
       });
     } else {
       setEditingPosition(null);
-      setFormData({ code: "", name: "", departmentId: "", level: 1, description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", siteLocation: "", level: 1, description: "", isActive: true });
     }
     setIsDialogOpen(true);
   };
@@ -678,6 +680,7 @@ function PositionManagement({
     form.append("code", formData.code);
     form.append("name", formData.name);
     form.append("departmentId", formData.departmentId);
+    form.append("siteLocation", formData.siteLocation);
     form.append("level", formData.level.toString());
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
@@ -688,7 +691,7 @@ function PositionManagement({
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingPosition(null);
-      setFormData({ code: "", name: "", departmentId: "", level: 1, description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", siteLocation: "", level: 1, description: "", isActive: true });
     } else {
       toast.error(result.message);
     }
@@ -751,6 +754,7 @@ function PositionManagement({
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Jabatan</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Lokasi Site</TableHead>
                 <TableHead className="w-[80px]">Level</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
@@ -770,6 +774,9 @@ function PositionManagement({
                       ) : (
                         <span className="text-[#94a3b8]">-</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-[#475569]">
+                      {pos.siteLocation || "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="bg-[#fef3c7] text-[#92400e]">
@@ -812,7 +819,7 @@ function PositionManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
                     Tidak ada data jabatan
                   </TableCell>
                 </TableRow>
@@ -893,6 +900,15 @@ function PositionManagement({
                     ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pos-site-location">Lokasi Site</Label>
+              <Input
+                id="pos-site-location"
+                value={formData.siteLocation}
+                onChange={(e) => setFormData({ ...formData, siteLocation: e.target.value })}
+                placeholder="e.g., Bengalon Pit North"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="pos-description">Deskripsi</Label>

@@ -15,6 +15,13 @@
       "when": 1776206785287,
       "tag": "0001_short_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776393600000,
+      "tag": "0002_add_site_location_to_master_positions",
+      "breakpoints": true
     }
   ]
 }

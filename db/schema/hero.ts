@@ -328,6 +328,7 @@ export const masterPositions = pgTable("hero_master_positions", {
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   departmentId: integer("department_id").references(() => masterDepartments.id, { onDelete: "set null" }),
+  siteLocation: text("site_location").notNull().default(""),
   level: integer("level").notNull().default(1),
   description: text("description").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),

@@ -230,7 +230,7 @@ export function SecurityUserManagement({
   roleOptions: Array<{ id: number; name: string }>;
   sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
   departments: Array<{ id: number; code: string; name: string }>;
-  positions: Array<{ id: number; code: string; name: string; level: number; departmentId: number | null }>;
+  positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
 }) {
   const router = useRouter();
   const [isRefreshing, startRefreshTransition] = useTransition();
@@ -954,6 +954,9 @@ export function SecurityUserManagement({
                     Role
                   </TableHead>
                   <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Lokasi Site
+                  </TableHead>
+                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Tipe Status
                   </TableHead>
                   <TableHead className="py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1009,6 +1012,11 @@ export function SecurityUserManagement({
                         </span>
                       </TableCell>
                       <TableCell className="py-4">
+                        <span className="text-sm text-foreground/80">
+                          {user.workLocation || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-4">
                         <Badge
                           variant="outline"
                           className="rounded-md border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
@@ -1021,6 +1029,7 @@ export function SecurityUserManagement({
                           user={user}
                           managerOptions={managerOptions}
                           roleOptions={roleOptions}
+                          positions={positions}
                         />
                       </TableCell>
                     </TableRow>
@@ -1028,7 +1037,7 @@ export function SecurityUserManagement({
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-12 text-center text-sm text-muted-foreground"
                     >
                       No users found matching your filters.

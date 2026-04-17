@@ -55,7 +55,7 @@ export function SecurityUserCreateDialog({
   managerOptions: Array<{ id: number; name: string }>;
   sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
   departments: Array<{ id: number; code: string; name: string }>;
-  positions: Array<{ id: number; code: string; name: string; level: number; departmentId: number | null }>;
+  positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
 }) {
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -68,6 +68,9 @@ export function SecurityUserCreateDialog({
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedJobTitle, setSelectedJobTitle] = useState<string>("");
+  const selectedPosition =
+    positions.find((position) => position.name === selectedJobTitle) ?? null;
+  const resolvedWorkLocation = selectedPosition?.siteLocation || "";
 
   const filteredSections = selectedDepartmentId
     ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
@@ -233,7 +236,7 @@ export function SecurityUserCreateDialog({
                 <SelectContent>
                   {filteredPositions.map((pos) => (
                     <SelectItem key={pos.id} value={pos.name}>
-                      {pos.name} ({pos.code}) - Level {pos.level}
+                      {pos.name} ({pos.code}) - {pos.siteLocation || "Semua Site"} - Level {pos.level}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -243,7 +246,14 @@ export function SecurityUserCreateDialog({
 
             <label className="grid gap-2">
               <Label>Lokasi Kerja</Label>
-              <Input name="workLocation" placeholder="Contoh: Bengalon Pit North" />
+              <Input
+                name="workLocationDisplay"
+                value={resolvedWorkLocation}
+                placeholder="Otomatis dari jabatan"
+                readOnly
+                disabled
+              />
+              <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
             </label>
             <label className="grid gap-2">
               <Label>Nomor Telp</Label>
