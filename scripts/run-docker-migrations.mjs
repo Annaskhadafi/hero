@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
+import { getDatabaseUrl, getDatabaseUrlErrorMessage } from "./database-url.mjs";
 
 const migrationRoot = process.cwd();
 const journalPath = path.join(migrationRoot, "drizzle", "meta", "_journal.json");
@@ -159,7 +160,7 @@ async function bootstrapConflictingMigration(output, entries) {
   }
 
   const client = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: getDatabaseUrl(),
   });
 
   await client.connect();
@@ -212,6 +213,12 @@ async function bootstrapConflictingMigration(output, entries) {
 }
 
 async function main() {
+  const databaseUrl = getDatabaseUrl();
+
+  if (!databaseUrl) {
+    throw new Error(getDatabaseUrlErrorMessage("run Drizzle migrations"));
+  }
+
   const entries = getMigrationEntries();
   const maxAttempts = entries.length + 1;
 

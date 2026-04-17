@@ -1,7 +1,9 @@
-if (!process.env.DATABASE_URL?.trim()) {
-  throw new Error(
-    "Environment variable DATABASE_URL is required to run Drizzle migrations.",
-  );
+import { getDatabaseUrl, getDatabaseUrlErrorMessage } from "./lib/database-url";
+
+const databaseUrl = getDatabaseUrl();
+
+if (!databaseUrl) {
+  throw new Error(getDatabaseUrlErrorMessage("run Drizzle migrations"));
 }
 
 export default {
@@ -9,6 +11,6 @@ export default {
   schema: "./db/schema/*",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: databaseUrl,
   },
 };

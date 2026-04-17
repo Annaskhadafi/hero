@@ -1,4 +1,5 @@
 import { loadEnvConfig } from "@next/env";
+import { getDatabaseUrl, getDatabaseUrlErrorMessage } from "@/lib/database-url";
 
 loadEnvConfig(process.cwd());
 
@@ -33,7 +34,13 @@ function getBooleanEnv(names: string[]) {
 
 export const serverEnv = {
   get databaseUrl() {
-    return getRequiredEnv("DATABASE_URL");
+    const value = getDatabaseUrl();
+
+    if (!value) {
+      throw new Error(getDatabaseUrlErrorMessage("start the application"));
+    }
+
+    return value;
   },
   get s3BucketName() {
     return getFirstEnvValue([
