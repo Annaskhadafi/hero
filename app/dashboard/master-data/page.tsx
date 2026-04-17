@@ -9,8 +9,10 @@ export default async function MasterDataPage() {
       <MasterDataManagement
         sections={data.sections}
         departments={data.departments}
+        sites={data.sites}
         positions={data.positions}
         orgStructures={data.orgStructures}
+        employees={data.employees}
       />
     </div>
   );

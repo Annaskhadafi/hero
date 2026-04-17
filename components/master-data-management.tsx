@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Layers, Building2, Users, GitBranch, Plus, Search, Pencil, Trash2, X, AlertCircle } from "lucide-react";
+import { Layers, Building2, Users, GitBranch, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import type { MasterSection, MasterDepartment, MasterPosition, OrgStructure } from "@/lib/master-data";
+import type { MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite } from "@/lib/master-data";
 import {
   manageSectionAction,
   manageDepartmentAction,
+  manageSiteAction,
   managePositionAction,
   manageOrgStructureAction,
   type MasterDataActionState,
@@ -45,12 +46,15 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { OrgStructureBuilder } from "@/components/org-structure-builder";
 
 interface MasterDataManagementProps {
   sections: MasterSection[];
   departments: MasterDepartment[];
+  sites: MasterSite[];
   positions: MasterPosition[];
   orgStructures: OrgStructure[];
+  employees: any[];
 }
 
 const INITIAL_ACTION_STATE: MasterDataActionState = {
@@ -61,8 +65,10 @@ const INITIAL_ACTION_STATE: MasterDataActionState = {
 export function MasterDataManagement({
   sections,
   departments,
+  sites,
   positions,
   orgStructures,
+  employees,
 }: MasterDataManagementProps) {
   const [activeTab, setActiveTab] = useState("sections");
 
@@ -80,7 +86,7 @@ export function MasterDataManagement({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 bg-white p-1">
+        <TabsList className="grid w-full grid-cols-5 bg-white p-1">
           <TabsTrigger value="sections" className="flex items-center gap-2">
             <Layers className="size-4" />
             <span>Section</span>
@@ -102,6 +108,13 @@ export function MasterDataManagement({
               {positions.length}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="sites" className="flex items-center gap-2">
+            <MapPin className="size-4" />
+            <span>Lokasi Site</span>
+            <Badge variant="secondary" className="ml-1 bg-[#fee2e2] text-[#dc2626]">
+              {sites.length}
+            </Badge>
+          </TabsTrigger>
           <TabsTrigger value="org-structures" className="flex items-center gap-2">
             <GitBranch className="size-4" />
             <span>Struktur Organisasi</span>
@@ -120,17 +133,228 @@ export function MasterDataManagement({
         </TabsContent>
 
         <TabsContent value="positions" className="space-y-4">
-          <PositionManagement positions={positions} departments={departments} />
+          <PositionManagement positions={positions} departments={departments} sites={sites} />
+        </TabsContent>
+
+        <TabsContent value="sites" className="space-y-4">
+          <SiteManagement sites={sites} />
         </TabsContent>
 
         <TabsContent value="org-structures" className="space-y-4">
-          <OrgStructureManagement
+          <OrgStructureBuilder
             orgStructures={orgStructures}
             positions={positions}
+            departments={departments}
+            sites={sites}
+            employees={employees}
           />
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function SiteManagement({ sites }: { sites: MasterSite[] }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingSite, setEditingSite] = useState<MasterSite | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    location: "",
+    customerName: "",
+    contractNumber: "",
+    isActive: true,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const filteredSites = sites.filter(
+    (site) =>
+      site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleOpenDialog = (site?: MasterSite) => {
+    if (site) {
+      setEditingSite(site);
+      setFormData({
+        name: site.name,
+        location: site.location,
+        customerName: site.customerName,
+        contractNumber: site.contractNumber,
+        isActive: site.isActive,
+      });
+    } else {
+      setEditingSite(null);
+      setFormData({ name: "", location: "", customerName: "", contractNumber: "", isActive: true });
+    }
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    const form = new FormData();
+    form.append("intent", editingSite ? "update" : "create");
+    if (editingSite) form.append("id", editingSite.id.toString());
+    form.append("name", formData.name);
+    form.append("location", formData.location);
+    form.append("customerName", formData.customerName);
+    form.append("contractNumber", formData.contractNumber);
+    form.append("isActive", formData.isActive.toString());
+
+    const result = await manageSiteAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      setIsDialogOpen(false);
+      setEditingSite(null);
+      setFormData({ name: "", location: "", customerName: "", contractNumber: "", isActive: true });
+    } else {
+      toast.error(result.message);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const handleDelete = async (site: MasterSite) => {
+    if (!confirm(`Are you sure you want to delete site "${site.name}"?`)) {
+      return;
+    }
+
+    const form = new FormData();
+    form.append("intent", "delete");
+    form.append("id", site.id.toString());
+
+    const result = await manageSiteAction(INITIAL_ACTION_STATE, form);
+    if (result.status === "success") {
+      toast.success(result.message);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  return (
+    <Card className="border-[#e2e8f0]">
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Daftar Lokasi Site</CardTitle>
+          <CardDescription className="text-sm text-[#64748b]">
+            Master lokasi kerja / site yang dipakai lintas modul
+          </CardDescription>
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+          <Plus className="mr-2 size-4" />
+          Tambah Site
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+            <Input
+              placeholder="Cari site..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full max-w-sm pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-[#F5F7F9]">
+                <TableHead>Nama Site</TableHead>
+                <TableHead>Lokasi</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>No. Kontrak</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+                <TableHead className="w-[100px]">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredSites.length > 0 ? (
+                filteredSites.map((site) => (
+                  <TableRow key={site.id}>
+                    <TableCell className="font-medium">{site.name}</TableCell>
+                    <TableCell className="text-[#64748b]">{site.location}</TableCell>
+                    <TableCell>{site.customerName}</TableCell>
+                    <TableCell>{site.contractNumber}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={site.isActive ? "default" : "secondary"}
+                        className={site.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
+                      >
+                        {site.isActive ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(site)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(site)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                    Tidak ada data site
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>{editingSite ? "Edit Site" : "Tambah Site"}</DialogTitle>
+            <DialogDescription>
+              {editingSite ? "Ubah informasi site yang sudah ada" : "Tambahkan master lokasi site baru"}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="site-name">Nama Site</Label>
+              <Input id="site-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-location">Lokasi</Label>
+              <Input id="site-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-customer">Customer</Label>
+              <Input id="site-customer" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-contract">No. Kontrak</Label>
+              <Input id="site-contract" value={formData.contractNumber} onChange={(e) => setFormData({ ...formData, contractNumber: e.target.value })} required />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch id="site-isActive" checked={formData.isActive} onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })} />
+              <Label htmlFor="site-isActive">Aktif</Label>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">Batal</Button>
+              </DialogClose>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+                {isSubmitting ? "Menyimpan..." : editingSite ? "Simpan Perubahan" : "Tambah Site"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
 
@@ -626,9 +850,11 @@ function DepartmentManagement({
 function PositionManagement({
   positions,
   departments,
+  sites,
 }: {
   positions: MasterPosition[];
   departments: MasterDepartment[];
+  sites: MasterSite[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -902,13 +1128,23 @@ function PositionManagement({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pos-site-location">Lokasi Site</Label>
-              <Input
-                id="pos-site-location"
-                value={formData.siteLocation}
-                onChange={(e) => setFormData({ ...formData, siteLocation: e.target.value })}
-                placeholder="e.g., Bengalon Pit North"
-              />
+                <Label htmlFor="pos-site-location">Lokasi Site</Label>
+              <Select
+                value={formData.siteLocation || "0"}
+                onValueChange={(value) => setFormData({ ...formData, siteLocation: value === "0" ? "" : value })}
+              >
+                <SelectTrigger id="pos-site-location">
+                  <SelectValue placeholder="Pilih lokasi site" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">- Tidak ada -</SelectItem>
+                  {sites.filter((site) => site.isActive).map((site) => (
+                    <SelectItem key={site.id} value={site.name}>
+                      {site.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="pos-description">Deskripsi</Label>
@@ -936,357 +1172,6 @@ function PositionManagement({
               </DialogClose>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
                 {isSubmitting ? "Menyimpan..." : editingPosition ? "Simpan Perubahan" : "Tambah Jabatan"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </Card>
-  );
-}
-
-// ORGANIZATIONAL STRUCTURE MANAGEMENT COMPONENT
-function OrgStructureManagement({
-  orgStructures,
-  positions,
-}: {
-  orgStructures: OrgStructure[];
-  positions: MasterPosition[];
-}) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingOrg, setEditingOrg] = useState<OrgStructure | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    jobType: "default",
-    positionId: "",
-    managerPositionId: "",
-    approvalLevel: 1,
-    isActive: true,
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const jobTypes = ["default", "office", "field", "contractor", "project"];
-
-  const filteredOrgStructures = orgStructures.filter(
-    (org) =>
-      org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.positionName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.jobType.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleOpenDialog = (org?: OrgStructure) => {
-    if (org) {
-      setEditingOrg(org);
-      setFormData({
-        name: org.name,
-        jobType: org.jobType,
-        positionId: org.positionId.toString(),
-        managerPositionId: org.managerPositionId?.toString() || "",
-        approvalLevel: org.approvalLevel,
-        isActive: org.isActive,
-      });
-    } else {
-      setEditingOrg(null);
-      setFormData({ name: "", jobType: "default", positionId: "", managerPositionId: "", approvalLevel: 1, isActive: true });
-    }
-    setIsDialogOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    const form = new FormData();
-    form.append("intent", editingOrg ? "update" : "create");
-    if (editingOrg) form.append("id", editingOrg.id.toString());
-    form.append("name", formData.name);
-    form.append("jobType", formData.jobType);
-    form.append("positionId", formData.positionId);
-    form.append("managerPositionId", formData.managerPositionId);
-    form.append("approvalLevel", formData.approvalLevel.toString());
-    form.append("isActive", formData.isActive.toString());
-
-    const result = await manageOrgStructureAction(INITIAL_ACTION_STATE, form);
-
-    if (result.status === "success") {
-      toast.success(result.message);
-      setIsDialogOpen(false);
-      setEditingOrg(null);
-      setFormData({ name: "", jobType: "default", positionId: "", managerPositionId: "", approvalLevel: 1, isActive: true });
-    } else {
-      toast.error(result.message);
-    }
-
-    setIsSubmitting(false);
-  };
-
-  const handleDelete = async (org: OrgStructure) => {
-    if (!confirm(`Are you sure you want to delete organizational structure "${org.name}"?`)) {
-      return;
-    }
-
-    const form = new FormData();
-    form.append("intent", "delete");
-    form.append("id", org.id.toString());
-
-    const result = await manageOrgStructureAction(INITIAL_ACTION_STATE, form);
-
-    if (result.status === "success") {
-      toast.success(result.message);
-    } else {
-      toast.error(result.message);
-    }
-  };
-
-  return (
-    <Card className="border-[#e2e8f0]">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
-        <div>
-          <CardTitle className="text-lg font-semibold text-[#1e293b]">Struktur Organisasi</CardTitle>
-          <CardDescription className="text-sm text-[#64748b]">
-            Konfigurasi hierarki organisasi untuk Approval Engine. Dapat dikustomisasi per jenis pekerjaan.
-          </CardDescription>
-        </div>
-        <Button
-          onClick={() => handleOpenDialog()}
-          className="bg-[#3b82f6] hover:bg-[#2563eb]"
-        >
-          <Plus className="mr-2 size-4" />
-          Tambah Struktur
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <Alert className="mb-4 border-[#dbeafe] bg-[#eff6ff]">
-          <AlertCircle className="size-4 text-[#3b82f6]" />
-          <AlertDescription className="text-[#1e40af]">
-            Struktur organisasi ini menjadi acuan utama untuk Approval Engine. Setiap jenis pekerjaan dapat memiliki konfigurasi approval yang berbeda.
-          </AlertDescription>
-        </Alert>
-
-        <div className="mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
-            <Input
-              placeholder="Cari struktur organisasi..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full max-w-sm pl-9"
-            />
-          </div>
-        </div>
-
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-[#F5F7F9]">
-                <TableHead>Nama Struktur</TableHead>
-                <TableHead>Jenis Pekerjaan</TableHead>
-                <TableHead>Jabatan</TableHead>
-                <TableHead>Manager</TableHead>
-                <TableHead className="w-[100px]">Level Approval</TableHead>
-                <TableHead className="w-[100px]">Status</TableHead>
-                <TableHead className="w-[100px]">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrgStructures.length > 0 ? (
-                filteredOrgStructures.map((org) => (
-                  <TableRow key={org.id}>
-                    <TableCell className="font-medium">{org.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-[#f1f5f9] capitalize">
-                        {org.jobType}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{org.positionName}</span>
-                        <span className="text-xs text-[#64748b]">{org.positionCode}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {org.managerPositionName ? (
-                        <Badge variant="outline" className="bg-[#f0fdf4] text-[#16a34a]">
-                          {org.managerPositionName}
-                        </Badge>
-                      ) : (
-                        <span className="text-[#94a3b8]">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="bg-[#f5f3ff] text-[#7c3aed]">
-                        Level {org.approvalLevel}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={org.isActive ? "default" : "secondary"}
-                        className={
-                          org.isActive
-                            ? "bg-[#10b981] text-white"
-                            : "bg-[#cbd5e1] text-[#64748b]"
-                        }
-                      >
-                        {org.isActive ? "Aktif" : "Nonaktif"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(org)}
-                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(org)}
-                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
-                    Tidak ada data struktur organisasi
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[550px]">
-          <DialogHeader>
-            <DialogTitle>{editingOrg ? "Edit Struktur Organisasi" : "Tambah Struktur Organisasi"}</DialogTitle>
-            <DialogDescription>
-              {editingOrg
-                ? "Ubah konfigurasi struktur organisasi"
-                : "Tambahkan konfigurasi struktur organisasi baru untuk Approval Engine"}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="org-name">Nama Struktur</Label>
-              <Input
-                id="org-name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Struktur Field Operations"
-                required
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="org-jobType">Jenis Pekerjaan</Label>
-                <Select
-                  value={formData.jobType}
-                  onValueChange={(value) => setFormData({ ...formData, jobType: value })}
-                >
-                  <SelectTrigger id="org-jobType">
-                    <SelectValue placeholder="Pilih jenis pekerjaan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        <span className="capitalize">{type}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-[#64748b]">
-                  Approval engine akan menggunakan konfigurasi sesuai jenis pekerjaan
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="org-approvalLevel">Level Approval</Label>
-                <Select
-                  value={formData.approvalLevel.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, approvalLevel: parseInt(value) })}
-                >
-                  <SelectTrigger id="org-approvalLevel">
-                    <SelectValue placeholder="Pilih level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map((level) => (
-                      <SelectItem key={level} value={level.toString()}>
-                        Level {level}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="org-position">Jabatan</Label>
-              <Select
-                value={formData.positionId}
-                onValueChange={(value) => setFormData({ ...formData, positionId: value })}
-              >
-                <SelectTrigger id="org-position">
-                  <SelectValue placeholder="Pilih jabatan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {positions
-                    .filter((p) => p.isActive)
-                    .map((pos) => (
-                      <SelectItem key={pos.id} value={pos.id.toString()}>
-                        {pos.name} ({pos.code}) - Level {pos.level}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="org-manager">Manager Position (Opsional)</Label>
-              <Select
-                value={formData.managerPositionId}
-                onValueChange={(value) => setFormData({ ...formData, managerPositionId: value })}
-              >
-                <SelectTrigger id="org-manager">
-                  <SelectValue placeholder="Pilih manager position" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">- Tidak ada -</SelectItem>
-                  {positions
-                    .filter((p) => p.isActive && p.id.toString() !== formData.positionId)
-                    .map((pos) => (
-                      <SelectItem key={pos.id} value={pos.id.toString()}>
-                        {pos.name} ({pos.code}) - Level {pos.level}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-[#64748b]">
-                Jabatan atasan langsung untuk approval workflow
-              </p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="org-isActive"
-                checked={formData.isActive}
-                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
-              />
-              <Label htmlFor="org-isActive">Aktif</Label>
-            </div>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  Batal
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-                {isSubmitting ? "Menyimpan..." : editingOrg ? "Simpan Perubahan" : "Tambah Struktur"}
               </Button>
             </DialogFooter>
           </form>

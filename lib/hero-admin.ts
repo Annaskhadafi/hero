@@ -618,6 +618,38 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now()
     );
   `);
+
+  await db.execute(sql`
+    alter table hero_master_positions
+    add column if not exists site_location text not null default '';
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_org_chart_structures (
+      id serial primary key,
+      name text not null,
+      scope_type text not null default 'custom',
+      scope_value text not null default '',
+      description text not null default '',
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_org_chart_nodes (
+      id serial primary key,
+      structure_id integer not null references hero_org_chart_structures(id) on delete cascade,
+      parent_node_id integer,
+      position_id integer references hero_master_positions(id) on delete set null,
+      label text not null,
+      sort_order integer not null default 0,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
 }
 
 export async function ensureHeroSeedData() {

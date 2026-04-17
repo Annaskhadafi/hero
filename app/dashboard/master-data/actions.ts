@@ -9,6 +9,9 @@ import {
   masterDepartments,
   masterPositions,
   orgStructures,
+  orgChartStructures,
+  orgChartNodes,
+  sites,
 } from "@/db/schema/hero";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
 
@@ -34,6 +37,16 @@ const departmentSchema = z.object({
   isActive: z.coerce.boolean().default(true),
 });
 
+const siteSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: z.coerce.number().int().positive().optional(),
+  name: z.string().trim().min(1).max(100),
+  location: z.string().trim().min(1).max(150),
+  customerName: z.string().trim().min(1).max(150),
+  contractNumber: z.string().trim().min(1).max(100),
+  isActive: z.coerce.boolean().default(true),
+});
+
 const positionSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
   id: z.coerce.number().int().positive().optional(),
@@ -47,13 +60,16 @@ const positionSchema = z.object({
 });
 
 const orgStructureSchema = z.object({
-  intent: z.enum(["create", "update", "delete"]),
+  intent: z.enum(["create", "update", "delete", "save-nodes"]),
   id: z.coerce.number().int().positive().optional(),
   name: z.string().trim().min(1).max(100),
-  jobType: z.string().trim().min(1).max(50).default("default"),
-  positionId: z.coerce.number().int().positive(),
+  jobType: z.string().trim().min(1).max(50).default("custom"),
+  positionId: z.coerce.number().int().positive().optional(),
   managerPositionId: z.coerce.number().int().positive().optional(),
-  approvalLevel: z.coerce.number().int().min(1).max(5).default(1),
+  approvalLevel: z.coerce.number().int().min(1).max(99).default(1),
+  scopeValue: z.string().trim().max(100).optional(),
+  description: z.string().trim().max(500).optional(),
+  nodesJson: z.string().trim().optional(),
   isActive: z.coerce.boolean().default(true),
 });
 
@@ -67,6 +83,78 @@ export type MasterDataActionState = {
 // Helper function for timestamps
 function now() {
   return new Date();
+}
+
+export async function manageSiteAction(
+  _state: MasterDataActionState,
+  formData: FormData
+): Promise<MasterDataActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const raw = Object.fromEntries(formData.entries());
+  const parsed = siteSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Validation failed",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const { intent, id, name, location, customerName, contractNumber, isActive } = parsed.data;
+
+  try {
+    if (intent === "create") {
+      await db.insert(sites).values({
+        name,
+        location,
+        customerName,
+        contractNumber,
+        isActive,
+        createdAt: now(),
+      });
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Site created successfully" };
+    }
+
+    if (intent === "update") {
+      if (!id) {
+        return { status: "error", message: "ID is required for update" };
+      }
+
+      await db
+        .update(sites)
+        .set({
+          name,
+          location,
+          customerName,
+          contractNumber,
+          isActive,
+        })
+        .where(eq(sites.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Site updated successfully" };
+    }
+
+    if (intent === "delete") {
+      if (!id) {
+        return { status: "error", message: "ID is required for delete" };
+      }
+
+      await db.delete(sites).where(eq(sites.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Site deleted successfully" };
+    }
+
+    return { status: "error", message: "Invalid intent" };
+  } catch (error) {
+    console.error("Site action error:", error);
+    return { status: "error", message: "An error occurred while processing your request" };
+  }
 }
 
 // SECTION ACTIONS
@@ -433,16 +521,15 @@ export async function manageOrgStructureAction(
     };
   }
 
-  const { intent, id, name, jobType, positionId, managerPositionId, approvalLevel, isActive } = parsed.data;
+  const { intent, id, name, jobType, scopeValue, description, nodesJson, isActive } = parsed.data;
 
   try {
     if (intent === "create") {
-      await db.insert(orgStructures).values({
+      await db.insert(orgChartStructures).values({
         name,
-        jobType,
-        positionId,
-        managerPositionId: managerPositionId || null,
-        approvalLevel,
+        scopeType: jobType,
+        scopeValue: scopeValue || "",
+        description: description || "",
         isActive,
         createdAt: now(),
         updatedAt: now(),
@@ -458,20 +545,91 @@ export async function manageOrgStructureAction(
       }
 
       await db
-        .update(orgStructures)
+        .update(orgChartStructures)
         .set({
           name,
-          jobType,
-          positionId,
-          managerPositionId: managerPositionId || null,
-          approvalLevel,
+          scopeType: jobType,
+          scopeValue: scopeValue || "",
+          description: description || "",
           isActive,
           updatedAt: now(),
         })
-        .where(eq(orgStructures.id, id));
+        .where(eq(orgChartStructures.id, id));
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Organizational structure updated successfully" };
+    }
+
+    if (intent === "save-nodes") {
+      if (!id) {
+        return { status: "error", message: "ID is required for save nodes" };
+      }
+
+      const parsedNodes = z.array(
+        z.object({
+          id: z.number().optional(),
+          parentNodeId: z.number().nullable(),
+          positionId: z.number().nullable(),
+          employeeId: z.number().nullable().optional(),
+          label: z.string().trim().min(1).max(100),
+          sortOrder: z.number().int().min(0),
+          isActive: z.boolean().default(true),
+        })
+      ).safeParse(JSON.parse(nodesJson || "[]"));
+
+      if (!parsedNodes.success) {
+        return { status: "error", message: "Nodes payload is invalid" };
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.delete(orgChartNodes).where(eq(orgChartNodes.structureId, id));
+
+        if (parsedNodes.data.length > 0) {
+          const inserted = await tx
+            .insert(orgChartNodes)
+            .values(
+              parsedNodes.data.map((node) => ({
+                structureId: id,
+                parentNodeId: null,
+                positionId: node.positionId,
+                employeeId: node.employeeId || null,
+                label: node.label,
+                sortOrder: node.sortOrder,
+                isActive: node.isActive,
+                createdAt: now(),
+                updatedAt: now(),
+              }))
+            )
+            .returning({ id: orgChartNodes.id });
+
+          const oldToNewId = new Map<number, number>();
+          parsedNodes.data.forEach((node, index) => {
+            if (node.id != null) {
+              oldToNewId.set(node.id, inserted[index]?.id ?? 0);
+            }
+          });
+
+          for (let index = 0; index < parsedNodes.data.length; index += 1) {
+            const node = parsedNodes.data[index];
+            const insertedNode = inserted[index];
+            if (!insertedNode) continue;
+
+            const parentNodeId =
+              node.parentNodeId == null ? null : oldToNewId.get(node.parentNodeId) ?? null;
+
+            await tx
+              .update(orgChartNodes)
+              .set({
+                parentNodeId,
+                updatedAt: now(),
+              })
+              .where(eq(orgChartNodes.id, insertedNode.id));
+          }
+        }
+      });
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Organizational canvas saved successfully" };
     }
 
     if (intent === "delete") {
@@ -479,7 +637,7 @@ export async function manageOrgStructureAction(
         return { status: "error", message: "ID is required for delete" };
       }
 
-      await db.delete(orgStructures).where(eq(orgStructures.id, id));
+      await db.delete(orgChartStructures).where(eq(orgChartStructures.id, id));
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Organizational structure deleted successfully" };

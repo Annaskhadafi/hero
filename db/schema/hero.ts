@@ -350,3 +350,29 @@ export const orgStructures = pgTable("hero_org_structures", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+export const orgChartStructures = pgTable("hero_org_chart_structures", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  scopeType: text("scope_type").notNull().default("custom"),
+  scopeValue: text("scope_value").notNull().default(""),
+  description: text("description").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const orgChartNodes = pgTable("hero_org_chart_nodes", {
+  id: serial("id").primaryKey(),
+  structureId: integer("structure_id")
+    .notNull()
+    .references(() => orgChartStructures.id, { onDelete: "cascade" }),
+  parentNodeId: integer("parent_node_id"),
+  positionId: integer("position_id").references(() => masterPositions.id, { onDelete: "set null" }),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "set null" }),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
