@@ -146,7 +146,7 @@ function SignInContent() {
                     {/* Header */}
                     <div className="mb-8 flex flex-col items-center pt-8">
                         <Image
-                            src="/logo%20HERO.png"
+                            src="/logo-hero.png"
                             alt="HERO Logo"
                             width={160}
                             height={160}
@@ -303,7 +303,7 @@ function SignInContent() {
                     headerBadge={
                         <div className="flex items-center justify-center">
                             <Image
-                                src="/logo%20HERO.png"
+                                src="/logo-hero.png"
                                 alt="HERO Logo"
                                 width={160}
                                 height={160}

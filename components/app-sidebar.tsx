@@ -129,7 +129,7 @@ export function AppSidebar({
               <Link href="/">
                 <div className="flex aspect-square size-12 items-center justify-center overflow-hidden">
                   <Image
-                    src="/logo%20HERO.png"
+                    src="/logo-hero.png"
                     alt="HERO"
                     width={48}
                     height={48}
