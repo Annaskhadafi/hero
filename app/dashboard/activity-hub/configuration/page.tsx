@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Gauge, ShieldCheck, Sparkles } from "lucide-react";
 import {
   manageActivityModifierAction,
+  resolvePointDisputeAction,
   updateDailyActivityConfigAction,
 } from "@/app/dashboard/activity-hub/actions";
 import { Badge } from "@/components/ui/badge";
@@ -292,6 +293,41 @@ export default async function DailyActivityConfigurationPage() {
                 <p className="mt-2 text-sm text-muted-foreground">{dispute.reason}</p>
                 {dispute.resolutionNotes ? (
                   <p className="mt-2 text-xs text-muted-foreground">Resolution: {dispute.resolutionNotes}</p>
+                ) : null}
+                {dispute.status === "pending" && data.currentEmployee ? (
+                  <details className="mt-3 rounded-xl border border-border/70 bg-background p-3">
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Proses dispute
+                    </summary>
+                    <form action={resolvePointDisputeAction} className="mt-3 grid gap-3">
+                      <input type="hidden" name="disputeId" value={dispute.id} />
+                      <input type="hidden" name="resolvedByEmployeeId" value={data.currentEmployee.id} />
+                      <Label className="grid gap-2 text-sm">
+                        Keputusan
+                        <select
+                          name="decision"
+                          defaultValue="approved"
+                          className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                        >
+                          <option value="approved">Approve dispute dan restore poin</option>
+                          <option value="rejected">Reject dispute</option>
+                        </select>
+                      </Label>
+                      <Label className="grid gap-2 text-sm">
+                        Catatan keputusan
+                        <Textarea
+                          name="resolutionNotes"
+                          rows={3}
+                          placeholder="Tulis alasan approval/reject agar jejak audit tetap jelas."
+                          required
+                          minLength={5}
+                        />
+                      </Label>
+                      <Button type="submit" size="sm" className="w-full rounded-xl">
+                        Simpan keputusan
+                      </Button>
+                    </form>
+                  </details>
                 ) : null}
               </div>
             ))}

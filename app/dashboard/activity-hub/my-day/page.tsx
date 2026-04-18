@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Camera, Clock3, Flame, ListTodo, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
-import { submitDailyActivityAction } from "@/app/dashboard/activity-hub/actions";
+import { submitDailyActivityAction, submitPointDisputeAction } from "@/app/dashboard/activity-hub/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -519,7 +519,37 @@ export default async function MyDayPage() {
                       <Badge variant="outline" className="mt-3">
                         Dispute {penalty.disputeStatus}
                       </Badge>
-                    ) : null}
+                    ) : (
+                      <details className="mt-3 rounded-xl border border-border/70 bg-background p-3">
+                        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          Ajukan dispute penalty
+                        </summary>
+                        <form action={submitPointDisputeAction} className="mt-3 grid gap-3">
+                          <input type="hidden" name="penaltyEventId" value={penalty.id} />
+                          <input type="hidden" name="employeeId" value={data.employee.id} />
+                          <Label className="grid gap-2 text-sm">
+                            Alasan keberatan
+                            <Textarea
+                              name="reason"
+                              rows={3}
+                              placeholder="Jelaskan kronologi, kendala sinyal/site, atau alasan kenapa penalty perlu direview."
+                              required
+                              minLength={20}
+                            />
+                          </Label>
+                          <Label className="grid gap-2 text-sm">
+                            Bukti pendukung
+                            <Input
+                              name="evidenceUrls"
+                              placeholder="URL foto/chat/berita acara, pisahkan dengan koma bila lebih dari satu."
+                            />
+                          </Label>
+                          <Button type="submit" size="sm" className="w-full rounded-xl">
+                            Kirim dispute
+                          </Button>
+                        </form>
+                      </details>
+                    )}
                   </div>
                 ))
               ) : (

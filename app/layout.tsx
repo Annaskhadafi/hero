@@ -1,5 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
+import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -25,15 +27,32 @@ export const metadata: Metadata = {
   title: "HERO",
   description:
     "Hub for Employee Reporting & Operations",
+  applicationName: "HERO",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "HERO",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  themeColor: "#0f766e",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="id" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
       >
@@ -43,6 +62,8 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <PwaRegistration />
+          <PwaInstallPrompt />
           {children}
         </ThemeProvider>
       </body>

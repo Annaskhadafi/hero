@@ -14,6 +14,7 @@ import {
   employees,
   jobAssignments,
   penaltyEvents,
+  pointDisputes,
   pointEvents,
   streakRecords,
 } from "@/db/schema/hero";
@@ -130,10 +131,38 @@ const manageModifierSchema = z.object({
   isActive: formBoolean(true),
 });
 
+const submitDisputeSchema = z.object({
+  penaltyEventId: z.coerce.number().int().positive(),
+  employeeId: z.coerce.number().int().positive(),
+  reason: z.string().trim().min(20).max(1200),
+  evidenceUrls: z.string().trim().max(4000).optional().default(""),
+});
+
+const resolveDisputeSchema = z.object({
+  disputeId: z.coerce.number().int().positive(),
+  resolvedByEmployeeId: z.coerce.number().int().positive(),
+  decision: z.enum(["approved", "rejected"]),
+  resolutionNotes: z.string().trim().min(5).max(1200),
+});
+
 function revalidateDailyActivitySurfaces() {
   for (const path of DAILY_ACTIVITY_REVALIDATE_PATHS) {
     revalidatePath(path);
   }
+}
+
+function normalizeEvidenceUrls(value: string) {
+  if (value.trim().length === 0) {
+    return JSON.stringify([]);
+  }
+
+  const urls = value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  return JSON.stringify(urls);
 }
 
 function parseDateTime(value: string, label: string) {
@@ -758,6 +787,167 @@ export async function manageActivityModifierAction(formData: FormData) {
 
     await db.update(activityModifiers).set(values).where(eq(activityModifiers.id, payload.id));
   }
+
+  revalidateDailyActivitySurfaces();
+}
+
+export async function submitPointDisputeAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = submitDisputeSchema.parse(Object.fromEntries(formData));
+
+  const [penalty] = await db
+    .select({
+      id: penaltyEvents.id,
+      employeeId: penaltyEvents.employeeId,
+      disputeStatus: penaltyEvents.disputeStatus,
+    })
+    .from(penaltyEvents)
+    .where(eq(penaltyEvents.id, payload.penaltyEventId))
+    .limit(1);
+
+  if (!penalty || penalty.employeeId !== payload.employeeId) {
+    throw new Error("Penalty event tidak ditemukan.");
+  }
+
+  const [existingDispute] = await db
+    .select({
+      id: pointDisputes.id,
+      status: pointDisputes.status,
+    })
+    .from(pointDisputes)
+    .where(eq(pointDisputes.penaltyEventId, payload.penaltyEventId))
+    .orderBy(desc(pointDisputes.createdAt))
+    .limit(1);
+
+  if (existingDispute?.status === "pending" || penalty.disputeStatus === "pending") {
+    throw new Error("Penalty ini sudah memiliki dispute yang masih diproses.");
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.insert(pointDisputes).values({
+      penaltyEventId: payload.penaltyEventId,
+      employeeId: payload.employeeId,
+      reason: payload.reason,
+      evidenceUrls: normalizeEvidenceUrls(payload.evidenceUrls),
+      status: "pending",
+      resolutionNotes: "",
+      resolvedByEmployeeId: null,
+      resolvedAt: null,
+      createdAt: new Date(),
+    });
+
+    await tx
+      .update(penaltyEvents)
+      .set({
+        isDisputed: true,
+        disputeStatus: "pending",
+        resolvedAt: null,
+      })
+      .where(eq(penaltyEvents.id, payload.penaltyEventId));
+  });
+
+  revalidateDailyActivitySurfaces();
+}
+
+export async function resolvePointDisputeAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = resolveDisputeSchema.parse(Object.fromEntries(formData));
+
+  const [dispute] = await db
+    .select({
+      id: pointDisputes.id,
+      status: pointDisputes.status,
+      penaltyEventId: pointDisputes.penaltyEventId,
+      employeeId: pointDisputes.employeeId,
+      penaltyCode: penaltyEvents.penaltyCode,
+      pointsDeducted: penaltyEvents.pointsDeducted,
+    })
+    .from(pointDisputes)
+    .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
+    .where(eq(pointDisputes.id, payload.disputeId))
+    .limit(1);
+
+  if (!dispute) {
+    throw new Error("Dispute tidak ditemukan.");
+  }
+
+  if (dispute.status !== "pending") {
+    throw new Error("Dispute ini sudah pernah diproses.");
+  }
+
+  await db.transaction(async (tx) => {
+    const resolvedAt = new Date();
+
+    await tx
+      .update(pointDisputes)
+      .set({
+        status: payload.decision,
+        resolvedByEmployeeId: payload.resolvedByEmployeeId,
+        resolutionNotes: payload.resolutionNotes,
+        resolvedAt,
+      })
+      .where(eq(pointDisputes.id, payload.disputeId));
+
+    await tx
+      .update(penaltyEvents)
+      .set({
+        isDisputed: true,
+        disputeStatus: payload.decision,
+        resolvedAt,
+      })
+      .where(eq(penaltyEvents.id, dispute.penaltyEventId));
+
+    if (payload.decision === "approved" && dispute.pointsDeducted > 0) {
+      const [existingRestoreEvent] = await tx
+        .select({ id: pointEvents.id })
+        .from(pointEvents)
+        .where(
+          and(
+            eq(pointEvents.sourceType, "point_dispute"),
+            eq(pointEvents.sourceId, payload.disputeId),
+          ),
+        )
+        .limit(1);
+
+      if (!existingRestoreEvent) {
+        const [employee] = await tx
+          .select({
+            id: employees.id,
+            totalPoints: employees.totalPoints,
+          })
+          .from(employees)
+          .where(eq(employees.id, dispute.employeeId))
+          .limit(1);
+
+        if (employee) {
+          const updatedBalance = employee.totalPoints + dispute.pointsDeducted;
+
+          await tx.insert(pointEvents).values({
+            employeeId: dispute.employeeId,
+            transactionType: "reward",
+            sourceType: "point_dispute",
+            sourceId: payload.disputeId,
+            category: "Dispute Adjustment",
+            label: `Restorasi ${dispute.penaltyCode} setelah dispute disetujui`,
+            points: dispute.pointsDeducted,
+            balanceAfter: updatedBalance,
+            metadata: JSON.stringify({
+              penaltyEventId: dispute.penaltyEventId,
+              decision: payload.decision,
+            }),
+            createdAt: resolvedAt,
+          });
+
+          await tx
+            .update(employees)
+            .set({ totalPoints: updatedBalance })
+            .where(eq(employees.id, dispute.employeeId));
+        }
+      }
+    }
+  });
 
   revalidateDailyActivitySurfaces();
 }
