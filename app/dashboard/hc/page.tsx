@@ -8,6 +8,7 @@ import {
   TrainingRowActions,
   WellnessRowActions,
 } from "@/components/operational-crud-panels";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getHcPageData, getOperationalCrudOptions } from "@/lib/hero-admin";
 
 export default async function HcPage() {
@@ -32,11 +33,19 @@ export default async function HcPage() {
 
       <HcCrudForms employees={options.employees} sites={options.sites} />
 
-      <div className="grid gap-6">
+      <Tabs defaultValue="attendance" className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="attendance">Attendance Review</TabsTrigger>
+          <TabsTrigger value="training">Training Status</TabsTrigger>
+          <TabsTrigger value="wellness">Wellness Status</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="attendance">
         <AdminTableCard
           title="Attendance Review"
           description="Absensi selfie + GPS yang dibutuhkan admin untuk validasi."
           columns={["Employee", "Role", "Event", "Time", "Status", "Note", "Action"]}
+          dateFilter
           rows={attendance.map((row, index) => [
             row.employeeName,
             row.role,
@@ -52,11 +61,14 @@ export default async function HcPage() {
             />,
           ])}
         />
-        <div className="grid gap-6 xl:grid-cols-2">
+        </TabsContent>
+
+        <TabsContent value="training">
           <AdminTableCard
             title="Training Status"
             description="Sertifikasi yang aktif atau mendekati expiry."
             columns={["Employee", "Training", "Provider", "Expiry", "Status", "Action"]}
+            dateFilter
             rows={trainings.map((row, index) => [
               row.employeeName,
               row.trainingName,
@@ -70,10 +82,14 @@ export default async function HcPage() {
               />,
             ])}
           />
+        </TabsContent>
+
+        <TabsContent value="wellness">
           <AdminTableCard
             title="Wellness Status"
             description="Status kesehatan dan fit-for-work untuk monitoring HC."
             columns={["Employee", "Metric", "Value", "Status", "Notes", "Action"]}
+            dateFilter={false}
             rows={wellness.map((row, index) => [
               row.employeeName,
               row.metricType,
@@ -87,8 +103,8 @@ export default async function HcPage() {
               />,
             ])}
           />
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </AdminPageShell>
   );
 }

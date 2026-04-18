@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
   Select,
   SelectContent,
@@ -76,30 +75,24 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="Cari aktivitas, pengguna, atau deskripsi..."
-            className="pl-9"
-          />
-        </div>
-        <Select value={severity} onValueChange={setSeverity}>
-          <SelectTrigger className="w-full md:w-44">
-            <SelectValue placeholder="Tingkat Risiko" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua tingkat</SelectItem>
-            <SelectItem value="info">Info</SelectItem>
-            <SelectItem value="medium">Sedang</SelectItem>
-            <SelectItem value="high">Tinggi</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border">
+      <MinimalTableShell
+        label="audit logs"
+        fileName="security-audit-logs"
+        searchPlaceholder="Cari aktivitas, pengguna, atau deskripsi..."
+        filters={
+          <Select value={severity} onValueChange={setSeverity}>
+            <SelectTrigger className="h-11 w-full rounded-[1rem] border-0 bg-white md:w-44">
+              <SelectValue placeholder="Tingkat Risiko" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua tingkat</SelectItem>
+              <SelectItem value="info">Info</SelectItem>
+              <SelectItem value="medium">Sedang</SelectItem>
+              <SelectItem value="high">Tinggi</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      >
         <Table>
           <TableHeader>
             <TableRow>
@@ -113,7 +106,7 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
           </TableHeader>
           <TableBody>
             {filtered.map((log) => (
-              <TableRow key={log.id}>
+              <TableRow key={log.id} data-date-value={log.createdAt.toISOString()}>
                 <TableCell>
                   <Badge variant="secondary" className="rounded-full">
                     {formatAuditValue(log.action)}
@@ -146,7 +139,7 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </MinimalTableShell>
     </div>
   );
 }

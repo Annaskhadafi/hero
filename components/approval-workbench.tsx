@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
   Table,
   TableBody,
@@ -20,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { getApprovalWorkbenchData } from "@/lib/approval-workspace";
 
@@ -69,7 +71,13 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
         ]}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.9fr)]">
+      <Tabs defaultValue="queue" className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="queue">Daftar Approval</TabsTrigger>
+          <TabsTrigger value="detail">Detail Approval</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="queue">
         <Card className="rounded-[1.6rem] bg-surface-container-lowest py-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
           <CardHeader className="bg-surface-container-low px-7 py-6">
             <CardTitle>Daftar Approval</CardTitle>
@@ -78,107 +86,117 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pengajuan</TableHead>
-                  <TableHead>Tahap</TableHead>
-                  <TableHead>Pemeriksa</TableHead>
-                  <TableHead>Batas Waktu</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Prioritas</TableHead>
-                  <TableHead className="w-[240px]">Tindakan</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {queue.length > 0 ? (
-                  queue.map((item) => (
-                    <TableRow
-                      key={item.approvalId}
-                      className={focus?.approvalId === item.approvalId ? "bg-surface-container-highest" : undefined}
-                    >
-                      <TableCell className="align-top">
-                        <div className="space-y-1">
-                          <p className="font-medium text-[#0f172a]">
-                            {item.activityTitle} • {item.unitNumber}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.requesterName} • {item.siteName} • {item.activityType}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <div className="space-y-1">
-                          <p className="font-medium text-[#0f172a]">L{item.level}</p>
-                          <p className="text-xs text-muted-foreground">{item.currentStepLabel}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <div className="space-y-1">
-                          <p className="font-medium text-[#0f172a]">{item.approverName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Jalur {item.resolutionSource.replaceAll("_", " ")}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <div className="space-y-1">
-                          <p className="text-sm text-[#0f172a]">{item.dueAt.toLocaleString("id-ID")}</p>
-                          <AdminStatusBadge value={item.dueState.replaceAll("_", " ")} />
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <AdminStatusBadge value={item.status} />
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <AdminStatusBadge value={item.priority} />
-                      </TableCell>
-                      <TableCell className="align-top">
-                        {item.isPending ? (
-                          <div className="flex flex-wrap gap-2">
-                            <form action={reviewApprovalAction}>
-                              <input type="hidden" name="approvalId" value={item.approvalId} />
-                              <input type="hidden" name="decision" value="approved" />
-                              <Button type="submit" size="sm" className="rounded-full px-4">
-                                Setujui
-                              </Button>
-                            </form>
-                            <form action={reviewApprovalAction}>
-                              <input type="hidden" name="approvalId" value={item.approvalId} />
-                              <input type="hidden" name="decision" value="rejected" />
-                              <Button type="submit" size="sm" variant="secondary" className="rounded-full px-4">
-                                Tolak
-                              </Button>
-                            </form>
-                            <form action={reviewApprovalAction}>
-                              <input type="hidden" name="approvalId" value={item.approvalId} />
-                              <input type="hidden" name="decision" value="needs_correction" />
-                              <Button type="submit" size="sm" variant="outline" className="rounded-full px-4">
-                                Revisi
-                              </Button>
-                            </form>
-                          </div>
-                        ) : (
+            <MinimalTableShell
+              label="approval items"
+              fileName="approval-inbox"
+              searchPlaceholder="Cari pengajuan, pemeriksa, site, atau status..."
+              summaryClassName="bg-transparent px-1 py-0 shadow-none"
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pengajuan</TableHead>
+                    <TableHead>Tahap</TableHead>
+                    <TableHead>Pemeriksa</TableHead>
+                    <TableHead>Batas Waktu</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Prioritas</TableHead>
+                    <TableHead className="w-[240px]">Tindakan</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {queue.length > 0 ? (
+                    queue.map((item) => (
+                      <TableRow
+                        key={item.approvalId}
+                        data-date-value={item.dueAt.toISOString()}
+                        className={focus?.approvalId === item.approvalId ? "bg-surface-container-highest" : undefined}
+                      >
+                        <TableCell className="align-top">
                           <div className="space-y-1">
-                            <p className="text-sm text-[#0f172a]">Sudah ditinjau</p>
-                            <p className="text-xs text-muted-foreground">{item.commentsCount} catatan tersimpan</p>
+                            <p className="font-medium text-[#0f172a]">
+                              {item.activityTitle} • {item.unitNumber}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.requesterName} • {item.siteName} • {item.activityType}
+                            </p>
                           </div>
-                        )}
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="space-y-1">
+                            <p className="font-medium text-[#0f172a]">L{item.level}</p>
+                            <p className="text-xs text-muted-foreground">{item.currentStepLabel}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="space-y-1">
+                            <p className="font-medium text-[#0f172a]">{item.approverName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Jalur {item.resolutionSource.replaceAll("_", " ")}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="space-y-1">
+                            <p className="text-sm text-[#0f172a]">{item.dueAt.toLocaleString("id-ID")}</p>
+                            <AdminStatusBadge value={item.dueState.replaceAll("_", " ")} />
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <AdminStatusBadge value={item.status} />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <AdminStatusBadge value={item.priority} />
+                        </TableCell>
+                        <TableCell className="align-top">
+                          {item.isPending ? (
+                            <div className="flex flex-wrap gap-2">
+                              <form action={reviewApprovalAction}>
+                                <input type="hidden" name="approvalId" value={item.approvalId} />
+                                <input type="hidden" name="decision" value="approved" />
+                                <Button type="submit" size="sm" className="rounded-full px-4">
+                                  Setujui
+                                </Button>
+                              </form>
+                              <form action={reviewApprovalAction}>
+                                <input type="hidden" name="approvalId" value={item.approvalId} />
+                                <input type="hidden" name="decision" value="rejected" />
+                                <Button type="submit" size="sm" variant="secondary" className="rounded-full px-4">
+                                  Tolak
+                                </Button>
+                              </form>
+                              <form action={reviewApprovalAction}>
+                                <input type="hidden" name="approvalId" value={item.approvalId} />
+                                <input type="hidden" name="decision" value="needs_correction" />
+                                <Button type="submit" size="sm" variant="outline" className="rounded-full px-4">
+                                  Revisi
+                                </Button>
+                              </form>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <p className="text-sm text-[#0f172a]">Sudah ditinjau</p>
+                              <p className="text-xs text-muted-foreground">{item.commentsCount} catatan tersimpan</p>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                        Belum ada pengajuan yang menunggu approval.
                       </TableCell>
                     </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                      Belum ada pengajuan yang menunggu approval.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                  )}
+                </TableBody>
+              </Table>
+            </MinimalTableShell>
           </CardContent>
         </Card>
+        </TabsContent>
 
+        <TabsContent value="detail" className="space-y-6">
         {focus ? (
           <div className="space-y-6">
             <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
@@ -415,7 +433,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
             </CardHeader>
           </Card>
         )}
-      </div>
+        </TabsContent>
+      </Tabs>
     </AdminPageShell>
   );
 }

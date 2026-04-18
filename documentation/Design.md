@@ -63,6 +63,7 @@ Do not use opaque 1px borders to separate major sections. Create boundaries thro
 - Primary buttons use a `primary -> primary_container` 135-degree gradient.
 - Button text is bold, uppercase, and command-like.
 - Minimum touch height is `48px`.
+- Exception: dense table toolbar controls use compact `32px` to `36px` height with normal-case labels.
 - Alert actions use the tertiary container palette instead of default red.
 
 ### Cards
@@ -79,9 +80,47 @@ Do not use opaque 1px borders to separate major sections. Create boundaries thro
 
 ### Tables and Lists
 
-- No row divider lines.
-- Use generous vertical spacing to separate items.
-- Active rows can use a stronger card tone and a left accent strip in `primary`.
+- Every operational table must use a minimal command-bar layout before the grid.
+- The table command bar must include these controls in one horizontal flow:
+  - Search input for quick filtering.
+  - Filter area for contextual filters.
+  - Date range action only when the dataset has a meaningful date/time context.
+  - Action menu for quick presets and reset.
+  - Export button for `Excel`.
+- Use soft surface layering instead of hard boxed outlines.
+- Table header sits on `surface_container_low` with subtle contrast from the row area.
+- Rows use thin ghost separators only. Avoid heavy full borders.
+- Hover states should stay calm: light tonal shift, no dramatic glow.
+- Action cells should stay compact and icon-led, never visually noisy.
+- Show a lightweight summary line above the table body: visible rows versus total rows.
+- Search, filters, and Excel export actions must be reusable and consistent across every page-level table.
+- Date actions are optional and should be omitted when they do not match the table context.
+- Table command controls should stay compact/minimal (`~36px` height target) and avoid oversized buttons.
+- Export controls in table toolbars should use a short `Excel` label with an icon; avoid large `Export ...` buttons in dense tables.
+- Search inputs in table toolbars should stay compact (`~220px` desktop target) and must not stretch so far that actions wrap awkwardly.
+
+## Layout Strategy
+
+### Table-first Workspace
+
+- Default layout for data-heavy pages is table-first, not card-grid-heavy dashboards.
+- Avoid stacking many large grids/cards on one screen (especially in operational pages like `My Day` and `Team Board`).
+- Keep one clear primary workspace per tab with focused table surfaces.
+- Do not place multiple independent list/table cards side-by-side in a grid when they represent related features. Put them into tabs instead.
+- KPI or summary values may be compact chips in a header, but should not become a 3-4 column card grid unless the page is a true analytics dashboard.
+
+### Forms as Modal
+
+- Forms for create/update workflows should open in modal/dialog by default.
+- Avoid long inline forms beside table content unless the page is explicitly a dedicated form page.
+- Keep the base page focused on reading/monitoring data; editing happens in dialog layers.
+
+### Tabs for Related Features
+
+- Related feature groups should be split into tabs instead of long multi-section pages.
+- Each tab should represent one operational context (for example queue, history, dispute, settings).
+- Tab content should stay clean: compact summary + command bar + table or focused content block.
+- When two related lists would otherwise sit beside each other, convert them into sibling tabs.
 
 ### Glass Panels
 
@@ -115,3 +154,23 @@ When adding or updating a page:
 4. Prefer spacing over divider lines.
 5. Use `primary` gradients only for key command surfaces.
 6. Use tertiary/orange for operational alerts, escalations, or stop-state actions.
+7. Use tabs for related lists/tables instead of side-by-side grid panels.
+8. Put create/update forms in dialogs unless the route is specifically dedicated to form entry.
+
+## Table Blueprint
+
+Use this as the default blueprint for every table in HERO:
+
+1. Toolbar layer:
+   Search on the left, optional filter chips/selects in the middle, then action menu and export actions on the right. Keep controls compact and add date action only when date context exists.
+2. Summary layer:
+   Show `Showing X of Y ...` in a compact capsule-like strip before the table body.
+3. Table layer:
+   Clean header, soft separators, compact actions, and clear hover state.
+4. Export behavior:
+   Every page-level table should support Excel export only.
+5. Date behavior:
+   Expose a date-range action only for time-based datasets (e.g. created, updated, submitted, due, event time).
+   Do not show date range for static master data, leaderboard/ranking snapshots, role lists, category summaries, or tables without a meaningful date field.
+6. Action behavior:
+   Every page-level table should include a table-level action menu for reset/preset behavior, while row-level actions remain in the `Aksi` or `Action` column when relevant.

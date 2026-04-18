@@ -1,13 +1,23 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CheckCheck, ClipboardList, Clock3, Users2 } from "lucide-react";
+import { AlertTriangle, CheckCheck, ClipboardList, Users2 } from "lucide-react";
 import { manageJobAssignmentAction } from "@/app/dashboard/activity-hub/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityTeamBoardData } from "@/lib/daily-activity";
@@ -28,9 +38,36 @@ function statusBadgeClass(status: string) {
   return "bg-slate-100 text-slate-800";
 }
 
+function riskBadgeClass(risk: string) {
+  if (risk === "Emergency") {
+    return "bg-rose-100 text-rose-900";
+  }
+
+  if (risk === "Escalation") {
+    return "bg-amber-100 text-amber-900";
+  }
+
+  return "bg-slate-100 text-slate-800";
+}
+
 function dateTimeLocalValue(reference: Date) {
   const local = new Date(reference.getTime() - reference.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function MetricPill({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-full bg-surface-container-low px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="ml-2 font-semibold text-foreground">{value}</span>
+    </div>
+  );
 }
 
 export default async function TeamBoardPage() {
@@ -47,330 +84,315 @@ export default async function TeamBoardPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="overflow-hidden rounded-[1.8rem] border-0 bg-[linear-gradient(135deg,#3f2b00_0%,#8a5a00_40%,#0f172a_100%)] text-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
-        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.15fr_0.85fr]">
+    <div className="space-y-5">
+      <Card className="rounded-[1.5rem]">
+        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
-            <Badge className="w-fit border-0 bg-white/15 text-white">Foreman / Team Board</Badge>
-            <div>
-              <h2 className="text-3xl font-semibold tracking-tight">Daily Activity Command Center</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/75">
-                Satu layar untuk memantau manpower, memastikan assignment jalan, dan memotong bottleneck approval
-                sebelum shift berakhir.
-              </p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">Team Board Workspace</Badge>
+              <Badge variant="outline">{data.lead.department}</Badge>
+              <Badge variant="outline">{data.lead.name}</Badge>
             </div>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-white/65">Workers</p>
-                <p className="mt-2 text-lg font-semibold">{data.summary.activeWorkers}</p>
-              </div>
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-white/65">Checked-in</p>
-                <p className="mt-2 text-lg font-semibold">{data.summary.checkedIn}</p>
-              </div>
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-white/65">Pending Approval</p>
-                <p className="mt-2 text-lg font-semibold">{data.summary.pendingApproval}</p>
-              </div>
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-white/65">Emergency</p>
-                <p className="mt-2 text-lg font-semibold">{data.summary.emergencyJobs}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            <Card className="rounded-[1.4rem] border-0 bg-white/10 text-white shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Approval Pressure</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2 text-sm">
-                <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-                  <span>Pending approval</span>
-                  <span className="font-semibold">{data.summary.pendingApproval}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-                  <span>Overdue assignments</span>
-                  <span className="font-semibold">{data.summary.overdueAssignments}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-2">
-                  <span>Overtime candidates</span>
-                  <span className="font-semibold">{data.summary.overtimeCandidates}</span>
-                </div>
-                <Button asChild variant="secondary" className="mt-2 rounded-2xl">
-                  <Link href="/dashboard/approval">Buka approval inbox</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[1.4rem] border-0 bg-white/10 text-white shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Lead Operator</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p className="font-semibold">{data.lead.name}</p>
-                <p className="text-white/70">{data.lead.jobTitle || data.lead.role}</p>
-                <p className="text-white/70">Scope team: {data.lead.department}</p>
-              </CardContent>
-            </Card>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-6">
-          <Card className="rounded-[1.6rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="size-5 text-primary" />
-                Buat Job Assignment
-              </CardTitle>
-              <CardDescription>
-                Foreman dapat membuat job list harian untuk anggota tim dari library aktivitas yang aktif.
+            <div className="space-y-2">
+              <CardTitle className="text-2xl sm:text-3xl">Lead Board Berbasis Table dan Tab</CardTitle>
+              <CardDescription className="max-w-3xl text-sm leading-6">
+                Halaman foreman diringkas menjadi command surface yang fokus ke team status, approval queue, dan dispute
+                audit. Pembuatan assignment dipindah ke modal agar area kerja utama tidak lagi dipenuhi grid card.
               </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form action={manageJobAssignmentAction} className="space-y-4">
-                <input type="hidden" name="intent" value="create" />
-                <input type="hidden" name="assignedByEmployeeId" value={data.lead.id} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <MetricPill label="Workers" value={data.summary.activeWorkers} />
+              <MetricPill label="Checked-in" value={data.summary.checkedIn} />
+              <MetricPill label="Pending approval" value={data.summary.pendingApproval} />
+              <MetricPill label="Overdue" value={data.summary.overdueAssignments} />
+              <MetricPill label="Overtime candidates" value={data.summary.overtimeCandidates} />
+              <MetricPill label="Emergency jobs" value={data.summary.emergencyJobs} />
+            </div>
+          </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Label className="grid gap-2">
-                    Assign to
-                    <select name="assignedToEmployeeId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      {data.team.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.name} - {member.jobTitle || member.role}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <Label className="grid gap-2">
-                    Site
-                    <Input name="siteId" defaultValue={data.lead.siteId} />
-                  </Label>
-                  <Label className="grid gap-2">
-                    Activity library
-                    <select name="libraryActivityId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      {data.assignmentOptions.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.activityCode} - {item.activityName}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <Label className="grid gap-2">
-                    Priority
-                    <select name="priority" defaultValue="Normal" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      <option value="Normal">Normal</option>
-                      <option value="High">High</option>
-                      <option value="Emergency">Emergency</option>
-                    </select>
-                  </Label>
-                  <Label className="grid gap-2">
-                    Estimasi durasi (menit)
-                    <Input name="estimatedDuration" type="number" defaultValue={90} />
-                  </Label>
-                  <Label className="grid gap-2">
-                    Deadline
-                    <Input name="deadline" type="datetime-local" defaultValue={dateTimeLocalValue(new Date(Date.now() + 4 * 60 * 60 * 1000))} />
-                  </Label>
-                </div>
-
-                <Label className="grid gap-2">
-                  Catatan job
-                  <Textarea
-                    name="notes"
-                    rows={4}
-                    placeholder="Instruksi singkat, area kerja, material, atau perhatian keselamatan."
-                  />
-                </Label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Label className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-3 text-sm">
-                    <input type="checkbox" name="isMandatory" />
-                    Jadikan mandatory activity
-                  </Label>
-                  <Label className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-3 text-sm">
-                    <input type="checkbox" name="isRecurring" />
-                    Tandai recurring assignment
-                  </Label>
-                </div>
-
-                <Button type="submit" className="w-full rounded-2xl">
+          <div className="flex flex-wrap items-center gap-3">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button className="rounded-full">
+                  <ClipboardList className="size-4" />
                   Buat assignment
                 </Button>
-              </form>
-            </CardContent>
-          </Card>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Buat Job Assignment</DialogTitle>
+                  <DialogDescription>
+                    Form assignment dipindah ke modal agar team board tetap bersih dan fokus ke monitoring.
+                  </DialogDescription>
+                </DialogHeader>
+                <form action={manageJobAssignmentAction} className="space-y-4">
+                  <input type="hidden" name="intent" value="create" />
+                  <input type="hidden" name="assignedByEmployeeId" value={data.lead.id} />
 
-          <Card className="rounded-[1.6rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users2 className="size-5 text-primary" />
-                Status Tim Lapangan
-              </CardTitle>
-              <CardDescription>
-                Ringkasan progress anggota tim dan job aktif yang sedang berjalan.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.members.map((member) => (
-                <div key={member.id} className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold">{member.name}</h3>
-                      <p className="text-sm text-muted-foreground">{member.role}</p>
-                    </div>
-                    <Badge className={statusBadgeClass(member.status)}>{member.status}</Badge>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Label className="grid gap-2">
+                      Assign to
+                      <select name="assignedToEmployeeId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+                        {data.team.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name} - {member.jobTitle || member.role}
+                          </option>
+                        ))}
+                      </select>
+                    </Label>
+                    <Label className="grid gap-2">
+                      Site
+                      <Input name="siteId" defaultValue={data.lead.siteId} />
+                    </Label>
+                    <Label className="grid gap-2">
+                      Activity library
+                      <select name="libraryActivityId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+                        {data.assignmentOptions.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.activityCode} - {item.activityName}
+                          </option>
+                        ))}
+                      </select>
+                    </Label>
+                    <Label className="grid gap-2">
+                      Priority
+                      <select name="priority" defaultValue="Normal" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+                        <option value="Normal">Normal</option>
+                        <option value="High">High</option>
+                        <option value="Emergency">Emergency</option>
+                      </select>
+                    </Label>
+                    <Label className="grid gap-2">
+                      Estimasi durasi (menit)
+                      <Input name="estimatedDuration" type="number" defaultValue={90} />
+                    </Label>
+                    <Label className="grid gap-2">
+                      Deadline
+                      <Input
+                        name="deadline"
+                        type="datetime-local"
+                        defaultValue={dateTimeLocalValue(new Date(Date.now() + 4 * 60 * 60 * 1000))}
+                      />
+                    </Label>
                   </div>
-                  <p className="mt-3 text-sm text-foreground">{member.currentJob}</p>
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Progress harian</span>
-                      <span>{member.progress}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted">
-                      <div className="h-2 rounded-full bg-foreground" style={{ width: `${member.progress}%` }} />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Mandatory jobs: {member.mandatoryCount}</span>
-                    <span>Update terakhir {member.lastUpdate}</span>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
 
-        <div className="space-y-6">
-          <Card className="rounded-[1.6rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCheck className="size-5 text-primary" />
-                Pending Approval Queue
-              </CardTitle>
-              <CardDescription>
-                Aktivitas yang menunggu tindakan approval dari supervisor atau approver berikutnya.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Karyawan</TableHead>
-                    <TableHead>Aktivitas</TableHead>
-                    <TableHead>Risk</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead>Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.pendingApprovals.length > 0 ? (
-                    data.pendingApprovals.map((item) => (
-                      <TableRow key={item.approvalId}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{item.requesterName}</p>
-                            <p className="text-xs text-muted-foreground">{item.requesterJobTitle}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{item.activityTitle}</p>
-                            <p className="text-xs text-muted-foreground">Level {item.level} • {item.approverName}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={item.risk === "Emergency" ? "bg-rose-100 text-rose-900" : item.risk === "Escalation" ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-800"}>
-                            {item.risk}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {item.submittedAt.toLocaleString("id-ID", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            day: "2-digit",
-                            month: "short",
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <Button asChild size="sm" className="rounded-full">
-                            <Link href="/dashboard/approval">Review</Link>
-                          </Button>
+                  <Label className="grid gap-2">
+                    Catatan job
+                    <Textarea
+                      name="notes"
+                      rows={4}
+                      placeholder="Instruksi singkat, area kerja, material, atau perhatian keselamatan."
+                    />
+                  </Label>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                      <input type="checkbox" name="isMandatory" />
+                      Jadikan mandatory activity
+                    </Label>
+                    <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                      <input type="checkbox" name="isRecurring" />
+                      Tandai recurring assignment
+                    </Label>
+                  </div>
+
+                  <Button type="submit" className="w-full rounded-2xl">
+                    Buat assignment
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            <Button asChild variant="outline" className="rounded-full">
+              <Link href="/dashboard/approval">
+                <CheckCheck className="size-4" />
+                Approval inbox
+              </Link>
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Tabs defaultValue="team" className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="team">Team Status</TabsTrigger>
+          <TabsTrigger value="approvals">Pending Approval</TabsTrigger>
+          <TabsTrigger value="disputes">Disputes</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="team">
+          <Card className="rounded-[1.4rem]">
+            <CardContent className="space-y-4 pt-6">
+              <MinimalTableShell
+                title="Status Tim Lapangan"
+                description="Satu table untuk memantau anggota tim, pekerjaan aktif, progress, dan update terakhir."
+                label="team members"
+                fileName="team-board-members"
+                searchPlaceholder="Cari nama, role, status, atau pekerjaan aktif..."
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Pekerjaan Aktif</TableHead>
+                      <TableHead>Progress</TableHead>
+                      <TableHead>Mandatory</TableHead>
+                      <TableHead>Last Update</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.members.length > 0 ? (
+                      data.members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell className="align-top">
+                            <div className="space-y-1">
+                              <p className="font-medium">{member.name}</p>
+                              <p className="text-xs text-muted-foreground">{member.role}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <Badge className={statusBadgeClass(member.status)}>{member.status}</Badge>
+                          </TableCell>
+                          <TableCell className="align-top">{member.currentJob}</TableCell>
+                          <TableCell className="align-top">{member.progress}%</TableCell>
+                          <TableCell className="align-top">{member.mandatoryCount}</TableCell>
+                          <TableCell className="align-top">{member.lastUpdate}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                          Belum ada status anggota tim yang tersedia.
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : (
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="approvals">
+          <Card className="rounded-[1.4rem]">
+            <CardContent className="space-y-4 pt-6">
+              <MinimalTableShell
+                title="Pending Approval Queue"
+                description="Approval yang menunggu tindak lanjut kini dipusatkan ke satu table audit."
+                label="pending approvals"
+                fileName="team-board-approvals"
+                searchPlaceholder="Cari requester, aktivitas, approver, atau risk..."
+              >
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                        Tidak ada approval pending saat ini.
-                      </TableCell>
+                      <TableHead>Karyawan</TableHead>
+                      <TableHead>Aktivitas</TableHead>
+                      <TableHead>Risk</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead>Aksi</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {data.pendingApprovals.length > 0 ? (
+                      data.pendingApprovals.map((item) => (
+                        <TableRow key={item.approvalId} data-date-value={item.submittedAt.toISOString()}>
+                          <TableCell className="align-top">
+                            <div className="space-y-1">
+                              <p className="font-medium">{item.requesterName}</p>
+                              <p className="text-xs text-muted-foreground">{item.requesterJobTitle}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1">
+                              <p className="font-medium">{item.activityTitle}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Level {item.level} • {item.approverName}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <Badge className={riskBadgeClass(item.risk)}>{item.risk}</Badge>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            {item.submittedAt.toLocaleString("id-ID", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              day: "2-digit",
+                              month: "short",
+                            })}
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <Button asChild size="sm" className="rounded-full">
+                              <Link href="/dashboard/approval">Review</Link>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                          Tidak ada approval pending saat ini.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
             </CardContent>
           </Card>
+        </TabsContent>
 
-          <Card className="rounded-[1.6rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="size-5 text-primary" />
-                Penalty Disputes
-              </CardTitle>
-              <CardDescription>
-                Keberatan penalty terbaru yang perlu ditindaklanjuti oleh lead atau admin.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.disputes.length > 0 ? (
-                data.disputes.map((dispute) => (
-                  <div key={dispute.id} className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{dispute.employeeName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {dispute.penaltyCode} • {dispute.createdAt.toLocaleString("id-ID")}
-                        </p>
-                      </div>
-                      <Badge className={dispute.status === "pending" ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-800"}>
-                        {dispute.status}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{dispute.reason}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[1.2rem] border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                  Belum ada dispute penalty.
-                </div>
-              )}
+        <TabsContent value="disputes">
+          <Card className="rounded-[1.4rem]">
+            <CardContent className="space-y-4 pt-6">
+              <MinimalTableShell
+                title="Penalty Disputes"
+                description="Dispute penalty ditampilkan sebagai audit table agar lead lebih mudah menindaklanjuti."
+                label="disputes"
+                fileName="team-board-disputes"
+                searchPlaceholder="Cari karyawan, kode penalty, status, atau alasan..."
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Karyawan</TableHead>
+                      <TableHead>Penalty</TableHead>
+                      <TableHead>Alasan</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Tanggal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.disputes.length > 0 ? (
+                      data.disputes.map((dispute) => (
+                        <TableRow key={dispute.id} data-date-value={dispute.createdAt.toISOString()}>
+                          <TableCell className="align-top font-medium">{dispute.employeeName}</TableCell>
+                          <TableCell className="align-top">{dispute.penaltyCode}</TableCell>
+                          <TableCell className="align-top">{dispute.reason}</TableCell>
+                          <TableCell className="align-top">
+                            <Badge className={dispute.status === "pending" ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-800"}>
+                              {dispute.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="align-top">{dispute.createdAt.toLocaleString("id-ID")}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                          Belum ada dispute penalty.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
             </CardContent>
           </Card>
-
-          <Card className="rounded-[1.6rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock3 className="size-5 text-primary" />
-                Operasional Highlights
-              </CardTitle>
-              <CardDescription>Indikator cepat untuk planning sisa shift hari ini.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
-                <p className="text-sm text-muted-foreground">Overdue assignments</p>
-                <p className="mt-2 text-3xl font-semibold">{data.summary.overdueAssignments}</p>
-              </div>
-              <div className="rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
-                <p className="text-sm text-muted-foreground">Overtime candidates</p>
-                <p className="mt-2 text-3xl font-semibold">{data.summary.overtimeCandidates}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

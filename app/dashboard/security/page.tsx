@@ -16,19 +16,15 @@ export default async function SecurityOverviewPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="flex flex-wrap gap-2">
         {metrics.map((metric) => (
-          <Link key={metric.title} href={metric.href}>
-            <Card className="h-full rounded-lg transition hover:shadow-[0_18px_34px_rgba(0,52,97,0.12)]">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {metric.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="font-display text-3xl font-semibold tracking-normal">{metric.value}</p>
-              </CardContent>
-            </Card>
+          <Link
+            key={metric.title}
+            href={metric.href}
+            className="flex min-h-10 min-w-[150px] items-center justify-between gap-3 rounded-lg bg-surface-container-low px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] transition hover:bg-surface-container"
+          >
+            <span className="text-muted-foreground">{metric.title}</span>
+            <span className="font-display text-base font-semibold text-foreground">{metric.value}</span>
           </Link>
         ))}
       </div>
@@ -75,7 +71,7 @@ export default async function SecurityOverviewPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
         {[
           {
             title: "User Management",
@@ -98,13 +94,13 @@ export default async function SecurityOverviewPage() {
             href: "/dashboard/settings/navbar",
           },
         ].map((item) => (
-          <Link key={item.href} href={item.href}>
-            <Card className="h-full rounded-lg transition hover:shadow-[0_18px_34px_rgba(0,52,97,0.12)]">
-              <CardHeader>
-                <CardTitle className="text-base">{item.title}</CardTitle>
-                <CardDescription>{item.description}</CardDescription>
-              </CardHeader>
-            </Card>
+          <Link
+            key={item.href}
+            href={item.href}
+            className="min-w-[220px] flex-1 rounded-lg bg-surface-container-lowest px-4 py-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] transition hover:bg-surface-container-low"
+          >
+            <p className="font-display text-base font-semibold text-foreground">{item.title}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
           </Link>
         ))}
       </div>

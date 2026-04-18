@@ -76,6 +76,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  exportRowsToFile,
+} from "@/components/ui/minimal-table-shell";
 import { cn } from "@/lib/utils";
 
 const ALL_FILTER = "all";
@@ -325,7 +328,6 @@ export function SecurityUserManagement({
       const matchesStatusType =
         selectedStatusTypes.length === 0 ||
         selectedStatusTypes.includes(user.employeeStatusType);
-
       return matchesKeyword && matchesDepartment && matchesRole && matchesStatusType;
     });
   }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, users]);
@@ -359,6 +361,30 @@ export function SecurityUserManagement({
   const missingRequiredMappings = USER_IMPORT_FIELDS.filter(
     (field) => field.required && !mapping[field.key],
   );
+
+  const exportVisibleUsers = () => {
+    exportRowsToFile({
+      columns: [
+        "Nama",
+        "SN",
+        "Departement",
+        "Peran",
+        "Lokasi Site",
+        "Tipe Status",
+        "Join Year",
+      ],
+      rows: filteredUsers.map((user) => [
+        user.name,
+        user.employeeSn,
+        user.department,
+        user.accessRole,
+        user.workLocation || user.siteName,
+        user.employeeStatusType,
+        user.joinYear,
+      ]),
+      fileName: "security-users",
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -629,9 +655,9 @@ export function SecurityUserManagement({
         </div>
 
         {/* Stats Cards */}
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-6 flex flex-wrap gap-2">
           {/* Total User Card */}
-          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-blue-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -657,7 +683,7 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Active Access Card */}
-          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-amber-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -684,7 +710,7 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Join 2026 Card */}
-          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-violet-500" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -709,7 +735,7 @@ export function SecurityUserManagement({
           </Card>
 
           {/* Visible Result Card */}
-          <Card className="relative overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             <div className="absolute left-0 top-0 h-full w-1 bg-foreground" />
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
@@ -807,7 +833,15 @@ export function SecurityUserManagement({
               </div>
 
               {/* Right side: Pagination info */}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => exportVisibleUsers()}
+                  className="h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal"
+                >
+                  Excel
+                </Button>
                 <span className="text-sm text-muted-foreground">
                   Menampilkan 1-
                   {Math.min(filteredUsers.length, 10)} dari {filteredUsers.length}{" "}

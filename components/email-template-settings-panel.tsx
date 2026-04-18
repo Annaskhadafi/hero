@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Pencil, Plus, Search } from "lucide-react";
+import { FileText, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   saveEmailTemplateAction,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -74,30 +75,11 @@ export function EmailTemplateSettingsPanel({
   templates: EmailTemplateRecord[];
 }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplateRecord | null>(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
-
-  const filteredTemplates = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-
-    return templates.filter((template) => {
-      const haystack = [
-        template.name,
-        template.templateCode,
-        template.templateType,
-        template.deliveryChannel,
-        template.subject,
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return !keyword || haystack.includes(keyword);
-    });
-  }, [query, templates]);
 
   const handleOpenDialog = (template?: EmailTemplateRecord) => {
     if (template) {
@@ -178,34 +160,22 @@ export function EmailTemplateSettingsPanel({
 
   return (
     <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="font-display text-lg font-semibold">Email Template</h2>
-          <p className="text-sm text-muted-foreground">
-            Kelola template email yang dipakai modul approval, auth, dan notifikasi.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Cari nama, kode, tipe, atau subject..."
-              className="pl-9"
-            />
-          </div>
+      <MinimalTableShell
+        title="Email Template"
+        description="Kelola template email yang dipakai modul approval, auth, dan notifikasi."
+        label="email templates"
+        fileName="email-templates"
+        searchPlaceholder="Cari nama, kode, tipe, atau subject..."
+        actions={
           <Button
             onClick={() => handleOpenDialog()}
-            className="rounded-lg bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]"
+            className="rounded-[1rem] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]"
           >
             <Plus className="size-4" />
             Template Baru
           </Button>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg bg-surface-container-low p-2">
+        }
+      >
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -219,9 +189,9 @@ export function EmailTemplateSettingsPanel({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredTemplates.length > 0 ? (
-              filteredTemplates.map((template) => (
-                <TableRow key={template.id} className="hover:bg-surface-container">
+            {templates.length > 0 ? (
+              templates.map((template) => (
+                <TableRow key={template.id} className="hover:bg-surface-container" data-date-value={template.updatedAt.toISOString()}>
                   <TableCell className="font-semibold">{template.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className="rounded-full">
@@ -251,13 +221,13 @@ export function EmailTemplateSettingsPanel({
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                  Tidak ada template yang cocok dengan pencarian.
+                  Tidak ada template email.
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
-      </div>
+      </MinimalTableShell>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="w-[min(96vw,1100px)] max-w-[min(96vw,1100px)]">

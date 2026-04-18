@@ -16,6 +16,7 @@ import { PwaPushSettingsPanel } from "@/components/pwa-push-settings-panel";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -132,7 +133,7 @@ export default async function EmailSettingsPage() {
         </div>
       </header>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="flex flex-wrap gap-2">
         <CompactMetric icon={Mail} label="Email sent" value={sent} />
         <CompactMetric icon={XCircle} label="Failed" value={failed} />
         <CompactMetric icon={History} label="Pending" value={pending} />
@@ -180,42 +181,51 @@ export default async function EmailSettingsPage() {
         </TabsContent>
 
         <TabsContent value="bell">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <Card className="rounded-lg p-4 shadow-sm">
-              <h2 className="font-display text-lg font-semibold">Notification Bell Rules</h2>
-              <div className="mt-4 grid gap-3">
-                {bellRules.map((rule) => (
-                  <div key={rule.event} className="grid gap-3 rounded-lg bg-surface-container-low p-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:items-center">
-                    <div>
-                      <p className="font-semibold">{rule.label}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{rule.event}</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{rule.target}</p>
-                    <AdminStatusBadge value={rule.priority} />
-                    <Switch defaultChecked={rule.active} />
-                  </div>
-                ))}
-              </div>
-            </Card>
+          <Tabs defaultValue="rules" className="space-y-4">
+            <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+              <TabsTrigger value="rules">Rules</TabsTrigger>
+              <TabsTrigger value="behavior">Behavior</TabsTrigger>
+            </TabsList>
 
-            <Card className="rounded-lg p-4 shadow-sm">
-              <h2 className="font-display text-lg font-semibold">Bell Behavior</h2>
-              <div className="mt-4 space-y-4">
-                <label className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold">Realtime badge count</span>
-                  <Switch defaultChecked />
-                </label>
-                <label className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold">Sound alert untuk escalation</span>
-                  <Switch defaultChecked />
-                </label>
-                <label className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold">Auto mark read setelah dibuka</span>
-                  <Switch defaultChecked />
-                </label>
-              </div>
-            </Card>
-          </div>
+            <TabsContent value="rules">
+              <Card className="rounded-lg p-4 shadow-sm">
+                <h2 className="font-display text-lg font-semibold">Notification Bell Rules</h2>
+                <div className="mt-4 space-y-3">
+                  {bellRules.map((rule) => (
+                    <div key={rule.event} className="flex flex-wrap items-center gap-3 rounded-lg bg-surface-container-low p-3">
+                      <div className="min-w-[220px] flex-1">
+                        <p className="font-semibold">{rule.label}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{rule.event}</p>
+                      </div>
+                      <p className="min-w-[160px] text-sm text-muted-foreground">{rule.target}</p>
+                      <AdminStatusBadge value={rule.priority} />
+                      <Switch defaultChecked={rule.active} />
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="behavior">
+              <Card className="rounded-lg p-4 shadow-sm">
+                <h2 className="font-display text-lg font-semibold">Bell Behavior</h2>
+                <div className="mt-4 space-y-4">
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">Realtime badge count</span>
+                    <Switch defaultChecked />
+                  </label>
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">Sound alert untuk escalation</span>
+                    <Switch defaultChecked />
+                  </label>
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">Auto mark read setelah dibuka</span>
+                    <Switch defaultChecked />
+                  </label>
+                </div>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="pwa">
@@ -259,7 +269,12 @@ export default async function EmailSettingsPage() {
                 <RadioTower className="size-5 text-primary" />
                 <h2 className="font-display text-lg font-semibold">Notification Delivery Logs</h2>
               </div>
-              <div className="overflow-x-auto rounded-lg bg-surface-container-low p-2">
+              <MinimalTableShell
+                label="notification delivery logs"
+                fileName="notification-delivery-logs"
+                searchPlaceholder="Cari channel, recipient, status, atau error..."
+                summaryClassName="bg-transparent px-1 py-0 shadow-none"
+              >
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -272,7 +287,7 @@ export default async function EmailSettingsPage() {
                   </TableHeader>
                   <TableBody>
                     {notifications.deliveries.map((delivery) => (
-                      <TableRow key={delivery.id} className="hover:bg-surface-container">
+                      <TableRow key={delivery.id} className="hover:bg-surface-container" data-date-value={delivery.createdAt.toISOString()}>
                         <TableCell className="font-semibold">{delivery.deliveryChannel}</TableCell>
                         <TableCell className="font-mono text-xs">{delivery.recipient}</TableCell>
                         <TableCell>
@@ -295,7 +310,7 @@ export default async function EmailSettingsPage() {
                     ) : null}
                   </TableBody>
                 </Table>
-              </div>
+              </MinimalTableShell>
             </Card>
           </div>
         </TabsContent>

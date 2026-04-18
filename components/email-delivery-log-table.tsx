@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Eye, Search } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
   Select,
   SelectContent,
@@ -85,30 +85,24 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="Cari penerima, judul email, atau nama karyawan..."
-            className="pl-9"
-          />
-        </div>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-full md:w-44">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua status</SelectItem>
-            <SelectItem value="sent">Terkirim</SelectItem>
-            <SelectItem value="pending">Menunggu</SelectItem>
-            <SelectItem value="failed">Gagal</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border">
+      <MinimalTableShell
+        label="email log"
+        fileName="email-delivery-log"
+        searchPlaceholder="Cari penerima, judul email, atau nama karyawan..."
+        filters={
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="h-11 w-full rounded-[1rem] border-0 bg-white md:w-44">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua status</SelectItem>
+              <SelectItem value="sent">Terkirim</SelectItem>
+              <SelectItem value="pending">Menunggu</SelectItem>
+              <SelectItem value="failed">Gagal</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      >
         <Table>
           <TableHeader>
             <TableRow>
@@ -123,7 +117,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
           </TableHeader>
           <TableBody>
             {filtered.map((log) => (
-              <TableRow key={log.id}>
+              <TableRow key={log.id} data-date-value={(log.sentAt ?? log.createdAt).toISOString()}>
                 <TableCell>
                   <Badge
                     variant={log.status === "failed" ? "destructive" : log.status === "sent" ? "default" : "outline"}
@@ -155,7 +149,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </MinimalTableShell>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="w-[min(96vw,1100px)] max-w-[min(96vw,1100px)] overflow-hidden p-0">

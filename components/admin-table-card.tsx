@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Rows3 } from "lucide-react";
 import {
   Table,
@@ -14,11 +15,13 @@ export function AdminTableCard({
   description,
   columns,
   rows,
+  dateFilter = "auto",
 }: {
   title: string;
   description: string;
   columns: string[];
   rows: (string | React.ReactNode)[][];
+  dateFilter?: boolean | "auto";
 }) {
   return (
     <Card className="rounded-lg border border-border bg-card p-0 shadow-sm">
@@ -34,28 +37,38 @@ export function AdminTableCard({
           {rows.length} data
         </span>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            {columns.map((column) => (
-              <TableHead key={column} className="h-9 text-xs font-semibold uppercase text-muted-foreground">
-                {column}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, rowIndex) => (
-            <TableRow key={rowIndex} className="transition-colors hover:bg-muted/45">
-              {row.map((cell, cellIndex) => (
-                <TableCell key={cellIndex} className="py-3 align-top text-sm whitespace-normal">
-                  {cell}
-                </TableCell>
+      <div className="p-4">
+        <MinimalTableShell
+          label={title.toLowerCase()}
+          fileName={title}
+          searchPlaceholder={`Cari di ${title.toLowerCase()}...`}
+          summaryClassName="bg-transparent px-1 py-0 shadow-none"
+          dateFilter={dateFilter}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                {columns.map((column) => (
+                  <TableHead key={column} className="h-9 text-xs font-semibold uppercase text-muted-foreground">
+                    {column}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, rowIndex) => (
+                <TableRow key={rowIndex} className="transition-colors hover:bg-muted/45">
+                  {row.map((cell, cellIndex) => (
+                    <TableCell key={cellIndex} className="py-3 align-top text-sm whitespace-normal">
+                      {cell}
+                    </TableCell>
+                  ))}
+                </TableRow>
               ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
+      </div>
     </Card>
   );
 }

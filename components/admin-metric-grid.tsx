@@ -1,4 +1,3 @@
-import { Card } from "@/components/ui/card";
 import {
   AlertTriangle,
   BarChart3,
@@ -52,34 +51,29 @@ export function AdminMetricGrid({
   }[];
 }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+    <div className="flex flex-wrap gap-2">
       {items.map((item, index) => {
         const Icon = getMetricIcon(item.label, item.meta);
         const accent = accents[index % accents.length];
 
         return (
-          <Card
+          <div
             key={item.label}
-            className="group min-h-[76px] rounded-lg border border-border bg-card p-3 py-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-md"
+            className="group flex min-h-10 min-w-[150px] items-center gap-2 rounded-lg bg-surface-container-low px-3 py-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] transition duration-200 hover:bg-surface-container"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-[0.65rem] font-semibold uppercase text-muted-foreground">
-                  {item.label}
-                </p>
-                <p className="mt-1 truncate font-display text-2xl font-semibold leading-none tracking-normal text-foreground">
-                  {item.value}
-                </p>
-              </div>
-              <div className={`grid size-7 shrink-0 place-items-center rounded-lg ring-1 transition ${accent}`}>
-                <Icon className="size-3.5" aria-hidden="true" />
-              </div>
+            <div className={`grid size-7 shrink-0 place-items-center rounded-md ring-1 transition ${accent}`}>
+              <Icon className="size-3.5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[0.68rem] font-semibold uppercase text-muted-foreground">
+                {item.label}
+              </p>
+              <p className="truncate font-display text-base font-semibold leading-tight text-foreground">
+                {item.value}
+              </p>
             </div>
             <p className="sr-only">{item.meta}</p>
-            <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full w-2/3 rounded-full bg-primary transition-all duration-300 group-hover:w-full" />
-            </div>
-          </Card>
+          </div>
         );
       })}
     </div>

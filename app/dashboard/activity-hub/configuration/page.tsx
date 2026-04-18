@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityConfigurationData } from "@/lib/daily-activity";
@@ -18,6 +19,15 @@ import { getDailyActivityConfigurationData } from "@/lib/daily-activity";
 function dateTimeLocalValue(reference: Date) {
   const local = new Date(reference.getTime() - reference.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function SummaryChip({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg bg-surface-container-low px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="ml-2 font-semibold text-foreground">{value}</span>
+    </div>
+  );
 }
 
 export default async function DailyActivityConfigurationPage() {
@@ -31,34 +41,22 @@ export default async function DailyActivityConfigurationPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="rounded-[1.4rem]">
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Settings</p>
-            <p className="mt-2 text-3xl font-semibold">{data.metrics.settings}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-[1.4rem]">
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Active modifiers</p>
-            <p className="mt-2 text-3xl font-semibold">{data.metrics.activeModifiers}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-[1.4rem]">
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Penalty events</p>
-            <p className="mt-2 text-3xl font-semibold">{data.metrics.penaltyEvents}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-[1.4rem]">
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Pending disputes</p>
-            <p className="mt-2 text-3xl font-semibold">{data.metrics.pendingDisputes}</p>
-          </CardContent>
-        </Card>
+      <div className="flex flex-wrap gap-2">
+        <SummaryChip label="Settings" value={data.metrics.settings} />
+        <SummaryChip label="Active modifiers" value={data.metrics.activeModifiers} />
+        <SummaryChip label="Penalty events" value={data.metrics.penaltyEvents} />
+        <SummaryChip label="Pending disputes" value={data.metrics.pendingDisputes} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+      <Tabs defaultValue="settings" className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="modifiers">Activity Modifiers</TabsTrigger>
+          <TabsTrigger value="penalties">Penalty Events</TabsTrigger>
+          <TabsTrigger value="disputes">Point Disputes</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="settings">
         <Card className="rounded-[1.6rem]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -118,7 +116,9 @@ export default async function DailyActivityConfigurationPage() {
             </Table>
           </CardContent>
         </Card>
+        </TabsContent>
 
+        <TabsContent value="modifiers">
         <Card className="rounded-[1.6rem]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -229,9 +229,9 @@ export default async function DailyActivityConfigurationPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+        </TabsContent>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+        <TabsContent value="penalties">
         <Card className="rounded-[1.6rem]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -270,7 +270,9 @@ export default async function DailyActivityConfigurationPage() {
             </Table>
           </CardContent>
         </Card>
+        </TabsContent>
 
+        <TabsContent value="disputes">
         <Card className="rounded-[1.6rem]">
           <CardHeader>
             <CardTitle>Point Disputes</CardTitle>
@@ -333,7 +335,8 @@ export default async function DailyActivityConfigurationPage() {
             ))}
           </CardContent>
         </Card>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

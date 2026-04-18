@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import type { getRequestCenterData } from "@/lib/approval-workspace";
 
 type RequestCenterData = Awaited<ReturnType<typeof getRequestCenterData>>;
@@ -49,84 +50,92 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pengajuan</TableHead>
-                <TableHead>Dikirim</TableHead>
-                <TableHead>Tahap saat ini</TableHead>
-                <TableHead>Alur</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-[170px]">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.requests.length > 0 ? (
-                data.requests.map((request) => (
-                  <TableRow
-                    key={request.submissionId != null ? `submission-${request.submissionId}` : `activity-${request.activityId}`}
-                  >
-                    <TableCell className="align-top">
-                      <div className="space-y-1">
-                        <p className="font-medium text-[#0f172a]">
-                          {request.title} • {request.unitNumber}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {request.formName} • {request.activityType} • {request.siteName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {request.requesterName} • {request.requesterJobTitle}
-                        </p>
-                        {request.requestNumber ? (
-                          <p className="text-xs text-muted-foreground">Ref {request.requestNumber}</p>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <p className="text-sm text-[#0f172a]">{request.submittedAt.toLocaleString("id-ID")}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Prioritas {request.priority}</p>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <p className="text-sm font-medium text-[#0f172a]">{request.currentStepLabel}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Menunggu {request.pendingWith}</p>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <p className="text-sm text-[#0f172a]">{request.workflowLabel}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{request.progressLabel}</p>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-2">
-                        <AdminStatusBadge value={request.status.replaceAll("_", " ")} />
-                        <p className="text-xs text-muted-foreground">
-                          Update terakhir {request.lastUpdatedAt.toLocaleString("id-ID")}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      {request.canCancel && request.submissionId != null ? (
-                        <form action={cancelDraftSubmissionAction}>
-                          <input type="hidden" name="submissionId" value={request.submissionId} />
-                          <Button type="submit" size="sm" variant="outline" className="rounded-full px-4">
-                            Batalkan Draft
-                          </Button>
-                        </form>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          {request.status === "cancelled" ? "Sudah dibatalkan" : "Tidak ada aksi"}
-                        </p>
-                      )}
+          <MinimalTableShell
+            label="requests"
+            fileName="request-center"
+            searchPlaceholder="Cari pengajuan, requester, form, atau workflow..."
+            summaryClassName="bg-transparent px-1 py-0 shadow-none"
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pengajuan</TableHead>
+                  <TableHead>Dikirim</TableHead>
+                  <TableHead>Tahap saat ini</TableHead>
+                  <TableHead>Alur</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[170px]">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.requests.length > 0 ? (
+                  data.requests.map((request) => (
+                    <TableRow
+                      key={request.submissionId != null ? `submission-${request.submissionId}` : `activity-${request.activityId}`}
+                      data-date-value={request.lastUpdatedAt.toISOString()}
+                    >
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <p className="font-medium text-[#0f172a]">
+                            {request.title} • {request.unitNumber}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {request.formName} • {request.activityType} • {request.siteName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {request.requesterName} • {request.requesterJobTitle}
+                          </p>
+                          {request.requestNumber ? (
+                            <p className="text-xs text-muted-foreground">Ref {request.requestNumber}</p>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <p className="text-sm text-[#0f172a]">{request.submittedAt.toLocaleString("id-ID")}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Prioritas {request.priority}</p>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <p className="text-sm font-medium text-[#0f172a]">{request.currentStepLabel}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Menunggu {request.pendingWith}</p>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <p className="text-sm text-[#0f172a]">{request.workflowLabel}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{request.progressLabel}</p>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-2">
+                          <AdminStatusBadge value={request.status.replaceAll("_", " ")} />
+                          <p className="text-xs text-muted-foreground">
+                            Update terakhir {request.lastUpdatedAt.toLocaleString("id-ID")}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        {request.canCancel && request.submissionId != null ? (
+                          <form action={cancelDraftSubmissionAction}>
+                            <input type="hidden" name="submissionId" value={request.submissionId} />
+                            <Button type="submit" size="sm" variant="outline" className="rounded-full px-4">
+                              Batalkan Draft
+                            </Button>
+                          </form>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {request.status === "cancelled" ? "Sudah dibatalkan" : "Tidak ada aksi"}
+                          </p>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      Belum ada pengajuan yang cocok dengan halaman ini.
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    Belum ada pengajuan yang cocok dengan halaman ini.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          </MinimalTableShell>
         </CardContent>
       </Card>
     </AdminPageShell>

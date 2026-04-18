@@ -5,6 +5,12 @@
 📚 **Project Documentation**: Check the documentation files in this directory for project-specific setup instructions and guides.
 **Project Tasks**: Check the tasks directory in documentation/tasks for the list of tasks to be completed. Use the CLI commands below to interact with them.
 
+### Auto-load Design Guide
+
+- Saat memulai thread/session baru, selalu baca `documentation/Design.md` secara otomatis bersamaan dengan `AGENTS.md`.
+- Semua implementasi UI (layout, table, form, action bar, visual hierarchy) wajib mengikuti `documentation/Design.md` tanpa menunggu user memanggil manual.
+- Jika ada konflik antara request user dan `documentation/Design.md`, prioritaskan request user lalu update `documentation/Design.md` agar sinkron.
+
 ## Recommended Task Management Workflow
 
 Gunakan workflow berikut sebagai panduan utama saat task tersedia di `task-manager`.

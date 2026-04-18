@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 
 type AttendanceRecord = {
   id: number;
@@ -309,111 +310,123 @@ export default function AttendanceRecordsPage() {
       </div>
 
       <div className="surface-module-card overflow-hidden rounded-[1.5rem]">
-        <div className="overflow-x-auto">
-        <table className="min-w-[980px] w-full border-collapse text-left">
-          <thead>
-            <tr className="bg-surface-container-low text-sm font-semibold text-muted-foreground">
-              <th className="p-4">User / Site</th>
-              <th className="p-4">Time</th>
-              <th className="p-4">Type</th>
-              <th className="p-4">Shift & Overtime</th>
-              <th className="p-4">Location</th>
-              <th className="p-4">GPS Coordinates</th>
-              <th className="p-4">Photo Evidence</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm text-foreground">
-            {logs.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                  No attendance records found for this shift window.
-                </td>
-              </tr>
-            ) : (
-              logs.map((log) => {
-                const coordinateText = getLogCoordinateLabel(log);
-                const locationLines = getLocationLines(log);
-                const operationalDetails = getOperationalDetails(log);
-                const mapUrl = coordinateText
-                  ? `https://www.google.com/maps?q=${encodeURIComponent(coordinateText)}`
-                  : null;
-
-                return (
-                  <tr key={log.id} className="border-b border-[rgba(66,71,80,0.08)] last:border-0 hover:bg-surface-container-low">
-                    <td className="p-4">
-                      <p className="font-semibold text-foreground">{log.employeeName}</p>
-                      <p className="text-xs text-muted-foreground">{log.siteName}</p>
-                      <p className="text-xs text-muted-foreground">{log.workLocation}</p>
-                    </td>
-                    <td className="p-4 font-medium">{format(new Date(log.eventTime), "PPpp")}</td>
-                    <td className="p-4 capitalize">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${log.eventType === "checked-in" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-                        {log.eventType === "checked-out" ? "Clock Out / Jam Pulang" : "Clock In / Jam Masuk"}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      {operationalDetails.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {operationalDetails.map((detail) => (
-                            <span key={detail} className="rounded-full bg-surface-container-low px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-                              {detail}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Belum ada detail shift.</span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-start gap-2">
-                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                        <div className="space-y-1">
-                          <p className="font-semibold text-foreground">{locationLines[0]}</p>
-                          {locationLines.slice(1).map((line) => (
-                            <p key={line} className="text-xs text-muted-foreground">
-                              {line}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-xs font-mono text-muted-foreground">
-                      {coordinateText ? (
-                        <div className="space-y-1">
-                          <p>{coordinateText}</p>
-                          {mapUrl ? (
-                            <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-sans font-semibold text-primary hover:underline">
-                              Open map
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : (
-                        "No GPS"
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {log.photoUrl ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-9 rounded-lg px-3 text-xs normal-case tracking-normal"
-                          onClick={() => handleOpenPhoto(log)}
-                        >
-                          View Photo
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground">N/A</span>
-                      )}
+        <MinimalTableShell
+          label="attendance records"
+          fileName="attendance-records"
+          searchPlaceholder="Cari user, site, tipe attendance, atau lokasi..."
+          summaryClassName="bg-transparent px-1 py-0 shadow-none"
+          className="p-4"
+        >
+          <div className="overflow-x-auto">
+            <table className="min-w-[980px] w-full border-collapse text-left">
+              <thead>
+                <tr className="bg-surface-container-low text-sm font-semibold text-muted-foreground">
+                  <th className="p-4">User / Site</th>
+                  <th className="p-4">Time</th>
+                  <th className="p-4">Type</th>
+                  <th className="p-4">Shift & Overtime</th>
+                  <th className="p-4">Location</th>
+                  <th className="p-4">GPS Coordinates</th>
+                  <th className="p-4">Photo Evidence</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm text-foreground">
+                {logs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                      No attendance records found for this shift window.
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-        </div>
+                ) : (
+                  logs.map((log) => {
+                    const coordinateText = getLogCoordinateLabel(log);
+                    const locationLines = getLocationLines(log);
+                    const operationalDetails = getOperationalDetails(log);
+                    const mapUrl = coordinateText
+                      ? `https://www.google.com/maps?q=${encodeURIComponent(coordinateText)}`
+                      : null;
+
+                    return (
+                      <tr
+                        key={log.id}
+                        data-date-value={new Date(log.eventTime).toISOString()}
+                        className="border-b border-[rgba(66,71,80,0.08)] last:border-0 hover:bg-surface-container-low"
+                      >
+                        <td className="p-4">
+                          <p className="font-semibold text-foreground">{log.employeeName}</p>
+                          <p className="text-xs text-muted-foreground">{log.siteName}</p>
+                          <p className="text-xs text-muted-foreground">{log.workLocation}</p>
+                        </td>
+                        <td className="p-4 font-medium">{format(new Date(log.eventTime), "PPpp")}</td>
+                        <td className="p-4 capitalize">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${log.eventType === "checked-in" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+                            {log.eventType === "checked-out" ? "Clock Out / Jam Pulang" : "Clock In / Jam Masuk"}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          {operationalDetails.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {operationalDetails.map((detail) => (
+                                <span key={detail} className="rounded-full bg-surface-container-low px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                                  {detail}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Belum ada detail shift.</span>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-start gap-2">
+                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                            <div className="space-y-1">
+                              <p className="font-semibold text-foreground">{locationLines[0]}</p>
+                              {locationLines.slice(1).map((line) => (
+                                <p key={line} className="text-xs text-muted-foreground">
+                                  {line}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4 text-xs font-mono text-muted-foreground">
+                          {coordinateText ? (
+                            <div className="space-y-1">
+                              <p>{coordinateText}</p>
+                              {mapUrl ? (
+                                <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-sans font-semibold text-primary hover:underline">
+                                  Open map
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : null}
+                            </div>
+                          ) : (
+                            "No GPS"
+                          )}
+                        </td>
+                        <td className="p-4">
+                          {log.photoUrl ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 rounded-lg px-3 text-xs normal-case tracking-normal"
+                              onClick={() => handleOpenPhoto(log)}
+                            >
+                              View Photo
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </MinimalTableShell>
       </div>
 
       <Dialog

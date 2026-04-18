@@ -7,6 +7,7 @@ import {
   HseIncidentRowActions,
   HseObservationRowActions,
 } from "@/components/operational-crud-panels";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getHsePageData, getOperationalCrudOptions } from "@/lib/hero-admin";
 
 export default async function HsePage() {
@@ -39,45 +40,57 @@ export default async function HsePage() {
 
       <HseCrudForms employees={options.employees} sites={options.sites} />
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <AdminTableCard
-          title="Observations"
-          description="Temuan unsafe act dan unsafe condition yang masuk dari lapangan."
-          columns={["Title", "Category", "Location", "Reporter", "Severity", "Status", "Action"]}
-          rows={observations.map((row, index) => [
-            row.title,
-            row.category,
-            row.location,
-            row.reporter ?? "System",
-            row.severity,
-            <AdminStatusBadge key={`${index}-status`} value={row.status} />,
-            <HseObservationRowActions
-              key={`${row.id}-actions`}
-              row={row}
-              employees={options.employees}
-              sites={options.sites}
-            />,
-          ])}
-        />
-        <AdminTableCard
-          title="Incidents"
-          description="Feed incident untuk review HSE dan manajemen."
-          columns={["Title", "Type", "Unit", "Impact", "Reported", "Status", "Action"]}
-          rows={incidents.map((row, index) => [
-            row.title,
-            row.type,
-            row.unitNumber,
-            row.impact,
-            row.reportedAt.toLocaleDateString("id-ID"),
-            <AdminStatusBadge key={`${index}-status`} value={row.status} />,
-            <HseIncidentRowActions
-              key={`${row.id}-actions`}
-              row={row}
-              sites={options.sites}
-            />,
-          ])}
-        />
-      </div>
+      <Tabs defaultValue="observations" className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="observations">Observations</TabsTrigger>
+          <TabsTrigger value="incidents">Incidents</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="observations">
+          <AdminTableCard
+            title="Observations"
+            description="Temuan unsafe act dan unsafe condition yang masuk dari lapangan."
+            columns={["Title", "Category", "Location", "Reporter", "Severity", "Status", "Action"]}
+            dateFilter={false}
+            rows={observations.map((row, index) => [
+              row.title,
+              row.category,
+              row.location,
+              row.reporter ?? "System",
+              row.severity,
+              <AdminStatusBadge key={`${index}-status`} value={row.status} />,
+              <HseObservationRowActions
+                key={`${row.id}-actions`}
+                row={row}
+                employees={options.employees}
+                sites={options.sites}
+              />,
+            ])}
+          />
+        </TabsContent>
+
+        <TabsContent value="incidents">
+          <AdminTableCard
+            title="Incidents"
+            description="Feed incident untuk review HSE dan manajemen."
+            columns={["Title", "Type", "Unit", "Impact", "Reported", "Status", "Action"]}
+            dateFilter
+            rows={incidents.map((row, index) => [
+              row.title,
+              row.type,
+              row.unitNumber,
+              row.impact,
+              row.reportedAt.toLocaleDateString("id-ID"),
+              <AdminStatusBadge key={`${index}-status`} value={row.status} />,
+              <HseIncidentRowActions
+                key={`${row.id}-actions`}
+                row={row}
+                sites={options.sites}
+              />,
+            ])}
+          />
+        </TabsContent>
+      </Tabs>
     </AdminPageShell>
   );
 }
