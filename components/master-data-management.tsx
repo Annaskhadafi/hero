@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3 } from "lucide-react";
 import { toast } from "sonner";
 import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift } from "@/lib/master-data";
@@ -280,6 +281,7 @@ function getAttendanceShiftWindowLabel(shift: Pick<MasterAttendanceShift, "start
 }
 
 function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: MasterAttendanceShift[] }) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<MasterAttendanceShift | null>(null);
@@ -352,6 +354,7 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingShift(null);
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -371,6 +374,7 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
     const result = await manageAttendanceShiftAction(INITIAL_ACTION_STATE, form);
     if (result.status === "success") {
       toast.success(result.message);
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -557,6 +561,7 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
 }
 
 function SiteManagement({ sites }: { sites: MasterSite[] }) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<MasterSite | null>(null);
@@ -806,6 +811,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
       setRegencyOptions([]);
       setDistrictOptions([]);
       setVillageOptions([]);
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -825,6 +831,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
     const result = await manageSiteAction(INITIAL_ACTION_STATE, form);
     if (result.status === "success") {
       toast.success(result.message);
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -1169,6 +1176,7 @@ function SectionManagement({
   sections: MasterSection[];
   departments: MasterDepartment[];
 }) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<MasterSection | null>(null);
@@ -1225,6 +1233,7 @@ function SectionManagement({
       setIsDialogOpen(false);
       setEditingSection(null);
       setFormData({ code: "", name: "", departmentId: "", description: "", isActive: true });
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -1245,6 +1254,7 @@ function SectionManagement({
 
     if (result.status === "success") {
       toast.success(result.message);
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -1453,6 +1463,7 @@ function DepartmentManagement({
 }: {
   departments: MasterDepartment[];
 }) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<MasterDepartment | null>(null);
@@ -1505,6 +1516,7 @@ function DepartmentManagement({
       setIsDialogOpen(false);
       setEditingDepartment(null);
       setFormData({ code: "", name: "", description: "", isActive: true });
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -1525,6 +1537,7 @@ function DepartmentManagement({
 
     if (result.status === "success") {
       toast.success(result.message);
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -1704,6 +1717,7 @@ function PositionManagement({
   sections: MasterSection[];
   sites: MasterSite[];
 }) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<MasterPosition | null>(null);
@@ -1795,6 +1809,7 @@ function PositionManagement({
         description: "",
         isActive: true,
       });
+      router.refresh();
     } else {
       toast.error(result.message);
     }
@@ -1815,6 +1830,7 @@ function PositionManagement({
 
     if (result.status === "success") {
       toast.success(result.message);
+      router.refresh();
     } else {
       toast.error(result.message);
     }

@@ -176,6 +176,11 @@ const simulateApprovalRouteSchema = z.object({
   overtimeMinutes: z.coerce.number().int().min(0).max(1440).default(0),
 });
 
+const deleteIntentSchema = z.object({
+  intent: z.literal("delete"),
+  id: z.coerce.number().int().positive(),
+});
+
 // Types
 export type MasterDataActionState = {
   status: "idle" | "success" | "error";
@@ -537,6 +542,29 @@ export async function manageSectionAction(
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db.delete(masterSections).where(eq(masterSections.id, deletePayload.data.id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Section deleted successfully" };
+    } catch (error) {
+      console.error("Section action error:", error);
+      return { status: "error", message: "An error occurred while deleting the section" };
+    }
+  }
+
   const parsed = sectionSchema.safeParse(raw);
 
   if (!parsed.success) {
@@ -614,17 +642,6 @@ export async function manageSectionAction(
       return { status: "success", message: "Section updated successfully" };
     }
 
-    if (intent === "delete") {
-      if (!id) {
-        return { status: "error", message: "ID is required for delete" };
-      }
-
-      await db.delete(masterSections).where(eq(masterSections.id, id));
-
-      revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Section deleted successfully" };
-    }
-
     return { status: "error", message: "Invalid intent" };
   } catch (error) {
     console.error("Section action error:", error);
@@ -640,6 +657,57 @@ export async function manageDepartmentAction(
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    const { id } = deletePayload.data;
+
+    try {
+      // Check if department is used by sections
+      const usedBySections = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(masterSections)
+        .where(eq(masterSections.departmentId, id));
+
+      if ((usedBySections[0]?.count ?? 0) > 0) {
+        return {
+          status: "error",
+          message: "Cannot delete department that has sections assigned",
+        };
+      }
+
+      // Check if department is used by positions
+      const usedByPositions = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(masterPositions)
+        .where(eq(masterPositions.departmentId, id));
+
+      if ((usedByPositions[0]?.count ?? 0) > 0) {
+        return {
+          status: "error",
+          message: "Cannot delete department that has positions assigned",
+        };
+      }
+
+      await db.delete(masterDepartments).where(eq(masterDepartments.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Department deleted successfully" };
+    } catch (error) {
+      console.error("Department action error:", error);
+      return { status: "error", message: "An error occurred while deleting the department" };
+    }
+  }
+
   const parsed = departmentSchema.safeParse(raw);
 
   if (!parsed.success) {
@@ -713,43 +781,6 @@ export async function manageDepartmentAction(
       return { status: "success", message: "Department updated successfully" };
     }
 
-    if (intent === "delete") {
-      if (!id) {
-        return { status: "error", message: "ID is required for delete" };
-      }
-
-      // Check if department is used by sections
-      const usedBySections = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(masterSections)
-        .where(eq(masterSections.departmentId, id));
-
-      if ((usedBySections[0]?.count ?? 0) > 0) {
-        return {
-          status: "error",
-          message: "Cannot delete department that has sections assigned",
-        };
-      }
-
-      // Check if department is used by positions
-      const usedByPositions = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(masterPositions)
-        .where(eq(masterPositions.departmentId, id));
-
-      if ((usedByPositions[0]?.count ?? 0) > 0) {
-        return {
-          status: "error",
-          message: "Cannot delete department that has positions assigned",
-        };
-      }
-
-      await db.delete(masterDepartments).where(eq(masterDepartments.id, id));
-
-      revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Department deleted successfully" };
-    }
-
     return { status: "error", message: "Invalid intent" };
   } catch (error) {
     console.error("Department action error:", error);
@@ -765,6 +796,58 @@ export async function managePositionAction(
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    const { id } = deletePayload.data;
+
+    try {
+      const [usedInNodes, usedInMatrices, usedByEmployees] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(orgChartNodes)
+          .where(eq(orgChartNodes.positionId, id)),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(approvalMatrices)
+          .where(eq(approvalMatrices.requesterPositionId, id)),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(employees)
+          .where(eq(employees.positionId, id)),
+      ]);
+
+      if (
+        (usedInNodes[0]?.count ?? 0) > 0 ||
+        (usedInMatrices[0]?.count ?? 0) > 0 ||
+        (usedByEmployees[0]?.count ?? 0) > 0
+      ) {
+        return {
+          status: "error",
+          message:
+            "Cannot delete position that is still used by employees, org nodes, or approval matrix",
+        };
+      }
+
+      await db.delete(masterPositions).where(eq(masterPositions.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Position deleted successfully" };
+    } catch (error) {
+      console.error("Position action error:", error);
+      return { status: "error", message: "An error occurred while deleting the position" };
+    }
+  }
+
   const parsed = positionSchema.safeParse(raw);
 
   if (!parsed.success) {
@@ -879,43 +962,6 @@ export async function managePositionAction(
       return { status: "success", message: "Position updated successfully" };
     }
 
-    if (intent === "delete") {
-      if (!id) {
-        return { status: "error", message: "ID is required for delete" };
-      }
-
-      const [usedInNodes, usedInMatrices, usedByEmployees] = await Promise.all([
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(orgChartNodes)
-          .where(eq(orgChartNodes.positionId, id)),
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(approvalMatrices)
-          .where(eq(approvalMatrices.requesterPositionId, id)),
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(employees)
-          .where(eq(employees.positionId, id)),
-      ]);
-
-      if (
-        (usedInNodes[0]?.count ?? 0) > 0 ||
-        (usedInMatrices[0]?.count ?? 0) > 0 ||
-        (usedByEmployees[0]?.count ?? 0) > 0
-      ) {
-        return {
-          status: "error",
-          message: "Cannot delete position that is still used by employees, org nodes, or approval matrix",
-        };
-      }
-
-      await db.delete(masterPositions).where(eq(masterPositions.id, id));
-
-      revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Position deleted successfully" };
-    }
-
     return { status: "error", message: "Invalid intent" };
   } catch (error) {
     console.error("Position action error:", error);
@@ -931,6 +977,32 @@ export async function manageOrgStructureAction(
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db.delete(orgChartStructures).where(eq(orgChartStructures.id, deletePayload.data.id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Organizational structure deleted successfully" };
+    } catch (error) {
+      console.error("Org structure action error:", error);
+      return {
+        status: "error",
+        message: "An error occurred while deleting the organizational structure",
+      };
+    }
+  }
+
   const parsed = orgStructureSchema.safeParse(raw);
 
   if (!parsed.success) {
@@ -1232,17 +1304,6 @@ export async function manageOrgStructureAction(
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Organizational canvas saved successfully" };
-    }
-
-    if (intent === "delete") {
-      if (!id) {
-        return { status: "error", message: "ID is required for delete" };
-      }
-
-      await db.delete(orgChartStructures).where(eq(orgChartStructures.id, id));
-
-      revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Organizational structure deleted successfully" };
     }
 
     return { status: "error", message: "Invalid intent" };
