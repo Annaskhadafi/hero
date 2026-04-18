@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Settings2 } from "lucide-react";
 
 const tabs = [
   { label: "Navbar Setting", href: "/dashboard/settings/navbar" },
@@ -11,33 +12,22 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-      <header className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
-        <div className="space-y-3">
-          <p className="industrial-label">System Controls</p>
-          <h1 className="font-display text-3xl font-semibold tracking-normal text-foreground sm:text-4xl">
-            Admin settings studio
-          </h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-            Kelola konfigurasi komunikasi, navigasi, dan kendali visual untuk operasi HERO.
-          </p>
-        </div>
-        <div className="command-panel rounded-lg bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_72%,var(--tertiary)_150%)] p-5 text-primary-foreground shadow-[0_20px_34px_rgba(0,52,97,0.18)]">
-          <p className="text-xs font-semibold uppercase tracking-normal text-primary-foreground/70">
-            Control Mode
-          </p>
-          <p className="mt-3 font-display text-2xl font-semibold tracking-normal">
-            Governed
-          </p>
-        </div>
+    <div className="space-y-5 p-3 sm:p-5 lg:p-6">
+      <header className="border-b border-border/70 pb-4">
+        <h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
+          <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+            <Settings2 className="size-4" aria-hidden="true" />
+          </span>
+          Admin settings studio
+        </h1>
       </header>
 
-      <nav className="surface-muted-card flex flex-wrap gap-3 rounded-lg p-3">
+      <nav className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
-            className="min-h-12 rounded-lg bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-muted-foreground shadow-[0_10px_20px_rgba(0,52,97,0.06)] transition hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:text-foreground hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             {tab.label}
           </Link>

@@ -2,85 +2,137 @@
 
 import { revalidatePath } from "next/cache";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/db";
 import {
   approvalMatrices,
   approvalMatrixSteps,
   employees,
+  masterAttendanceShifts,
   masterSections,
   masterDepartments,
   masterPositions,
+  navbarMenuItems,
   orgChartStructures,
   orgChartNodes,
   orgNodeAssignments,
+  roleMenuPermissions,
+  securityRoles,
   sites,
 } from "@/db/schema/hero";
+import { auth } from "@/lib/auth";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
 import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
+
+const optionalPositiveIntField = z.preprocess(
+  (value) => {
+    if (value === "" || value == null || value === "0") {
+      return undefined;
+    }
+
+    return value;
+  },
+  z.coerce.number().int().positive().optional(),
+);
+
+const formBooleanField = (defaultValue: boolean) =>
+  z.preprocess((value) => {
+    if (value === "" || value == null) {
+      return defaultValue;
+    }
+
+    if (typeof value === "string") {
+      return value === "true";
+    }
+
+    return Boolean(value);
+  }, z.boolean());
 
 // Validation Schemas
 // Section is a child of Department
 const sectionSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
-  id: z.coerce.number().int().positive().optional(),
+  id: optionalPositiveIntField,
   code: z.string().trim().min(1).max(20),
   name: z.string().trim().min(1).max(100),
-  departmentId: z.coerce.number().int().positive().optional(),
+  departmentId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
-  isActive: z.coerce.boolean().default(true),
+  isActive: formBooleanField(true),
 });
 
 // Department is the parent entity
 const departmentSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
-  id: z.coerce.number().int().positive().optional(),
+  id: optionalPositiveIntField,
   code: z.string().trim().min(1).max(20),
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500).optional(),
-  isActive: z.coerce.boolean().default(true),
+  isActive: formBooleanField(true),
 });
 
 const siteSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
-  id: z.coerce.number().int().positive().optional(),
+  id: optionalPositiveIntField,
   name: z.string().trim().min(1).max(100),
-  location: z.string().trim().min(1).max(150),
+  provinceId: z.string().trim().min(1).max(10),
+  provinceName: z.string().trim().min(1).max(150),
+  regencyId: z.string().trim().min(1).max(10),
+  regencyName: z.string().trim().min(1).max(150),
+  districtId: z.string().trim().min(1).max(10),
+  districtName: z.string().trim().min(1).max(150),
+  villageId: z.string().trim().min(1).max(10),
+  villageName: z.string().trim().min(1).max(150),
+  addressDetail: z.string().trim().max(300).optional(),
   customerName: z.string().trim().min(1).max(150),
   contractNumber: z.string().trim().min(1).max(100),
-  isActive: z.coerce.boolean().default(true),
+  isActive: formBooleanField(true),
 });
 
 const positionSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
-  id: z.coerce.number().int().positive().optional(),
+  id: optionalPositiveIntField,
   code: z.string().trim().min(1).max(20),
   name: z.string().trim().min(1).max(100),
-  departmentId: z.coerce.number().int().positive().optional(),
+  departmentId: optionalPositiveIntField,
+  sectionId: optionalPositiveIntField,
   siteLocation: z.string().trim().max(100).optional(),
   level: z.coerce.number().int().min(1).max(10).default(1),
   description: z.string().trim().max(500).optional(),
-  isActive: z.coerce.boolean().default(true),
+  isActive: formBooleanField(true),
+});
+
+const attendanceShiftSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveIntField,
+  code: z.string().trim().min(1).max(40),
+  label: z.string().trim().min(1).max(100),
+  startTime: z.string().trim().max(20).optional(),
+  endTime: z.string().trim().max(20).optional(),
+  windowLabel: z.string().trim().max(100).optional(),
+  helper: z.string().trim().max(240).optional(),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+  isActive: formBooleanField(true),
 });
 
 const orgStructureSchema = z.object({
   intent: z.enum(["create", "update", "delete", "save-nodes"]),
-  id: z.coerce.number().int().positive().optional(),
+  id: optionalPositiveIntField,
   name: z.string().trim().min(1).max(100),
   jobType: z.string().trim().min(1).max(50).default("custom"),
   version: z.coerce.number().int().min(1).max(999).default(1),
   effectiveFrom: z.string().trim().optional(),
   effectiveTo: z.string().trim().optional(),
-  isDefault: z.coerce.boolean().default(false),
+  isDefault: formBooleanField(false),
   scopeValue: z.string().trim().max(100).optional(),
   description: z.string().trim().max(500).optional(),
   nodesJson: z.string().trim().optional(),
-  isActive: z.coerce.boolean().default(true),
+  isActive: formBooleanField(true),
 });
 
 const approvalMatrixSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
-  id: z.coerce.number().int().positive().optional(),
+  id: optionalPositiveIntField,
   name: z.string().trim().min(1).max(100),
   structureId: z.preprocess(
     (value) => (value === "" || value == null ? undefined : value),
@@ -114,7 +166,7 @@ const approvalMatrixSchema = z.object({
   effectiveFrom: z.string().trim().optional(),
   effectiveTo: z.string().trim().optional(),
   stepsJson: z.string().trim().optional(),
-  isActive: z.coerce.boolean().default(true),
+  isActive: formBooleanField(true),
 });
 
 const simulateApprovalRouteSchema = z.object({
@@ -145,6 +197,73 @@ function parseOptionalTimestamp(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function buildSiteLocationLabel(input: {
+  provinceName: string;
+  regencyName: string;
+  districtName: string;
+  villageName: string;
+  addressDetail?: string;
+}) {
+  return [
+    input.addressDetail?.trim() || "",
+    input.villageName.trim(),
+    input.districtName.trim(),
+    input.regencyName.trim(),
+    input.provinceName.trim(),
+    "Indonesia",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+async function getCurrentAccessRole() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session?.user?.email) {
+    return null;
+  }
+
+  if (session.user.id) {
+    const [employeeByAuthId] = await db
+      .select({ accessRole: employees.accessRole })
+      .from(employees)
+      .where(eq(employees.authUserId, session.user.id))
+      .limit(1);
+
+    if (employeeByAuthId?.accessRole) {
+      return employeeByAuthId.accessRole;
+    }
+  }
+
+  const [employeeByEmail] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
+    .limit(1);
+
+  return employeeByEmail?.accessRole ?? null;
+}
+
+async function canEditMasterData() {
+  const accessRole = await getCurrentAccessRole();
+
+  if (!accessRole) {
+    return false;
+  }
+
+  const [permission] = await db
+    .select({ canEdit: roleMenuPermissions.canEdit })
+    .from(roleMenuPermissions)
+    .innerJoin(securityRoles, eq(roleMenuPermissions.roleId, securityRoles.id))
+    .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
+    .where(and(eq(securityRoles.name, accessRole), eq(navbarMenuItems.resource, "master_data")))
+    .limit(1);
+
+  return permission?.canEdit ?? false;
+}
+
 export async function manageSiteAction(
   _state: MasterDataActionState,
   formData: FormData
@@ -152,6 +271,34 @@ export async function manageSiteAction(
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = z
+      .object({
+        intent: z.literal("delete"),
+        id: z.coerce.number().int().positive(),
+      })
+      .safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db.delete(sites).where(eq(sites.id, deletePayload.data.id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Site deleted successfully" };
+    } catch (error) {
+      console.error("Site action error:", error);
+      return { status: "error", message: "An error occurred while deleting the site" };
+    }
+  }
+
   const parsed = siteSchema.safeParse(raw);
 
   if (!parsed.success) {
@@ -162,13 +309,46 @@ export async function manageSiteAction(
     };
   }
 
-  const { intent, id, name, location, customerName, contractNumber, isActive } = parsed.data;
+  const {
+    intent,
+    id,
+    name,
+    provinceId,
+    provinceName,
+    regencyId,
+    regencyName,
+    districtId,
+    districtName,
+    villageId,
+    villageName,
+    addressDetail,
+    customerName,
+    contractNumber,
+    isActive,
+  } = parsed.data;
+
+  const location = buildSiteLocationLabel({
+    provinceName,
+    regencyName,
+    districtName,
+    villageName,
+    addressDetail,
+  });
 
   try {
     if (intent === "create") {
       await db.insert(sites).values({
         name,
         location,
+        provinceId,
+        provinceName,
+        regencyId,
+        regencyName,
+        districtId,
+        districtName,
+        villageId,
+        villageName,
+        addressDetail: addressDetail || "",
         customerName,
         contractNumber,
         isActive,
@@ -189,6 +369,15 @@ export async function manageSiteAction(
         .set({
           name,
           location,
+          provinceId,
+          provinceName,
+          regencyId,
+          regencyName,
+          districtId,
+          districtName,
+          villageId,
+          villageName,
+          addressDetail: addressDetail || "",
           customerName,
           contractNumber,
           isActive,
@@ -199,21 +388,144 @@ export async function manageSiteAction(
       return { status: "success", message: "Site updated successfully" };
     }
 
-    if (intent === "delete") {
-      if (!id) {
-        return { status: "error", message: "ID is required for delete" };
-      }
-
-      await db.delete(sites).where(eq(sites.id, id));
-
-      revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Site deleted successfully" };
-    }
-
     return { status: "error", message: "Invalid intent" };
   } catch (error) {
     console.error("Site action error:", error);
     return { status: "error", message: "An error occurred while processing your request" };
+  }
+}
+
+export async function manageAttendanceShiftAction(
+  _state: MasterDataActionState,
+  formData: FormData
+): Promise<MasterDataActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  if (!(await canEditMasterData())) {
+    return {
+      status: "error",
+      message: "Role Anda belum memiliki izin edit Master Data.",
+    };
+  }
+
+  const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = z
+      .object({
+        intent: z.literal("delete"),
+        id: z.coerce.number().int().positive(),
+      })
+      .safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db
+        .delete(masterAttendanceShifts)
+        .where(eq(masterAttendanceShifts.id, deletePayload.data.id));
+
+      revalidatePath("/dashboard/master-data");
+      revalidatePath("/dashboard/attendance");
+      return { status: "success", message: "Shift attendance berhasil dihapus." };
+    } catch (error) {
+      console.error("Attendance shift action error:", error);
+      return { status: "error", message: "Shift attendance masih belum bisa dihapus." };
+    }
+  }
+
+  const parsed = attendanceShiftSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Validation failed",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const {
+    intent,
+    id,
+    code,
+    label,
+    startTime,
+    endTime,
+    windowLabel,
+    helper,
+    sortOrder,
+    isActive,
+  } = parsed.data;
+
+  try {
+    const duplicate = await db
+      .select({ id: masterAttendanceShifts.id })
+      .from(masterAttendanceShifts)
+      .where(
+        id
+          ? and(eq(masterAttendanceShifts.code, code), sql`${masterAttendanceShifts.id} != ${id}`)
+          : eq(masterAttendanceShifts.code, code),
+      )
+      .limit(1);
+
+    if (duplicate.length > 0) {
+      return { status: "error", message: "Kode shift sudah dipakai." };
+    }
+
+    if (intent === "create") {
+      await db.insert(masterAttendanceShifts).values({
+        code,
+        label,
+        startTime: startTime || "",
+        endTime: endTime || "",
+        windowLabel: windowLabel || "",
+        helper: helper || "",
+        sortOrder,
+        isActive,
+        createdAt: now(),
+        updatedAt: now(),
+      });
+
+      revalidatePath("/dashboard/master-data");
+      revalidatePath("/dashboard/attendance");
+      return { status: "success", message: "Shift attendance berhasil ditambahkan." };
+    }
+
+    if (intent === "update") {
+      if (!id) {
+        return { status: "error", message: "ID is required for update" };
+      }
+
+      await db
+        .update(masterAttendanceShifts)
+        .set({
+          code,
+          label,
+          startTime: startTime || "",
+          endTime: endTime || "",
+          windowLabel: windowLabel || "",
+          helper: helper || "",
+          sortOrder,
+          isActive,
+          updatedAt: now(),
+        })
+        .where(eq(masterAttendanceShifts.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      revalidatePath("/dashboard/attendance");
+      return { status: "success", message: "Shift attendance berhasil diperbarui." };
+    }
+
+    return { status: "error", message: "Invalid intent" };
+  } catch (error) {
+    console.error("Attendance shift action error:", error);
+    return { status: "error", message: "Terjadi kendala saat menyimpan shift attendance." };
   }
 }
 
@@ -463,9 +775,42 @@ export async function managePositionAction(
     };
   }
 
-  const { intent, id, code, name, departmentId, siteLocation, level, description, isActive } = parsed.data;
+  const { intent, id, code, name, departmentId, sectionId, siteLocation, level, description, isActive } = parsed.data;
 
   try {
+    let resolvedDepartmentId = departmentId || null;
+
+    if (sectionId) {
+      const [sectionRecord] = await db
+        .select({
+          id: masterSections.id,
+          departmentId: masterSections.departmentId,
+        })
+        .from(masterSections)
+        .where(eq(masterSections.id, sectionId))
+        .limit(1);
+
+      if (!sectionRecord) {
+        return {
+          status: "error",
+          message: "Section yang dipilih tidak ditemukan",
+        };
+      }
+
+      if (
+        resolvedDepartmentId != null &&
+        sectionRecord.departmentId != null &&
+        sectionRecord.departmentId !== resolvedDepartmentId
+      ) {
+        return {
+          status: "error",
+          message: "Section harus sesuai dengan department yang dipilih",
+        };
+      }
+
+      resolvedDepartmentId = sectionRecord.departmentId ?? resolvedDepartmentId;
+    }
+
     if (intent === "create") {
       const existing = await db
         .select({ id: masterPositions.id })
@@ -483,7 +828,8 @@ export async function managePositionAction(
       await db.insert(masterPositions).values({
         code,
         name,
-        departmentId: departmentId || null,
+        departmentId: resolvedDepartmentId,
+        sectionId: sectionId || null,
         siteLocation: siteLocation || "",
         level,
         description: description || "",
@@ -519,7 +865,8 @@ export async function managePositionAction(
         .set({
           code,
           name,
-          departmentId: departmentId || null,
+          departmentId: resolvedDepartmentId,
+          sectionId: sectionId || null,
           siteLocation: siteLocation || "",
           level,
           description: description || "",

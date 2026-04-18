@@ -1,46 +1,445 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Bell,
+  FileText,
+  History,
+  Mail,
+  Plus,
+  RadioTower,
+  Server,
+  Smartphone,
+  XCircle,
+} from "lucide-react";
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
-import { getEmailDeliveryLogsData } from "@/lib/hero-admin";
+import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
+import { AdminStatusBadge } from "@/components/admin-status-badge";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { getNotificationCenterData } from "@/lib/approval-blueprint";
+import { getServerSession } from "@/lib/auth-session";
+import { getEmailDeliveryLogsData, getEmailSmtpSettingsData } from "@/lib/hero-admin";
+
+const defaultTemplates = [
+  {
+    name: "Auth Magic Link",
+    code: "auth_magic_link",
+    type: "Magic Link",
+    channel: "Email",
+    subject: "Magic link masuk untuk {{userName}}",
+    active: true,
+  },
+  {
+    name: "Approval Assignment",
+    code: "approval_assignment",
+    type: "Notification",
+    channel: "Email + Bell",
+    subject: "Tugas approval baru #{{requestId}}",
+    active: true,
+  },
+  {
+    name: "Approval SLA Reminder",
+    code: "approval_sla_reminder",
+    type: "Reminder",
+    channel: "Email + Bell + PWA",
+    subject: "Reminder SLA untuk request #{{requestId}}",
+    active: true,
+  },
+  {
+    name: "Daily Report Delivery",
+    code: "daily_report_delivery",
+    type: "Report",
+    channel: "Email",
+    subject: "Daily Report {{siteName}} - {{reportDate}}",
+    active: true,
+  },
+];
+
+const bellRules = [
+  {
+    label: "Approval assignment",
+    event: "approval_assignment",
+    target: "Approver",
+    priority: "approval",
+    active: true,
+  },
+  {
+    label: "Delegation handover",
+    event: "delegation_created",
+    target: "Delegate",
+    priority: "delegation",
+    active: true,
+  },
+  {
+    label: "Escalation alert",
+    event: "approval_escalation",
+    target: "Manager",
+    priority: "escalation",
+    active: true,
+  },
+  {
+    label: "Before due reminder",
+    event: "before_due",
+    target: "Requester + Approver",
+    priority: "before_due",
+    active: true,
+  },
+];
+
+const pwaRules = [
+  { label: "Push approval urgent", audience: "Approver aktif", trigger: "SLA < 2 jam", active: true },
+  { label: "Push escalation", audience: "Manager site", trigger: "Lewat SLA", active: true },
+  { label: "Push daily report ready", audience: "PJO + Admin", trigger: "Report siap kirim", active: false },
+];
+
+function CompactMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <Card className="rounded-lg p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-[0.65rem] font-semibold uppercase text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-1 font-display text-2xl font-semibold leading-none">{value}</p>
+        </div>
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+          <Icon className="size-4" />
+        </span>
+      </div>
+    </Card>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Label className="grid gap-2 text-sm font-semibold">
+      {label}
+      {children}
+    </Label>
+  );
+}
 
 export default async function EmailSettingsPage() {
-  const logs = await getEmailDeliveryLogsData();
+  const [logs, notifications, smtpSettings, session] = await Promise.all([
+    getEmailDeliveryLogsData(),
+    getNotificationCenterData(),
+    getEmailSmtpSettingsData(),
+    getServerSession(),
+  ]);
+
   const sent = logs.filter((log) => log.status === "sent").length;
   const pending = logs.filter((log) => log.status === "pending").length;
   const failed = logs.filter((log) => log.status === "failed").length;
+  const bellDeliveries = notifications.deliveries.filter(
+    (delivery) => delivery.deliveryChannel === "in_app",
+  );
+  const pwaDeliveries = notifications.deliveries.filter(
+    (delivery) => delivery.deliveryChannel === "pwa_push" || delivery.deliveryChannel === "push",
+  );
+
+  const templatesFromLogs = logs
+    .filter((log) => log.templateName || log.templateCode)
+    .map((log) => ({
+      name: log.templateName ?? log.templateCode ?? "Email langsung",
+      code: log.templateCode ?? "direct_email",
+      type: log.templateName?.includes("Reset") ? "Auth" : "Notification",
+      channel: log.deliveryChannel === "email" ? "Email" : log.deliveryChannel,
+      subject: log.subject,
+      active: log.status !== "failed",
+    }));
+  const templateMap = new Map(
+    [...defaultTemplates, ...templatesFromLogs].map((template) => [template.code, template]),
+  );
+  const templates = [...templateMap.values()];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="industrial-label">Riwayat Email</p>
-        <h1 className="mt-2 font-display text-3xl font-semibold tracking-normal">Pengiriman Email</h1>
-        <p className="text-sm text-muted-foreground">
-          Pantau email admin, notifikasi, dan pengingat yang dikirim dari HERO.
-        </p>
+    <div className="space-y-5">
+      <header className="flex flex-col gap-3 border-b border-border/70 pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-2">
+          <span className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold uppercase text-muted-foreground shadow-sm">
+            <Mail className="size-3.5 text-primary" />
+            System Controls
+          </span>
+          <h1 className="font-display text-2xl font-semibold leading-tight tracking-normal text-foreground sm:text-3xl">
+            Email Settings
+          </h1>
+        </div>
+      </header>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        <CompactMetric icon={Mail} label="Email sent" value={sent} />
+        <CompactMetric icon={XCircle} label="Failed" value={failed} />
+        <CompactMetric icon={History} label="Pending" value={pending} />
+        <CompactMetric icon={FileText} label="Templates" value={templates.length} />
+        <CompactMetric icon={Bell} label="Bell logs" value={bellDeliveries.length} />
+        <CompactMetric icon={Smartphone} label="PWA push" value={pwaDeliveries.length} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          { label: "Terkirim", value: sent },
-          { label: "Menunggu", value: pending },
-          { label: "Gagal", value: failed },
-        ].map((item) => (
-          <Card key={item.label} className="rounded-lg">
-            <CardContent className="p-6">
-              <p className="text-sm text-muted-foreground">{item.label}</p>
-              <p className="mt-2 font-display text-3xl font-semibold">{item.value}</p>
-            </CardContent>
+      <Tabs defaultValue="smtp" className="space-y-4">
+        <TabsList className="flex w-full flex-wrap justify-start">
+          <TabsTrigger value="smtp">
+            <Server className="size-4" />
+            SMTP
+          </TabsTrigger>
+          <TabsTrigger value="templates">
+            <FileText className="size-4" />
+            Template
+            <Badge className="ml-1 rounded-full border-0 bg-muted text-muted-foreground">
+              {templates.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="bell">
+            <Bell className="size-4" />
+            Bell
+          </TabsTrigger>
+          <TabsTrigger value="pwa">
+            <Smartphone className="size-4" />
+            PWA Push
+          </TabsTrigger>
+          <TabsTrigger value="logs">
+            <History className="size-4" />
+            Logs
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="smtp">
+          <EmailSmtpSettingsPanel
+            smtpSettings={smtpSettings}
+            currentUserEmail={session?.user?.email ?? null}
+          />
+        </TabsContent>
+
+        <TabsContent value="templates">
+          <Card className="rounded-lg p-4 shadow-sm">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-display text-lg font-semibold">Email Template</h2>
+                <p className="text-sm text-muted-foreground">
+                  Gunakan format {"{{variable}}"} untuk data dinamis.
+                </p>
+              </div>
+              <Button className="w-fit rounded-lg bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]">
+                <Plus className="size-4" />
+                Template Baru
+              </Button>
+            </div>
+            <div className="overflow-x-auto rounded-lg bg-surface-container-low p-2">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Nama</TableHead>
+                    <TableHead>Tipe</TableHead>
+                    <TableHead>Kode</TableHead>
+                    <TableHead>Channel</TableHead>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>Aktif</TableHead>
+                    <TableHead>Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {templates.map((template) => (
+                    <TableRow key={template.code} className="hover:bg-surface-container">
+                      <TableCell className="font-semibold">{template.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="rounded-full">{template.type}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{template.code}</TableCell>
+                      <TableCell>{template.channel}</TableCell>
+                      <TableCell className="max-w-[360px] truncate text-muted-foreground">
+                        {template.subject}
+                      </TableCell>
+                      <TableCell>
+                        <Switch defaultChecked={template.active} />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" className="rounded-lg">
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
-        ))}
-      </div>
+        </TabsContent>
 
-      <Card className="rounded-lg">
-        <CardHeader>
-          <CardTitle>Daftar Pengiriman Email</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <EmailDeliveryLogTable logs={logs} />
-        </CardContent>
-      </Card>
+        <TabsContent value="bell">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <Card className="rounded-lg p-4 shadow-sm">
+              <h2 className="font-display text-lg font-semibold">Notification Bell Rules</h2>
+              <div className="mt-4 grid gap-3">
+                {bellRules.map((rule) => (
+                  <div key={rule.event} className="grid gap-3 rounded-lg bg-surface-container-low p-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:items-center">
+                    <div>
+                      <p className="font-semibold">{rule.label}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{rule.event}</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{rule.target}</p>
+                    <AdminStatusBadge value={rule.priority} />
+                    <Switch defaultChecked={rule.active} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="rounded-lg p-4 shadow-sm">
+              <h2 className="font-display text-lg font-semibold">Bell Behavior</h2>
+              <div className="mt-4 space-y-4">
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold">Realtime badge count</span>
+                  <Switch defaultChecked />
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold">Sound alert untuk escalation</span>
+                  <Switch defaultChecked />
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold">Auto mark read setelah dibuka</span>
+                  <Switch defaultChecked />
+                </label>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pwa">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_420px]">
+            <Card className="rounded-lg p-4 shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="font-display text-lg font-semibold">PWA Push Settings</h2>
+                <Badge className="rounded-full border-0 bg-tertiary-container text-on-tertiary-container">
+                  VAPID required
+                </Badge>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="VAPID Public Key">
+                  <Textarea rows={3} defaultValue="BKx...public-key-placeholder" />
+                </Field>
+                <Field label="VAPID Private Key">
+                  <Textarea rows={3} defaultValue="************" />
+                </Field>
+                <Field label="Push Subject">
+                  <Input defaultValue="mailto:noreply@chitraparatama.co.id" />
+                </Field>
+                <Field label="Service Worker">
+                  <Input defaultValue="/sw.js" />
+                </Field>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button className="rounded-lg bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]">
+                  Simpan Push
+                </Button>
+                <Button variant="outline" className="rounded-lg">
+                  Test Push
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="rounded-lg p-4 shadow-sm">
+              <h2 className="font-display text-lg font-semibold">Push Rules</h2>
+              <div className="mt-4 space-y-3">
+                {pwaRules.map((rule) => (
+                  <div key={rule.label} className="rounded-lg bg-surface-container-low p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{rule.label}</p>
+                        <p className="text-sm text-muted-foreground">{rule.audience}</p>
+                      </div>
+                      <Switch defaultChecked={rule.active} />
+                    </div>
+                    <p className="mt-2 inline-flex rounded-lg bg-surface-container-lowest px-2 py-1 text-xs font-semibold text-muted-foreground">
+                      {rule.trigger}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="logs">
+          <div className="space-y-4">
+            <Card className="rounded-lg p-4 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <Mail className="size-5 text-primary" />
+                <h2 className="font-display text-lg font-semibold">Email Delivery Logs</h2>
+              </div>
+              <EmailDeliveryLogTable logs={logs} />
+            </Card>
+
+            <Card className="rounded-lg p-4 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <RadioTower className="size-5 text-primary" />
+                <h2 className="font-display text-lg font-semibold">Notification Delivery Logs</h2>
+              </div>
+              <div className="overflow-x-auto rounded-lg bg-surface-container-low p-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Channel</TableHead>
+                      <TableHead>Recipient</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Error</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {notifications.deliveries.map((delivery) => (
+                      <TableRow key={delivery.id} className="hover:bg-surface-container">
+                        <TableCell className="font-semibold">{delivery.deliveryChannel}</TableCell>
+                        <TableCell className="font-mono text-xs">{delivery.recipient}</TableCell>
+                        <TableCell>
+                          <AdminStatusBadge value={delivery.status} />
+                        </TableCell>
+                        <TableCell className="max-w-[320px] truncate text-muted-foreground">
+                          {delivery.errorMessage ?? "-"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {delivery.createdAt.toLocaleString("id-ID")}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {notifications.deliveries.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                          Belum ada notification delivery log.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

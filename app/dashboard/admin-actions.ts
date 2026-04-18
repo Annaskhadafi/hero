@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
@@ -10,7 +10,11 @@ import { account, session, user } from "@/db/schema/auth";
 import {
   activities,
   approvals,
+  attendanceRecords,
+  dailyReports,
   employees,
+  hseIncidents,
+  hseObservations,
   masterDepartments,
   masterPositions,
   masterSections,
@@ -24,6 +28,8 @@ import {
   securityRoles,
   sites,
   timesheetEntries,
+  trainingRecords,
+  wellnessRecords,
 } from "@/db/schema/hero";
 import {
   ensureHeroGovernanceSeedData,
@@ -218,6 +224,112 @@ const manageSecurityRoleSchema = z.object({
   scope: z.string().trim().optional(),
   sourceRoleId: z.string().trim().optional(),
   permissionsJson: z.string().trim().optional(),
+});
+
+const optionalRecordId = z.preprocess(
+  (value) => (value === "" || value === null || value === undefined ? undefined : value),
+  z.coerce.number().int().positive().optional(),
+);
+
+const optionalEmployeeId = z.preprocess(
+  (value) => (value === "" || value === "none" || value === null || value === undefined ? null : value),
+  z.coerce.number().int().positive().nullable(),
+);
+
+const manageHseObservationSchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  siteId: z.coerce.number().int().positive().optional(),
+  employeeId: optionalEmployeeId.optional().default(null),
+  category: z.string().trim().max(120).optional().default("Observation"),
+  title: z.string().trim().max(200).optional().default(""),
+  location: z.string().trim().max(200).optional().default(""),
+  severity: z.string().trim().max(50).optional().default("Low"),
+  status: z.string().trim().max(50).optional().default("open"),
+  notes: z.string().trim().max(1000).optional().default(""),
+  observedAt: z.string().trim().optional().default(""),
+});
+
+const manageHseIncidentSchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  siteId: z.coerce.number().int().positive().optional(),
+  type: z.string().trim().max(120).optional().default("Incident"),
+  title: z.string().trim().max(200).optional().default(""),
+  unitNumber: z.string().trim().max(120).optional().default("-"),
+  impact: z.string().trim().max(500).optional().default(""),
+  status: z.string().trim().max(50).optional().default("investigating"),
+  reportedAt: z.string().trim().optional().default(""),
+});
+
+const manageTrainingRecordSchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  employeeId: z.coerce.number().int().positive().optional(),
+  trainingName: z.string().trim().max(200).optional().default(""),
+  provider: z.string().trim().max(160).optional().default(""),
+  expiresAt: z.string().trim().optional().default(""),
+  status: z.string().trim().max(50).optional().default("active"),
+});
+
+const manageWellnessRecordSchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  employeeId: z.coerce.number().int().positive().optional(),
+  metricType: z.string().trim().max(120).optional().default("Fit for Work"),
+  metricValue: z.string().trim().max(120).optional().default(""),
+  status: z.string().trim().max(50).optional().default("healthy"),
+  notes: z.string().trim().max(1000).optional().default(""),
+  recordedAt: z.string().trim().optional().default(""),
+});
+
+const manageAttendanceRecordSchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  employeeId: z.coerce.number().int().positive().optional(),
+  siteId: z.coerce.number().int().positive().optional(),
+  eventType: z.string().trim().max(80).optional().default("checked-in"),
+  eventTime: z.string().trim().optional().default(""),
+  status: z.string().trim().max(80).optional().default("verified"),
+  locationNote: z.string().trim().max(1000).optional().default(""),
+  photoUrl: z.string().trim().max(1000).optional().default(""),
+  latitude: z.string().trim().max(80).optional().default(""),
+  longitude: z.string().trim().max(80).optional().default(""),
+});
+
+const manageTimesheetEntrySchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  employeeId: z.coerce.number().int().positive().optional(),
+  siteId: z.coerce.number().int().positive().optional(),
+  periodLabel: z.string().trim().max(160).optional().default(""),
+  regularMinutes: z.coerce.number().int().min(0).max(43200).optional().default(0),
+  overtimeMinutes: z.coerce.number().int().min(0).max(43200).optional().default(0),
+  overtimeAmount: z.coerce.number().int().min(0).max(1_000_000_000).optional().default(0),
+  status: z.string().trim().max(50).optional().default("pending"),
+});
+
+const manageDailyReportSchema = z.object({
+  intent: z.enum(["create", "update", "update-status", "delete"]),
+  id: optionalRecordId,
+  siteId: z.coerce.number().int().positive().optional(),
+  reportDate: z.string().trim().optional().default(""),
+  customerName: z.string().trim().max(200).optional().default(""),
+  totalSections: z.coerce.number().int().min(1).max(50).optional().default(4),
+  readySections: z.coerce.number().int().min(0).max(50).optional().default(0),
+  jobsCompleted: z.coerce.number().int().min(0).max(10000).optional().default(0),
+  manpowerPresent: z.coerce.number().int().min(0).max(10000).optional().default(0),
+  hseSummary: z.string().trim().max(1000).optional().default(""),
+  status: z.string().trim().max(50).optional().default("draft"),
+});
+
+const managePointEventSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalRecordId,
+  employeeId: z.coerce.number().int().positive().optional(),
+  category: z.string().trim().max(120).optional().default("Manual Adjustment"),
+  label: z.string().trim().max(200).optional().default(""),
+  points: z.coerce.number().int().min(-10000).max(10000).optional().default(0),
 });
 
 function parseDateTime(value: string) {
@@ -2050,6 +2162,593 @@ export async function manageSecurityRoleAction(
         error instanceof Error
           ? error.message
           : "Terjadi kendala saat memproses role.",
+    };
+  }
+}
+
+function parseOperationalDate(value: string, fallback = new Date()) {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Tanggal tidak valid.");
+  }
+
+  return parsed;
+}
+
+function getRequiredId(id: number | undefined, label = "Data") {
+  if (!id) {
+    throw new Error(`${label} tidak valid.`);
+  }
+
+  return id;
+}
+
+function revalidateOperationalPages(...paths: string[]) {
+  for (const path of paths) {
+    revalidatePath(path);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/analytics");
+}
+
+export async function manageHseObservationAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageHseObservationSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.siteId || !payload.title || !payload.location || !payload.notes) {
+        return { status: "error", message: "Site, judul, lokasi, dan catatan wajib diisi." };
+      }
+
+      await db.insert(hseObservations).values({
+        siteId: payload.siteId,
+        employeeId: payload.employeeId ?? null,
+        category: payload.category,
+        title: payload.title,
+        location: payload.location,
+        severity: payload.severity,
+        status: payload.status,
+        notes: payload.notes,
+        observedAt: parseOperationalDate(payload.observedAt),
+      });
+
+      revalidateOperationalPages("/dashboard/hse");
+      return { status: "success", message: "Observasi HSE berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Observasi HSE");
+
+    if (payload.intent === "update-status") {
+      await db.update(hseObservations).set({ status: payload.status }).where(eq(hseObservations.id, id));
+      revalidateOperationalPages("/dashboard/hse");
+      return { status: "success", message: "Status observasi HSE diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.siteId || !payload.title || !payload.location || !payload.notes) {
+        return { status: "error", message: "Site, judul, lokasi, dan catatan wajib diisi." };
+      }
+
+      await db
+        .update(hseObservations)
+        .set({
+          siteId: payload.siteId,
+          employeeId: payload.employeeId ?? null,
+          category: payload.category,
+          title: payload.title,
+          location: payload.location,
+          severity: payload.severity,
+          status: payload.status,
+          notes: payload.notes,
+          observedAt: parseOperationalDate(payload.observedAt),
+        })
+        .where(eq(hseObservations.id, id));
+
+      revalidateOperationalPages("/dashboard/hse");
+      return { status: "success", message: "Detail observasi HSE diperbarui." };
+    }
+
+    await db.delete(hseObservations).where(eq(hseObservations.id, id));
+    revalidateOperationalPages("/dashboard/hse");
+    return { status: "success", message: "Observasi HSE dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses observasi HSE.",
+    };
+  }
+}
+
+export async function manageHseIncidentAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageHseIncidentSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.siteId || !payload.title || !payload.impact) {
+        return { status: "error", message: "Site, judul, dan impact wajib diisi." };
+      }
+
+      await db.insert(hseIncidents).values({
+        siteId: payload.siteId,
+        type: payload.type,
+        title: payload.title,
+        unitNumber: payload.unitNumber,
+        impact: payload.impact,
+        status: payload.status,
+        reportedAt: parseOperationalDate(payload.reportedAt),
+      });
+
+      revalidateOperationalPages("/dashboard/hse");
+      return { status: "success", message: "Incident HSE berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Incident HSE");
+
+    if (payload.intent === "update-status") {
+      await db.update(hseIncidents).set({ status: payload.status }).where(eq(hseIncidents.id, id));
+      revalidateOperationalPages("/dashboard/hse");
+      return { status: "success", message: "Status incident HSE diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.siteId || !payload.title || !payload.impact) {
+        return { status: "error", message: "Site, judul, dan impact wajib diisi." };
+      }
+
+      await db
+        .update(hseIncidents)
+        .set({
+          siteId: payload.siteId,
+          type: payload.type,
+          title: payload.title,
+          unitNumber: payload.unitNumber,
+          impact: payload.impact,
+          status: payload.status,
+          reportedAt: parseOperationalDate(payload.reportedAt),
+        })
+        .where(eq(hseIncidents.id, id));
+
+      revalidateOperationalPages("/dashboard/hse");
+      return { status: "success", message: "Detail incident HSE diperbarui." };
+    }
+
+    await db.delete(hseIncidents).where(eq(hseIncidents.id, id));
+    revalidateOperationalPages("/dashboard/hse");
+    return { status: "success", message: "Incident HSE dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses incident HSE.",
+    };
+  }
+}
+
+export async function manageTrainingRecordAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageTrainingRecordSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.employeeId || !payload.trainingName || !payload.provider || !payload.expiresAt) {
+        return { status: "error", message: "Karyawan, training, provider, dan expiry wajib diisi." };
+      }
+
+      await db.insert(trainingRecords).values({
+        employeeId: payload.employeeId,
+        trainingName: payload.trainingName,
+        provider: payload.provider,
+        expiresAt: parseOperationalDate(payload.expiresAt),
+        status: payload.status,
+      });
+
+      revalidateOperationalPages("/dashboard/hc");
+      return { status: "success", message: "Training record berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Training record");
+
+    if (payload.intent === "update-status") {
+      await db.update(trainingRecords).set({ status: payload.status }).where(eq(trainingRecords.id, id));
+      revalidateOperationalPages("/dashboard/hc");
+      return { status: "success", message: "Status training diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.employeeId || !payload.trainingName || !payload.provider || !payload.expiresAt) {
+        return { status: "error", message: "Karyawan, training, provider, dan expiry wajib diisi." };
+      }
+
+      await db
+        .update(trainingRecords)
+        .set({
+          employeeId: payload.employeeId,
+          trainingName: payload.trainingName,
+          provider: payload.provider,
+          expiresAt: parseOperationalDate(payload.expiresAt),
+          status: payload.status,
+        })
+        .where(eq(trainingRecords.id, id));
+
+      revalidateOperationalPages("/dashboard/hc");
+      return { status: "success", message: "Detail training diperbarui." };
+    }
+
+    await db.delete(trainingRecords).where(eq(trainingRecords.id, id));
+    revalidateOperationalPages("/dashboard/hc");
+    return { status: "success", message: "Training record dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses training record.",
+    };
+  }
+}
+
+export async function manageWellnessRecordAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageWellnessRecordSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.employeeId || !payload.metricValue || !payload.notes) {
+        return { status: "error", message: "Karyawan, nilai metrik, dan catatan wajib diisi." };
+      }
+
+      await db.insert(wellnessRecords).values({
+        employeeId: payload.employeeId,
+        metricType: payload.metricType,
+        metricValue: payload.metricValue,
+        status: payload.status,
+        notes: payload.notes,
+        recordedAt: parseOperationalDate(payload.recordedAt),
+      });
+
+      revalidateOperationalPages("/dashboard/hc");
+      return { status: "success", message: "Wellness record berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Wellness record");
+
+    if (payload.intent === "update-status") {
+      await db.update(wellnessRecords).set({ status: payload.status }).where(eq(wellnessRecords.id, id));
+      revalidateOperationalPages("/dashboard/hc");
+      return { status: "success", message: "Status wellness diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.employeeId || !payload.metricValue || !payload.notes) {
+        return { status: "error", message: "Karyawan, nilai metrik, dan catatan wajib diisi." };
+      }
+
+      await db
+        .update(wellnessRecords)
+        .set({
+          employeeId: payload.employeeId,
+          metricType: payload.metricType,
+          metricValue: payload.metricValue,
+          status: payload.status,
+          notes: payload.notes,
+          recordedAt: parseOperationalDate(payload.recordedAt),
+        })
+        .where(eq(wellnessRecords.id, id));
+
+      revalidateOperationalPages("/dashboard/hc");
+      return { status: "success", message: "Detail wellness diperbarui." };
+    }
+
+    await db.delete(wellnessRecords).where(eq(wellnessRecords.id, id));
+    revalidateOperationalPages("/dashboard/hc");
+    return { status: "success", message: "Wellness record dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses wellness record.",
+    };
+  }
+}
+
+export async function manageAttendanceRecordAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageAttendanceRecordSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.employeeId || !payload.siteId || !payload.eventTime || !payload.locationNote) {
+        return { status: "error", message: "Karyawan, site, waktu, dan catatan lokasi wajib diisi." };
+      }
+
+      await db.insert(attendanceRecords).values({
+        employeeId: payload.employeeId,
+        siteId: payload.siteId,
+        eventType: payload.eventType,
+        eventTime: parseOperationalDate(payload.eventTime),
+        status: payload.status,
+        locationNote: payload.locationNote,
+        photoUrl: payload.photoUrl || null,
+        latitude: payload.latitude || null,
+        longitude: payload.longitude || null,
+      });
+
+      revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
+      return { status: "success", message: "Attendance record berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Attendance record");
+
+    if (payload.intent === "update-status") {
+      await db.update(attendanceRecords).set({ status: payload.status }).where(eq(attendanceRecords.id, id));
+      revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
+      return { status: "success", message: "Status attendance diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.employeeId || !payload.siteId || !payload.eventTime || !payload.locationNote) {
+        return { status: "error", message: "Karyawan, site, waktu, dan catatan lokasi wajib diisi." };
+      }
+
+      await db
+        .update(attendanceRecords)
+        .set({
+          employeeId: payload.employeeId,
+          siteId: payload.siteId,
+          eventType: payload.eventType,
+          eventTime: parseOperationalDate(payload.eventTime),
+          status: payload.status,
+          locationNote: payload.locationNote,
+          photoUrl: payload.photoUrl || null,
+          latitude: payload.latitude || null,
+          longitude: payload.longitude || null,
+        })
+        .where(eq(attendanceRecords.id, id));
+
+      revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
+      return { status: "success", message: "Detail attendance diperbarui." };
+    }
+
+    await db.delete(attendanceRecords).where(eq(attendanceRecords.id, id));
+    revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
+    return { status: "success", message: "Attendance record dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses attendance record.",
+    };
+  }
+}
+
+export async function manageTimesheetEntryAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageTimesheetEntrySchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.employeeId || !payload.siteId || !payload.periodLabel) {
+        return { status: "error", message: "Karyawan, site, dan periode wajib diisi." };
+      }
+
+      await db.insert(timesheetEntries).values({
+        employeeId: payload.employeeId,
+        siteId: payload.siteId,
+        periodLabel: payload.periodLabel,
+        regularMinutes: payload.regularMinutes,
+        overtimeMinutes: payload.overtimeMinutes,
+        overtimeAmount: payload.overtimeAmount,
+        status: payload.status,
+        updatedAt: new Date(),
+      });
+
+      revalidateOperationalPages("/dashboard/timesheet");
+      return { status: "success", message: "Timesheet entry berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Timesheet entry");
+
+    if (payload.intent === "update-status") {
+      await db
+        .update(timesheetEntries)
+        .set({ status: payload.status, updatedAt: new Date() })
+        .where(eq(timesheetEntries.id, id));
+      revalidateOperationalPages("/dashboard/timesheet");
+      return { status: "success", message: "Status timesheet diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.employeeId || !payload.siteId || !payload.periodLabel) {
+        return { status: "error", message: "Karyawan, site, dan periode wajib diisi." };
+      }
+
+      await db
+        .update(timesheetEntries)
+        .set({
+          employeeId: payload.employeeId,
+          siteId: payload.siteId,
+          periodLabel: payload.periodLabel,
+          regularMinutes: payload.regularMinutes,
+          overtimeMinutes: payload.overtimeMinutes,
+          overtimeAmount: payload.overtimeAmount,
+          status: payload.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(timesheetEntries.id, id));
+
+      revalidateOperationalPages("/dashboard/timesheet");
+      return { status: "success", message: "Detail timesheet diperbarui." };
+    }
+
+    await db.delete(timesheetEntries).where(eq(timesheetEntries.id, id));
+    revalidateOperationalPages("/dashboard/timesheet");
+    return { status: "success", message: "Timesheet entry dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses timesheet.",
+    };
+  }
+}
+
+export async function manageDailyReportAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = manageDailyReportSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.siteId || !payload.reportDate || !payload.customerName || !payload.hseSummary) {
+        return { status: "error", message: "Site, tanggal, customer, dan HSE summary wajib diisi." };
+      }
+
+      await db.insert(dailyReports).values({
+        siteId: payload.siteId,
+        reportDate: parseOperationalDate(payload.reportDate),
+        customerName: payload.customerName,
+        totalSections: payload.totalSections,
+        readySections: Math.min(payload.readySections, payload.totalSections),
+        jobsCompleted: payload.jobsCompleted,
+        manpowerPresent: payload.manpowerPresent,
+        hseSummary: payload.hseSummary,
+        status: payload.status,
+      });
+
+      revalidateOperationalPages("/dashboard/reports");
+      return { status: "success", message: "Daily report berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Daily report");
+
+    if (payload.intent === "update-status") {
+      await db.update(dailyReports).set({ status: payload.status }).where(eq(dailyReports.id, id));
+      revalidateOperationalPages("/dashboard/reports");
+      return { status: "success", message: "Status daily report diperbarui." };
+    }
+
+    if (payload.intent === "update") {
+      if (!payload.siteId || !payload.reportDate || !payload.customerName || !payload.hseSummary) {
+        return { status: "error", message: "Site, tanggal, customer, dan HSE summary wajib diisi." };
+      }
+
+      await db
+        .update(dailyReports)
+        .set({
+          siteId: payload.siteId,
+          reportDate: parseOperationalDate(payload.reportDate),
+          customerName: payload.customerName,
+          totalSections: payload.totalSections,
+          readySections: Math.min(payload.readySections, payload.totalSections),
+          jobsCompleted: payload.jobsCompleted,
+          manpowerPresent: payload.manpowerPresent,
+          hseSummary: payload.hseSummary,
+          status: payload.status,
+        })
+        .where(eq(dailyReports.id, id));
+
+      revalidateOperationalPages("/dashboard/reports");
+      return { status: "success", message: "Detail daily report diperbarui." };
+    }
+
+    await db.delete(dailyReports).where(eq(dailyReports.id, id));
+    revalidateOperationalPages("/dashboard/reports");
+    return { status: "success", message: "Daily report dihapus." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses daily report.",
+    };
+  }
+}
+
+export async function managePointEventAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const payload = managePointEventSchema.parse(Object.fromEntries(formData));
+    await ensureHeroSeedData();
+
+    if (payload.intent === "create") {
+      if (!payload.employeeId || !payload.label || payload.points === 0) {
+        return { status: "error", message: "Karyawan, label, dan poin selain 0 wajib diisi." };
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.insert(pointEvents).values({
+          employeeId: payload.employeeId!,
+          category: payload.category,
+          label: payload.label,
+          points: payload.points,
+          createdAt: new Date(),
+        });
+        await tx
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} + ${payload.points}` })
+          .where(eq(employees.id, payload.employeeId!));
+      });
+
+      revalidateOperationalPages("/dashboard/leaderboard");
+      return { status: "success", message: "Point event berhasil ditambahkan." };
+    }
+
+    const id = getRequiredId(payload.id, "Point event");
+
+    if (payload.intent === "update") {
+      if (!payload.employeeId || !payload.label || payload.points === 0) {
+        return { status: "error", message: "Karyawan, label, dan poin selain 0 wajib diisi." };
+      }
+
+      const [existingEvent] = await db.select().from(pointEvents).where(eq(pointEvents.id, id)).limit(1);
+
+      if (!existingEvent) {
+        return { status: "error", message: "Point event tidak ditemukan." };
+      }
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(pointEvents)
+          .set({
+            employeeId: payload.employeeId!,
+            category: payload.category,
+            label: payload.label,
+            points: payload.points,
+          })
+          .where(eq(pointEvents.id, id));
+
+        await tx
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} - ${existingEvent.points}` })
+          .where(eq(employees.id, existingEvent.employeeId));
+
+        await tx
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} + ${payload.points}` })
+          .where(eq(employees.id, payload.employeeId!));
+      });
+
+      revalidateOperationalPages("/dashboard/leaderboard");
+      return { status: "success", message: "Detail point event diperbarui." };
+    }
+
+    const [event] = await db.select().from(pointEvents).where(eq(pointEvents.id, id)).limit(1);
+
+    if (!event) {
+      return { status: "error", message: "Point event tidak ditemukan." };
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(pointEvents).where(eq(pointEvents.id, id));
+      await tx
+        .update(employees)
+        .set({ totalPoints: sql`${employees.totalPoints} - ${event.points}` })
+        .where(eq(employees.id, event.employeeId));
+    });
+
+    revalidateOperationalPages("/dashboard/leaderboard");
+    return { status: "success", message: "Point event dihapus dan poin karyawan disesuaikan." };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memproses point event.",
     };
   }
 }

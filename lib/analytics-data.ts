@@ -1,10 +1,15 @@
 import { myDaySummary } from "@/lib/activity-hub-data";
 import { approvalSummary } from "@/lib/approval-data";
 import { timesheetSummary } from "@/lib/timesheet-data";
-import { dailyReportSummary } from "@/lib/daily-report-data";
+import { dailyReportSections, dailyReportSummary } from "@/lib/daily-report-data";
 import { pointsProfile, siteLeaderboard } from "@/lib/points-data";
 import { hseSummary } from "@/lib/hse-data";
 import { hcSummary } from "@/lib/hc-data";
+
+const attendanceRate =
+  hcSummary.activeHeadcount > 0
+    ? `${Math.round((hcSummary.presentToday / hcSummary.activeHeadcount) * 100)}%`
+    : "0%";
 
 export const analyticsOverview = {
   site: dailyReportSummary.site,
@@ -13,9 +18,9 @@ export const analyticsOverview = {
   jobsAssigned: myDaySummary.jobsAssigned,
   pendingApprovals: approvalSummary.waitingLevel1 + approvalSummary.waitingLevel2,
   overtimeHours: timesheetSummary.overtimeHours,
-  reportReady: "4/4 section ready",
+  reportReady: `${dailyReportSections.length}/${dailyReportSections.length} section ready`,
   hseStatus: hseSummary.zeroIncidentDays,
-  attendanceRate: `${Math.round((hcSummary.presentToday / hcSummary.activeHeadcount) * 100)}%`,
+  attendanceRate,
 };
 
 export const analyticsKpis = [
@@ -83,11 +88,16 @@ export const analyticsSections = [
 export const analyticsHighlights = [
   {
     label: "Top performer site",
-    value: `${siteLeaderboard[0].name} • ${siteLeaderboard[0].points} poin`,
+    value: siteLeaderboard[0]
+      ? `${siteLeaderboard[0].name} • ${siteLeaderboard[0].points} poin`
+      : "Belum ada data",
   },
   {
     label: "Employee momentum",
-    value: `${pointsProfile.name} butuh ${pointsProfile.pointsToNextLevel} poin lagi ke ${pointsProfile.nextLevel}`,
+    value:
+      pointsProfile.name === "-"
+        ? "Belum ada data"
+        : `${pointsProfile.name} butuh ${pointsProfile.pointsToNextLevel} poin lagi ke ${pointsProfile.nextLevel}`,
   },
   {
     label: "Attendance trend",

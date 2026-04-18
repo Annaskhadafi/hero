@@ -278,7 +278,7 @@ function getDailyActivityFieldSeed() {
       { sectionKey: "evidence", label: "Evidence & Control", description: "Attachment, signature, checklist, dan remark." },
     ],
     fields: [
-      { sectionKey: "work_context", fieldKey: "title", fieldType: "text", label: "Judul pekerjaan", required: true, placeholder: "Contoh: Pemasangan ban OTR unit HD785" },
+      { sectionKey: "work_context", fieldKey: "title", fieldType: "text", label: "Judul pekerjaan", required: true, placeholder: "Contoh: Inspeksi unit operasional" },
       { sectionKey: "work_context", fieldKey: "activityCode", fieldType: "select", label: "Kode aktivitas", required: true, placeholder: "" },
       { sectionKey: "work_context", fieldKey: "activityType", fieldType: "select", label: "Activity Type", required: true, placeholder: "" },
       { sectionKey: "work_context", fieldKey: "workDate", fieldType: "date", label: "Tanggal kerja", required: true, placeholder: "" },
@@ -286,7 +286,7 @@ function getDailyActivityFieldSeed() {
       { sectionKey: "work_context", fieldKey: "siteName", fieldType: "org_unit_picker", label: "Site", required: true, placeholder: "" },
       { sectionKey: "work_context", fieldKey: "department", fieldType: "org_unit_picker", label: "Department", required: true, placeholder: "" },
       { sectionKey: "work_context", fieldKey: "section", fieldType: "org_unit_picker", label: "Section", required: false, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "unitNumber", fieldType: "text", label: "Unit / Area", required: true, placeholder: "Contoh: HD785-17" },
+      { sectionKey: "work_context", fieldKey: "unitNumber", fieldType: "text", label: "Unit / Area", required: true, placeholder: "Contoh: Unit-001" },
       { sectionKey: "work_context", fieldKey: "referenceCode", fieldType: "text", label: "Reference WO / Ticket", required: false, placeholder: "Opsional" },
       { sectionKey: "work_context", fieldKey: "employeeId", fieldType: "people_picker", label: "Requester", required: true, placeholder: "" },
       { sectionKey: "work_context", fieldKey: "additionalWatchers", fieldType: "multi_select", label: "Watcher / CC", required: false, placeholder: "" },
@@ -906,7 +906,7 @@ async function ensureDailyActivityWorkflowSeed() {
         workflowVersionId: workflowVersion.id,
         fieldKey: "site",
         operator: "=",
-        compareValue: "Bengalon Pit North",
+        compareValue: "",
         logicalJoin: "AND",
         groupLabel: "Default Site Scope",
         sortOrder: 1,
@@ -1113,80 +1113,6 @@ export async function ensureApprovalBlueprintSeedData() {
   const activityRows = await db.select({ id: activities.id }).from(activities);
   for (const activity of activityRows) {
     await syncActivityWorkflowArtifacts(activity.id);
-  }
-
-  const [draftExists] = await db
-    .select({ id: formSubmissions.id })
-    .from(formSubmissions)
-    .where(and(eq(formSubmissions.templateId, dailyTemplate.id), eq(formSubmissions.requestStatus, "draft")))
-    .limit(1);
-
-  if (!draftExists) {
-    const [employee] = await db.select().from(employees).orderBy(asc(employees.id)).limit(1);
-    if (employee) {
-      const payload: ActivitySupplementalPayload & Record<string, string | number | string[] | undefined> = {
-        title: "Draft inspeksi area stockpile",
-        activityCode: "TI",
-        activityType: "Tire Inspection",
-        workDate: "2026-04-17",
-        shift: "Shift Pagi",
-        unitNumber: "Stockpile Area A",
-        priority: "Normal",
-        overtimeMinutes: "0",
-        remarks: "Draft awal, menunggu kelengkapan data attachment.",
-        titleDetails: "Draft pengecekan awal kondisi stockpile area A.",
-        employeeId: `${employee.id}`,
-      };
-
-      await db.insert(formSubmissions).values({
-        templateId: dailyTemplate.id,
-        templateVersionId: dailyVersion.id,
-        requesterEmployeeId: employee.id,
-        siteId: employee.siteId,
-        requestNumber: `DRAFT-${Date.now()}`,
-        requestStatus: "draft",
-        workflowSnapshot: JSON.stringify({ workflowKey: DAILY_ACTIVITY_WORKFLOW_KEY }),
-        payloadSnapshot: JSON.stringify(payload),
-        previewSnapshot: JSON.stringify(payload),
-      });
-    }
-  }
-
-  const [cancelledExists] = await db
-    .select({ id: formSubmissions.id })
-    .from(formSubmissions)
-    .where(and(eq(formSubmissions.templateId, dailyTemplate.id), eq(formSubmissions.requestStatus, "cancelled")))
-    .limit(1);
-
-  if (!cancelledExists) {
-    const [employee] = await db.select().from(employees).orderBy(desc(employees.id)).limit(1);
-    if (employee) {
-      const payload = {
-        title: "Cancelled daily recap draft",
-        activityCode: "AD",
-        activityType: "Daily Recap",
-        workDate: "2026-04-12",
-        shift: "Shift Pagi",
-        unitNumber: "Site manpower",
-        priority: "Normal",
-        overtimeMinutes: "0",
-        remarks: "Draft dibatalkan karena data manpower berubah.",
-        employeeId: `${employee.id}`,
-      };
-
-      await db.insert(formSubmissions).values({
-        templateId: dailyTemplate.id,
-        templateVersionId: dailyVersion.id,
-        requesterEmployeeId: employee.id,
-        siteId: employee.siteId,
-        requestNumber: `CANCEL-${Date.now()}`,
-        requestStatus: "cancelled",
-        workflowSnapshot: JSON.stringify({ workflowKey: DAILY_ACTIVITY_WORKFLOW_KEY }),
-        payloadSnapshot: JSON.stringify(payload),
-        previewSnapshot: JSON.stringify(payload),
-        cancelledAt: new Date("2026-04-12T10:30:00+08:00"),
-      });
-    }
   }
 }
 

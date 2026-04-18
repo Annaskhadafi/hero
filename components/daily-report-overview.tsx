@@ -120,7 +120,7 @@ export function DailyReportOverview() {
           </div>
           <Badge variant="outline" className="rounded-full px-3 py-1">
             <ImageIcon className="mr-1 h-3.5 w-3.5" />
-            6 foto
+            {reportActivities.length} foto
           </Badge>
         </div>
 

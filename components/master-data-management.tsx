@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3 } from "lucide-react";
 import { toast } from "sonner";
-import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite } from "@/lib/master-data";
+import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift } from "@/lib/master-data";
 import {
+  manageAttendanceShiftAction,
   manageSectionAction,
   manageDepartmentAction,
   manageSiteAction,
@@ -55,6 +56,7 @@ interface MasterDataManagementProps {
   departments: MasterDepartment[];
   sites: MasterSite[];
   positions: MasterPosition[];
+  attendanceShifts: MasterAttendanceShift[];
   orgStructures: OrgStructure[];
   approvalMatrices: ApprovalMatrix[];
   employees: any[];
@@ -65,11 +67,80 @@ const INITIAL_ACTION_STATE: MasterDataActionState = {
   message: "",
 };
 
+type IndonesiaRegionOption = {
+  id: string;
+  name: string;
+};
+
+type SiteFormState = {
+  name: string;
+  provinceId: string;
+  provinceName: string;
+  regencyId: string;
+  regencyName: string;
+  districtId: string;
+  districtName: string;
+  villageId: string;
+  villageName: string;
+  addressDetail: string;
+  customerName: string;
+  contractNumber: string;
+  isActive: boolean;
+};
+
+const EMPTY_SITE_FORM: SiteFormState = {
+  name: "",
+  provinceId: "",
+  provinceName: "",
+  regencyId: "",
+  regencyName: "",
+  districtId: "",
+  districtName: "",
+  villageId: "",
+  villageName: "",
+  addressDetail: "",
+  customerName: "",
+  contractNumber: "",
+  isActive: true,
+};
+
+function buildSiteLocationPreview(formData: Pick<
+  SiteFormState,
+  "provinceName" | "regencyName" | "districtName" | "villageName" | "addressDetail"
+>) {
+  return [
+    formData.addressDetail.trim(),
+    formData.villageName.trim(),
+    formData.districtName.trim(),
+    formData.regencyName.trim(),
+    formData.provinceName.trim(),
+    "Indonesia",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+async function fetchIndonesiaRegionOptions(
+  level: "provinces" | "regencies" | "districts" | "villages",
+  params: Record<string, string> = {},
+) {
+  const searchParams = new URLSearchParams({ level, ...params });
+  const response = await fetch(`/api/indonesia-regions?${searchParams.toString()}`);
+
+  if (!response.ok) {
+    throw new Error("Gagal mengambil data wilayah Indonesia");
+  }
+
+  const payload = await response.json() as { options?: IndonesiaRegionOption[] };
+  return payload.options ?? [];
+}
+
 export function MasterDataManagement({
   sections,
   departments,
   sites,
   positions,
+  attendanceShifts,
   orgStructures,
   approvalMatrices,
   employees,
@@ -90,7 +161,7 @@ export function MasterDataManagement({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 bg-surface-container-low p-2 lg:grid-cols-7">
+        <TabsList className="grid w-full grid-cols-2 bg-surface-container-low p-2 lg:grid-cols-8">
           <TabsTrigger value="sections" className="flex items-center gap-2">
             <Layers className="size-4" />
             <span>Section</span>
@@ -119,6 +190,13 @@ export function MasterDataManagement({
               {sites.length}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="attendance-shifts" className="flex items-center gap-2">
+            <Clock3 className="size-4" />
+            <span>Shift</span>
+            <Badge variant="secondary" className="ml-1 bg-[#e0f2fe] text-[#0369a1]">
+              {attendanceShifts.length}
+            </Badge>
+          </TabsTrigger>
           <TabsTrigger value="org-structures" className="flex items-center gap-2">
             <GitBranch className="size-4" />
             <span>Struktur Organisasi</span>
@@ -140,7 +218,7 @@ export function MasterDataManagement({
         </TabsList>
 
         <TabsContent value="sections" className="space-y-4">
-          <SectionManagement sections={sections} />
+          <SectionManagement sections={sections} departments={departments} />
         </TabsContent>
 
         <TabsContent value="departments" className="space-y-4">
@@ -148,11 +226,15 @@ export function MasterDataManagement({
         </TabsContent>
 
         <TabsContent value="positions" className="space-y-4">
-          <PositionManagement positions={positions} departments={departments} sites={sites} />
+          <PositionManagement positions={positions} departments={departments} sections={sections} sites={sites} />
         </TabsContent>
 
         <TabsContent value="sites" className="space-y-4">
           <SiteManagement sites={sites} />
+        </TabsContent>
+
+        <TabsContent value="attendance-shifts" className="space-y-4">
+          <AttendanceShiftManagement attendanceShifts={attendanceShifts} />
         </TabsContent>
 
         <TabsContent value="org-structures" className="space-y-4">
@@ -185,17 +267,309 @@ export function MasterDataManagement({
   );
 }
 
+function getAttendanceShiftWindowLabel(shift: Pick<MasterAttendanceShift, "startTime" | "endTime" | "windowLabel">) {
+  if (shift.windowLabel.trim()) {
+    return shift.windowLabel;
+  }
+
+  if (shift.startTime && shift.endTime) {
+    return `${shift.startTime} - ${shift.endTime}`;
+  }
+
+  return "Sesuai assignment";
+}
+
+function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: MasterAttendanceShift[] }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingShift, setEditingShift] = useState<MasterAttendanceShift | null>(null);
+  const [formData, setFormData] = useState({
+    code: "",
+    label: "",
+    startTime: "",
+    endTime: "",
+    windowLabel: "",
+    helper: "",
+    sortOrder: 0,
+    isActive: true,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const filteredShifts = attendanceShifts.filter((shift) => {
+    const searchValue = `${shift.code} ${shift.label} ${getAttendanceShiftWindowLabel(shift)} ${shift.helper}`.toLowerCase();
+    return searchValue.includes(searchQuery.toLowerCase());
+  });
+
+  const handleOpenDialog = (shift?: MasterAttendanceShift) => {
+    if (shift) {
+      setEditingShift(shift);
+      setFormData({
+        code: shift.code,
+        label: shift.label,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        windowLabel: shift.windowLabel,
+        helper: shift.helper,
+        sortOrder: shift.sortOrder,
+        isActive: shift.isActive,
+      });
+    } else {
+      setEditingShift(null);
+      setFormData({
+        code: "",
+        label: "",
+        startTime: "",
+        endTime: "",
+        windowLabel: "",
+        helper: "",
+        sortOrder: attendanceShifts.length + 1,
+        isActive: true,
+      });
+    }
+
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    const form = new FormData();
+    form.append("intent", editingShift ? "update" : "create");
+    if (editingShift) form.append("id", editingShift.id.toString());
+    form.append("code", formData.code);
+    form.append("label", formData.label);
+    form.append("startTime", formData.startTime);
+    form.append("endTime", formData.endTime);
+    form.append("windowLabel", formData.windowLabel);
+    form.append("helper", formData.helper);
+    form.append("sortOrder", formData.sortOrder.toString());
+    form.append("isActive", formData.isActive.toString());
+
+    const result = await manageAttendanceShiftAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      setIsDialogOpen(false);
+      setEditingShift(null);
+    } else {
+      toast.error(result.message);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const handleDelete = async (shift: MasterAttendanceShift) => {
+    if (!confirm(`Hapus shift "${shift.label}" dari pilihan attendance?`)) {
+      return;
+    }
+
+    const form = new FormData();
+    form.append("intent", "delete");
+    form.append("id", shift.id.toString());
+
+    const result = await manageAttendanceShiftAction(INITIAL_ACTION_STATE, form);
+    if (result.status === "success") {
+      toast.success(result.message);
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  return (
+    <Card className="border-[#e2e8f0]">
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Pengaturan Shift Attendance</CardTitle>
+          <CardDescription className="text-sm text-[#64748b]">
+            Master pilihan shift / roster yang muncul di form clock in dan clock out.
+          </CardDescription>
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+          <Plus className="mr-2 size-4" />
+          Tambah Shift
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+            <Input
+              placeholder="Cari shift..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full max-w-sm pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-[#F5F7F9]">
+                <TableHead className="w-[110px]">Kode</TableHead>
+                <TableHead>Nama Shift</TableHead>
+                <TableHead>Jam / Window</TableHead>
+                <TableHead>Helper</TableHead>
+                <TableHead className="w-[90px]">Urutan</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+                <TableHead className="w-[100px]">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredShifts.length > 0 ? (
+                filteredShifts.map((shift) => (
+                  <TableRow key={shift.id}>
+                    <TableCell className="font-mono text-sm font-medium">{shift.code}</TableCell>
+                    <TableCell className="font-medium">{shift.label}</TableCell>
+                    <TableCell className="text-[#475569]">{getAttendanceShiftWindowLabel(shift)}</TableCell>
+                    <TableCell className="max-w-md text-[#64748b]">{shift.helper || "-"}</TableCell>
+                    <TableCell>{shift.sortOrder}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={shift.isActive ? "default" : "secondary"}
+                        className={shift.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
+                      >
+                        {shift.isActive ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(shift)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(shift)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
+                    Tidak ada data shift attendance
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>{editingShift ? "Edit Shift Attendance" : "Tambah Shift Attendance"}</DialogTitle>
+            <DialogDescription>
+              Perubahan shift aktif langsung dipakai di dropdown Konteks Attendance.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="shift-code">Kode Shift</Label>
+                <Input
+                  id="shift-code"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  placeholder="e.g., day"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shift-label">Nama Shift</Label>
+                <Input
+                  id="shift-label"
+                  value={formData.label}
+                  onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                  placeholder="e.g., Shift Pagi"
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="shift-start">Jam Mulai</Label>
+                <Input
+                  id="shift-start"
+                  value={formData.startTime}
+                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                  placeholder="07:00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shift-end">Jam Selesai</Label>
+                <Input
+                  id="shift-end"
+                  value={formData.endTime}
+                  onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                  placeholder="15:00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shift-sort">Urutan</Label>
+                <Input
+                  id="shift-sort"
+                  type="number"
+                  min={0}
+                  value={formData.sortOrder}
+                  onChange={(e) => setFormData({ ...formData, sortOrder: Number(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="shift-window">Label Window</Label>
+              <Input
+                id="shift-window"
+                value={formData.windowLabel}
+                onChange={(e) => setFormData({ ...formData, windowLabel: e.target.value })}
+                placeholder="Kosongkan untuk otomatis dari jam mulai - selesai"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="shift-helper">Catatan Helper</Label>
+              <Textarea
+                id="shift-helper"
+                value={formData.helper}
+                onChange={(e) => setFormData({ ...formData, helper: e.target.value })}
+                placeholder="Keterangan singkat yang tampil di form attendance"
+                rows={3}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch id="shift-isActive" checked={formData.isActive} onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })} />
+              <Label htmlFor="shift-isActive">Aktif di form attendance</Label>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">Batal</Button>
+              </DialogClose>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+                {isSubmitting ? "Menyimpan..." : editingShift ? "Simpan Perubahan" : "Tambah Shift"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
 function SiteManagement({ sites }: { sites: MasterSite[] }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<MasterSite | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    location: "",
-    customerName: "",
-    contractNumber: "",
-    isActive: true,
-  });
+  const [formData, setFormData] = useState<SiteFormState>(EMPTY_SITE_FORM);
+  const [provinceOptions, setProvinceOptions] = useState<IndonesiaRegionOption[]>([]);
+  const [regencyOptions, setRegencyOptions] = useState<IndonesiaRegionOption[]>([]);
+  const [districtOptions, setDistrictOptions] = useState<IndonesiaRegionOption[]>([]);
+  const [villageOptions, setVillageOptions] = useState<IndonesiaRegionOption[]>([]);
+  const [regionError, setRegionError] = useState("");
+  const [isLoadingProvinces, setIsLoadingProvinces] = useState(false);
+  const [isLoadingRegencies, setIsLoadingRegencies] = useState(false);
+  const [isLoadingDistricts, setIsLoadingDistricts] = useState(false);
+  const [isLoadingVillages, setIsLoadingVillages] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filteredSites = sites.filter(
@@ -204,21 +578,200 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
       site.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
       site.customerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const isSiteLocationComplete = Boolean(
+    formData.provinceId &&
+      formData.regencyId &&
+      formData.districtId &&
+      formData.villageId,
+  );
+
+  useEffect(() => {
+    if (!isDialogOpen || provinceOptions.length > 0) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadProvinces = async () => {
+      setIsLoadingProvinces(true);
+      setRegionError("");
+
+      try {
+        const options = await fetchIndonesiaRegionOptions("provinces");
+        if (!isCancelled) {
+          setProvinceOptions(options);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error(error);
+          setRegionError("Daftar provinsi belum bisa dimuat.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingProvinces(false);
+        }
+      }
+    };
+
+    void loadProvinces();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isDialogOpen, provinceOptions.length]);
+
+  useEffect(() => {
+    if (!isDialogOpen) {
+      return;
+    }
+
+    if (!formData.provinceId) {
+      setRegencyOptions([]);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadRegencies = async () => {
+      setIsLoadingRegencies(true);
+      setRegionError("");
+
+      try {
+        const options = await fetchIndonesiaRegionOptions("regencies", {
+          provinceId: formData.provinceId,
+        });
+
+        if (!isCancelled) {
+          setRegencyOptions(options);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error(error);
+          setRegionError("Daftar kota/kabupaten belum bisa dimuat.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingRegencies(false);
+        }
+      }
+    };
+
+    void loadRegencies();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [formData.provinceId, isDialogOpen]);
+
+  useEffect(() => {
+    if (!isDialogOpen) {
+      return;
+    }
+
+    if (!formData.regencyId) {
+      setDistrictOptions([]);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadDistricts = async () => {
+      setIsLoadingDistricts(true);
+      setRegionError("");
+
+      try {
+        const options = await fetchIndonesiaRegionOptions("districts", {
+          regencyId: formData.regencyId,
+        });
+
+        if (!isCancelled) {
+          setDistrictOptions(options);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error(error);
+          setRegionError("Daftar wilayah/kecamatan belum bisa dimuat.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingDistricts(false);
+        }
+      }
+    };
+
+    void loadDistricts();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [formData.regencyId, isDialogOpen]);
+
+  useEffect(() => {
+    if (!isDialogOpen) {
+      return;
+    }
+
+    if (!formData.districtId) {
+      setVillageOptions([]);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadVillages = async () => {
+      setIsLoadingVillages(true);
+      setRegionError("");
+
+      try {
+        const options = await fetchIndonesiaRegionOptions("villages", {
+          districtId: formData.districtId,
+        });
+
+        if (!isCancelled) {
+          setVillageOptions(options);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error(error);
+          setRegionError("Daftar kelurahan belum bisa dimuat.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingVillages(false);
+        }
+      }
+    };
+
+    void loadVillages();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [formData.districtId, isDialogOpen]);
 
   const handleOpenDialog = (site?: MasterSite) => {
     if (site) {
       setEditingSite(site);
       setFormData({
         name: site.name,
-        location: site.location,
+        provinceId: site.provinceId,
+        provinceName: site.provinceName,
+        regencyId: site.regencyId,
+        regencyName: site.regencyName,
+        districtId: site.districtId,
+        districtName: site.districtName,
+        villageId: site.villageId,
+        villageName: site.villageName,
+        addressDetail: site.addressDetail,
         customerName: site.customerName,
         contractNumber: site.contractNumber,
         isActive: site.isActive,
       });
     } else {
       setEditingSite(null);
-      setFormData({ name: "", location: "", customerName: "", contractNumber: "", isActive: true });
+      setFormData(EMPTY_SITE_FORM);
     }
+    setRegionError("");
     setIsDialogOpen(true);
   };
 
@@ -230,7 +783,15 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
     form.append("intent", editingSite ? "update" : "create");
     if (editingSite) form.append("id", editingSite.id.toString());
     form.append("name", formData.name);
-    form.append("location", formData.location);
+    form.append("provinceId", formData.provinceId);
+    form.append("provinceName", formData.provinceName);
+    form.append("regencyId", formData.regencyId);
+    form.append("regencyName", formData.regencyName);
+    form.append("districtId", formData.districtId);
+    form.append("districtName", formData.districtName);
+    form.append("villageId", formData.villageId);
+    form.append("villageName", formData.villageName);
+    form.append("addressDetail", formData.addressDetail);
     form.append("customerName", formData.customerName);
     form.append("contractNumber", formData.contractNumber);
     form.append("isActive", formData.isActive.toString());
@@ -241,7 +802,10 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingSite(null);
-      setFormData({ name: "", location: "", customerName: "", contractNumber: "", isActive: true });
+      setFormData(EMPTY_SITE_FORM);
+      setRegencyOptions([]);
+      setDistrictOptions([]);
+      setVillageOptions([]);
     } else {
       toast.error(result.message);
     }
@@ -359,9 +923,206 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
               <Input id="site-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="site-location">Lokasi</Label>
-              <Input id="site-location" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })} required />
+              <Label htmlFor="site-country">Negara</Label>
+              <Input id="site-country" value="Indonesia" readOnly />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="site-province">Provinsi</Label>
+                <Select
+                  value={formData.provinceId || "0"}
+                  onValueChange={(value) => {
+                    if (value === "0") {
+                      setFormData({
+                        ...formData,
+                        provinceId: "",
+                        provinceName: "",
+                        regencyId: "",
+                        regencyName: "",
+                        districtId: "",
+                        districtName: "",
+                        villageId: "",
+                        villageName: "",
+                      });
+                      setRegencyOptions([]);
+                      setDistrictOptions([]);
+                      setVillageOptions([]);
+                      return;
+                    }
+
+                    const selectedProvince = provinceOptions.find((option) => option.id === value);
+                    setFormData({
+                      ...formData,
+                      provinceId: value,
+                      provinceName: selectedProvince?.name ?? "",
+                      regencyId: "",
+                      regencyName: "",
+                      districtId: "",
+                      districtName: "",
+                      villageId: "",
+                      villageName: "",
+                    });
+                    setRegencyOptions([]);
+                    setDistrictOptions([]);
+                    setVillageOptions([]);
+                  }}
+                >
+                  <SelectTrigger id="site-province" disabled={isLoadingProvinces}>
+                    <SelectValue placeholder={isLoadingProvinces ? "Memuat provinsi..." : "Pilih provinsi"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Pilih provinsi</SelectItem>
+                    {provinceOptions.map((province) => (
+                      <SelectItem key={province.id} value={province.id}>
+                        {province.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="site-regency">Kota / Kabupaten</Label>
+                <Select
+                  value={formData.regencyId || "0"}
+                  onValueChange={(value) => {
+                    if (value === "0") {
+                      setFormData({
+                        ...formData,
+                        regencyId: "",
+                        regencyName: "",
+                        districtId: "",
+                        districtName: "",
+                        villageId: "",
+                        villageName: "",
+                      });
+                      setDistrictOptions([]);
+                      setVillageOptions([]);
+                      return;
+                    }
+
+                    const selectedRegency = regencyOptions.find((option) => option.id === value);
+                    setFormData({
+                      ...formData,
+                      regencyId: value,
+                      regencyName: selectedRegency?.name ?? "",
+                      districtId: "",
+                      districtName: "",
+                      villageId: "",
+                      villageName: "",
+                    });
+                    setDistrictOptions([]);
+                    setVillageOptions([]);
+                  }}
+                >
+                  <SelectTrigger id="site-regency" disabled={!formData.provinceId || isLoadingRegencies}>
+                    <SelectValue placeholder={isLoadingRegencies ? "Memuat kota/kabupaten..." : "Pilih kota/kabupaten"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Pilih kota / kabupaten</SelectItem>
+                    {regencyOptions.map((regency) => (
+                      <SelectItem key={regency.id} value={regency.id}>
+                        {regency.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="site-district">Wilayah / Kecamatan</Label>
+                <Select
+                  value={formData.districtId || "0"}
+                  onValueChange={(value) => {
+                    if (value === "0") {
+                      setFormData({
+                        ...formData,
+                        districtId: "",
+                        districtName: "",
+                        villageId: "",
+                        villageName: "",
+                      });
+                      setVillageOptions([]);
+                      return;
+                    }
+
+                    const selectedDistrict = districtOptions.find((option) => option.id === value);
+                    setFormData({
+                      ...formData,
+                      districtId: value,
+                      districtName: selectedDistrict?.name ?? "",
+                      villageId: "",
+                      villageName: "",
+                    });
+                    setVillageOptions([]);
+                  }}
+                >
+                  <SelectTrigger id="site-district" disabled={!formData.regencyId || isLoadingDistricts}>
+                    <SelectValue placeholder={isLoadingDistricts ? "Memuat wilayah..." : "Pilih wilayah / kecamatan"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Pilih wilayah / kecamatan</SelectItem>
+                    {districtOptions.map((district) => (
+                      <SelectItem key={district.id} value={district.id}>
+                        {district.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="site-village">Kelurahan / Desa</Label>
+                <Select
+                  value={formData.villageId || "0"}
+                  onValueChange={(value) => {
+                    if (value === "0") {
+                      setFormData({
+                        ...formData,
+                        villageId: "",
+                        villageName: "",
+                      });
+                      return;
+                    }
+
+                    const selectedVillage = villageOptions.find((option) => option.id === value);
+                    setFormData({
+                      ...formData,
+                      villageId: value,
+                      villageName: selectedVillage?.name ?? "",
+                    });
+                  }}
+                >
+                  <SelectTrigger id="site-village" disabled={!formData.districtId || isLoadingVillages}>
+                    <SelectValue placeholder={isLoadingVillages ? "Memuat kelurahan..." : "Pilih kelurahan / desa"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Pilih kelurahan / desa</SelectItem>
+                    {villageOptions.map((village) => (
+                      <SelectItem key={village.id} value={village.id}>
+                        {village.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-address-detail">Detail Alamat</Label>
+              <Textarea
+                id="site-address-detail"
+                value={formData.addressDetail}
+                onChange={(e) => setFormData({ ...formData, addressDetail: e.target.value })}
+                placeholder="Contoh: Jl. Urip Sumoharjo No. 18, dekat gerbang utama"
+                rows={3}
+              />
+            </div>
+            {(regionError || formData.villageName) && (
+              <Alert className={regionError ? "border-[#fca5a5] bg-[#fff1f2]" : "border-[#bfdbfe] bg-[#eff6ff]"}>
+                <AlertDescription>
+                  {regionError || `Lokasi tersimpan sebagai: ${buildSiteLocationPreview(formData)}`}
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="space-y-2">
               <Label htmlFor="site-customer">Customer</Label>
               <Input id="site-customer" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required />
@@ -378,7 +1139,18 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
               <DialogClose asChild>
                 <Button type="button" variant="outline">Batal</Button>
               </DialogClose>
-              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+              <Button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  isLoadingProvinces ||
+                  isLoadingRegencies ||
+                  isLoadingDistricts ||
+                  isLoadingVillages ||
+                  !isSiteLocationComplete
+                }
+                className="bg-[#3b82f6] hover:bg-[#2563eb]"
+              >
                 {isSubmitting ? "Menyimpan..." : editingSite ? "Simpan Perubahan" : "Tambah Site"}
               </Button>
             </DialogFooter>
@@ -390,13 +1162,20 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
 }
 
 // SECTION MANAGEMENT COMPONENT
-function SectionManagement({ sections }: { sections: MasterSection[] }) {
+function SectionManagement({
+  sections,
+  departments,
+}: {
+  sections: MasterSection[];
+  departments: MasterDepartment[];
+}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<MasterSection | null>(null);
   const [formData, setFormData] = useState({
     code: "",
     name: "",
+    departmentId: "",
     description: "",
     isActive: true,
   });
@@ -405,7 +1184,8 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
   const filteredSections = sections.filter(
     (section) =>
       section.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      section.name.toLowerCase().includes(searchQuery.toLowerCase())
+      section.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      section.departmentName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleOpenDialog = (section?: MasterSection) => {
@@ -414,12 +1194,13 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
       setFormData({
         code: section.code,
         name: section.name,
+        departmentId: section.departmentId?.toString() ?? "",
         description: section.description,
         isActive: section.isActive,
       });
     } else {
       setEditingSection(null);
-      setFormData({ code: "", name: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", description: "", isActive: true });
     }
     setIsDialogOpen(true);
   };
@@ -433,6 +1214,7 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
     if (editingSection) form.append("id", editingSection.id.toString());
     form.append("code", formData.code);
     form.append("name", formData.name);
+    form.append("departmentId", formData.departmentId);
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
 
@@ -442,7 +1224,7 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingSection(null);
-      setFormData({ code: "", name: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", description: "", isActive: true });
     } else {
       toast.error(result.message);
     }
@@ -504,6 +1286,7 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Section</TableHead>
+                <TableHead>Department</TableHead>
                 <TableHead>Deskripsi</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
@@ -517,6 +1300,15 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
                       {section.code}
                     </TableCell>
                     <TableCell className="font-medium">{section.name}</TableCell>
+                    <TableCell>
+                      {section.departmentName ? (
+                        <Badge variant="outline" className="bg-[#f1f5f9]">
+                          {section.departmentName}
+                        </Badge>
+                      ) : (
+                        <span className="text-[#94a3b8]">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-[#64748b]">
                       {section.description || "-"}
                     </TableCell>
@@ -556,7 +1348,7 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
                     Tidak ada data section
                   </TableCell>
                 </TableRow>
@@ -596,6 +1388,29 @@ function SectionManagement({ sections }: { sections: MasterSection[] }) {
                 placeholder="e.g., Operations, Finance, HR"
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="section-department">Department</Label>
+              <Select
+                value={formData.departmentId || "0"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, departmentId: value === "0" ? "" : value })
+                }
+              >
+                <SelectTrigger id="section-department">
+                  <SelectValue placeholder="Pilih department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">- Tidak ada -</SelectItem>
+                  {departments
+                    .filter((department) => department.isActive)
+                    .map((department) => (
+                      <SelectItem key={department.id} value={department.id.toString()}>
+                        {department.name} ({department.code})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Deskripsi</Label>
@@ -881,10 +1696,12 @@ function DepartmentManagement({
 function PositionManagement({
   positions,
   departments,
+  sections,
   sites,
 }: {
   positions: MasterPosition[];
   departments: MasterDepartment[];
+  sections: MasterSection[];
   sites: MasterSite[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -894,6 +1711,7 @@ function PositionManagement({
     code: "",
     name: "",
     departmentId: "",
+    sectionId: "",
     siteLocation: "",
     level: 1,
     description: "",
@@ -905,8 +1723,16 @@ function PositionManagement({
     (pos) =>
       pos.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       pos.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pos.departmentName?.toLowerCase().includes(searchQuery.toLowerCase())
+      pos.departmentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      pos.sectionName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredSections = formData.departmentId
+    ? sections.filter(
+        (section) =>
+          section.departmentId?.toString() === formData.departmentId,
+      )
+    : sections;
 
   const handleOpenDialog = (position?: MasterPosition) => {
     if (position) {
@@ -915,6 +1741,7 @@ function PositionManagement({
         code: position.code,
         name: position.name,
         departmentId: position.departmentId?.toString() || "",
+        sectionId: position.sectionId?.toString() || "",
         siteLocation: position.siteLocation,
         level: position.level,
         description: position.description,
@@ -922,7 +1749,16 @@ function PositionManagement({
       });
     } else {
       setEditingPosition(null);
-      setFormData({ code: "", name: "", departmentId: "", siteLocation: "", level: 1, description: "", isActive: true });
+      setFormData({
+        code: "",
+        name: "",
+        departmentId: "",
+        sectionId: "",
+        siteLocation: "",
+        level: 1,
+        description: "",
+        isActive: true,
+      });
     }
     setIsDialogOpen(true);
   };
@@ -937,6 +1773,7 @@ function PositionManagement({
     form.append("code", formData.code);
     form.append("name", formData.name);
     form.append("departmentId", formData.departmentId);
+    form.append("sectionId", formData.sectionId);
     form.append("siteLocation", formData.siteLocation);
     form.append("level", formData.level.toString());
     form.append("description", formData.description);
@@ -948,7 +1785,16 @@ function PositionManagement({
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingPosition(null);
-      setFormData({ code: "", name: "", departmentId: "", siteLocation: "", level: 1, description: "", isActive: true });
+      setFormData({
+        code: "",
+        name: "",
+        departmentId: "",
+        sectionId: "",
+        siteLocation: "",
+        level: 1,
+        description: "",
+        isActive: true,
+      });
     } else {
       toast.error(result.message);
     }
@@ -1011,6 +1857,7 @@ function PositionManagement({
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Jabatan</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Section</TableHead>
                 <TableHead>Lokasi Site</TableHead>
                 <TableHead className="w-[80px]">Level</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
@@ -1027,6 +1874,15 @@ function PositionManagement({
                       {pos.departmentName ? (
                         <Badge variant="outline" className="bg-[#f1f5f9]">
                           {pos.departmentName}
+                        </Badge>
+                      ) : (
+                        <span className="text-[#94a3b8]">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {pos.sectionName ? (
+                        <Badge variant="outline" className="bg-[#f8fafc]">
+                          {pos.sectionName}
                         </Badge>
                       ) : (
                         <span className="text-[#94a3b8]">-</span>
@@ -1076,7 +1932,7 @@ function PositionManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={8} className="h-24 text-center text-[#64748b]">
                     Tidak ada data jabatan
                   </TableCell>
                 </TableRow>
@@ -1141,7 +1997,13 @@ function PositionManagement({
               <Label htmlFor="pos-department">Department</Label>
               <Select
                 value={formData.departmentId}
-                onValueChange={(value) => setFormData({ ...formData, departmentId: value })}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    departmentId: value === "0" ? "" : value,
+                    sectionId: "",
+                  })
+                }
               >
                 <SelectTrigger id="pos-department">
                   <SelectValue placeholder="Pilih department" />
@@ -1159,7 +2021,40 @@ function PositionManagement({
               </Select>
             </div>
             <div className="space-y-2">
-                <Label htmlFor="pos-site-location">Lokasi Site</Label>
+              <Label htmlFor="pos-section">Section</Label>
+              <Select
+                value={formData.sectionId || "0"}
+                onValueChange={(value) => {
+                  if (value === "0") {
+                    setFormData({ ...formData, sectionId: "" });
+                    return;
+                  }
+
+                  const selectedSection = sections.find((section) => section.id.toString() === value);
+                  setFormData({
+                    ...formData,
+                    sectionId: value,
+                    departmentId: selectedSection?.departmentId?.toString() ?? formData.departmentId,
+                  });
+                }}
+              >
+                <SelectTrigger id="pos-section">
+                  <SelectValue placeholder="Pilih section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">- Tidak ada -</SelectItem>
+                  {filteredSections
+                    .filter((section) => section.isActive)
+                    .map((section) => (
+                      <SelectItem key={section.id} value={section.id.toString()}>
+                        {section.name} ({section.code})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pos-site-location">Lokasi Site</Label>
               <Select
                 value={formData.siteLocation || "0"}
                 onValueChange={(value) => setFormData({ ...formData, siteLocation: value === "0" ? "" : value })}

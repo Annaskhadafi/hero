@@ -898,7 +898,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="org-name">Nama Struktur</Label>
-              <Input id="org-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Mis. Struktur Site Bengalon" required />
+              <Input id="org-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Mis. Struktur Site Operasional" required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

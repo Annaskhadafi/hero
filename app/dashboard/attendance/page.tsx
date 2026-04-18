@@ -39,6 +39,13 @@ type AttendanceLog = {
   longitude: string | null;
 };
 
+type AttendanceShiftOption = {
+  value: string;
+  label: string;
+  window: string;
+  helper: string;
+};
+
 type ReverseGeocodeResult = {
   label: string;
   detail: string | null;
@@ -59,33 +66,6 @@ type NominatimReverseResponse = {
   };
   display_name?: string;
 };
-
-const shiftOptions = [
-  {
-    value: "day",
-    label: "Shift Pagi",
-    window: "07:00 - 15:00",
-    helper: "Operasional reguler site pagi.",
-  },
-  {
-    value: "swing",
-    label: "Shift Sore",
-    window: "15:00 - 23:00",
-    helper: "Pergantian crew dan pekerjaan lanjutan.",
-  },
-  {
-    value: "night",
-    label: "Shift Malam",
-    window: "23:00 - 07:00",
-    helper: "Shift lintas hari, pastikan clock out tetap dilakukan.",
-  },
-  {
-    value: "standby",
-    label: "Standby / On-call",
-    window: "Sesuai assignment",
-    helper: "Dipakai saat hadir karena panggilan atau standby.",
-  },
-] as const;
 
 const workModeOptions = [
   "On Site",
@@ -242,7 +222,8 @@ export default function AttendancePage() {
   const [liveLocationLabel, setLiveLocationLabel] = useState<ReverseGeocodeResult | null>(null);
   const [historyLocationLabels, setHistoryLocationLabels] = useState<Record<string, ReverseGeocodeResult>>({});
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState<string | null>(null);
-  const [selectedShift, setSelectedShift] = useState<(typeof shiftOptions)[number]["value"]>("day");
+  const [shiftOptions, setShiftOptions] = useState<AttendanceShiftOption[]>([]);
+  const [selectedShift, setSelectedShift] = useState("");
   const [workMode, setWorkMode] = useState<(typeof workModeOptions)[number]>("On Site");
   const [attendanceContext, setAttendanceContext] =
     useState<(typeof attendanceContextOptions)[number]["value"]>("regular");
@@ -251,6 +232,14 @@ export default function AttendancePage() {
 
   const refreshAttendanceData = async () => {
     const result = await getAttendancePageData();
+    const nextShiftOptions = result.shiftOptions ?? [];
+
+    setShiftOptions(nextShiftOptions);
+    setSelectedShift((current) =>
+      nextShiftOptions.some((shift) => shift.value === current)
+        ? current
+        : nextShiftOptions[0]?.value ?? "",
+    );
 
     if (result.success) {
       setEmployee(result.employee);
@@ -280,7 +269,13 @@ export default function AttendancePage() {
   const coordinateLabel = location ? getCoordinateLabel(location.lat, location.lng) : fallbackLocationLabel;
   const resolvedLocationLabel = liveLocationLabel?.label ?? coordinateLabel;
   const resolvedLocationDetail = liveLocationLabel?.detail ?? null;
-  const currentShift = shiftOptions.find((shift) => shift.value === selectedShift) ?? shiftOptions[0];
+  const currentShift = shiftOptions.find((shift) => shift.value === selectedShift) ??
+    shiftOptions[0] ?? {
+      value: "",
+      label: "Shift belum tersedia",
+      window: "-",
+      helper: "Hubungi admin untuk mengaktifkan shift di Master Data.",
+    };
   const currentAttendanceContext =
     attendanceContextOptions.find((option) => option.value === attendanceContext) ?? attendanceContextOptions[0];
   const lastLog = logs[0] ?? null;
@@ -489,7 +484,7 @@ export default function AttendancePage() {
     };
   }, [capturedPhoto]);
 
-  const canSubmit = gpsLocked && cameraReady && Boolean(employee) && !isSubmitting;
+  const canSubmit = gpsLocked && cameraReady && Boolean(employee) && Boolean(currentShift.value) && !isSubmitting;
 
   const captureFrame = async () => {
     if (!videoRef.current || !canvasRef.current) {
@@ -564,6 +559,7 @@ export default function AttendancePage() {
       formData.append("latitude", location.lat.toString());
       formData.append("longitude", location.lng.toString());
       formData.append("locationName", resolvedLocationLabel);
+      formData.append("shiftCode", currentShift.value);
       formData.append("shiftLabel", currentShift.label);
       formData.append("shiftWindow", currentShift.window);
       formData.append("workMode", workMode);
@@ -715,7 +711,8 @@ export default function AttendancePage() {
                     <span className="text-xs font-semibold uppercase text-slate-500">Shift / Roster</span>
                     <select
                       value={selectedShift}
-                      onChange={(event) => setSelectedShift(event.target.value as typeof selectedShift)}
+                      onChange={(event) => setSelectedShift(event.target.value)}
+                      disabled={shiftOptions.length === 0}
                       className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
                     >
                       {shiftOptions.map((shift) => (
@@ -723,6 +720,9 @@ export default function AttendancePage() {
                           {shift.label} - {shift.window}
                         </option>
                       ))}
+                      {shiftOptions.length === 0 ? (
+                        <option value="">Shift belum tersedia</option>
+                      ) : null}
                     </select>
                     <span className="text-xs text-slate-500">{currentShift.helper}</span>
                   </label>

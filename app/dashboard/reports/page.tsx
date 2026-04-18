@@ -2,10 +2,17 @@ import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
-import { getReportsPageData } from "@/lib/hero-admin";
+import {
+  DailyReportCrudForm,
+  DailyReportRowActions,
+} from "@/components/operational-crud-panels";
+import { getOperationalCrudOptions, getReportsPageData } from "@/lib/hero-admin";
 
 export default async function ReportsPage() {
-  const rows = await getReportsPageData();
+  const [rows, options] = await Promise.all([
+    getReportsPageData(),
+    getOperationalCrudOptions(),
+  ]);
   const latest = rows[0];
 
   return (
@@ -30,10 +37,11 @@ export default async function ReportsPage() {
           },
         ]}
       />
+      <DailyReportCrudForm sites={options.sites} />
       <AdminTableCard
         title="Daily Reports"
         description="Report yang sudah dirakit dari aktivitas, approval, timesheet, dan HSE summary."
-        columns={["Date", "Customer", "Sections", "Jobs", "Manpower", "HSE", "Status"]}
+        columns={["Date", "Customer", "Sections", "Jobs", "Manpower", "HSE", "Status", "Action"]}
         rows={rows.map((row, index) => [
           row.reportDate.toLocaleDateString("id-ID"),
           row.customerName,
@@ -42,6 +50,11 @@ export default async function ReportsPage() {
           `${row.manpowerPresent}`,
           row.hseSummary,
           <AdminStatusBadge key={`${index}-status`} value={row.status} />,
+          <DailyReportRowActions
+            key={`${row.id}-actions`}
+            row={row}
+            sites={options.sites}
+          />,
         ])}
       />
     </AdminPageShell>

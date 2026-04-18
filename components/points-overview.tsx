@@ -27,9 +27,9 @@ const rewardStyles: Record<string, string> = {
 
 export function PointsOverview() {
   const progress =
-    ((pointsProfile.totalPoints /
-      pointsProfile.nextLevelTarget) *
-      100);
+    pointsProfile.nextLevelTarget > 0
+      ? (pointsProfile.totalPoints / pointsProfile.nextLevelTarget) * 100
+      : 0;
 
   return (
     <div className="space-y-4 pb-6">

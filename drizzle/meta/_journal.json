@@ -43,6 +43,20 @@
       "when": 1776435736150,
       "tag": "0005_fine_firedrake",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776466800000,
+      "tag": "0006_attendance_shift_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776467400000,
+      "tag": "0007_email_notification_settings",
+      "breakpoints": true
     }
   ]
 }

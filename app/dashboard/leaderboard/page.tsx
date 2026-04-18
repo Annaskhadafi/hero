@@ -1,10 +1,14 @@
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminTableCard } from "@/components/admin-table-card";
-import { getPointsPageData } from "@/lib/hero-admin";
+import { PointEventCrudForm, PointEventRowActions } from "@/components/operational-crud-panels";
+import { getOperationalCrudOptions, getPointsPageData } from "@/lib/hero-admin";
 
 export default async function LeaderboardPage() {
-  const { leaderboard, recentPointEvents } = await getPointsPageData();
+  const [{ leaderboard, recentPointEvents }, options] = await Promise.all([
+    getPointsPageData(),
+    getOperationalCrudOptions(),
+  ]);
   const topPerformer = leaderboard[0];
 
   return (
@@ -30,6 +34,8 @@ export default async function LeaderboardPage() {
         ]}
       />
 
+      <PointEventCrudForm employees={options.employees} />
+
       <div className="grid gap-6 xl:grid-cols-2">
         <AdminTableCard
           title="Site Leaderboard"
@@ -46,13 +52,14 @@ export default async function LeaderboardPage() {
         <AdminTableCard
           title="Recent Point Events"
           description="Event poin terakhir yang masuk ke sistem."
-          columns={["Employee", "Category", "Label", "Points", "Date"]}
+          columns={["Employee", "Category", "Label", "Points", "Date", "Action"]}
           rows={recentPointEvents.map((row) => [
             row.employeeName,
             row.category,
             row.label,
             `${row.points > 0 ? "+" : ""}${row.points}`,
             row.createdAt.toLocaleDateString("id-ID"),
+            <PointEventRowActions key={`${row.id}-actions`} row={row} employees={options.employees} />,
           ])}
         />
       </div>

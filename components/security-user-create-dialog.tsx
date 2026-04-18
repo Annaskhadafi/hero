@@ -261,7 +261,7 @@ export function SecurityUserCreateDialog({
             </label>
             <label className="grid gap-2">
               <Label>Email</Label>
-              <Input name="email" type="email" placeholder="nama@hero.local" required />
+              <Input name="email" type="email" placeholder="nama@perusahaan.com" required />
             </label>
             <div className="grid gap-2">
               <Label>Status</Label>

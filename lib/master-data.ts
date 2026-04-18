@@ -5,6 +5,7 @@ import {
   approvalMatrices,
   approvalMatrixSteps,
   employees,
+  masterAttendanceShifts,
   masterDepartments,
   masterPositions,
   masterSections,
@@ -47,6 +48,15 @@ export type MasterSite = {
   id: number;
   name: string;
   location: string;
+  provinceId: string;
+  provinceName: string;
+  regencyId: string;
+  regencyName: string;
+  districtId: string;
+  districtName: string;
+  villageId: string;
+  villageName: string;
+  addressDetail: string;
   customerName: string;
   contractNumber: string;
   isActive: boolean;
@@ -60,11 +70,27 @@ export type MasterPosition = {
   name: string;
   departmentId: number | null;
   departmentName: string | null;
+  sectionId: number | null;
+  sectionName: string | null;
   siteLocation: string;
   level: number;
   description: string;
   isActive: boolean;
   employeeCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MasterAttendanceShift = {
+  id: number;
+  code: string;
+  label: string;
+  startTime: string;
+  endTime: string;
+  windowLabel: string;
+  helper: string;
+  sortOrder: number;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -173,12 +199,22 @@ export type ApprovalMatrix = {
 export async function getMasterDataPageData() {
   await ensureHeroGovernanceSeedData();
 
-  const [sections, departments, sitesData, positions, orgStructuresData, approvalMatricesData, employeesData] =
+  const [
+    sections,
+    departments,
+    sitesData,
+    positions,
+    attendanceShifts,
+    orgStructuresData,
+    approvalMatricesData,
+    employeesData,
+  ] =
     await Promise.all([
       getMasterSections(),
       getMasterDepartments(),
       getMasterSites(),
       getMasterPositions(),
+      getMasterAttendanceShifts(),
       getOrgStructures(),
       getApprovalMatrices(),
       db
@@ -201,10 +237,63 @@ export async function getMasterDataPageData() {
     departments,
     sites: sitesData,
     positions,
+    attendanceShifts,
     orgStructures: orgStructuresData,
     approvalMatrices: approvalMatricesData,
     employees: employeesData,
   };
+}
+
+export function getAttendanceShiftWindow(shift: {
+  startTime: string;
+  endTime: string;
+  windowLabel: string;
+}) {
+  const explicitWindow = shift.windowLabel.trim();
+
+  if (explicitWindow) {
+    return explicitWindow;
+  }
+
+  if (shift.startTime && shift.endTime) {
+    return `${shift.startTime} - ${shift.endTime}`;
+  }
+
+  return "Sesuai assignment";
+}
+
+export async function getMasterAttendanceShifts(): Promise<MasterAttendanceShift[]> {
+  await ensureHeroGovernanceSeedData();
+
+  return db
+    .select({
+      id: masterAttendanceShifts.id,
+      code: masterAttendanceShifts.code,
+      label: masterAttendanceShifts.label,
+      startTime: masterAttendanceShifts.startTime,
+      endTime: masterAttendanceShifts.endTime,
+      windowLabel: masterAttendanceShifts.windowLabel,
+      helper: masterAttendanceShifts.helper,
+      sortOrder: masterAttendanceShifts.sortOrder,
+      isActive: masterAttendanceShifts.isActive,
+      createdAt: masterAttendanceShifts.createdAt,
+      updatedAt: masterAttendanceShifts.updatedAt,
+    })
+    .from(masterAttendanceShifts)
+    .orderBy(asc(masterAttendanceShifts.sortOrder), asc(masterAttendanceShifts.label));
+}
+
+export async function getActiveAttendanceShiftOptions() {
+  const shifts = await getMasterAttendanceShifts();
+
+  return shifts
+    .filter((shift) => shift.isActive)
+    .map((shift) => ({
+      value: shift.code,
+      label: shift.label,
+      window: getAttendanceShiftWindow(shift),
+      helper: shift.helper,
+    }));
 }
 
 export async function getMasterSites(): Promise<MasterSite[]> {
@@ -216,6 +305,15 @@ export async function getMasterSites(): Promise<MasterSite[]> {
         id: sites.id,
         name: sites.name,
         location: sites.location,
+        provinceId: sites.provinceId,
+        provinceName: sites.provinceName,
+        regencyId: sites.regencyId,
+        regencyName: sites.regencyName,
+        districtId: sites.districtId,
+        districtName: sites.districtName,
+        villageId: sites.villageId,
+        villageName: sites.villageName,
+        addressDetail: sites.addressDetail,
         customerName: sites.customerName,
         contractNumber: sites.contractNumber,
         isActive: sites.isActive,
@@ -389,6 +487,8 @@ export async function getMasterPositions(): Promise<MasterPosition[]> {
         name: masterPositions.name,
         departmentId: masterPositions.departmentId,
         departmentName: masterDepartments.name,
+        sectionId: masterPositions.sectionId,
+        sectionName: masterSections.name,
         siteLocation: masterPositions.siteLocation,
         level: masterPositions.level,
         description: masterPositions.description,
@@ -398,6 +498,7 @@ export async function getMasterPositions(): Promise<MasterPosition[]> {
       })
       .from(masterPositions)
       .leftJoin(masterDepartments, eq(masterPositions.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(masterPositions.sectionId, masterSections.id))
       .orderBy(asc(masterPositions.code)),
     db
       .select({
@@ -418,13 +519,22 @@ export async function getMasterPositions(): Promise<MasterPosition[]> {
   return positionRows.map((position) => ({
     ...position,
     departmentName: position.departmentName ?? null,
+    sectionName: position.sectionName ?? null,
     employeeCount: countMap.get(position.id) ?? 0,
   }));
 }
 
 export async function getPositionOptions(
   departmentId?: number,
-): Promise<Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>> {
+): Promise<Array<{
+  id: number;
+  code: string;
+  name: string;
+  siteLocation: string;
+  level: number;
+  departmentId: number | null;
+  sectionId: number | null;
+}>> {
   await ensureHeroGovernanceSeedData();
 
   if (departmentId) {
@@ -436,6 +546,7 @@ export async function getPositionOptions(
         siteLocation: masterPositions.siteLocation,
         level: masterPositions.level,
         departmentId: masterPositions.departmentId,
+        sectionId: masterPositions.sectionId,
       })
       .from(masterPositions)
       .where(eq(masterPositions.departmentId, departmentId))
@@ -450,6 +561,7 @@ export async function getPositionOptions(
       siteLocation: masterPositions.siteLocation,
       level: masterPositions.level,
       departmentId: masterPositions.departmentId,
+      sectionId: masterPositions.sectionId,
     })
     .from(masterPositions)
     .orderBy(asc(masterPositions.name));

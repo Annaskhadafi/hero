@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 import { HeaderThemeControls } from "@/components/header-theme-controls"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"

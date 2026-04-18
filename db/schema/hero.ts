@@ -13,6 +13,15 @@ export const sites = pgTable("hero_sites", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   location: text("location").notNull(),
+  provinceId: text("province_id").notNull().default(""),
+  provinceName: text("province_name").notNull().default(""),
+  regencyId: text("regency_id").notNull().default(""),
+  regencyName: text("regency_name").notNull().default(""),
+  districtId: text("district_id").notNull().default(""),
+  districtName: text("district_name").notNull().default(""),
+  villageId: text("village_id").notNull().default(""),
+  villageName: text("village_name").notNull().default(""),
+  addressDetail: text("address_detail").notNull().default(""),
   customerName: text("customer_name").notNull(),
   contractNumber: text("contract_number").notNull(),
   isActive: boolean("is_active").notNull().default(true),
@@ -256,6 +265,72 @@ export const emailDeliveryLogs = pgTable("hero_email_delivery_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const emailSmtpSettings = pgTable("hero_email_smtp_settings", {
+  id: serial("id").primaryKey(),
+  profileName: text("profile_name").notNull().default("Default SMTP"),
+  host: text("host").notNull(),
+  port: integer("port").notNull().default(587),
+  encryption: text("encryption").notNull().default("tls"),
+  username: text("username").notNull().default(""),
+  passwordSecret: text("password_secret").notNull().default(""),
+  fromEmail: text("from_email").notNull().default(""),
+  fromName: text("from_name").notNull().default("HERO Operations"),
+  replyToEmail: text("reply_to_email").notNull().default(""),
+  retryLimit: integer("retry_limit").notNull().default(3),
+  timeoutSeconds: integer("timeout_seconds").notNull().default(15),
+  queueEnabled: boolean("queue_enabled").notNull().default(true),
+  auditEnabled: boolean("audit_enabled").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const emailTemplates = pgTable("hero_email_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  templateCode: text("template_code").notNull().unique(),
+  templateType: text("template_type").notNull().default("Notification"),
+  deliveryChannel: text("delivery_channel").notNull().default("email"),
+  recipientScope: text("recipient_scope").notNull().default("all"),
+  ccEmail: text("cc_email").notNull().default(""),
+  subject: text("subject").notNull(),
+  htmlContent: text("html_content").notNull().default(""),
+  textContent: text("text_content").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const notificationChannelSettings = pgTable("hero_notification_channel_settings", {
+  id: serial("id").primaryKey(),
+  channel: text("channel").notNull().unique(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  realtimeBadge: boolean("realtime_badge").notNull().default(true),
+  soundEnabled: boolean("sound_enabled").notNull().default(false),
+  autoMarkRead: boolean("auto_mark_read").notNull().default(true),
+  vapidPublicKey: text("vapid_public_key").notNull().default(""),
+  vapidPrivateKey: text("vapid_private_key").notNull().default(""),
+  pushSubject: text("push_subject").notNull().default(""),
+  serviceWorkerPath: text("service_worker_path").notNull().default("/sw.js"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const notificationChannelRules = pgTable("hero_notification_channel_rules", {
+  id: serial("id").primaryKey(),
+  channel: text("channel").notNull().default("bell"),
+  label: text("label").notNull(),
+  eventType: text("event_type").notNull(),
+  targetAudience: text("target_audience").notNull().default(""),
+  priority: text("priority").notNull().default("notification"),
+  triggerExpression: text("trigger_expression").notNull().default(""),
+  templateCode: text("template_code").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const auditLogs = pgTable("hero_audit_logs", {
   id: serial("id").primaryKey(),
   actorEmployeeId: integer("actor_employee_id").references(() => employees.id, {
@@ -334,15 +409,30 @@ export const masterSections = pgTable("hero_master_sections", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// Position (Jabatan) belongs to a Department
+// Position (Jabatan) belongs to a Department and can optionally map to a Section
 export const masterPositions = pgTable("hero_master_positions", {
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   departmentId: integer("department_id").references(() => masterDepartments.id, { onDelete: "set null" }),
+  sectionId: integer("section_id").references(() => masterSections.id, { onDelete: "set null" }),
   siteLocation: text("site_location").notNull().default(""),
   level: integer("level").notNull().default(1),
   description: text("description").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const masterAttendanceShifts = pgTable("hero_master_attendance_shifts", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  label: text("label").notNull(),
+  startTime: text("start_time").notNull().default(""),
+  endTime: text("end_time").notNull().default(""),
+  windowLabel: text("window_label").notNull().default(""),
+  helper: text("helper").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

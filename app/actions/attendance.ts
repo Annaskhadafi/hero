@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { attendanceRecords, employees, sites } from "@/db/schema/hero";
 import { uploadFile } from "@/app/actions/upload";
 import { auth } from "@/lib/auth";
+import { getActiveAttendanceShiftOptions } from "@/lib/master-data";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { headers } from "next/headers";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
@@ -191,13 +192,17 @@ function getAttendanceQueryWindow() {
 }
 
 export async function getAttendancePageData() {
-  const employee = await getCurrentEmployee();
+  const [employee, shiftOptions] = await Promise.all([
+    getCurrentEmployee(),
+    getActiveAttendanceShiftOptions(),
+  ]);
 
   if (!employee) {
     return {
       success: false,
       employee: null,
       logs: [],
+      shiftOptions,
     };
   }
 
@@ -219,6 +224,7 @@ export async function getAttendancePageData() {
     success: true,
     employee,
     logs,
+    shiftOptions,
   };
 }
 
@@ -249,10 +255,18 @@ export async function submitAttendance(formData: FormData) {
     const locationName = formData.get("locationName") as string | null;
     const baseLocationNote = buildLocationNote(locationName, latitude, longitude, employee.workLocation);
     const overtimeMinutes = Math.max(0, Number(getTrimmedFormValue(formData, "overtimeMinutes")) || 0);
+    const shiftCode = getTrimmedFormValue(formData, "shiftCode");
+    const activeShiftOptions = await getActiveAttendanceShiftOptions();
+    const selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode);
+
+    if (!selectedShift) {
+      return { success: false, error: "Pilihan shift tidak tersedia. Hubungi admin Master Data." };
+    }
+
     const locationNote = buildAttendanceNote({
       locationNote: baseLocationNote,
-      shiftLabel: getTrimmedFormValue(formData, "shiftLabel"),
-      shiftWindow: getTrimmedFormValue(formData, "shiftWindow"),
+      shiftLabel: selectedShift.label,
+      shiftWindow: selectedShift.window,
       workMode: getTrimmedFormValue(formData, "workMode"),
       attendanceContext: getTrimmedFormValue(formData, "attendanceContext"),
       overtimeMinutes,

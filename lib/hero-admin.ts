@@ -1,4 +1,4 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   activities,
@@ -7,9 +7,12 @@ import {
   attendanceRecords,
   dailyReports,
   emailDeliveryLogs,
+  emailSmtpSettings,
+  emailTemplates,
   employees,
   hseIncidents,
   hseObservations,
+  masterAttendanceShifts,
   masterDepartments,
   masterPositions,
   masterSections,
@@ -19,6 +22,9 @@ import {
   orgChartStructures,
   orgNodeAssignments,
   pointEvents,
+  notificationChannelRules,
+  notificationChannelSettings,
+  notificationDeliveries,
   approvalMatrices,
   approvalMatrixSteps,
   roleMenuPermissions,
@@ -89,629 +95,6 @@ function normalizeLookupValue(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
-async function ensureApprovalEngineFoundation(site: { id: number; name: string }) {
-  const now = new Date("2026-04-17T08:00:00+08:00");
-
-  const [currentEmployees, departmentCount, sectionCount, positionCount] = await Promise.all([
-    db.select().from(employees).orderBy(employees.name),
-    db.select({ count: sql<number>`count(*)::int` }).from(masterDepartments),
-    db.select({ count: sql<number>`count(*)::int` }).from(masterSections),
-    db.select({ count: sql<number>`count(*)::int` }).from(masterPositions),
-  ]);
-
-  const employeeByName = new Map(currentEmployees.map((employee) => [employee.name, employee]));
-
-  if (!employeeByName.has("Dedi Pranata")) {
-    const [inserted] = await db
-      .insert(employees)
-      .values({
-        siteId: site.id,
-        name: "Dedi Pranata",
-        email: "dedi.pranata@hero.local",
-        employeeSn: "HERO-PJO-001",
-        role: "PJO Site",
-        department: "Site Management",
-        section: "Site Leadership",
-        jobTitle: "PJO Site",
-        workLocation: site.name,
-        employmentStatus: "active",
-        employeeStatusType: "Permanen | Staff",
-        accessRole: "Super Admin",
-        levelName: "Expert",
-        totalPoints: 1650,
-        fitStatus: "fit",
-        isActive: true,
-      })
-      .returning();
-
-    employeeByName.set(inserted.name, inserted);
-    currentEmployees.push(inserted);
-  }
-
-  if ((departmentCount[0]?.count ?? 0) === 0) {
-    await db.insert(masterDepartments).values([
-      {
-        code: "OPS",
-        name: "Central Service",
-        description: "Operasional service utama site.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "HSE",
-        name: "HSE",
-        description: "Fungsi keselamatan, governance, dan compliance site.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "HC",
-        name: "HC",
-        description: "Human capital dan people operations site.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "MGT",
-        name: "Site Management",
-        description: "Pimpinan site dan final approver lintas fungsi.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]);
-  }
-
-  const departments = await db.select().from(masterDepartments);
-  const departmentByCode = new Map(departments.map((department) => [department.code, department]));
-  const departmentByName = new Map(
-    departments.map((department) => [normalizeLookupValue(department.name), department]),
-  );
-
-  if ((sectionCount[0]?.count ?? 0) === 0) {
-    await db.insert(masterSections).values([
-      {
-        code: "FIELD_OPS",
-        name: "Field Operations",
-        departmentId: departmentByCode.get("OPS")?.id ?? null,
-        description: "Koordinasi manpower lapangan dan supervisor operasional.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "TYRE_OPS",
-        name: "Tyre Operations",
-        departmentId: departmentByCode.get("OPS")?.id ?? null,
-        description: "Pelaksanaan pekerjaan tyre service dan inspection.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "GOV",
-        name: "Governance",
-        departmentId: departmentByCode.get("HSE")?.id ?? null,
-        description: "Governance HSE, review risiko, dan eskalasi safety.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "PEOPLE_OPS",
-        name: "People Operations",
-        departmentId: departmentByCode.get("HC")?.id ?? null,
-        description: "Operasional HC, administrasi, dan support daily recap.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "SITE_LEAD",
-        name: "Site Leadership",
-        departmentId: departmentByCode.get("MGT")?.id ?? null,
-        description: "Lapisan pimpinan site dan final approver.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]);
-  }
-
-  if ((positionCount[0]?.count ?? 0) === 0) {
-    await db.insert(masterPositions).values([
-      {
-        code: "PJO_SITE",
-        name: "PJO Site",
-        departmentId: departmentByCode.get("MGT")?.id ?? null,
-        siteLocation: site.name,
-        level: 4,
-        description: "Final approver site untuk aktivitas dan overtime.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "FOREMAN",
-        name: "Foreman",
-        departmentId: departmentByCode.get("OPS")?.id ?? null,
-        siteLocation: site.name,
-        level: 3,
-        description: "Approver level 1 untuk operasional lapangan.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "TECHNICIAN",
-        name: "Technician",
-        departmentId: departmentByCode.get("OPS")?.id ?? null,
-        siteLocation: site.name,
-        level: 1,
-        description: "Pelaksana aktivitas di site.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "HSE_OFF",
-        name: "HSE Officer",
-        departmentId: departmentByCode.get("HSE")?.id ?? null,
-        siteLocation: site.name,
-        level: 2,
-        description: "Reviewer risiko dan escalation target safety.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        code: "ADMIN_SITE",
-        name: "Admin Site",
-        departmentId: departmentByCode.get("HC")?.id ?? null,
-        siteLocation: site.name,
-        level: 1,
-        description: "Support admin site dan daily recap.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]);
-  }
-
-  const [sections, positions] = await Promise.all([
-    db.select().from(masterSections),
-    db.select().from(masterPositions),
-  ]);
-
-  const sectionByName = new Map(sections.map((section) => [normalizeLookupValue(section.name), section]));
-  const positionByName = new Map(
-    positions.map((position) => [normalizeLookupValue(position.name), position]),
-  );
-
-  for (const employee of currentEmployees) {
-    const departmentId =
-      departmentByName.get(normalizeLookupValue(employee.department))?.id ?? null;
-    const sectionId = sectionByName.get(normalizeLookupValue(employee.section))?.id ?? null;
-    const positionId = positionByName.get(normalizeLookupValue(employee.jobTitle))?.id ?? null;
-
-    if (
-      employee.departmentId !== departmentId ||
-      employee.sectionId !== sectionId ||
-      employee.positionId !== positionId
-    ) {
-      await db
-        .update(employees)
-        .set({
-          departmentId,
-          sectionId,
-          positionId,
-        })
-        .where(eq(employees.id, employee.id));
-    }
-  }
-
-  const [structureCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(orgChartStructures);
-
-  if ((structureCount?.count ?? 0) === 0) {
-    const [structure] = await db
-      .insert(orgChartStructures)
-      .values({
-        name: `Struktur Approval ${site.name} v1`,
-        scopeType: "site",
-        scopeValue: site.name,
-        version: 1,
-        effectiveFrom: now,
-        effectiveTo: null,
-        isDefault: true,
-        description: "Struktur organisasi default untuk approval activity dan overtime.",
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    const [pjoNode] = await db
-      .insert(orgChartNodes)
-      .values({
-        structureId: structure.id,
-        parentNodeId: null,
-        positionId: positionByName.get("pjo site")?.id ?? null,
-        employeeId: employeeByName.get("Dedi Pranata")?.id ?? null,
-        nodeCode: "SITE-PJO",
-        nodeType: "approver",
-        approvalRole: "Final Site Approver",
-        canApprove: true,
-        canDelegate: true,
-        isEscalationTarget: true,
-        slaHours: 24,
-        fallbackNodeId: null,
-        label: "PJO Site",
-        sortOrder: 0,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    const [foremanNode] = await db
-      .insert(orgChartNodes)
-      .values({
-        structureId: structure.id,
-        parentNodeId: pjoNode.id,
-        positionId: positionByName.get("foreman")?.id ?? null,
-        employeeId: employeeByName.get("Rian Kurniawan")?.id ?? null,
-        nodeCode: "OPS-FOREMAN",
-        nodeType: "approver",
-        approvalRole: "Level 1 Foreman",
-        canApprove: true,
-        canDelegate: true,
-        isEscalationTarget: false,
-        slaHours: 8,
-        fallbackNodeId: pjoNode.id,
-        label: "Foreman",
-        sortOrder: 1,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    const [technicianNode, hseNode, adminNode] = await db
-      .insert(orgChartNodes)
-      .values([
-        {
-          structureId: structure.id,
-          parentNodeId: foremanNode.id,
-          positionId: positionByName.get("technician")?.id ?? null,
-          employeeId: employeeByName.get("Arman Saputra")?.id ?? null,
-          nodeCode: "OPS-TECH",
-          nodeType: "worker",
-          approvalRole: "Requester",
-          canApprove: false,
-          canDelegate: false,
-          isEscalationTarget: false,
-          slaHours: 24,
-          fallbackNodeId: null,
-          label: "Technician",
-          sortOrder: 2,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          structureId: structure.id,
-          parentNodeId: pjoNode.id,
-          positionId: positionByName.get("hse officer")?.id ?? null,
-          employeeId: employeeByName.get("Soni Darmawan")?.id ?? null,
-          nodeCode: "HSE-REVIEW",
-          nodeType: "approver",
-          approvalRole: "HSE Reviewer",
-          canApprove: true,
-          canDelegate: true,
-          isEscalationTarget: true,
-          slaHours: 6,
-          fallbackNodeId: pjoNode.id,
-          label: "HSE Officer",
-          sortOrder: 3,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          structureId: structure.id,
-          parentNodeId: pjoNode.id,
-          positionId: positionByName.get("admin site")?.id ?? null,
-          employeeId: employeeByName.get("Mira Andini")?.id ?? null,
-          nodeCode: "HC-ADMIN",
-          nodeType: "support",
-          approvalRole: "Admin Site Support",
-          canApprove: false,
-          canDelegate: false,
-          isEscalationTarget: false,
-          slaHours: 24,
-          fallbackNodeId: pjoNode.id,
-          label: "Admin Site",
-          sortOrder: 4,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ])
-      .returning();
-
-    const assignmentsToInsert = [
-      {
-        nodeId: pjoNode.id,
-        employeeId: employeeByName.get("Dedi Pranata")?.id ?? null,
-        assignmentType: "primary",
-        notes: "Final approver site",
-      },
-      {
-        nodeId: pjoNode.id,
-        employeeId: employeeByName.get("Rian Kurniawan")?.id ?? null,
-        assignmentType: "delegate",
-        notes: "Acting approver when PJO is unavailable",
-      },
-      {
-        nodeId: foremanNode.id,
-        employeeId: employeeByName.get("Rian Kurniawan")?.id ?? null,
-        assignmentType: "primary",
-        notes: "Default level 1 approver",
-      },
-      {
-        nodeId: technicianNode.id,
-        employeeId: employeeByName.get("Arman Saputra")?.id ?? null,
-        assignmentType: "primary",
-        notes: "Requester anchor",
-      },
-      {
-        nodeId: hseNode.id,
-        employeeId: employeeByName.get("Soni Darmawan")?.id ?? null,
-        assignmentType: "primary",
-        notes: "Safety reviewer and escalation target",
-      },
-      {
-        nodeId: adminNode.id,
-        employeeId: employeeByName.get("Mira Andini")?.id ?? null,
-        assignmentType: "primary",
-        notes: "Admin support",
-      },
-    ].filter((assignment) => assignment.employeeId != null);
-
-    if (assignmentsToInsert.length > 0) {
-      await db.insert(orgNodeAssignments).values(
-        assignmentsToInsert.map((assignment) => ({
-          nodeId: assignment.nodeId,
-          employeeId: assignment.employeeId,
-          assignmentType: assignment.assignmentType,
-          notes: assignment.notes,
-          effectiveFrom: now,
-          effectiveTo: null,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        })),
-      );
-    }
-
-    const [technicianStandardMatrix, foremanMatrix, hseMatrix, adminMatrix] = await db
-      .insert(approvalMatrices)
-      .values([
-        {
-          name: "Technician Activity Standard",
-          structureId: structure.id,
-          transactionType: "activity",
-          siteId: site.id,
-          departmentId: departmentByCode.get("OPS")?.id ?? null,
-          sectionId: null,
-          requesterPositionId: positionByName.get("technician")?.id ?? null,
-          activityType: "",
-          priority: "any",
-          minOvertimeMinutes: 0,
-          maxOvertimeMinutes: 720,
-          description: "Aktivitas teknisi lewat Foreman lalu final approver site.",
-          effectiveFrom: now,
-          effectiveTo: null,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          name: "Foreman Self Submission",
-          structureId: structure.id,
-          transactionType: "activity",
-          siteId: site.id,
-          departmentId: departmentByCode.get("OPS")?.id ?? null,
-          sectionId: null,
-          requesterPositionId: positionByName.get("foreman")?.id ?? null,
-          activityType: "",
-          priority: "any",
-          minOvertimeMinutes: 0,
-          maxOvertimeMinutes: 720,
-          description: "Foreman submit aktivitas langsung ke PJO site.",
-          effectiveFrom: now,
-          effectiveTo: null,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          name: "HSE Officer Submission",
-          structureId: structure.id,
-          transactionType: "activity",
-          siteId: site.id,
-          departmentId: departmentByCode.get("HSE")?.id ?? null,
-          sectionId: null,
-          requesterPositionId: positionByName.get("hse officer")?.id ?? null,
-          activityType: "",
-          priority: "any",
-          minOvertimeMinutes: 0,
-          maxOvertimeMinutes: 720,
-          description: "HSE officer submit aktivitas langsung ke final approver.",
-          effectiveFrom: now,
-          effectiveTo: null,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          name: "Admin Site Daily Recap",
-          structureId: structure.id,
-          transactionType: "activity",
-          siteId: site.id,
-          departmentId: departmentByCode.get("HC")?.id ?? null,
-          sectionId: sectionByName.get("people operations")?.id ?? null,
-          requesterPositionId: positionByName.get("admin site")?.id ?? null,
-          activityType: "Daily Recap",
-          priority: "any",
-          minOvertimeMinutes: 0,
-          maxOvertimeMinutes: 720,
-          description: "Daily recap admin site langsung ke PJO site.",
-          effectiveFrom: now,
-          effectiveTo: null,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ])
-      .returning();
-
-    await db.insert(approvalMatrixSteps).values([
-      {
-        matrixId: technicianStandardMatrix.id,
-        stepOrder: 1,
-        label: "Foreman Review",
-        nodeId: foremanNode.id,
-        fallbackNodeId: pjoNode.id,
-        escalationNodeId: null,
-        approvalMode: "sequential",
-        slaHours: 8,
-        canDelegate: true,
-        isRequired: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        matrixId: technicianStandardMatrix.id,
-        stepOrder: 2,
-        label: "Final Site Approval",
-        nodeId: pjoNode.id,
-        fallbackNodeId: null,
-        escalationNodeId: null,
-        approvalMode: "sequential",
-        slaHours: 24,
-        canDelegate: true,
-        isRequired: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        matrixId: foremanMatrix.id,
-        stepOrder: 1,
-        label: "Final Site Approval",
-        nodeId: pjoNode.id,
-        fallbackNodeId: null,
-        escalationNodeId: null,
-        approvalMode: "sequential",
-        slaHours: 24,
-        canDelegate: true,
-        isRequired: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        matrixId: hseMatrix.id,
-        stepOrder: 1,
-        label: "Final Site Approval",
-        nodeId: pjoNode.id,
-        fallbackNodeId: null,
-        escalationNodeId: hseNode.id,
-        approvalMode: "sequential",
-        slaHours: 24,
-        canDelegate: true,
-        isRequired: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        matrixId: adminMatrix.id,
-        stepOrder: 1,
-        label: "Final Site Approval",
-        nodeId: pjoNode.id,
-        fallbackNodeId: foremanNode.id,
-        escalationNodeId: null,
-        approvalMode: "sequential",
-        slaHours: 24,
-        canDelegate: true,
-        isRequired: true,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]);
-  }
-
-  const [nodesWithAssignments, structures] = await Promise.all([
-    db
-      .select({
-        nodeId: orgChartNodes.id,
-        structureId: orgChartNodes.structureId,
-        positionId: orgChartNodes.positionId,
-        employeeId: orgNodeAssignments.employeeId,
-        assignmentType: orgNodeAssignments.assignmentType,
-        effectiveFrom: orgNodeAssignments.effectiveFrom,
-        effectiveTo: orgNodeAssignments.effectiveTo,
-        isActive: orgNodeAssignments.isActive,
-      })
-      .from(orgChartNodes)
-      .leftJoin(orgNodeAssignments, eq(orgChartNodes.id, orgNodeAssignments.nodeId)),
-    db.select().from(orgChartStructures).orderBy(orgChartStructures.isDefault, orgChartStructures.id),
-  ]);
-
-  const defaultStructureId =
-    structures.find((structure) => structure.isDefault)?.id ?? structures[0]?.id ?? null;
-  const positionNodeMap = new Map<number, number>();
-  const directAssignmentNodeMap = new Map<number, number>();
-
-  for (const row of nodesWithAssignments) {
-    if (
-      row.positionId != null &&
-      row.structureId === defaultStructureId &&
-      !positionNodeMap.has(row.positionId)
-    ) {
-      positionNodeMap.set(row.positionId, row.nodeId);
-    }
-
-    if (
-      row.employeeId != null &&
-      row.isActive &&
-      row.assignmentType === "primary" &&
-      row.structureId === defaultStructureId
-    ) {
-      directAssignmentNodeMap.set(row.employeeId, row.nodeId);
-    }
-  }
-
-  const refreshedEmployees = await db.select().from(employees).orderBy(employees.name);
-
-  for (const employee of refreshedEmployees) {
-    const orgNodeId =
-      directAssignmentNodeMap.get(employee.id) ??
-      (employee.positionId != null ? positionNodeMap.get(employee.positionId) ?? null : null);
-
-    if (employee.orgNodeId !== (orgNodeId ?? null)) {
-      await db
-        .update(employees)
-        .set({ orgNodeId: orgNodeId ?? null })
-        .where(eq(employees.id, employee.id));
-    }
-  }
-}
-
 async function ensureHeroEmployeeProfileColumns() {
   await db.execute(sql`
     alter table hero_employees add column if not exists employee_sn text not null default '';
@@ -759,124 +142,49 @@ async function ensureHeroEmployeeProfileColumns() {
       domicile = coalesce(nullif(domicile, ''), 'Belum diisi'),
       section = coalesce(nullif(section, ''), department),
       job_title = coalesce(nullif(job_title, ''), role),
-      work_location = coalesce(nullif(work_location, ''), 'Bengalon Pit North'),
+      work_location = coalesce(work_location, ''),
       phone_number = coalesce(phone_number, ''),
       employment_status = coalesce(nullif(employment_status, ''), case when is_active then 'active' else 'inactive' end),
       access_role = coalesce(nullif(access_role, ''), 'Site Admin');
   `);
 }
 
-async function seedSecurityUserProfiles() {
-  const currentEmployees = await db
-    .select({
-      id: employees.id,
-      name: employees.name,
-      directManagerId: employees.directManagerId,
-    })
-    .from(employees);
+async function ensureHeroSiteLocationColumns() {
+  await db.execute(sql`
+    alter table hero_sites add column if not exists province_id text not null default '';
+  `);
 
-  if (currentEmployees.length === 0) {
-    return;
-  }
+  await db.execute(sql`
+    alter table hero_sites add column if not exists province_name text not null default '';
+  `);
 
-  const employeeByName = Object.fromEntries(
-    currentEmployees.map((employee) => [employee.name, employee]),
-  );
+  await db.execute(sql`
+    alter table hero_sites add column if not exists regency_id text not null default '';
+  `);
 
-  const profileSeeds = [
-    {
-      name: "Rian Kurniawan",
-      values: {
-        employeeSn: "HC-001",
-        joinYear: 2018,
-        birthPlaceDate: "Samarinda, 12 Januari 1989",
-        domicile: "Sangatta",
-        section: "Field Operations",
-        department: "Central Service",
-        jobTitle: "Foreman",
-        workLocation: "Bengalon Pit North",
-        phoneNumber: "0812-8800-1101",
-        employmentStatus: "active",
-        accessRole: "Super Admin",
-        role: "Foreman",
-      },
-    },
-    {
-      name: "Arman Saputra",
-      values: {
-        employeeSn: "HC-002",
-        joinYear: 2020,
-        birthPlaceDate: "Bontang, 04 Mei 1994",
-        domicile: "Sangatta Utara",
-        section: "Tyre Operations",
-        department: "Central Service",
-        jobTitle: "Technician",
-        workLocation: "Bengalon Pit North",
-        phoneNumber: "0812-8800-1102",
-        employmentStatus: "active",
-        accessRole: "Site Admin",
-        role: "Technician",
-      },
-    },
-    {
-      name: "Soni Darmawan",
-      values: {
-        employeeSn: "HC-003",
-        joinYear: 2019,
-        birthPlaceDate: "Balikpapan, 28 September 1991",
-        domicile: "Sangatta Selatan",
-        section: "Governance",
-        department: "HSE",
-        jobTitle: "HSE Officer",
-        workLocation: "Bengalon Pit North",
-        phoneNumber: "0812-8800-1103",
-        employmentStatus: "active",
-        accessRole: "Site Admin",
-        role: "HSE Officer",
-      },
-    },
-    {
-      name: "Mira Andini",
-      values: {
-        employeeSn: "HC-004",
-        joinYear: 2023,
-        birthPlaceDate: "Makassar, 16 Februari 1998",
-        domicile: "Sangatta Baru",
-        section: "People Operations",
-        department: "HC",
-        jobTitle: "Admin Site",
-        workLocation: "Bengalon Pit North",
-        phoneNumber: "0812-8800-1104",
-        employmentStatus: "probation",
-        accessRole: "HC Manager",
-        role: "Admin Site",
-      },
-    },
-  ] as const;
+  await db.execute(sql`
+    alter table hero_sites add column if not exists regency_name text not null default '';
+  `);
 
-  for (const profileSeed of profileSeeds) {
-    await db
-      .update(employees)
-      .set(profileSeed.values)
-      .where(eq(employees.name, profileSeed.name));
-  }
+  await db.execute(sql`
+    alter table hero_sites add column if not exists district_id text not null default '';
+  `);
 
-  const manager = employeeByName["Rian Kurniawan"];
+  await db.execute(sql`
+    alter table hero_sites add column if not exists district_name text not null default '';
+  `);
 
-  if (manager) {
-    for (const reportName of ["Arman Saputra", "Soni Darmawan", "Mira Andini"]) {
-      const report = employeeByName[reportName];
+  await db.execute(sql`
+    alter table hero_sites add column if not exists village_id text not null default '';
+  `);
 
-      if (!report || report.directManagerId === manager.id) {
-        continue;
-      }
+  await db.execute(sql`
+    alter table hero_sites add column if not exists village_name text not null default '';
+  `);
 
-      await db
-        .update(employees)
-        .set({ directManagerId: manager.id })
-        .where(eq(employees.id, report.id));
-    }
-  }
+  await db.execute(sql`
+    alter table hero_sites add column if not exists address_detail text not null default '';
+  `);
 }
 
 const GOVERNANCE_ROLE_SEEDS = [
@@ -895,7 +203,7 @@ const GOVERNANCE_ROLE_SEEDS = [
     description: "Kontrol user, training, wellness, dan payroll support.",
     scope: "all_sites",
   },
-] as const;
+];
 
 const SIDEBAR_MENU_SEEDS = [
   // Central Service Section
@@ -1137,6 +445,218 @@ const SIDEBAR_MENU_SEEDS = [
   },
 ] as const;
 
+const ATTENDANCE_SHIFT_SEEDS = [
+  {
+    code: "day",
+    label: "Shift Pagi",
+    startTime: "07:00",
+    endTime: "15:00",
+    windowLabel: "07:00 - 15:00",
+    helper: "Operasional reguler site pagi.",
+    sortOrder: 1,
+  },
+  {
+    code: "swing",
+    label: "Shift Sore",
+    startTime: "15:00",
+    endTime: "23:00",
+    windowLabel: "15:00 - 23:00",
+    helper: "Pergantian crew dan pekerjaan lanjutan.",
+    sortOrder: 2,
+  },
+  {
+    code: "night",
+    label: "Shift Malam",
+    startTime: "23:00",
+    endTime: "07:00",
+    windowLabel: "23:00 - 07:00",
+    helper: "Shift lintas hari, pastikan clock out tetap dilakukan.",
+    sortOrder: 3,
+  },
+  {
+    code: "standby",
+    label: "Standby / On-call",
+    startTime: "",
+    endTime: "",
+    windowLabel: "Sesuai assignment",
+    helper: "Dipakai saat hadir karena panggilan atau standby.",
+    sortOrder: 4,
+  },
+];
+
+const EMAIL_SMTP_SETTING_SEED = {
+  profileName: "Default SMTP",
+  host: "smtp.chitraparatama.co.id",
+  port: 587,
+  encryption: "tls",
+  username: "noreply@chitraparatama.co.id",
+  passwordSecret: "",
+  fromEmail: "noreply@chitraparatama.co.id",
+  fromName: "HERO Operations",
+  replyToEmail: "",
+  retryLimit: 3,
+  timeoutSeconds: 15,
+  queueEnabled: true,
+  auditEnabled: true,
+  isActive: true,
+};
+
+const EMAIL_TEMPLATE_SEEDS = [
+  {
+    name: "Auth Magic Link",
+    templateCode: "auth_magic_link",
+    templateType: "Magic Link",
+    deliveryChannel: "email",
+    recipientScope: "all",
+    ccEmail: "",
+    subject: "Magic link masuk untuk {{userName}}",
+    htmlContent: "<p>Gunakan link berikut untuk masuk ke HERO: {{magicLink}}</p>",
+    textContent: "Gunakan link berikut untuk masuk ke HERO: {{magicLink}}",
+    isActive: true,
+  },
+  {
+    name: "Approval Assignment",
+    templateCode: "approval_assignment",
+    templateType: "Notification",
+    deliveryChannel: "email,bell",
+    recipientScope: "approver",
+    ccEmail: "",
+    subject: "Tugas approval baru #{{requestId}}",
+    htmlContent: "<p>Request #{{requestId}} menunggu approval Anda.</p>",
+    textContent: "Request #{{requestId}} menunggu approval Anda.",
+    isActive: true,
+  },
+  {
+    name: "Approval SLA Reminder",
+    templateCode: "approval_sla_reminder",
+    templateType: "Reminder",
+    deliveryChannel: "email,bell,pwa_push",
+    recipientScope: "approver",
+    ccEmail: "",
+    subject: "Reminder SLA untuk request #{{requestId}}",
+    htmlContent: "<p>SLA request #{{requestId}} hampir jatuh tempo.</p>",
+    textContent: "SLA request #{{requestId}} hampir jatuh tempo.",
+    isActive: true,
+  },
+  {
+    name: "Daily Report Delivery",
+    templateCode: "daily_report_delivery",
+    templateType: "Report",
+    deliveryChannel: "email",
+    recipientScope: "admin,pjo",
+    ccEmail: "",
+    subject: "Daily Report {{siteName}} - {{reportDate}}",
+    htmlContent: "<p>Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.</p>",
+    textContent: "Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.",
+    isActive: true,
+  },
+];
+
+const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
+  {
+    channel: "bell",
+    isEnabled: true,
+    realtimeBadge: true,
+    soundEnabled: true,
+    autoMarkRead: true,
+    vapidPublicKey: "",
+    vapidPrivateKey: "",
+    pushSubject: "",
+    serviceWorkerPath: "/sw.js",
+  },
+  {
+    channel: "pwa_push",
+    isEnabled: true,
+    realtimeBadge: false,
+    soundEnabled: false,
+    autoMarkRead: false,
+    vapidPublicKey: "",
+    vapidPrivateKey: "",
+    pushSubject: "mailto:noreply@chitraparatama.co.id",
+    serviceWorkerPath: "/sw.js",
+  },
+];
+
+const NOTIFICATION_RULE_SEEDS = [
+  {
+    channel: "bell",
+    label: "Approval assignment",
+    eventType: "approval_assignment",
+    targetAudience: "Approver",
+    priority: "approval",
+    triggerExpression: "Saat request masuk ke step approval",
+    templateCode: "approval_assignment",
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    channel: "bell",
+    label: "Delegation handover",
+    eventType: "delegation_created",
+    targetAudience: "Delegate",
+    priority: "delegation",
+    triggerExpression: "Saat tugas dialihkan ke pemeriksa lain",
+    templateCode: "approval_assignment",
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    channel: "bell",
+    label: "Escalation alert",
+    eventType: "approval_escalation",
+    targetAudience: "Manager",
+    priority: "escalation",
+    triggerExpression: "Saat approval melewati SLA",
+    templateCode: "approval_sla_reminder",
+    isActive: true,
+    sortOrder: 3,
+  },
+  {
+    channel: "bell",
+    label: "Before due reminder",
+    eventType: "before_due",
+    targetAudience: "Requester + Approver",
+    priority: "before_due",
+    triggerExpression: "Sebelum batas waktu tiba",
+    templateCode: "approval_sla_reminder",
+    isActive: true,
+    sortOrder: 4,
+  },
+  {
+    channel: "pwa_push",
+    label: "Push approval urgent",
+    eventType: "approval_sla_reminder",
+    targetAudience: "Approver aktif",
+    priority: "urgent",
+    triggerExpression: "SLA < 2 jam",
+    templateCode: "approval_sla_reminder",
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    channel: "pwa_push",
+    label: "Push escalation",
+    eventType: "approval_escalation",
+    targetAudience: "Manager site",
+    priority: "escalation",
+    triggerExpression: "Lewat SLA",
+    templateCode: "approval_sla_reminder",
+    isActive: true,
+    sortOrder: 2,
+  },
+  {
+    channel: "pwa_push",
+    label: "Push daily report ready",
+    eventType: "daily_report_ready",
+    targetAudience: "PJO + Admin",
+    priority: "report",
+    triggerExpression: "Report siap kirim",
+    templateCode: "daily_report_delivery",
+    isActive: false,
+    sortOrder: 3,
+  },
+];
+
 function dedupeMenuItemsByPage<
   T extends {
     url: string;
@@ -1235,6 +755,80 @@ async function ensureHeroGovernanceTables() {
   `);
 
   await db.execute(sql`
+    create table if not exists hero_email_smtp_settings (
+      id serial primary key,
+      profile_name text not null default 'Default SMTP',
+      host text not null,
+      port integer not null default 587,
+      encryption text not null default 'tls',
+      username text not null default '',
+      password_secret text not null default '',
+      from_email text not null default '',
+      from_name text not null default 'HERO Operations',
+      reply_to_email text not null default '',
+      retry_limit integer not null default 3,
+      timeout_seconds integer not null default 15,
+      queue_enabled boolean not null default true,
+      audit_enabled boolean not null default true,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_email_templates (
+      id serial primary key,
+      name text not null,
+      template_code text not null unique,
+      template_type text not null default 'Notification',
+      delivery_channel text not null default 'email',
+      recipient_scope text not null default 'all',
+      cc_email text not null default '',
+      subject text not null,
+      html_content text not null default '',
+      text_content text not null default '',
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_notification_channel_settings (
+      id serial primary key,
+      channel text not null unique,
+      is_enabled boolean not null default true,
+      realtime_badge boolean not null default true,
+      sound_enabled boolean not null default false,
+      auto_mark_read boolean not null default true,
+      vapid_public_key text not null default '',
+      vapid_private_key text not null default '',
+      push_subject text not null default '',
+      service_worker_path text not null default '/sw.js',
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_notification_channel_rules (
+      id serial primary key,
+      channel text not null default 'bell',
+      label text not null,
+      event_type text not null,
+      target_audience text not null default '',
+      priority text not null default 'notification',
+      trigger_expression text not null default '',
+      template_code text not null default '',
+      is_active boolean not null default true,
+      sort_order integer not null default 0,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
     create table if not exists hero_audit_logs (
       id serial primary key,
       actor_employee_id integer references hero_employees(id) on delete set null,
@@ -1287,6 +881,42 @@ async function ensureHeroGovernanceTables() {
   `);
 
   await db.execute(sql`
+    alter table hero_sites add column if not exists province_id text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists province_name text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists regency_id text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists regency_name text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists district_id text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists district_name text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists village_id text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists village_name text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists address_detail text not null default '';
+  `);
+
+  await db.execute(sql`
     create table if not exists hero_role_menu_permissions (
       id serial primary key,
       role_id integer not null references hero_security_roles(id) on delete cascade,
@@ -1330,6 +960,7 @@ async function ensureHeroGovernanceTables() {
       code text not null unique,
       name text not null,
       department_id integer references hero_master_departments(id) on delete set null,
+      section_id integer references hero_master_sections(id) on delete set null,
       site_location text not null default '',
       level integer not null default 1,
       description text not null default '',
@@ -1340,8 +971,29 @@ async function ensureHeroGovernanceTables() {
   `);
 
   await db.execute(sql`
+    create table if not exists hero_master_attendance_shifts (
+      id serial primary key,
+      code text not null unique,
+      label text not null,
+      start_time text not null default '',
+      end_time text not null default '',
+      window_label text not null default '',
+      helper text not null default '',
+      sort_order integer not null default 0,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
     alter table hero_master_positions
     add column if not exists site_location text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_master_positions
+    add column if not exists section_id integer references hero_master_sections(id) on delete set null;
   `);
 
   await db.execute(sql`
@@ -1568,386 +1220,7 @@ export async function ensureHeroSeedData() {
 
   seedPromise = (async () => {
     await ensureHeroEmployeeProfileColumns();
-
-    const existingSites = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(sites);
-
-    if ((existingSites[0]?.count ?? 0) > 0) {
-      await seedSecurityUserProfiles();
-      await ensureApprovalBlueprintSeedData();
-      return;
-    }
-
-    const [site] = await db
-      .insert(sites)
-      .values({
-        name: "Bengalon Pit North",
-        location: "Kutai Timur, Kalimantan Timur",
-        customerName: "PT Kaltim Prima Energi",
-        contractNumber: "CP-CS-2026-014",
-      })
-      .returning();
-
-    const insertedEmployees = await db
-      .insert(employees)
-      .values([
-        {
-          siteId: site.id,
-          name: "Rian Kurniawan",
-          email: "rian.kurniawan@hero.local",
-          role: "Foreman",
-          department: "Central Service",
-          jobTitle: "Foreman",
-          section: "Field Operations",
-          workLocation: "Bengalon Pit North",
-          employmentStatus: "active",
-          accessRole: "Super Admin",
-          levelName: "Pro",
-          totalPoints: 1480,
-          fitStatus: "fit",
-        },
-        {
-          siteId: site.id,
-          name: "Arman Saputra",
-          email: "arman.saputra@hero.local",
-          role: "Technician",
-          department: "Central Service",
-          jobTitle: "Technician",
-          section: "Tyre Operations",
-          workLocation: "Bengalon Pit North",
-          employmentStatus: "active",
-          accessRole: "Site Admin",
-          levelName: "Skilled",
-          totalPoints: 1245,
-          fitStatus: "fit",
-        },
-        {
-          siteId: site.id,
-          name: "Soni Darmawan",
-          email: "soni.darmawan@hero.local",
-          role: "HSE Officer",
-          department: "HSE",
-          jobTitle: "HSE Officer",
-          section: "Governance",
-          workLocation: "Bengalon Pit North",
-          employmentStatus: "active",
-          accessRole: "Site Admin",
-          levelName: "Skilled",
-          totalPoints: 1170,
-          fitStatus: "fit",
-        },
-        {
-          siteId: site.id,
-          name: "Mira Andini",
-          email: "mira.andini@hero.local",
-          role: "Admin Site",
-          department: "HC",
-          jobTitle: "Admin Site",
-          section: "People Operations",
-          workLocation: "Bengalon Pit North",
-          employmentStatus: "probation",
-          accessRole: "HC Manager",
-          levelName: "Rookie",
-          totalPoints: 1040,
-          fitStatus: "follow-up",
-        },
-      ])
-      .returning();
-
-    await seedSecurityUserProfiles();
-
-    const employeeByName = Object.fromEntries(
-      insertedEmployees.map((employee) => [employee.name, employee]),
-    );
-
-    const [activity1, activity2, activity3, activity4] = await db
-      .insert(activities)
-      .values([
-        {
-          siteId: site.id,
-          employeeId: employeeByName["Arman Saputra"].id,
-          activityCode: "TS",
-          activityType: "Tire Service",
-          title: "Pemasangan ban OTR unit HD785",
-          unitNumber: "HD785-17",
-          startTime: new Date("2026-04-13T08:05:00+08:00"),
-          endTime: new Date("2026-04-13T13:55:00+08:00"),
-          status: "Submitted",
-          priority: "Emergency",
-          remarks: "Ban sisi kanan belakang selesai dipasang, foto lengkap.",
-          pointsAwarded: 20,
-        },
-        {
-          siteId: site.id,
-          employeeId: employeeByName["Arman Saputra"].id,
-          activityCode: "TI",
-          activityType: "Tire Inspection",
-          title: "Inspeksi dump truck DT-23 sampai DT-28",
-          unitNumber: "DT-23 s/d DT-28",
-          startTime: new Date("2026-04-13T09:10:00+08:00"),
-          endTime: new Date("2026-04-13T11:42:00+08:00"),
-          status: "Approved",
-          priority: "Normal",
-          remarks: "Satu unit tekanan di bawah standar sudah diberi catatan.",
-          pointsAwarded: 10,
-        },
-        {
-          siteId: site.id,
-          employeeId: employeeByName["Soni Darmawan"].id,
-          activityCode: "HS",
-          activityType: "HSE Patrol",
-          title: "Safety patrol area pit north",
-          unitNumber: "Ramp B7",
-          startTime: new Date("2026-04-13T11:05:00+08:00"),
-          endTime: new Date("2026-04-13T14:10:00+08:00"),
-          status: "Submitted",
-          priority: "Safety",
-          remarks: "Blind spot haul road dan APD vendor jadi temuan utama.",
-          pointsAwarded: 5,
-        },
-        {
-          siteId: site.id,
-          employeeId: employeeByName["Mira Andini"].id,
-          activityCode: "AD",
-          activityType: "Daily Recap",
-          title: "Rekap manpower dan absensi shift pagi",
-          unitNumber: "Site manpower",
-          startTime: new Date("2026-04-13T12:30:00+08:00"),
-          endTime: new Date("2026-04-13T14:03:00+08:00"),
-          status: "Pending L2",
-          priority: "Normal",
-          remarks: "Siap masuk daily report setelah PJO approve.",
-          pointsAwarded: 2,
-        },
-      ])
-      .returning();
-
-    await db.insert(approvals).values([
-      {
-        activityId: activity1.id,
-        level: 1,
-        approverName: "Rian Kurniawan",
-        status: "pending",
-        submittedAt: new Date("2026-04-13T13:55:00+08:00"),
-        overtimeMinutes: 90,
-      },
-      {
-        activityId: activity2.id,
-        level: 1,
-        approverName: "Rian Kurniawan",
-        status: "approved",
-        submittedAt: new Date("2026-04-13T11:42:00+08:00"),
-        reviewedAt: new Date("2026-04-13T12:05:00+08:00"),
-        overtimeMinutes: 0,
-      },
-      {
-        activityId: activity3.id,
-        level: 1,
-        approverName: "Rian Kurniawan",
-        status: "pending",
-        submittedAt: new Date("2026-04-13T14:10:00+08:00"),
-        overtimeMinutes: 0,
-      },
-      {
-        activityId: activity4.id,
-        level: 1,
-        approverName: "Rian Kurniawan",
-        status: "approved",
-        submittedAt: new Date("2026-04-13T14:03:00+08:00"),
-        reviewedAt: new Date("2026-04-13T14:18:00+08:00"),
-        overtimeMinutes: 0,
-      },
-      {
-        activityId: activity4.id,
-        level: 2,
-        approverName: "Dedi Pranata",
-        status: "pending",
-        submittedAt: new Date("2026-04-13T14:18:00+08:00"),
-        overtimeMinutes: 0,
-      },
-    ]);
-
-    await db.insert(timesheetEntries).values([
-      {
-        employeeId: employeeByName["Arman Saputra"].id,
-        siteId: site.id,
-        periodLabel: "April 2026 • Week 2",
-        regularMinutes: 2640,
-        overtimeMinutes: 510,
-        overtimeAmount: 1245000,
-        status: "ready_for_payroll",
-      },
-      {
-        employeeId: employeeByName["Soni Darmawan"].id,
-        siteId: site.id,
-        periodLabel: "April 2026 • Week 2",
-        regularMinutes: 2700,
-        overtimeMinutes: 0,
-        overtimeAmount: 0,
-        status: "ready_for_payroll",
-      },
-      {
-        employeeId: employeeByName["Mira Andini"].id,
-        siteId: site.id,
-        periodLabel: "April 2026 • Week 2",
-        regularMinutes: 2400,
-        overtimeMinutes: 90,
-        overtimeAmount: 210000,
-        status: "needs_correction",
-      },
-    ]);
-
-    await db.insert(dailyReports).values([
-      {
-        siteId: site.id,
-        reportDate: new Date("2026-04-13T17:30:00+08:00"),
-        customerName: site.customerName,
-        totalSections: 4,
-        readySections: 3,
-        jobsCompleted: 12,
-        manpowerPresent: 18,
-        hseSummary: "Zero incident • 3 patrol completed",
-        status: "draft_ready",
-      },
-    ]);
-
-    await db.insert(pointEvents).values([
-      {
-        employeeId: employeeByName["Arman Saputra"].id,
-        category: "Disiplin",
-        label: "Submit aktivitas sebelum 17.00",
-        points: 5,
-      },
-      {
-        employeeId: employeeByName["Arman Saputra"].id,
-        category: "Volume Kerja",
-        label: "Pekerjaan emergency selesai",
-        points: 20,
-      },
-      {
-        employeeId: employeeByName["Soni Darmawan"].id,
-        category: "HSE",
-        label: "Toolbox meeting siang",
-        points: 5,
-      },
-    ]);
-
-    await db.insert(hseObservations).values([
-      {
-        siteId: site.id,
-        employeeId: employeeByName["Soni Darmawan"].id,
-        category: "Unsafe Condition",
-        title: "Blind spot haul road pit north",
-        location: "Ramp B7",
-        severity: "medium",
-        status: "open",
-        notes: "Butuh rambu tambahan dan pembersihan debu.",
-        observedAt: new Date("2026-04-13T11:40:00+08:00"),
-      },
-      {
-        siteId: site.id,
-        employeeId: employeeByName["Arman Saputra"].id,
-        category: "Unsafe Act",
-        title: "Vendor tanpa sarung tangan kerja",
-        location: "Tyre Bay 2",
-        severity: "low",
-        status: "action_taken",
-        notes: "Sudah ditegur dan APD lengkap dipakai ulang.",
-        observedAt: new Date("2026-04-13T12:12:00+08:00"),
-      },
-    ]);
-
-    await db.insert(hseIncidents).values([
-      {
-        siteId: site.id,
-        type: "near_miss",
-        title: "Near miss saat manuver unit HD785-17",
-        unitNumber: "HD785-17",
-        impact: "No injury",
-        status: "investigating",
-        reportedAt: new Date("2026-04-13T09:12:00+08:00"),
-      },
-    ]);
-
-    await db.insert(attendanceRecords).values([
-      {
-        employeeId: employeeByName["Arman Saputra"].id,
-        siteId: site.id,
-        eventType: "clock_in",
-        eventTime: new Date("2026-04-13T06:48:00+08:00"),
-        status: "verified",
-        locationNote: "GPS valid • selfie attendance berhasil",
-      },
-      {
-        employeeId: employeeByName["Mira Andini"].id,
-        siteId: site.id,
-        eventType: "clock_in",
-        eventTime: new Date("2026-04-13T06:59:00+08:00"),
-        status: "needs_review",
-        locationNote: "Wajah tertutup masker sebagian",
-      },
-      {
-        employeeId: employeeByName["Rian Kurniawan"].id,
-        siteId: site.id,
-        eventType: "clock_out",
-        eventTime: new Date("2026-04-13T17:18:00+08:00"),
-        status: "overtime",
-        locationNote: "Kandidat lembur 1.5 jam",
-      },
-    ]);
-
-    await db.insert(trainingRecords).values([
-      {
-        employeeId: employeeByName["Soni Darmawan"].id,
-        trainingName: "HSE Patrol Refresher",
-        provider: "Training Center HERO",
-        expiresAt: new Date("2026-05-13T00:00:00+08:00"),
-        status: "expiring_soon",
-      },
-      {
-        employeeId: employeeByName["Arman Saputra"].id,
-        trainingName: "Tire Management Level 2",
-        provider: "Training Center HERO",
-        expiresAt: new Date("2027-01-17T00:00:00+08:00"),
-        status: "active",
-      },
-      {
-        employeeId: employeeByName["Mira Andini"].id,
-        trainingName: "Admin Reporting Workflow",
-        provider: "Training Center HERO",
-        expiresAt: new Date("2026-04-20T00:00:00+08:00"),
-        status: "urgent",
-      },
-    ]);
-
-    await db.insert(wellnessRecords).values([
-      {
-        employeeId: employeeByName["Arman Saputra"].id,
-        metricType: "BMI",
-        metricValue: "23.1",
-        status: "healthy",
-        notes: "Dalam range sehat bulan ini",
-        recordedAt: new Date("2026-04-01T09:00:00+08:00"),
-      },
-      {
-        employeeId: employeeByName["Mira Andini"].id,
-        metricType: "MCU",
-        metricValue: "Due in 18 days",
-        status: "follow_up",
-        notes: "Perlu reminder H-14 dan H-7",
-        recordedAt: new Date("2026-04-13T09:30:00+08:00"),
-      },
-      {
-        employeeId: employeeByName["Rian Kurniawan"].id,
-        metricType: "Fit For Work",
-        metricValue: "Pending",
-        status: "attention",
-        notes: "Butuh update kondisi pasca lembur panjang",
-        recordedAt: new Date("2026-04-13T18:00:00+08:00"),
-      },
-    ]);
-
+    await ensureHeroSiteLocationColumns();
     await ensureApprovalBlueprintSeedData();
   })().catch((error) => {
     seedPromise = null;
@@ -1967,23 +1240,23 @@ export async function ensureHeroGovernanceSeedData() {
   governanceSeedPromise = (async () => {
     await ensureHeroGovernanceTables();
 
-    const [site] = await db.select().from(sites).limit(1);
-    const currentEmployees = await db.select().from(employees).orderBy(employees.name);
-    const employeeByName = Object.fromEntries(
-      currentEmployees.map((employee) => [employee.name, employee]),
-    );
-
-    if (site) {
-      await ensureApprovalEngineFoundation(site);
-    }
-
-    const [permissionCount, rolePermissionCount, emailLogCount, auditLogCount, themeCount] =
+    const [
+      permissionCount,
+      rolePermissionCount,
+      themeCount,
+      attendanceShiftCount,
+      emailSmtpSettingCount,
+      emailTemplateCount,
+      notificationChannelSettingCount,
+    ] =
       await Promise.all([
         db.select({ count: sql<number>`count(*)::int` }).from(securityPermissions),
         db.select({ count: sql<number>`count(*)::int` }).from(securityRolePermissions),
-        db.select({ count: sql<number>`count(*)::int` }).from(emailDeliveryLogs),
-        db.select({ count: sql<number>`count(*)::int` }).from(auditLogs),
         db.select({ count: sql<number>`count(*)::int` }).from(navbarThemes),
+        db.select({ count: sql<number>`count(*)::int` }).from(masterAttendanceShifts),
+        db.select({ count: sql<number>`count(*)::int` }).from(emailSmtpSettings),
+        db.select({ count: sql<number>`count(*)::int` }).from(emailTemplates),
+        db.select({ count: sql<number>`count(*)::int` }).from(notificationChannelSettings),
       ]);
 
     const currentRoles = await db.select().from(securityRoles);
@@ -2158,84 +1431,6 @@ export async function ensureHeroGovernanceSeedData() {
       await db.insert(navbarMenuItems).values(missingMenuItems);
     }
 
-    if ((emailLogCount[0]?.count ?? 0) === 0) {
-      await db.insert(emailDeliveryLogs).values([
-        {
-          employeeId: employeeByName["Mira Andini"]?.id,
-          deliveryChannel: "email",
-          toEmail: "site.customer@kpe.example",
-          ccEmail: "pjo.bengalon@hero.local",
-          fromEmail: "noreply@hero.chitraparatama.com",
-          templateName: "Daily Report Delivery",
-          templateCode: "hero-daily-report",
-          subject: "Daily Report Bengalon Pit North - 13 April 2026",
-          status: "sent",
-          htmlContent: "<h1>Daily Report HERO</h1><p>Report Bengalon Pit North sudah siap.</p>",
-          textContent: "Daily Report HERO - Report Bengalon Pit North sudah siap.",
-          sentAt: new Date("2026-04-13T18:05:00+08:00"),
-        },
-        {
-          employeeId: employeeByName["Rian Kurniawan"]?.id,
-          deliveryChannel: "email",
-          toEmail: "hc.pusat@chitraparatama.com",
-          ccEmail: "mira.andini@hero.local",
-          fromEmail: "noreply@hero.chitraparatama.com",
-          templateName: "Approval Reminder",
-          templateCode: "hero-approval-reminder",
-          subject: "Pending approval shift sore - Bengalon",
-          status: "pending",
-          htmlContent: "<p>Ada approval activity yang menunggu review.</p>",
-          textContent: "Ada approval activity yang menunggu review.",
-        },
-        {
-          employeeId: employeeByName["Soni Darmawan"]?.id,
-          deliveryChannel: "email",
-          toEmail: "hse.pusat@chitraparatama.com",
-          fromEmail: "noreply@hero.chitraparatama.com",
-          templateName: "HSE Escalation",
-          templateCode: "hero-hse-escalation",
-          subject: "Near miss HD785-17 membutuhkan tindak lanjut",
-          status: "failed",
-          errorMessage: "SMTP timeout after 15s",
-          htmlContent: "<p>Near miss HD785-17 membutuhkan review pusat.</p>",
-          textContent: "Near miss HD785-17 membutuhkan review pusat.",
-          sentAt: new Date("2026-04-13T15:20:00+08:00"),
-        },
-      ]);
-    }
-
-    if ((auditLogCount[0]?.count ?? 0) === 0) {
-      await db.insert(auditLogs).values([
-        {
-          actorEmployeeId: employeeByName["Mira Andini"]?.id,
-          action: "NAVBAR_THEME_UPDATED",
-          entityType: "navbar",
-          entityLabel: "Admin navigation",
-          description: "Theme navbar diganti ke HERO Surface dengan warna aksen amber.",
-          severity: "info",
-          createdAt: new Date("2026-04-13T09:05:00+08:00"),
-        },
-        {
-          actorEmployeeId: employeeByName["Rian Kurniawan"]?.id,
-          action: "ROLE_REVIEWED",
-          entityType: "security_role",
-          entityLabel: "Site Admin",
-          description: "Role Site Admin direview untuk akses approval dan report.",
-          severity: "medium",
-          createdAt: new Date("2026-04-13T10:18:00+08:00"),
-        },
-        {
-          actorEmployeeId: employeeByName["Soni Darmawan"]?.id,
-          action: "SECURITY_ALERT",
-          entityType: "security",
-          entityLabel: "Unusual login monitor",
-          description: "Percobaan login dari device baru terdeteksi dan dimonitor.",
-          severity: "high",
-          createdAt: new Date("2026-04-13T12:42:00+08:00"),
-        },
-      ]);
-    }
-
     if ((themeCount[0]?.count ?? 0) === 0) {
       await db.insert(navbarThemes).values({
         themeName: "HERO Surface",
@@ -2246,6 +1441,22 @@ export async function ensureHeroGovernanceSeedData() {
         density: "comfortable",
         logoMode: "hero-badge",
       });
+    }
+
+    if ((attendanceShiftCount[0]?.count ?? 0) === 0) {
+      await db.insert(masterAttendanceShifts).values(ATTENDANCE_SHIFT_SEEDS);
+    }
+
+    if ((emailSmtpSettingCount[0]?.count ?? 0) === 0) {
+      await db.insert(emailSmtpSettings).values(EMAIL_SMTP_SETTING_SEED);
+    }
+
+    if ((emailTemplateCount[0]?.count ?? 0) === 0) {
+      await db.insert(emailTemplates).values(EMAIL_TEMPLATE_SEEDS);
+    }
+
+    if ((notificationChannelSettingCount[0]?.count ?? 0) === 0) {
+      await db.insert(notificationChannelSettings).values(NOTIFICATION_CHANNEL_SETTING_SEEDS);
     }
 
     const [rolesForMenu, menuItemsForRole, existingRoleMenuPermissions] = await Promise.all([
@@ -2277,9 +1488,6 @@ export async function ensureHeroGovernanceSeedData() {
       await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions);
     }
 
-    if (!site || currentEmployees.length === 0) {
-      throw new Error("Hero governance seed requires base site and employees.");
-    }
   })().catch((error) => {
     governanceSeedPromise = null;
     throw error;
@@ -2437,6 +1645,9 @@ export async function getTimesheetPageData() {
 
   const rows = await db
     .select({
+      id: timesheetEntries.id,
+      employeeId: timesheetEntries.employeeId,
+      siteId: timesheetEntries.siteId,
       employeeName: employees.name,
       role: employees.role,
       periodLabel: timesheetEntries.periodLabel,
@@ -2462,6 +1673,8 @@ export async function getReportsPageData() {
 
   return db
     .select({
+      id: dailyReports.id,
+      siteId: dailyReports.siteId,
       reportDate: dailyReports.reportDate,
       status: dailyReports.status,
       customerName: dailyReports.customerName,
@@ -2482,6 +1695,7 @@ export async function getPointsPageData() {
 
   const leaderboard = await db
     .select({
+      id: employees.id,
       name: employees.name,
       role: employees.role,
       department: employees.department,
@@ -2493,6 +1707,8 @@ export async function getPointsPageData() {
 
   const recentPointEvents = await db
     .select({
+      id: pointEvents.id,
+      employeeId: pointEvents.employeeId,
       employeeName: employees.name,
       category: pointEvents.category,
       label: pointEvents.label,
@@ -2511,11 +1727,15 @@ export async function getHsePageData() {
 
   const observations = await db
     .select({
+      id: hseObservations.id,
+      siteId: hseObservations.siteId,
+      employeeId: hseObservations.employeeId,
       title: hseObservations.title,
       category: hseObservations.category,
       location: hseObservations.location,
       severity: hseObservations.severity,
       status: hseObservations.status,
+      notes: hseObservations.notes,
       observedAt: hseObservations.observedAt,
       reporter: employees.name,
     })
@@ -2525,6 +1745,8 @@ export async function getHsePageData() {
 
   const incidents = await db
     .select({
+      id: hseIncidents.id,
+      siteId: hseIncidents.siteId,
       title: hseIncidents.title,
       type: hseIncidents.type,
       unitNumber: hseIncidents.unitNumber,
@@ -2543,12 +1765,18 @@ export async function getHcPageData() {
 
   const attendance = await db
     .select({
+      id: attendanceRecords.id,
+      employeeId: attendanceRecords.employeeId,
+      siteId: attendanceRecords.siteId,
       employeeName: employees.name,
       role: employees.role,
       eventType: attendanceRecords.eventType,
       status: attendanceRecords.status,
       eventTime: attendanceRecords.eventTime,
       locationNote: attendanceRecords.locationNote,
+      photoUrl: attendanceRecords.photoUrl,
+      latitude: attendanceRecords.latitude,
+      longitude: attendanceRecords.longitude,
     })
     .from(attendanceRecords)
     .innerJoin(employees, eq(attendanceRecords.employeeId, employees.id))
@@ -2556,6 +1784,8 @@ export async function getHcPageData() {
 
   const trainings = await db
     .select({
+      id: trainingRecords.id,
+      employeeId: trainingRecords.employeeId,
       employeeName: employees.name,
       trainingName: trainingRecords.trainingName,
       provider: trainingRecords.provider,
@@ -2568,6 +1798,8 @@ export async function getHcPageData() {
 
   const wellness = await db
     .select({
+      id: wellnessRecords.id,
+      employeeId: wellnessRecords.employeeId,
       employeeName: employees.name,
       metricType: wellnessRecords.metricType,
       metricValue: wellnessRecords.metricValue,
@@ -2580,6 +1812,38 @@ export async function getHcPageData() {
     .orderBy(desc(wellnessRecords.recordedAt));
 
   return { attendance, trainings, wellness };
+}
+
+export async function getOperationalCrudOptions() {
+  await ensureHeroSeedData();
+
+  const [employeeRows, siteRows] = await Promise.all([
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        role: employees.role,
+        siteId: employees.siteId,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+        customerName: sites.customerName,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name)),
+  ]);
+
+  return {
+    employees: employeeRows,
+    sites: siteRows,
+  };
 }
 
 export async function getSecurityOverviewData() {
@@ -2790,6 +2054,33 @@ export async function getEmailDeliveryLogsData() {
     .from(emailDeliveryLogs)
     .leftJoin(employees, eq(emailDeliveryLogs.employeeId, employees.id))
     .orderBy(desc(emailDeliveryLogs.createdAt));
+}
+
+export async function getEmailSmtpSettingsData() {
+  await ensureHeroGovernanceSeedData();
+
+  const [settings] = await db
+    .select()
+    .from(emailSmtpSettings)
+    .orderBy(desc(emailSmtpSettings.isActive), desc(emailSmtpSettings.updatedAt), desc(emailSmtpSettings.id))
+    .limit(1);
+
+  if (!settings) {
+    const [created] = await db
+      .insert(emailSmtpSettings)
+      .values(EMAIL_SMTP_SETTING_SEED)
+      .returning();
+
+    return {
+      ...created,
+      hasPassword: Boolean(created.passwordSecret),
+    };
+  }
+
+  return {
+    ...settings,
+    hasPassword: Boolean(settings.passwordSecret),
+  };
 }
 
 export async function getNavbarSettingsData() {

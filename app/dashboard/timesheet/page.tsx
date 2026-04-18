@@ -2,10 +2,17 @@ import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
-import { getTimesheetPageData } from "@/lib/hero-admin";
+import {
+  TimesheetCrudForm,
+  TimesheetRowActions,
+} from "@/components/operational-crud-panels";
+import { getOperationalCrudOptions, getTimesheetPageData } from "@/lib/hero-admin";
 
 export default async function TimesheetPage() {
-  const rows = await getTimesheetPageData();
+  const [rows, options] = await Promise.all([
+    getTimesheetPageData(),
+    getOperationalCrudOptions(),
+  ]);
 
   return (
     <AdminPageShell
@@ -29,10 +36,12 @@ export default async function TimesheetPage() {
         ]}
       />
 
+      <TimesheetCrudForm employees={options.employees} sites={options.sites} />
+
       <AdminTableCard
         title="Timesheet Entries"
         description="Data lembur dan jam kerja yang terhubung ke approval dan siap dipakai untuk payroll support."
-        columns={["Employee", "Role", "Period", "Regular", "Overtime", "Amount", "Status"]}
+        columns={["Employee", "Role", "Period", "Regular", "Overtime", "Amount", "Status", "Action"]}
         rows={rows.map((row, index) => [
           row.employeeName,
           row.role,
@@ -41,6 +50,12 @@ export default async function TimesheetPage() {
           row.overtimeHours,
           row.overtimeCost,
           <AdminStatusBadge key={`${index}-status`} value={row.status} />,
+          <TimesheetRowActions
+            key={`${row.id}-actions`}
+            row={row}
+            employees={options.employees}
+            sites={options.sites}
+          />,
         ])}
       />
     </AdminPageShell>
