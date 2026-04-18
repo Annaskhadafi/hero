@@ -56,12 +56,6 @@ export function SiteHeader({
             />
             <Separator orientation="vertical" className="hidden h-8 bg-white/14 lg:block" />
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="industrial-label text-white/68">Operations Network</p>
-                <span className="surface-chip hidden rounded-full px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-normal text-foreground lg:inline-flex">
-                  Live Command
-                </span>
-              </div>
               <h1 className="font-display truncate text-xl font-semibold tracking-normal lg:text-2xl">
                 {title}
               </h1>

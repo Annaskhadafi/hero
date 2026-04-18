@@ -53,8 +53,7 @@ export default async function DashboardLayout({
       />
       <SidebarInset>
         <SiteHeader
-          title="HERO Admin Console"
-          subtitle="Desktop-first operations, approvals, reporting, and workforce control"
+          title="Hub for Employee Reporting & Operations"
           backgroundColor={navbarSettings.theme?.headerBackgroundColor ?? "#FFFFFF"}
           textColor={navbarSettings.theme?.textColor ?? "#0F172A"}
         />
