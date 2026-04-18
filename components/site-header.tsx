@@ -36,7 +36,7 @@ export function SiteHeader({
       }}
     >
       <div
-        className="glass-command flex min-h-(--header-height) items-center rounded-lg px-4 py-3 shadow-[0_18px_34px_rgba(0,52,97,0.12)] ring-1 ring-white/10 lg:px-6"
+        className="glass-command flex min-h-14 items-center rounded-lg px-3 py-2 shadow-[0_18px_34px_rgba(0,52,97,0.12)] ring-1 ring-white/10 sm:min-h-(--header-height) sm:px-4 sm:py-3 lg:px-6"
         style={{
           background: isDark
             ? "linear-gradient(135deg, rgba(8,24,38,0.94) 0%, rgba(15,38,56,0.9) 55%, rgba(27,65,91,0.84) 100%)"
@@ -44,11 +44,11 @@ export function SiteHeader({
           color: "var(--header-text)",
         }}
       >
-        <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 lg:gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <SidebarTrigger
               className={cn(
-                "size-11 rounded-lg border-0 shadow-[0_14px_26px_rgba(0,0,0,0.18)]",
+                "size-9 min-h-9 min-w-9 rounded-lg border-0 shadow-[0_14px_26px_rgba(0,0,0,0.18)] sm:size-11 sm:min-h-11 sm:min-w-11",
                 isDark
                   ? "bg-surface-container-lowest text-slate-950 hover:bg-surface-bright hover:text-slate-900"
                   : "bg-surface-container-lowest text-primary hover:bg-surface-bright hover:text-primary-container",
@@ -56,7 +56,7 @@ export function SiteHeader({
             />
             <Separator orientation="vertical" className="hidden h-8 bg-white/14 lg:block" />
             <div className="min-w-0">
-              <h1 className="font-display truncate text-xl font-semibold tracking-normal lg:text-2xl">
+              <h1 className="font-display truncate text-base font-semibold tracking-normal sm:text-xl lg:text-2xl">
                 {title}
               </h1>
               {subtitle ? (
@@ -65,7 +65,7 @@ export function SiteHeader({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 lg:min-w-[420px] lg:justify-end">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:min-w-[420px] lg:justify-end">
             <HeaderThemeControls />
           </div>
         </div>

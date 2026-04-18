@@ -126,6 +126,8 @@ Do not use opaque 1px borders to separate major sections. Create boundaries thro
 
 - Navigation bars and floating command surfaces should use 70% opacity containers with strong backdrop blur.
 - Pair glass with tonal shadows, not hard outlines.
+- Mobile top navigation must stay single-row and compact: menu trigger, truncated title, notification, and theme action should align horizontally.
+- Mobile navbar icon buttons should use compact touch targets (`36px` to `40px`) and must not wrap into a second row unless a page adds a truly critical action.
 
 ## Interaction Patterns
 

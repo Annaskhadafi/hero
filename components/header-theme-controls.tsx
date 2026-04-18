@@ -89,7 +89,7 @@ export function HeaderThemeControls() {
   }, []);
 
   return (
-    <div className="flex w-full items-center justify-end gap-2 lg:gap-3">
+    <div className="flex w-auto items-center justify-end gap-1.5 sm:gap-2 lg:w-full lg:gap-3">
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -161,11 +161,11 @@ export function HeaderThemeControls() {
             type="button"
             variant="ghost"
             size="icon"
-            className="relative size-11 rounded-2xl bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 hover:text-white"
+            className="relative size-9 min-h-9 min-w-9 rounded-xl bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 hover:text-white sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl"
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
-              <span className="absolute right-2 top-2 flex h-2 w-2">
+              <span className="absolute right-1.5 top-1.5 flex h-2 w-2 sm:right-2 sm:top-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
               </span>
@@ -173,7 +173,7 @@ export function HeaderThemeControls() {
             <span className="sr-only">Notifications</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[390px] p-2" align="end">
+        <PopoverContent className="w-[min(390px,calc(100vw-1rem))] p-2" align="end">
           <div className="surface-module-card rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -233,7 +233,7 @@ export function HeaderThemeControls() {
         </PopoverContent>
       </Popover>
 
-      <div className="[&_button]:size-11 [&_button]:rounded-2xl [&_button]:bg-white/12 [&_button]:text-white [&_button]:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] [&_button]:hover:bg-white/16 [&_button]:hover:text-white">
+      <div className="[&_button]:size-9 [&_button]:min-h-9 [&_button]:min-w-9 [&_button]:rounded-xl [&_button]:bg-white/12 [&_button]:text-white [&_button]:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] [&_button]:hover:bg-white/16 [&_button]:hover:text-white sm:[&_button]:size-11 sm:[&_button]:min-h-11 sm:[&_button]:min-w-11 sm:[&_button]:rounded-2xl">
         <SimpleThemeToggle />
       </div>
     </div>
