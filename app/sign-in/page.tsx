@@ -122,7 +122,7 @@ function SignInContent() {
                 setError(result.error.message || "Google sign in failed");
             }
         } catch {
-            setError("Google sign in belum siap. Pastikan GOOGLE_CLIENT_ID dan GOOGLE_CLIENT_SECRET sudah diisi.");
+            setError("Login dengan Google belum bisa digunakan. Silakan coba lagi nanti atau masuk dengan email dan password.");
         } finally {
             setSocialLoading(null);
         }
@@ -173,7 +173,7 @@ function SignInContent() {
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="space-y-2">
                                 <Label htmlFor="m-email" className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                                    Terminal Identity
+                                    Email
                                 </Label>
                                 <div className="group relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-4">
@@ -187,14 +187,14 @@ function SignInContent() {
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
 
                             <div className="space-y-2">
                                 <Label htmlFor="m-password" className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                                    Access Cipher
+                                    Password
                                 </Label>
                                 <div className="group relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-4">
@@ -208,7 +208,7 @@ function SignInContent() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -236,10 +236,10 @@ function SignInContent() {
                                 {isLoading ? (
                                     <span className="flex items-center gap-2">
                                         <Loader2 className="h-4 w-4 animate-spin" />
-                                        INITIALIZING...
+                                        Masuk...
                                     </span>
                                 ) : (
-                                    "INITIALIZE_LOGIN"
+                                    "Masuk ke HERO"
                                 )}
                             </Button>
                         </form>
@@ -260,7 +260,7 @@ function SignInContent() {
                             >
                                 <span className="flex items-center gap-2">
                                     {magicLinkLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                                    MAGIC_LINK
+                                    Magic Link
                                 </span>
                             </Button>
 
@@ -272,7 +272,7 @@ function SignInContent() {
                             >
                                 <span className="flex items-center gap-2">
                                     {socialLoading === "google" ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-                                    GOOGLE_ID
+                                    Google
                                 </span>
                             </Button>
                         </div>
@@ -339,7 +339,7 @@ function SignInContent() {
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -358,7 +358,7 @@ function SignInContent() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -391,7 +391,7 @@ function SignInContent() {
                                 </>
                             ) : (
                                 <>
-                                    Sign in to HERO
+                                    Login ke HERO
                                     <Sparkles className="h-4 w-4" />
                                 </>
                             )}

@@ -11,7 +11,7 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card"
       className={cn(
-        "industrial-card text-card-foreground flex flex-col gap-6 overflow-hidden rounded-xl border-0 py-6 ring-1 ring-outline-ghost",
+        "industrial-card text-card-foreground flex flex-col gap-6 overflow-hidden rounded-lg border-0 py-6 ring-1 ring-outline-ghost",
         inferBackgroundResetClassName(className),
         inferSurfaceTextClassName(className),
         className
@@ -38,7 +38,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-title"
-      className={cn("font-display leading-none font-semibold", className)}
+      className={cn("font-display leading-none font-semibold tracking-normal", className)}
       {...props}
     />
   )

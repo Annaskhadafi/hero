@@ -12,11 +12,11 @@ export function AdminMetricGrid({
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
-        <Card key={item.label} className="command-panel rounded-2xl p-5">
+        <Card key={item.label} className="command-panel rounded-lg p-5">
           <p className="industrial-label">{item.label}</p>
           <div className="mt-3 flex items-start justify-between gap-4">
-            <p className="font-display text-4xl font-semibold tracking-[-0.05em]">{item.value}</p>
-            <div className="rounded-full bg-surface-container-low px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            <p className="font-display text-4xl font-semibold tracking-normal">{item.value}</p>
+            <div className="rounded-full bg-surface-container-low px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-normal text-muted-foreground">
               Live
             </div>
           </div>

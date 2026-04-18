@@ -64,7 +64,7 @@ function ResetPasswordContent() {
                 <>
                     Kembali ke{" "}
                     <Link href="/sign-in" className="font-medium text-[#9ac8ec] transition hover:text-[#bedef2]">
-                        Sign in
+                        Login
                     </Link>
                 </>
             }
@@ -89,7 +89,7 @@ function ResetPasswordContent() {
                             onChange={(event) => setPassword(event.target.value)}
                             required
                             disabled={isLoading}
-                            className="h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
+                            className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
                         />
                     </div>
 
@@ -105,7 +105,7 @@ function ResetPasswordContent() {
                             onChange={(event) => setConfirmPassword(event.target.value)}
                             required
                             disabled={isLoading}
-                            className="h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
+                            className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
                         />
                     </div>
                 </div>

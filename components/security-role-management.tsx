@@ -70,6 +70,25 @@ const INITIAL_STATE: AdminMutationState = {
   message: "",
 };
 
+function formatScopeLabel(value: string) {
+  const labels: Record<string, string> = {
+    site: "Site tertentu",
+    all_sites: "Semua site",
+  };
+
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+function formatMenuArea(value: string) {
+  const labels: Record<string, string> = {
+    admin: "Admin",
+    central_service: "Central Service",
+    performance: "Performance",
+  };
+
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
 function SubmitButton({
   children,
   variant = "default",
@@ -161,45 +180,45 @@ export function SecurityRoleManagement({
         <Card className="rounded-[1.6rem] bg-surface-container-lowest">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-base">Roles</CardTitle>
+              <CardTitle className="text-base">Daftar Peran</CardTitle>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button size="sm">
                     <Plus className="size-4" />
-                    Role Baru
+                    Peran Baru
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Buat Role Baru</DialogTitle>
+                    <DialogTitle>Buat Peran Baru</DialogTitle>
                     <DialogDescription>
-                      Role baru otomatis mendapat checklist menu kosong.
+                      Peran baru dimulai tanpa akses menu. Anda dapat mengaturnya setelah dibuat.
                     </DialogDescription>
                   </DialogHeader>
                   <form action={roleFormAction} className="space-y-4">
                     <input type="hidden" name="intent" value="create-role" />
                     <label className="grid gap-2">
-                      <Label>Nama Role</Label>
+                      <Label>Nama Peran</Label>
                       <Input name="roleName" placeholder="Contoh: Finance Admin" />
                     </label>
                     <label className="grid gap-2">
                       <Label>Deskripsi</Label>
-                      <Input name="description" placeholder="Ringkasan tanggung jawab role" />
+                      <Input name="description" placeholder="Ringkasan tanggung jawab peran" />
                     </label>
                     <div className="grid gap-2">
-                      <Label>Scope</Label>
+                      <Label>Cakupan Akses</Label>
                       <Select name="scope" defaultValue="site">
                         <SelectTrigger>
-                          <SelectValue placeholder="Pilih scope" />
+                          <SelectValue placeholder="Pilih cakupan" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="site">site</SelectItem>
-                          <SelectItem value="all_sites">all_sites</SelectItem>
+                          <SelectItem value="site">Site tertentu</SelectItem>
+                          <SelectItem value="all_sites">Semua site</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="flex justify-end">
-                      <SubmitButton>Buat Role</SubmitButton>
+                      <SubmitButton>Buat Peran</SubmitButton>
                     </div>
                   </form>
                 </DialogContent>
@@ -223,12 +242,12 @@ export function SecurityRoleManagement({
                     <p className="font-medium">{role.name}</p>
                     <p className="text-sm text-muted-foreground">{role.description}</p>
                   </div>
-                  <Badge variant="outline" className="rounded-full capitalize">
-                    {role.scope.replaceAll("_", " ")}
+                  <Badge variant="outline" className="rounded-full">
+                    {formatScopeLabel(role.scope)}
                   </Badge>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {role.assignedUsers} user memakai role ini
+                  {role.assignedUsers} pengguna memakai peran ini
                 </p>
               </button>
             ))}
@@ -241,10 +260,10 @@ export function SecurityRoleManagement({
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <CardTitle className="text-base">
-                    RBAC Menu Checklist
+                    Akses Menu
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    Atur visibilitas dan aksi per menu untuk role{" "}
+                    Atur menu dan aksi yang dapat digunakan oleh peran{" "}
                     <span className="font-medium text-foreground">
                       {selectedRole?.name ?? "—"}
                     </span>
@@ -256,14 +275,14 @@ export function SecurityRoleManagement({
                     <DialogTrigger asChild>
                       <Button variant="outline" size="sm">
                         <Copy className="size-4" />
-                        Duplikat Role
+                        Duplikat Peran
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Duplikat Role</DialogTitle>
+                        <DialogTitle>Duplikat Peran</DialogTitle>
                         <DialogDescription>
-                          Menyalin seluruh checklist role yang sedang dipilih.
+                          Menyalin seluruh akses dari peran yang sedang dipilih.
                         </DialogDescription>
                       </DialogHeader>
                       <form action={roleFormAction} className="space-y-4">
@@ -274,7 +293,7 @@ export function SecurityRoleManagement({
                           value={selectedRole ? `${selectedRole.id}` : ""}
                         />
                         <label className="grid gap-2">
-                          <Label>Nama Role Baru</Label>
+                          <Label>Nama Peran Baru</Label>
                           <Input
                             name="roleName"
                             defaultValue={selectedRole ? `${selectedRole.name} Copy` : ""}
@@ -288,22 +307,22 @@ export function SecurityRoleManagement({
                           />
                         </label>
                         <div className="grid gap-2">
-                          <Label>Scope</Label>
+                          <Label>Cakupan Akses</Label>
                           <Select
                             name="scope"
                             defaultValue={selectedRole?.scope ?? "site"}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Pilih scope" />
+                              <SelectValue placeholder="Pilih cakupan" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="site">site</SelectItem>
-                              <SelectItem value="all_sites">all_sites</SelectItem>
+                              <SelectItem value="site">Site tertentu</SelectItem>
+                              <SelectItem value="all_sites">Semua site</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="flex justify-end">
-                          <SubmitButton>Duplikat Role</SubmitButton>
+                          <SubmitButton>Duplikat Peran</SubmitButton>
                         </div>
                       </form>
                     </DialogContent>
@@ -318,7 +337,7 @@ export function SecurityRoleManagement({
                     />
                     <SubmitButton variant="destructive">
                       <Trash2 className="size-4" />
-                      Delete Role
+                      Hapus Peran
                     </SubmitButton>
                   </form>
                 </div>
@@ -381,17 +400,17 @@ export function SecurityRoleManagement({
                 {Object.entries(groupedMenus).map(([menuArea, items]) => (
                   <div key={menuArea} className="overflow-hidden rounded-[1.2rem] bg-surface-container-low">
                     <div className="bg-surface-container-high px-4 py-4">
-                      <p className="font-medium capitalize">{menuArea} menus</p>
+                      <p className="font-medium">{formatMenuArea(menuArea)}</p>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-muted/40">
                           <tr>
                             <th className="px-4 py-3 text-left font-medium">Menu</th>
-                            <th className="px-4 py-3 text-left font-medium">View</th>
-                            <th className="px-4 py-3 text-left font-medium">Edit</th>
-                            <th className="px-4 py-3 text-left font-medium">Delete</th>
-                            <th className="px-4 py-3 text-left font-medium">Select all</th>
+                            <th className="px-4 py-3 text-left font-medium">Lihat</th>
+                            <th className="px-4 py-3 text-left font-medium">Ubah</th>
+                            <th className="px-4 py-3 text-left font-medium">Hapus</th>
+                            <th className="px-4 py-3 text-left font-medium">Akses penuh</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -412,9 +431,7 @@ export function SecurityRoleManagement({
                                 <td className="px-4 py-3">
                                   <div>
                                     <p className="font-medium">{menuItem.title}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {menuItem.section} • {menuItem.url}
-                                    </p>
+                                    <p className="text-xs text-muted-foreground">{menuItem.section}</p>
                                   </div>
                                 </td>
                                 {(
@@ -455,7 +472,7 @@ export function SecurityRoleManagement({
                 <div className="flex justify-end">
                   <SubmitButton>
                     <Save className="size-4" />
-                    Simpan Checklist RBAC
+                    Simpan Akses Menu
                   </SubmitButton>
                 </div>
               </form>

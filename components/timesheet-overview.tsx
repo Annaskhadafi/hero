@@ -33,7 +33,7 @@ export function TimesheetOverview() {
     <div className="space-y-4 pb-6">
       <Card className="rounded-[1.75rem] border-0 bg-[linear-gradient(135deg,#1d4ed8_0%,#155e75_48%,#0f172a_100%)] p-5 text-white shadow-[0_22px_60px_rgba(15,23,42,0.24)]">
         <p className="text-xs uppercase tracking-[0.22em] text-sky-100">
-          M3 • Timesheet & Payroll Support
+          Timesheet & Payroll
         </p>
         <h3 className="mt-2 text-2xl font-semibold">Rekap jam kerja yang siap diproses</h3>
         <p className="mt-2 text-sm leading-6 text-white/80">
@@ -43,11 +43,11 @@ export function TimesheetOverview() {
 
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-sm text-white/70">Regular hours</p>
+            <p className="text-sm text-white/70">Jam reguler</p>
             <p className="mt-1 text-2xl font-semibold">{timesheetSummary.regularHours}</p>
           </div>
           <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-sm text-white/70">Overtime hours</p>
+            <p className="text-sm text-white/70">Jam lembur</p>
             <p className="mt-1 text-2xl font-semibold">{timesheetSummary.overtimeHours}</p>
           </div>
         </div>
@@ -60,7 +60,7 @@ export function TimesheetOverview() {
             {timesheetSummary.period}
           </span>
           <span className="rounded-full bg-white/10 px-3 py-1">
-            {timesheetSummary.pendingReview} item menunggu review
+            {timesheetSummary.pendingReview} item menunggu pengecekan
           </span>
         </div>
       </Card>
@@ -79,7 +79,7 @@ export function TimesheetOverview() {
         <Card className="surface-module-card rounded-[1.4rem] p-4">
           <div className="inline-flex items-center gap-2 text-sm font-medium text-slate-500">
             <ReceiptText className="h-4 w-4 text-sky-600" />
-            Ready employees
+            Karyawan siap payroll
           </div>
           <p className="mt-2 text-xl font-semibold text-slate-900">
             {timesheetSummary.approvedEmployees}
@@ -90,20 +90,20 @@ export function TimesheetOverview() {
 
       <Button asChild variant="outline" className="h-11 w-full rounded-2xl">
         <Link href="/dashboard/reports">
-          Lanjut ke Daily Report Generator
+          Lanjut ke Laporan Harian
         </Link>
       </Button>
 
       <Tabs defaultValue="crew" className="gap-4">
         <TabsList className="surface-tab-shell grid h-auto grid-cols-3 rounded-2xl p-1">
           <TabsTrigger value="crew" className="rounded-xl py-2 text-xs sm:text-sm">
-            Crew recap
+            Rekap crew
           </TabsTrigger>
           <TabsTrigger value="rules" className="rounded-xl py-2 text-xs sm:text-sm">
-            Overtime rules
+            Aturan lembur
           </TabsTrigger>
           <TabsTrigger value="exports" className="rounded-xl py-2 text-xs sm:text-sm">
-            Export queue
+            File unduhan
           </TabsTrigger>
         </TabsList>
 
@@ -152,7 +152,7 @@ export function TimesheetOverview() {
                 <Button variant="outline" className="flex-1 rounded-full">
                   Koreksi
                 </Button>
-                <Button className="flex-1 rounded-full">Lock timesheet</Button>
+                <Button className="flex-1 rounded-full">Kunci timesheet</Button>
               </div>
             </Card>
           ))}
@@ -201,7 +201,7 @@ export function TimesheetOverview() {
                 </div>
                 <Button size="sm" className="rounded-full px-4">
                   <Download className="mr-2 h-4 w-4" />
-                  Export
+                  Unduh
                 </Button>
               </div>
             </Card>

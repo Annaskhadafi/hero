@@ -30,41 +30,41 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
 
   return (
     <AdminPageShell
-      eyebrow="M2 • Approval Inbox"
+      eyebrow="Approval"
       title="Approval Inbox"
-      description="Workbench approval lintas form untuk inbox, preview, komentar, audit trail, dan quick action."
+      description="Pantau pengajuan yang menunggu keputusan, lihat detailnya, dan beri keputusan dari satu tempat."
     >
       <AdminMetricGrid
         items={[
           {
-            label: "Pending approvals",
+            label: "Menunggu approval",
             value: `${metrics.pendingApprovals}`,
-            meta: "Approval item yang masih menunggu tindakan",
+            meta: "Pengajuan yang masih menunggu tindakan",
           },
           {
-            label: "Due soon",
+            label: "Segera jatuh tempo",
             value: `${metrics.dueSoon}`,
-            meta: "Perlu diprioritaskan sebelum melewati SLA",
+            meta: "Perlu diprioritaskan sebelum melewati batas waktu",
           },
           {
-            label: "Overdue",
+            label: "Terlambat",
             value: `${metrics.overdue}`,
-            meta: "Sudah melewati SLA step approval",
+            meta: "Sudah melewati batas waktu approval",
           },
           {
-            label: "Need revision",
+            label: "Perlu revisi",
             value: `${metrics.needsRevision}`,
-            meta: "Request yang kembali ke requester untuk revisi",
+            meta: "Pengajuan yang dikembalikan untuk diperbaiki",
           },
           {
-            label: "Approved today",
+            label: "Disetujui hari ini",
             value: `${metrics.approvedToday}`,
             meta: "Approval selesai hari ini",
           },
           {
-            label: "Total inbox items",
+            label: "Total pengajuan",
             value: `${metrics.totalApprovals}`,
-            meta: "Riwayat approval item yang sudah masuk workbench",
+            meta: "Semua pengajuan yang masuk ke daftar approval",
           },
         ]}
       />
@@ -72,23 +72,22 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.9fr)]">
         <Card className="rounded-[1.6rem] bg-surface-container-lowest py-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
           <CardHeader className="bg-surface-container-low px-7 py-6">
-            <CardTitle>Inbox Queue</CardTitle>
+            <CardTitle>Daftar Approval</CardTitle>
             <CardDescription>
-              Panel ini menampilkan antrian approval dengan SLA, due-state, dan quick action. Detail panel
-              di samping otomatis fokus ke item pending paling prioritas.
+              Pengajuan yang butuh keputusan ditampilkan berdasarkan prioritas dan batas waktunya.
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Request</TableHead>
-                  <TableHead>Step</TableHead>
-                  <TableHead>Approver</TableHead>
-                  <TableHead>Due</TableHead>
+                  <TableHead>Pengajuan</TableHead>
+                  <TableHead>Tahap</TableHead>
+                  <TableHead>Pemeriksa</TableHead>
+                  <TableHead>Batas Waktu</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead className="w-[240px]">Action</TableHead>
+                  <TableHead>Prioritas</TableHead>
+                  <TableHead className="w-[240px]">Tindakan</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -118,7 +117,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                         <div className="space-y-1">
                           <p className="font-medium text-[#0f172a]">{item.approverName}</p>
                           <p className="text-xs text-muted-foreground">
-                            Source {item.resolutionSource.replaceAll("_", " ")}
+                            Jalur {item.resolutionSource.replaceAll("_", " ")}
                           </p>
                         </div>
                       </TableCell>
@@ -141,14 +140,14 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                               <input type="hidden" name="approvalId" value={item.approvalId} />
                               <input type="hidden" name="decision" value="approved" />
                               <Button type="submit" size="sm" className="rounded-full px-4">
-                                Approve
+                                Setujui
                               </Button>
                             </form>
                             <form action={reviewApprovalAction}>
                               <input type="hidden" name="approvalId" value={item.approvalId} />
                               <input type="hidden" name="decision" value="rejected" />
                               <Button type="submit" size="sm" variant="secondary" className="rounded-full px-4">
-                                Reject
+                                Tolak
                               </Button>
                             </form>
                             <form action={reviewApprovalAction}>
@@ -161,8 +160,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                           </div>
                         ) : (
                           <div className="space-y-1">
-                            <p className="text-sm text-[#0f172a]">Reviewed</p>
-                            <p className="text-xs text-muted-foreground">{item.commentsCount} note tersimpan</p>
+                            <p className="text-sm text-[#0f172a]">Sudah ditinjau</p>
+                            <p className="text-xs text-muted-foreground">{item.commentsCount} catatan tersimpan</p>
                           </div>
                         )}
                       </TableCell>
@@ -171,7 +170,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                      Belum ada approval item.
+                      Belum ada pengajuan yang menunggu approval.
                     </TableCell>
                   </TableRow>
                 )}
@@ -193,12 +192,12 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
               <CardContent className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Current Step</p>
+                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Tahap Saat Ini</p>
                     <p className="mt-2 font-medium text-[#0f172a]">{focus.currentStepLabel}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{focus.currentApprover}</p>
                   </div>
                   <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Due & Status</p>
+                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Batas Waktu & Status</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <AdminStatusBadge value={focus.activityStatus} />
                       <AdminStatusBadge value={focus.dueState.replaceAll("_", " ")} />
@@ -209,15 +208,15 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
 
                 <form action={reviewApprovalAction} className="space-y-3 rounded-[1.1rem] bg-surface-container-low px-4 py-4">
                   <input type="hidden" name="approvalId" value={focus.approvalId} />
-                  <p className="text-sm font-medium text-[#0f172a]">Decision Workspace</p>
+                  <p className="text-sm font-medium text-[#0f172a]">Keputusan Approval</p>
                   <Textarea
                     name="note"
                     rows={4}
-                    placeholder="Tambahkan comment, alasan reject, atau remark revisi sebelum kirim keputusan..."
+                    placeholder="Tambahkan komentar, alasan penolakan, atau catatan revisi sebelum mengirim keputusan..."
                   />
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" name="decision" value="approved" className="rounded-full px-4">
-                      Approve
+                      Setujui
                     </Button>
                     <Button
                       type="submit"
@@ -226,7 +225,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                       variant="secondary"
                       className="rounded-full px-4"
                     >
-                      Reject
+                      Tolak
                     </Button>
                     <Button
                       type="submit"
@@ -244,8 +243,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
 
             <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
               <CardHeader>
-                <CardTitle>Preview</CardTitle>
-                <CardDescription>Snapshot data request yang sedang direview approver.</CardDescription>
+                <CardTitle>Ringkasan Pengajuan</CardTitle>
+                <CardDescription>Data pengajuan yang sedang ditinjau.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-2">
                 {focus.previewFields.map((field) => (
@@ -260,8 +259,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
             {focus.attachments.length > 0 ? (
               <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
                 <CardHeader>
-                  <CardTitle>Attachment Preview</CardTitle>
-                  <CardDescription>Evidence file dan foto yang ikut dibekukan bersama request.</CardDescription>
+                  <CardTitle>Lampiran</CardTitle>
+                  <CardDescription>File dan foto pendukung yang dikirim bersama pengajuan.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {focus.attachments.map((attachment) => (
@@ -280,7 +279,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                           rel="noreferrer"
                           className="inline-flex h-12 items-center justify-center rounded-full bg-surface-container-low px-4 text-xs font-semibold uppercase tracking-[0.08em] text-foreground shadow-[inset_0_-2px_0_rgba(66,71,80,0.08),0_10px_20px_rgba(0,52,97,0.05)] ring-1 ring-outline-ghost"
                         >
-                          Open file
+                          Buka file
                         </a>
                       </div>
                       {attachment.mimeType.startsWith("image/") ? (
@@ -301,8 +300,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
 
             <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
               <CardHeader>
-                <CardTitle>Workflow Path</CardTitle>
-                <CardDescription>Route approval yang dibekukan saat request dikirim.</CardDescription>
+                <CardTitle>Jalur Approval</CardTitle>
+                <CardDescription>Urutan pemeriksa yang berlaku saat pengajuan dikirim.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {focus.workflow.warnings.length > 0 ? (
@@ -324,20 +323,20 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="font-medium text-[#0f172a]">
-                            Step {step.stepOrder} • {step.label}
+                            Tahap {step.stepOrder} • {step.label}
                           </p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {step.approverName} • source {step.resolutionSource.replaceAll("_", " ")}
+                            {step.approverName} • jalur {step.resolutionSource.replaceAll("_", " ")}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <AdminStatusBadge value={step.status} />
-                          <AdminStatusBadge value={`SLA ${step.slaHours} Jam`} />
+                          <AdminStatusBadge value={`Batas ${step.slaHours} Jam`} />
                         </div>
                       </div>
                       {(step.fallbackLabel || step.escalationLabel) ? (
                         <p className="mt-2 text-xs text-muted-foreground">
-                          Fallback: {step.fallbackLabel || "-"} • Escalation: {step.escalationLabel || "-"}
+                          Pengganti: {step.fallbackLabel || "-"} • Eskalasi: {step.escalationLabel || "-"}
                         </p>
                       ) : null}
                     </div>
@@ -348,8 +347,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
 
             <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
               <CardHeader>
-                <CardTitle>Comment Thread</CardTitle>
-                <CardDescription>Komentar requester, approver, dan note keputusan tersimpan per step.</CardDescription>
+                <CardTitle>Komentar Approval</CardTitle>
+                <CardDescription>Komentar pemohon, pemeriksa, dan catatan keputusan tersimpan rapi.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <form action={addApprovalCommentAction} className="space-y-3 rounded-[1.1rem] bg-surface-container-low px-4 py-4">
@@ -360,7 +359,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
                     placeholder="Tambahkan komentar tanpa mengubah status approval..."
                   />
                   <Button type="submit" variant="outline" className="rounded-full px-4">
-                    Simpan Comment
+                    Simpan Komentar
                   </Button>
                 </form>
 
@@ -387,8 +386,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
 
             <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
               <CardHeader>
-                <CardTitle>Audit Trail</CardTitle>
-                <CardDescription>Timeline request, assignment, komentar, dan keputusan approval.</CardDescription>
+                <CardTitle>Riwayat Approval</CardTitle>
+                <CardDescription>Urutan pengajuan, penugasan, komentar, dan keputusan approval.</CardDescription>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-80 rounded-[1.2rem] bg-surface-container-low">
@@ -411,8 +410,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalWorkbenchData }) {
         ) : (
           <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
             <CardHeader>
-              <CardTitle>Approval Workspace</CardTitle>
-              <CardDescription>Belum ada approval untuk dipreview.</CardDescription>
+              <CardTitle>Ruang Approval</CardTitle>
+              <CardDescription>Belum ada approval untuk ditinjau.</CardDescription>
             </CardHeader>
           </Card>
         )}

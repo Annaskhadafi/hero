@@ -47,6 +47,16 @@ type EmailLogRow = {
   employeeName: string | null;
 };
 
+function getStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    sent: "Terkirim",
+    pending: "Menunggu",
+    failed: "Gagal",
+  };
+
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
 export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("all");
@@ -81,7 +91,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
           <Input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="Cari recipient, subject, template, atau actor..."
+            placeholder="Cari penerima, judul email, atau nama karyawan..."
             className="pl-9"
           />
         </div>
@@ -90,10 +100,10 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All status</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="all">Semua status</SelectItem>
+            <SelectItem value="sent">Terkirim</SelectItem>
+            <SelectItem value="pending">Menunggu</SelectItem>
+            <SelectItem value="failed">Gagal</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -103,12 +113,12 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
           <TableHeader>
             <TableRow>
               <TableHead>Status</TableHead>
-              <TableHead>To</TableHead>
-              <TableHead>Template</TableHead>
-              <TableHead>Subject</TableHead>
-              <TableHead>Actor</TableHead>
-              <TableHead>Sent At</TableHead>
-              <TableHead>Preview</TableHead>
+              <TableHead>Penerima</TableHead>
+              <TableHead>Jenis Pesan</TableHead>
+              <TableHead>Judul Email</TableHead>
+              <TableHead>Dikirim Oleh</TableHead>
+              <TableHead>Waktu Kirim</TableHead>
+              <TableHead>Lihat</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -117,29 +127,28 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                 <TableCell>
                   <Badge
                     variant={log.status === "failed" ? "destructive" : log.status === "sent" ? "default" : "outline"}
-                    className="rounded-full capitalize"
+                    className="rounded-full"
                   >
-                    {log.status}
+                    {getStatusLabel(log.status)}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs">{log.toEmail}</TableCell>
                 <TableCell>
                   <div>
-                    <p className="font-medium">{log.templateName ?? "Direct email"}</p>
-                    <p className="text-xs text-muted-foreground">{log.templateCode ?? "—"}</p>
+                    <p className="font-medium">{log.templateName ?? "Email langsung"}</p>
                   </div>
                 </TableCell>
                 <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                   {log.subject}
                 </TableCell>
-                <TableCell className="text-sm">{log.employeeName ?? "System"}</TableCell>
+                <TableCell className="text-sm">{log.employeeName ?? "Sistem"}</TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                   {(log.sentAt ?? log.createdAt).toLocaleString("id-ID")}
                 </TableCell>
                 <TableCell>
                   <Button variant="outline" size="sm" onClick={() => setSelected(log)}>
                     <Eye className="size-4" />
-                    Preview
+                    Lihat
                   </Button>
                 </TableCell>
               </TableRow>
@@ -151,9 +160,9 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Email Delivery Preview</DialogTitle>
+            <DialogTitle>Pratinjau Email</DialogTitle>
             <DialogDescription>
-              Detail delivery log meniru pola preview halaman email logs dari referensi.
+              Lihat isi email dan informasi pengiriman kepada penerima.
             </DialogDescription>
           </DialogHeader>
 
@@ -161,7 +170,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
             <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
               <div className="space-y-3 rounded-xl border p-4 text-sm">
                 <div>
-                  <p className="text-xs text-muted-foreground">To</p>
+                  <p className="text-xs text-muted-foreground">Penerima</p>
                   <p className="font-mono">{selected.toEmail}</p>
                 </div>
                 <div>
@@ -169,27 +178,24 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                   <p className="font-mono">{selected.ccEmail ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">From</p>
+                  <p className="text-xs text-muted-foreground">Pengirim</p>
                   <p className="font-mono">{selected.fromEmail ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Template</p>
-                  <p>{selected.templateName ?? "Direct email"}</p>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {selected.templateCode ?? "—"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Jenis Pesan</p>
+                  <p>{selected.templateName ?? "Email langsung"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Subject</p>
+                  <p className="text-xs text-muted-foreground">Judul Email</p>
                   <p>{selected.subject}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Status</p>
                   <Badge
                     variant={selected.status === "failed" ? "destructive" : selected.status === "sent" ? "default" : "outline"}
-                    className="rounded-full capitalize"
+                    className="rounded-full"
                   >
-                    {selected.status}
+                    {getStatusLabel(selected.status)}
                   </Badge>
                   {selected.errorMessage ? (
                     <p className="mt-2 text-xs text-red-600">{selected.errorMessage}</p>
@@ -199,21 +205,21 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
 
               <Tabs defaultValue={selected.htmlContent ? "html" : "text"} className="min-h-[420px]">
                 <TabsList className="w-full sm:w-auto">
-                  <TabsTrigger value="html">HTML Preview</TabsTrigger>
-                  <TabsTrigger value="text">Text</TabsTrigger>
+                  <TabsTrigger value="html">Tampilan Email</TabsTrigger>
+                  <TabsTrigger value="text">Isi Teks</TabsTrigger>
                 </TabsList>
                 <TabsContent value="html" className="h-[420px]">
                   <div className="h-full overflow-hidden rounded-xl border bg-white">
                     {selected.htmlContent ? (
                       <iframe
                         srcDoc={selected.htmlContent}
-                        title="Email HTML Preview"
+                        title="Pratinjau email"
                         className="h-full w-full"
                         sandbox="allow-same-origin"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                        Preview HTML tidak tersedia.
+                        Tampilan email tidak tersedia.
                       </div>
                     )}
                   </div>
@@ -221,7 +227,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                 <TabsContent value="text" className="h-[420px]">
                   <div className="h-full overflow-auto rounded-xl border p-4">
                     <pre className="whitespace-pre-wrap break-words font-mono text-sm">
-                      {selected.textContent ?? "Preview text tidak tersedia."}
+                      {selected.textContent ?? "Isi teks tidak tersedia."}
                     </pre>
                   </div>
                 </TabsContent>

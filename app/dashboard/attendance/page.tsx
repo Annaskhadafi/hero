@@ -2,7 +2,21 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { format } from "date-fns";
-import { Camera, CheckCircle2, Loader2, LogIn, LogOut, MapPin, ShieldCheck, UserRound } from "lucide-react";
+import {
+  AlertTriangle,
+  BriefcaseBusiness,
+  Camera,
+  CheckCircle2,
+  Clock3,
+  Loader2,
+  LogIn,
+  LogOut,
+  MapPin,
+  Navigation,
+  ShieldCheck,
+  TimerReset,
+  UserRound,
+} from "lucide-react";
 import { getAttendancePageData, submitAttendance } from "@/app/actions/attendance";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -46,6 +60,64 @@ type NominatimReverseResponse = {
   display_name?: string;
 };
 
+const shiftOptions = [
+  {
+    value: "day",
+    label: "Shift Pagi",
+    window: "07:00 - 15:00",
+    helper: "Operasional reguler site pagi.",
+  },
+  {
+    value: "swing",
+    label: "Shift Sore",
+    window: "15:00 - 23:00",
+    helper: "Pergantian crew dan pekerjaan lanjutan.",
+  },
+  {
+    value: "night",
+    label: "Shift Malam",
+    window: "23:00 - 07:00",
+    helper: "Shift lintas hari, pastikan clock out tetap dilakukan.",
+  },
+  {
+    value: "standby",
+    label: "Standby / On-call",
+    window: "Sesuai assignment",
+    helper: "Dipakai saat hadir karena panggilan atau standby.",
+  },
+] as const;
+
+const workModeOptions = [
+  "On Site",
+  "Area Customer",
+  "Transit / Travel",
+  "Remote Support",
+  "Pengganti Shift",
+] as const;
+
+const attendanceContextOptions = [
+  {
+    value: "regular",
+    label: "Regular",
+    helper: "Jam kerja sesuai roster.",
+  },
+  {
+    value: "overtime",
+    label: "Lembur",
+    helper: "Ada pekerjaan tambahan di luar shift.",
+  },
+  {
+    value: "handover",
+    label: "Handover Shift",
+    helper: "Masuk/keluar untuk serah terima pekerjaan.",
+  },
+  {
+    value: "callout",
+    label: "Emergency Call Out",
+    helper: "Attendance karena panggilan mendadak.",
+  },
+] as const;
+
 function formatCoordinate(value: number | string) {
   const numericValue = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numericValue) ? numericValue.toFixed(5) : String(value);
@@ -61,6 +133,34 @@ function getCoordinateLabel(latitude: number | string, longitude: number | strin
 
 function normalizeTextLine(value: string | null | undefined) {
   return value?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+}
+
+function splitAttendanceNote(value: string | null | undefined) {
+  const parts = value?.split("|").map((part) => part.trim()).filter(Boolean) ?? [];
+
+  return {
+    locationNote: parts[0] ?? null,
+    details: parts.slice(1),
+  };
+}
+
+function formatOvertimeLabel(minutes: number) {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return "Tidak ada";
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours > 0 && remainingMinutes > 0) {
+    return `${hours} jam ${remainingMinutes} menit`;
+  }
+
+  if (hours > 0) {
+    return `${hours} jam`;
+  }
+
+  return `${remainingMinutes} menit`;
 }
 
 function extractAreaLabel(result: NominatimReverseResponse) {
@@ -142,6 +242,12 @@ export default function AttendancePage() {
   const [liveLocationLabel, setLiveLocationLabel] = useState<ReverseGeocodeResult | null>(null);
   const [historyLocationLabels, setHistoryLocationLabels] = useState<Record<string, ReverseGeocodeResult>>({});
   const [capturedPreviewUrl, setCapturedPreviewUrl] = useState<string | null>(null);
+  const [selectedShift, setSelectedShift] = useState<(typeof shiftOptions)[number]["value"]>("day");
+  const [workMode, setWorkMode] = useState<(typeof workModeOptions)[number]>("On Site");
+  const [attendanceContext, setAttendanceContext] =
+    useState<(typeof attendanceContextOptions)[number]["value"]>("regular");
+  const [overtimeMinutes, setOvertimeMinutes] = useState(0);
+  const [operationalNote, setOperationalNote] = useState("");
 
   const refreshAttendanceData = async () => {
     const result = await getAttendancePageData();
@@ -174,6 +280,38 @@ export default function AttendancePage() {
   const coordinateLabel = location ? getCoordinateLabel(location.lat, location.lng) : fallbackLocationLabel;
   const resolvedLocationLabel = liveLocationLabel?.label ?? coordinateLabel;
   const resolvedLocationDetail = liveLocationLabel?.detail ?? null;
+  const currentShift = shiftOptions.find((shift) => shift.value === selectedShift) ?? shiftOptions[0];
+  const currentAttendanceContext =
+    attendanceContextOptions.find((option) => option.value === attendanceContext) ?? attendanceContextOptions[0];
+  const lastLog = logs[0] ?? null;
+  const lastEventType = lastLog?.eventType ?? null;
+  const recommendedAction = lastEventType === "checked-in" ? "Clock Out" : "Clock In";
+  const nextActionHint =
+    lastEventType === "checked-in"
+      ? "Shift sedang berjalan. Clock out saat pekerjaan selesai atau saat handover."
+      : lastEventType === "checked-out"
+        ? "Attendance terakhir sudah clock out. Clock in lagi jika ada assignment baru."
+        : "Mulai attendance pertama hari ini saat sudah berada di lokasi kerja.";
+  const readinessItems = [
+    {
+      label: "Profil",
+      value: employee ? employee.siteName : "Belum siap",
+      ready: Boolean(employee),
+      icon: UserRound,
+    },
+    {
+      label: "GPS",
+      value: gpsLocked ? resolvedLocationLabel : "Menunggu izin lokasi",
+      ready: gpsLocked,
+      icon: Navigation,
+    },
+    {
+      label: "Kamera",
+      value: cameraReady ? "Siap capture selfie" : "Menunggu izin kamera",
+      ready: cameraReady,
+      icon: Camera,
+    },
+  ];
 
   useEffect(() => {
     // Update time every minute
@@ -426,11 +564,18 @@ export default function AttendancePage() {
       formData.append("latitude", location.lat.toString());
       formData.append("longitude", location.lng.toString());
       formData.append("locationName", resolvedLocationLabel);
+      formData.append("shiftLabel", currentShift.label);
+      formData.append("shiftWindow", currentShift.window);
+      formData.append("workMode", workMode);
+      formData.append("attendanceContext", currentAttendanceContext.label);
+      formData.append("overtimeMinutes", `${attendanceContext === "overtime" ? overtimeMinutes : 0}`);
+      formData.append("operationalNote", operationalNote.trim());
 
       const res = await submitAttendance(formData);
       if (res.success) {
         setSubmitMessage("Attendance berhasil dicatat.");
         setCapturedPhoto(null);
+        setOperationalNote("");
         await refreshAttendanceData();
       } else {
         setSubmitError(res.error || "Failed to log attendance");
@@ -445,16 +590,18 @@ export default function AttendancePage() {
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col overflow-hidden bg-surface-container-lowest md:min-h-0 md:rounded-[2rem] md:shadow-[0_30px_120px_rgba(15,23,42,0.12)]">
         <div className="flex items-center justify-between bg-surface-container-low px-5 py-4 backdrop-blur-xl md:px-8 md:py-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Attendance Console</p>
-            <h1 className="mt-1 text-xl font-semibold text-slate-950 md:text-2xl">Selfie + GPS Verification</h1>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Field Attendance</p>
+            <h1 className="mt-1 text-xl font-semibold text-slate-950 md:text-2xl">Mobile Clock In/Out</h1>
           </div>
-          <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Status</p>
-            <p className="text-sm font-semibold text-emerald-900">{canSubmit ? "Ready to Submit" : "Waiting Permission"}</p>
+          <div className={`rounded-2xl px-4 py-3 text-right ${canSubmit ? "bg-emerald-50" : "bg-amber-50"}`}>
+            <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${canSubmit ? "text-emerald-600" : "text-amber-600"}`}>Status</p>
+            <p className={`text-sm font-semibold ${canSubmit ? "text-emerald-900" : "text-amber-900"}`}>
+              {canSubmit ? `Ready for ${recommendedAction}` : "Waiting Permission"}
+            </p>
           </div>
         </div>
 
-        <div className="grid flex-1 gap-0 md:grid-cols-[minmax(0,1.25fr)_minmax(360px,420px)]">
+        <div className="grid flex-1 gap-0 md:items-start md:grid-cols-[minmax(0,1.25fr)_minmax(360px,420px)]">
           <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0f172a_0%,_#111827_100%)] px-4 pb-6 pt-4 text-white md:px-8 md:pb-8 md:pt-8">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.22),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(14,165,233,0.18),_transparent_32%)]" />
             <div className="relative flex h-full flex-col">
@@ -472,14 +619,14 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="relative flex-1 overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_25px_80px_rgba(0,0,0,0.35)]">
+              <div className="relative flex-1 overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_25px_80px_rgba(0,0,0,0.35)] md:h-[480px] md:flex-none lg:h-[520px]">
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
                   onLoadedMetadata={() => setCameraReady(true)}
-                  className="h-full min-h-[340px] w-full object-cover md:min-h-[620px]"
+                  className="h-full min-h-[340px] w-full object-cover md:min-h-0"
                 />
                 <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.12),transparent_24%,transparent_76%,rgba(15,23,42,0.32))]" />
 
@@ -552,6 +699,124 @@ export default function AttendancePage() {
                 <p className="mt-1 text-sm font-medium text-slate-500">{dateStr || "-"}</p>
               </div>
 
+              <div className="mt-4 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-950">Konteks Attendance</h2>
+                    <p className="mt-1 text-sm text-slate-500">{nextActionHint}</p>
+                  </div>
+                  <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {recommendedAction}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-semibold uppercase text-slate-500">Shift / Roster</span>
+                    <select
+                      value={selectedShift}
+                      onChange={(event) => setSelectedShift(event.target.value as typeof selectedShift)}
+                      className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      {shiftOptions.map((shift) => (
+                        <option key={shift.value} value={shift.value}>
+                          {shift.label} - {shift.window}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-slate-500">{currentShift.helper}</span>
+                  </label>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold uppercase text-slate-500">Lokasi Kerja</span>
+                      <select
+                        value={workMode}
+                        onChange={(event) => setWorkMode(event.target.value as typeof workMode)}
+                        className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        {workModeOptions.map((mode) => (
+                          <option key={mode} value={mode}>
+                            {mode}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold uppercase text-slate-500">Kondisi</span>
+                      <select
+                        value={attendanceContext}
+                        onChange={(event) => setAttendanceContext(event.target.value as typeof attendanceContext)}
+                        className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        {attendanceContextOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {attendanceContext === "overtime" ? (
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-semibold uppercase text-slate-500">Estimasi Lembur</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={30}
+                        value={overtimeMinutes}
+                        onChange={(event) => setOvertimeMinutes(Math.max(0, Number(event.target.value) || 0))}
+                        className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
+                        placeholder="Masukkan menit lembur"
+                      />
+                      <span className="text-xs text-slate-500">Tercatat sebagai {formatOvertimeLabel(overtimeMinutes)} untuk referensi approval/payroll.</span>
+                    </label>
+                  ) : (
+                    <p className="rounded-lg bg-surface-container-low px-3 py-2 text-xs text-slate-600">
+                      {currentAttendanceContext.helper}
+                    </p>
+                  )}
+
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-semibold uppercase text-slate-500">Catatan Singkat</span>
+                    <textarea
+                      value={operationalNote}
+                      onChange={(event) => setOperationalNote(event.target.value)}
+                      maxLength={160}
+                      rows={3}
+                      className="resize-none rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="Contoh: standby di workshop, pengganti shift B, atau pekerjaan emergency."
+                    />
+                    <span className="text-right text-[11px] text-slate-400">{operationalNote.length}/160</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {readinessItems.map((item) => {
+                  const Icon = item.icon;
+
+                  return (
+                    <div key={item.label} className="flex items-center gap-3 rounded-[1.25rem] bg-surface-container-low p-3">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${item.ready ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold uppercase text-slate-500">{item.label}</p>
+                        <p className="truncate text-sm font-semibold text-slate-950">{item.value}</p>
+                      </div>
+                      {item.ready ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="mt-4 space-y-3">
                 {submitError ? (
                   <Alert className="border-rose-200 bg-rose-50 text-rose-900">
@@ -608,13 +873,26 @@ export default function AttendancePage() {
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
                       <ShieldCheck className="h-5 w-5" />
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">Attendance checklist</p>
-                      <ul className="mt-2 space-y-1 text-sm text-slate-500">
-                        <li>Kamera siap dan wajah terlihat jelas</li>
-                        <li>GPS sudah lock di lokasi kerja</li>
-                        <li>Foto akan tersimpan sebagai evidence attendance</li>
-                      </ul>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-950">Yang akan tercatat</p>
+                      <div className="mt-3 space-y-2 text-sm text-slate-600">
+                        <div className="flex items-center gap-2">
+                          <Clock3 className="h-4 w-4 text-slate-500" />
+                          <span className="truncate">{currentShift.label} ({currentShift.window})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <BriefcaseBusiness className="h-4 w-4 text-slate-500" />
+                          <span className="truncate">{workMode} - {currentAttendanceContext.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <TimerReset className="h-4 w-4 text-slate-500" />
+                          <span className="truncate">Lembur: {attendanceContext === "overtime" ? formatOvertimeLabel(overtimeMinutes) : "Tidak ada"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Camera className="h-4 w-4 text-slate-500" />
+                          <span className="truncate">Selfie, GPS, jam server, dan lokasi akan menjadi evidence.</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -649,8 +927,8 @@ export default function AttendancePage() {
               <div className="mt-4 flex-1 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-950">Today&apos;s Log</h3>
-                    <p className="text-sm text-slate-500">Clock activity untuk hari ini.</p>
+                    <h3 className="text-lg font-semibold text-slate-950">Log Shift Ini</h3>
+                    <p className="text-sm text-slate-500">Termasuk shift malam yang melewati pergantian tanggal.</p>
                   </div>
                   <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                     {logs.length} records
@@ -660,7 +938,7 @@ export default function AttendancePage() {
                 <div className="mt-5 space-y-4">
                   {logs.length === 0 ? (
                     <div className="rounded-2xl bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground">
-                      Belum ada attendance yang tercatat hari ini.
+                      Belum ada attendance yang tercatat untuk window shift ini.
                     </div>
                   ) : (
                     logs.map((log) => (
@@ -674,11 +952,13 @@ export default function AttendancePage() {
                             ? getCoordinateKey(log.latitude, log.longitude)
                             : null;
                         const reverseLabel = historyKey ? historyLocationLabels[historyKey] : null;
+                        const parsedNote = splitAttendanceNote(log.locationNote);
                         const locationLines = [
                           reverseLabel?.label ?? null,
                           reverseLabel?.detail ?? null,
                           coordinateText,
-                          log.locationNote,
+                          parsedNote.locationNote,
+                          ...parsedNote.details,
                         ].filter((line, index, lines) => {
                           if (!line) {
                             return false;

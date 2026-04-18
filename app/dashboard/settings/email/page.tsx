@@ -11,30 +11,31 @@ export default async function EmailSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Email Delivery Log</h1>
+        <p className="industrial-label">Riwayat Email</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-normal">Pengiriman Email</h1>
         <p className="text-sm text-muted-foreground">
-          Audit trail untuk email delivery admin, notifikasi, dan reminder yang keluar dari HERO.
+          Pantau email admin, notifikasi, dan pengingat yang dikirim dari HERO.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          { label: "Delivered", value: sent },
-          { label: "Pending", value: pending },
-          { label: "Failed", value: failed },
+          { label: "Terkirim", value: sent },
+          { label: "Menunggu", value: pending },
+          { label: "Gagal", value: failed },
         ].map((item) => (
-          <Card key={item.label} className="rounded-2xl">
+          <Card key={item.label} className="rounded-lg">
             <CardContent className="p-6">
               <p className="text-sm text-muted-foreground">{item.label}</p>
-              <p className="mt-2 text-3xl font-semibold">{item.value}</p>
+              <p className="mt-2 font-display text-3xl font-semibold">{item.value}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="rounded-2xl">
+      <Card className="rounded-lg">
         <CardHeader>
-          <CardTitle>Email Logs</CardTitle>
+          <CardTitle>Daftar Pengiriman Email</CardTitle>
         </CardHeader>
         <CardContent>
           <EmailDeliveryLogTable logs={logs} />

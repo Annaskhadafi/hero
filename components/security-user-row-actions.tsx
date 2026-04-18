@@ -110,9 +110,9 @@ export function SecurityUserRowActions({
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] w-full overflow-y-auto sm:max-w-5xl">
         <DialogHeader className="pr-8">
-          <DialogTitle>User Action Center</DialogTitle>
+          <DialogTitle>Kelola Pengguna</DialogTitle>
           <DialogDescription>
-            Detail user, edit profil, ganti role, reset password, ban, atau delete user.
+            Lihat detail pengguna, ubah profil, ganti peran, reset password, nonaktifkan, atau hapus akses.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,7 +144,7 @@ export function SecurityUserRowActions({
                 <p className="font-medium">{user.employeeSn}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Role</p>
+                <p className="text-xs text-muted-foreground">Peran</p>
                 <Badge variant="outline" className="rounded-full">
                   {user.accessRole}
                 </Badge>
@@ -217,7 +217,7 @@ export function SecurityUserRowActions({
             <form action={formAction} className="space-y-4 rounded-[1.2rem] bg-surface-container-low p-4">
               <div className="flex items-center gap-2">
                 <Pencil className="size-4 text-muted-foreground" />
-                <p className="font-medium">Edit Profil User</p>
+                <p className="font-medium">Edit Profil Pengguna</p>
               </div>
               <input type="hidden" name="intent" value="update-profile" />
               <input type="hidden" name="employeeId" value={user.id} />
@@ -361,13 +361,13 @@ export function SecurityUserRowActions({
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2">
                   <Pencil className="size-4 text-muted-foreground" />
-                  <p className="font-medium">Ganti Role</p>
+                  <p className="font-medium">Ganti Peran</p>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Role Akses</Label>
+                  <Label>Peran Akses</Label>
                   <Select name="accessRole" defaultValue={user.accessRole}>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Pilih role" />
+                      <SelectValue placeholder="Pilih peran" />
                     </SelectTrigger>
                     <SelectContent>
                       {roleOptions.map((role) => (
@@ -379,7 +379,7 @@ export function SecurityUserRowActions({
                   </Select>
                 </div>
                 <div className="flex justify-end">
-                  <SubmitButton>Ganti Role</SubmitButton>
+                  <SubmitButton>Ganti Peran</SubmitButton>
                 </div>
               </form>
 
@@ -410,13 +410,13 @@ export function SecurityUserRowActions({
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
                   <ShieldBan className="size-4" />
-                  <p className="font-medium">Ban User</p>
+                  <p className="font-medium">Nonaktifkan Pengguna</p>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Menonaktifkan akses login dan mengakhiri session aktif user.
+                  Menonaktifkan akses login dan mengakhiri sesi aktif pengguna.
                 </p>
                 <div className="flex justify-end">
-                  <SubmitButton variant="outline">Ban User</SubmitButton>
+                  <SubmitButton variant="outline">Nonaktifkan Pengguna</SubmitButton>
                 </div>
               </form>
 
@@ -425,13 +425,13 @@ export function SecurityUserRowActions({
                 <input type="hidden" name="employeeId" value={user.id} />
                 <div className="flex items-center gap-2 text-destructive">
                   <Trash2 className="size-4" />
-                  <p className="font-medium">Delete User</p>
+                  <p className="font-medium">Hapus Pengguna</p>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Hapus user dari master employee dan auth account terkait.
+                  Hapus pengguna dari daftar karyawan dan akun login terkait.
                 </p>
                 <div className="flex justify-end">
-                  <SubmitButton variant="destructive">Delete User</SubmitButton>
+                  <SubmitButton variant="destructive">Hapus Pengguna</SubmitButton>
                 </div>
               </form>
             </div>

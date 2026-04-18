@@ -25,45 +25,45 @@ type FormStudioOverviewData = Awaited<ReturnType<typeof getFormStudioConsoleData
 export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
   const capabilityRows = [
     {
-      capability: "Template catalog",
-      status: data.metrics.templates > 0 ? "live" : "backlog",
-      detail: "Katalog form approval lintas modul sudah tersimpan di blueprint runtime.",
+      capability: "Katalog form",
+      status: data.metrics.templates > 0 ? "ready" : "planned",
+      detail: "Form approval utama sudah tersedia untuk dipilih sesuai kebutuhan operasional.",
     },
     {
-      capability: "Versioning & publish flow",
-      status: data.metrics.versions > 0 ? "partial" : "backlog",
-      detail: "Versioned entity dan publish status sudah ada, tetapi editor publish penuh belum dibuat.",
+      capability: "Riwayat perubahan",
+      status: data.metrics.versions > 0 ? "needs review" : "planned",
+      detail: "Perubahan form dapat ditinjau, namun pengalaman edit masih perlu disederhanakan.",
     },
     {
-      capability: "Field / section registry",
-      status: data.metrics.fields > 0 && data.metrics.sections > 0 ? "live" : "backlog",
-      detail: "Section, field, option, dan validation entity sudah aktif sebagai runtime metadata.",
+      capability: "Bagian dan isian form",
+      status: data.metrics.fields > 0 && data.metrics.sections > 0 ? "ready" : "planned",
+      detail: "Bagian, pertanyaan, pilihan, dan validasi form sudah tersusun untuk kebutuhan admin.",
     },
     {
-      capability: "Template preview form",
-      status: data.templates.some((template) => template.templateKey === "daily-activity") ? "live" : "partial",
-      detail: "Daily Activity sudah memakai form template-driven sebagai starter template pertama.",
+      capability: "Pratinjau form",
+      status: data.templates.some((template) => template.templateKey === "daily-activity") ? "ready" : "needs review",
+      detail: "Form Daily Activity sudah dapat menjadi contoh awal untuk proses berikutnya.",
     },
     {
-      capability: "Visual builder",
-      status: "backlog",
-      detail: "No-code builder drag-and-drop untuk field/section masih fase berikutnya.",
+      capability: "Editor tanpa bantuan teknis",
+      status: "planned",
+      detail: "Admin nantinya dapat menyusun form sendiri tanpa mengubah kode aplikasi.",
     },
   ] as const;
 
   return (
     <AdminPageShell
-      eyebrow="M2 • Form Studio"
+      eyebrow="Approval Forms"
       title="Form Studio"
-      description="Katalog template approval dan readiness matrix untuk membuat form baru tanpa hardcode ulang engine."
+      description="Katalog form approval untuk menyiapkan formulir baru dengan alur yang lebih mudah dikelola admin."
     >
       <AdminMetricGrid
         items={[
-          { label: "Templates", value: `${data.metrics.templates}`, meta: "Template form yang sudah terdaftar di catalog blueprint" },
-          { label: "Versions", value: `${data.metrics.versions}`, meta: "Versi template yang sudah tercatat untuk publish lifecycle" },
-          { label: "Sections", value: `${data.metrics.sections}`, meta: "Section template yang akan dipakai builder/runtime preview" },
-          { label: "Fields", value: `${data.metrics.fields}`, meta: "Field registry lintas template yang sudah hidup di metadata" },
-          { label: "Submissions", value: `${data.metrics.submissions}`, meta: "Draft dan request form yang sudah masuk submission layer" },
+          { label: "Template", value: `${data.metrics.templates}`, meta: "Pilihan form yang siap dipakai lintas modul" },
+          { label: "Versi", value: `${data.metrics.versions}`, meta: "Riwayat perubahan form yang dapat ditinjau" },
+          { label: "Bagian", value: `${data.metrics.sections}`, meta: "Kelompok isian yang membentuk struktur form" },
+          { label: "Isian", value: `${data.metrics.fields}`, meta: "Pertanyaan dan kolom yang tersedia di form" },
+          { label: "Pengajuan", value: `${data.metrics.submissions}`, meta: "Draft dan permintaan yang sudah masuk" },
         ]}
       />
 
@@ -77,9 +77,7 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle>{template.name}</CardTitle>
-                  <CardDescription>
-                    {template.category} • v{template.latestVersion?.versionNumber ?? 0}
-                  </CardDescription>
+                  <CardDescription>{template.category}</CardDescription>
                 </div>
                 <AdminStatusBadge
                   value={template.latestVersion?.publishStatus ?? (template.isActive ? "partial" : "backlog")}
@@ -89,21 +87,21 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Workflow Mode</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Jenis proses</p>
                   <p className="mt-2 text-sm font-medium text-[#0f172a]">{template.workflowMode.replaceAll("_", " ")}</p>
                 </div>
                 <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Field Scope</p>
-                  <p className="mt-2 text-sm font-medium text-[#0f172a]">{fieldCount} field</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Jumlah isian</p>
+                  <p className="mt-2 text-sm font-medium text-[#0f172a]">{fieldCount} isian</p>
                 </div>
                 <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Draft Queue</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Draft tersimpan</p>
                   <p className="mt-2 text-sm font-medium text-[#0f172a]">{template.draftCount} draft</p>
                 </div>
               </div>
-              <p className="text-sm text-[#0f172a]">{template.description || "Blueprint template untuk workflow approval HERO."}</p>
+              <p className="text-sm text-[#0f172a]">{template.description || "Template form untuk proses approval HERO."}</p>
               <p className="text-xs text-muted-foreground">
-                {template.sections.length} section • {template.versionCount} version • latest status{" "}
+                {template.sections.length} bagian • {template.versionCount} versi • status terbaru{" "}
                 {template.latestVersion?.publishStatus ?? "draft"}
               </p>
             </CardContent>
@@ -116,9 +114,9 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
         <CardHeader className="bg-surface-container-low px-7 py-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle>Capability Readiness</CardTitle>
+              <CardTitle>Kesiapan Form</CardTitle>
               <CardDescription>
-                Status builder dan experience layer yang dibutuhkan supaya form baru tinggal pilih template/workflow.
+                Ringkasan kesiapan agar admin dapat memilih, meninjau, dan menyusun form dengan lebih mudah.
               </CardDescription>
             </div>
             <Button asChild variant="outline" className="rounded-full">
@@ -130,9 +128,9 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Capability</TableHead>
+                <TableHead>Area</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Remark</TableHead>
+                <TableHead>Catatan</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

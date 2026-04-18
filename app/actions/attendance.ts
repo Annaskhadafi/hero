@@ -7,7 +7,7 @@ import { auth } from "@/lib/auth";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { headers } from "next/headers";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
-import { startOfDay, endOfDay } from "date-fns";
+import { endOfDay, startOfDay, subHours } from "date-fns";
 
 async function getCurrentEmployee() {
   const session = await auth.api.getSession({
@@ -133,6 +133,63 @@ function buildLocationNote(
   return locationName?.trim() || fallbackLocation || "Lokasi GPS";
 }
 
+function formatOvertimeLabel(minutes: number) {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return null;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours > 0 && remainingMinutes > 0) {
+    return `${hours} jam ${remainingMinutes} menit`;
+  }
+
+  if (hours > 0) {
+    return `${hours} jam`;
+  }
+
+  return `${remainingMinutes} menit`;
+}
+
+function getTrimmedFormValue(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildAttendanceNote(input: {
+  locationNote: string;
+  shiftLabel: string;
+  shiftWindow: string;
+  workMode: string;
+  attendanceContext: string;
+  overtimeMinutes: number;
+  operationalNote: string;
+}) {
+  const details = [
+    input.shiftLabel
+      ? `Shift: ${input.shiftLabel}${input.shiftWindow ? ` (${input.shiftWindow})` : ""}`
+      : null,
+    input.workMode ? `Mode: ${input.workMode}` : null,
+    input.attendanceContext ? `Kondisi: ${input.attendanceContext}` : null,
+    formatOvertimeLabel(input.overtimeMinutes)
+      ? `Lembur: ${formatOvertimeLabel(input.overtimeMinutes)}`
+      : null,
+    input.operationalNote ? `Catatan: ${input.operationalNote}` : null,
+  ].filter(Boolean);
+
+  return [input.locationNote, ...details].join(" | ");
+}
+
+function getAttendanceQueryWindow() {
+  const now = new Date();
+
+  return {
+    start: subHours(startOfDay(now), 8),
+    end: endOfDay(now),
+  };
+}
+
 export async function getAttendancePageData() {
   const employee = await getCurrentEmployee();
 
@@ -144,8 +201,7 @@ export async function getAttendancePageData() {
     };
   }
 
-  const todayStart = startOfDay(new Date());
-  const todayEnd = endOfDay(new Date());
+  const attendanceWindow = getAttendanceQueryWindow();
 
   const logs = await db
     .select()
@@ -153,8 +209,8 @@ export async function getAttendancePageData() {
     .where(
       and(
         eq(attendanceRecords.employeeId, employee.id),
-        gte(attendanceRecords.eventTime, todayStart),
-        lte(attendanceRecords.eventTime, todayEnd),
+        gte(attendanceRecords.eventTime, attendanceWindow.start),
+        lte(attendanceRecords.eventTime, attendanceWindow.end),
       ),
     )
     .orderBy(desc(attendanceRecords.eventTime));
@@ -184,10 +240,24 @@ export async function submitAttendance(formData: FormData) {
     const photoUrl = photoUrlResult.url;
 
     const eventType = formData.get("type") as string;
+    if (eventType !== "checked-in" && eventType !== "checked-out") {
+      return { success: false, error: "Tipe attendance tidak valid." };
+    }
+
     const latitude = formData.get("latitude") as string | null;
     const longitude = formData.get("longitude") as string | null;
     const locationName = formData.get("locationName") as string | null;
-    const locationNote = buildLocationNote(locationName, latitude, longitude, employee.workLocation);
+    const baseLocationNote = buildLocationNote(locationName, latitude, longitude, employee.workLocation);
+    const overtimeMinutes = Math.max(0, Number(getTrimmedFormValue(formData, "overtimeMinutes")) || 0);
+    const locationNote = buildAttendanceNote({
+      locationNote: baseLocationNote,
+      shiftLabel: getTrimmedFormValue(formData, "shiftLabel"),
+      shiftWindow: getTrimmedFormValue(formData, "shiftWindow"),
+      workMode: getTrimmedFormValue(formData, "workMode"),
+      attendanceContext: getTrimmedFormValue(formData, "attendanceContext"),
+      overtimeMinutes,
+      operationalNote: getTrimmedFormValue(formData, "operationalNote").slice(0, 160),
+    });
 
     await db.insert(attendanceRecords).values({
       employeeId: employee.id,
@@ -215,11 +285,10 @@ export async function getTodayAttendanceLogs() {
   const employee = await getCurrentEmployee();
 
   if (!employee) {
-    return { success: false, logs: [] };
+    return { success: false, employee: null, logs: [] };
   }
 
-  const todayStart = startOfDay(new Date());
-  const todayEnd = endOfDay(new Date());
+  const attendanceWindow = getAttendanceQueryWindow();
 
   const logs = await db
     .select()
@@ -227,8 +296,8 @@ export async function getTodayAttendanceLogs() {
     .where(
       and(
         eq(attendanceRecords.employeeId, employee.id),
-        gte(attendanceRecords.eventTime, todayStart),
-        lte(attendanceRecords.eventTime, todayEnd)
+        gte(attendanceRecords.eventTime, attendanceWindow.start),
+        lte(attendanceRecords.eventTime, attendanceWindow.end)
       )
     )
     .orderBy(desc(attendanceRecords.eventTime));
@@ -236,9 +305,13 @@ export async function getTodayAttendanceLogs() {
   const logsWithPhotoPreview = await Promise.all(
     logs.map(async (log) => ({
       ...log,
+      employeeName: employee.name,
+      employeeEmail: employee.email,
+      siteName: employee.siteName,
+      workLocation: employee.workLocation,
       photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl),
     })),
   );
 
-  return { success: true, logs: logsWithPhotoPreview };
+  return { success: true, employee, logs: logsWithPhotoPreview };
 }

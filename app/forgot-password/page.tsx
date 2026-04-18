@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="space-y-2">
                                 <Label htmlFor="m-email" className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                                    Terminal Identity
+                                    Email
                                 </Label>
                                 <div className="group relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-4">
@@ -99,7 +99,7 @@ export default function ForgotPasswordPage() {
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isLoading}
-                                        className="h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
                                 </div>
                             </div>
@@ -112,11 +112,11 @@ export default function ForgotPasswordPage() {
                                 {isLoading ? (
                                     <span className="flex items-center gap-2">
                                         <Loader2 className="h-4 w-4 animate-spin" />
-                                        PROCESSING...
+                                        Mengirim...
                                     </span>
                                 ) : (
                                     <span className="flex items-center gap-2">
-                                        SEND_RESET_LINK
+                                        Kirim Link Reset
                                         <ArrowRight className="h-4 w-4" />
                                     </span>
                                 )}
@@ -134,7 +134,7 @@ export default function ForgotPasswordPage() {
                             href="/sign-in"
                             className="flex h-14 w-full items-center justify-center rounded-xl bg-[#10283a]/92 text-xs font-medium uppercase tracking-[0.05em] text-slate-200 transition hover:bg-[#143044]"
                         >
-                            RETURN_TO_LOGIN
+                            Kembali ke Login
                         </Link>
                     </div>
 
@@ -156,7 +156,7 @@ export default function ForgotPasswordPage() {
                         <>
                             Kembali ke{" "}
                             <Link href="/sign-in" className="font-medium text-[#9ac8ec] transition hover:text-[#bedef2]">
-                                Sign in
+                                Login
                             </Link>
                         </>
                     }
@@ -187,7 +187,7 @@ export default function ForgotPasswordPage() {
                                 onChange={(event) => setEmail(event.target.value)}
                                 required
                                 disabled={isLoading}
-                                className="h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
+                                className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 text-base text-white placeholder:text-slate-500"
                             />
                         </div>
 

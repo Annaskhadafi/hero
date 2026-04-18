@@ -22,12 +22,29 @@ import type { getWorkflowStudioConsoleData } from "@/lib/approval-blueprint";
 
 type WorkflowStudioOverviewData = Awaited<ReturnType<typeof getWorkflowStudioConsoleData>>;
 
+const conditionLabels: Record<string, string> = {
+  site: "Lokasi kerja",
+  priority: "Prioritas permintaan",
+  overtimeMinutes: "Durasi lembur",
+};
+
+function formatConditionField(field: string) {
+  if (conditionLabels[field]) {
+    return conditionLabels[field];
+  }
+
+  return field
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewData }) {
   const workflowModes = data.workflows.map((workflow) => ({
     id: workflow.id,
     title: workflow.name,
-    status: workflow.latestVersion?.publishStatus ?? (workflow.isActive ? "partial" : "backlog"),
-    summary: `${workflow.mode.replaceAll("_", " ")} • ${workflow.stepRules.length} step rule • ${workflow.conditions.length} condition • ${workflow.notificationRules.length} notif rule • ${workflow.reminderRules.length} reminder rule`,
+    status: workflow.latestVersion?.publishStatus ?? (workflow.isActive ? "needs review" : "planned"),
+    summary: `${workflow.mode.replaceAll("_", " ")} dengan ${workflow.stepRules.length} tahapan persetujuan, ${workflow.conditions.length} kriteria keputusan, ${workflow.notificationRules.length} notifikasi, dan ${workflow.reminderRules.length} pengingat.`,
   }));
   const conditionRows = [
     ...Array.from(
@@ -42,42 +59,42 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewD
           return map;
         }, new Map())
         .entries(),
-    ).map(([field, operators]) => ({
-      field,
-      status: "live",
-      detail: `Tersedia di workflow condition registry dengan operator ${operators.join(", ") || "="}.`,
+    ).map(([field]) => ({
+      field: formatConditionField(field),
+      status: "ready",
+      detail: `Sudah bisa dipakai untuk mengarahkan approval berdasarkan ${formatConditionField(field).toLowerCase()}.`,
     })),
     {
-      field: "Grouped AND / OR Builder",
-      status: data.metrics.conditions > 0 ? "partial" : "backlog",
-      detail: "Entity parent-child condition dan logical join sudah ada, tetapi visual builder belum dibuat.",
+      field: "Kombinasi beberapa kriteria",
+      status: data.metrics.conditions > 0 ? "needs review" : "planned",
+      detail: "Butuh tampilan yang lebih sederhana agar admin dapat menggabungkan beberapa syarat tanpa bantuan teknis.",
     },
     {
-      field: "Attachment Presence",
-      status: "backlog",
-      detail: "Belum ada operator generik untuk rule if attachment exists / specific attachment type.",
+      field: "Kelengkapan lampiran",
+      status: "planned",
+      detail: "Akan dipakai untuk membedakan permintaan yang wajib melampirkan dokumen pendukung.",
     },
     {
-      field: "Nominal Threshold",
-      status: "backlog",
-      detail: "Use case procurement/finance nominal threshold belum dipetakan ke runtime resolver.",
+      field: "Batas nominal",
+      status: "planned",
+      detail: "Akan membantu approval bernilai besar naik ke level pemeriksa yang sesuai.",
     },
   ];
 
   return (
     <AdminPageShell
-      eyebrow="M2 • Workflow Studio"
+      eyebrow="Approval Operations"
       title="Workflow Studio"
-      description="Control room untuk org template, matrix approval, logic scope, reminder readiness, dan roadmap multi-approval."
+      description="Pusat pengaturan alur approval, tahapan pemeriksa, notifikasi, pengingat, dan kesiapan aturan operasional."
     >
       <AdminMetricGrid
         items={[
-          { label: "Workflows", value: `${data.metrics.workflows}`, meta: "Workflow template yang sudah teregistrasi" },
-          { label: "Versions", value: `${data.metrics.versions}`, meta: "Versi workflow untuk snapshot dan publish lifecycle" },
-          { label: "Conditions", value: `${data.metrics.conditions}`, meta: "Rule condition registry yang dipakai branching logic" },
-          { label: "Branches", value: `${data.metrics.branches}`, meta: "Branch outcome yang siap dipakai route engine" },
-          { label: "Notif rules", value: `${data.metrics.notificationRules}`, meta: "Trigger notifikasi yang sudah terseed di workflow blueprint" },
-          { label: "Reminder rules", value: `${data.metrics.reminderRules}`, meta: "Reminder rule sebelum due atau overdue" },
+          { label: "Alur Approval", value: `${data.metrics.workflows}`, meta: "Jenis proses yang sudah punya jalur pemeriksaan" },
+          { label: "Versi Aktif", value: `${data.metrics.versions}`, meta: "Riwayat perubahan alur yang dapat ditinjau ulang" },
+          { label: "Kriteria", value: `${data.metrics.conditions}`, meta: "Syarat yang membantu menentukan jalur approval" },
+          { label: "Jalur Keputusan", value: `${data.metrics.branches}`, meta: "Pilihan arah proses sesuai kondisi permintaan" },
+          { label: "Notifikasi", value: `${data.metrics.notificationRules}`, meta: "Pemberitahuan otomatis untuk pihak terkait" },
+          { label: "Pengingat", value: `${data.metrics.reminderRules}`, meta: "Reminder sebelum atau sesudah batas waktu" },
         ]}
       />
 
@@ -88,7 +105,7 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewD
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle>{mode.title}</CardTitle>
-                  <CardDescription>Readiness eksekusi workflow HERO</CardDescription>
+                  <CardDescription>Kesiapan alur approval HERO</CardDescription>
                 </div>
                 <AdminStatusBadge value={mode.status} />
               </div>
@@ -113,18 +130,18 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewD
 
       <Card className="rounded-[1.6rem] bg-surface-container-lowest py-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader className="bg-surface-container-low px-7 py-6">
-          <CardTitle>Condition Logic Coverage</CardTitle>
+          <CardTitle>Kesiapan Kriteria Approval</CardTitle>
           <CardDescription>
-            Cakupan condition logic yang sudah dipakai resolver dan mana yang masih backlog menuju visual builder.
+            Kesiapan kriteria approval yang dapat dipakai admin untuk mengarahkan permintaan ke pemeriksa yang tepat.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Condition Field</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Remark</TableHead>
+                <TableHead>Kriteria Approval</TableHead>
+                <TableHead>Kesiapan</TableHead>
+                <TableHead>Catatan</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

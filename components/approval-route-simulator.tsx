@@ -116,19 +116,19 @@ export function ApprovalRouteSimulator({ employees }: Props) {
       <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-[#1e293b]">
-            Route Simulation
+            Simulasi Jalur Approval
           </CardTitle>
           <CardDescription className="text-sm text-[#64748b]">
-            Cek approver yang akan dipilih engine sebelum form benar-benar dipakai user.
+            Cek pemeriksa yang akan menerima pengajuan sebelum alur dipakai tim.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={runSimulation} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="simulation-employee">Employee</Label>
+              <Label htmlFor="simulation-employee">Karyawan</Label>
               <Select value={employeeId} onValueChange={setEmployeeId}>
                 <SelectTrigger id="simulation-employee">
-                  <SelectValue placeholder="Pilih employee" />
+                  <SelectValue placeholder="Pilih karyawan" />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((employee) => (
@@ -141,7 +141,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="simulation-activity">Activity Type</Label>
+              <Label htmlFor="simulation-activity">Jenis aktivitas</Label>
               <Input
                 id="simulation-activity"
                 value={activityType}
@@ -152,10 +152,10 @@ export function ApprovalRouteSimulator({ employees }: Props) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="simulation-priority">Priority</Label>
+              <Label htmlFor="simulation-priority">Prioritas</Label>
               <Select value={priority} onValueChange={setPriority}>
                 <SelectTrigger id="simulation-priority">
-                  <SelectValue placeholder="Pilih priority" />
+                  <SelectValue placeholder="Pilih prioritas" />
                 </SelectTrigger>
                 <SelectContent>
                   {PRIORITY_OPTIONS.map((option) => (
@@ -183,7 +183,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
               {state.status === "loading" ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Simulating...
+                  Menjalankan...
                 </>
               ) : (
                 <>
@@ -198,9 +198,9 @@ export function ApprovalRouteSimulator({ employees }: Props) {
 
       <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-[#1e293b]">Preview Route</CardTitle>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Pratinjau Jalur Approval</CardTitle>
           <CardDescription className="text-sm text-[#64748b]">
-            Hasil resolver termasuk template matrix, fallback, escalation, dan warning vacancy.
+            Hasil simulasi pemeriksa, pengganti, eskalasi, dan posisi yang belum terisi.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -213,7 +213,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
           {selectedEmployee ? (
             <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-4 text-sm text-muted-foreground">
               Simulasi untuk <span className="font-medium text-[#1e293b]">{selectedEmployee.name}</span>
-              {" "}({selectedEmployee.jobTitle || "Tanpa jabatan"}) dengan activity{" "}
+              {" "}({selectedEmployee.jobTitle || "Tanpa jabatan"}) dengan aktivitas{" "}
               <span className="font-medium text-[#1e293b]">{activityType}</span>.
             </div>
           ) : null}
@@ -221,7 +221,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
           {state.route ? (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
-                <SummaryCard label="Matrix" value={state.route.matrixName ?? "Legacy Fallback"} />
+                <SummaryCard label="Alur approval" value={state.route.matrixName ?? "Alur standar"} />
                 <SummaryCard label="Template Struktur" value={state.route.structureName ?? "Tanpa template"} />
                 <SummaryCard label="Transaksi" value={state.route.transactionType} />
               </div>
@@ -239,7 +239,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
                   <div key={`${step.stepOrder}-${step.approvalMatrixStepId ?? "snapshot"}`} className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline" className="bg-[#eff6ff] text-[#1d4ed8]">
-                        Step {step.stepOrder}
+                        Tahap {step.stepOrder}
                       </Badge>
                       <span className="font-medium text-[#1e293b]">{step.label}</span>
                       <Badge
@@ -250,30 +250,28 @@ export function ApprovalRouteSimulator({ employees }: Props) {
                             : "bg-[#ecfdf5] text-[#047857]"
                         }
                       >
-                        {step.approverEmployeeId == null ? "Vacant" : "Assigned"}
+                        {step.approverEmployeeId == null ? "Belum terisi" : "Siap"}
                       </Badge>
                     </div>
                     <div className="mt-3 grid gap-2 text-sm text-[#475569]">
                       <p>
-                        <span className="font-medium text-[#334155]">Approver:</span>{" "}
+                        <span className="font-medium text-[#334155]">Pemeriksa:</span>{" "}
                         {step.approverName}
                       </p>
                       <p>
-                        <span className="font-medium text-[#334155]">Node:</span>{" "}
-                        {step.nodeLabel ?? "-"} |{" "}
-                        <span className="font-medium text-[#334155]">Source:</span>{" "}
-                        {step.resolutionSource}
+                        <span className="font-medium text-[#334155]">Posisi:</span>{" "}
+                        {step.nodeLabel ?? "-"}
                       </p>
                       <p>
-                        <span className="font-medium text-[#334155]">Fallback:</span>{" "}
+                        <span className="font-medium text-[#334155]">Pengganti:</span>{" "}
                         {step.fallbackLabel ?? "-"} |{" "}
-                        <span className="font-medium text-[#334155]">Escalation:</span>{" "}
+                        <span className="font-medium text-[#334155]">Eskalasi:</span>{" "}
                         {step.escalationLabel ?? "-"}
                       </p>
                       <p>
-                        <span className="font-medium text-[#334155]">SLA:</span> {step.slaHours} jam |{" "}
-                        <span className="font-medium text-[#334155]">Delegate:</span>{" "}
-                        {step.canDelegate ? "Yes" : "No"}
+                        <span className="font-medium text-[#334155]">Batas waktu:</span> {step.slaHours} jam |{" "}
+                        <span className="font-medium text-[#334155]">Bisa didelegasikan:</span>{" "}
+                        {step.canDelegate ? "Ya" : "Tidak"}
                       </p>
                     </div>
                   </div>
@@ -282,7 +280,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
             </div>
           ) : (
             <div className="flex min-h-[320px] items-center justify-center rounded-[1.2rem] bg-surface-container-low p-10 text-center text-sm text-muted-foreground">
-              Jalankan simulasi untuk melihat jalur approval, approver final, fallback, dan warning.
+              Jalankan simulasi untuk melihat jalur approval, pemeriksa akhir, pengganti, dan catatan penting.
             </div>
           )}
         </CardContent>

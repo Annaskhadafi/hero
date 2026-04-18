@@ -38,7 +38,7 @@ export default function SignUpPage() {
                                 <Lock className="h-7 w-7" />
                             </div>
                             <h2 className="mb-2 text-lg font-semibold text-slate-200">
-                                RESTRICTED_ACCESS
+                                Akses Terbatas
                             </h2>
                             <p className="text-xs leading-relaxed text-slate-400">
                                 Pendaftaran mandiri dinonaktifkan. Hubungi administrator HERO jika Anda membutuhkan akses baru.
@@ -50,10 +50,10 @@ export default function SignUpPage() {
                                 href="/sign-in"
                                 className="flex h-14 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] text-xs font-semibold uppercase tracking-[0.1em] text-white transition hover:brightness-110"
                             >
-                                SIGN_IN
+                                Login
                             </Link>
                             <div className="flex h-14 items-center justify-center rounded-xl bg-[#10283a]/92 text-xs font-medium uppercase tracking-[0.05em] text-slate-500 ring-1 ring-white/8">
-                                ADMIN_ONLY
+                                Khusus Admin
                             </div>
                         </div>
                     </div>
@@ -76,7 +76,7 @@ export default function SignUpPage() {
                         <>
                             Sudah punya akun?{" "}
                             <Link href="/sign-in" className="font-medium text-[#9ac8ec] transition hover:text-[#bedef2]">
-                                Sign in
+                                Login
                             </Link>
                         </>
                     }
@@ -86,7 +86,7 @@ export default function SignUpPage() {
                             <ShieldCheck className="h-7 w-7" />
                         </div>
                         <p className="text-sm leading-7 text-slate-300/82">
-                            Untuk menjaga akses tetap terkontrol, user baru hanya bisa ditambahkan dari dashboard admin.
+                            Untuk menjaga akses tetap terkontrol, pengguna baru hanya bisa ditambahkan dari dashboard admin.
                         </p>
                     </div>
                 </AuthShell>

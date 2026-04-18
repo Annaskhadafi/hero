@@ -39,7 +39,7 @@ function SubmitButton() {
   return (
     <Button type="submit" disabled={pending}>
       <UserPlus className="size-4" />
-      {pending ? "Membuat User..." : "Create User"}
+      {pending ? "Membuat pengguna..." : "Buat Pengguna"}
     </Button>
   );
 }
@@ -100,14 +100,14 @@ export function SecurityUserCreateDialog({
       <DialogTrigger asChild>
         <Button variant="default" className="h-10 gap-2 rounded-lg px-5 text-sm font-semibold shadow-sm">
           <Plus className="size-4" />
-          ADD NEW USER
+          Tambah Pengguna
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create User Manual</DialogTitle>
+          <DialogTitle>Buat Pengguna Manual</DialogTitle>
           <DialogDescription>
-            Tambahkan user baru lengkap dengan akun login, profil HC, dan role akses.
+            Tambahkan pengguna baru lengkap dengan akun login, profil HC, dan peran akses.
           </DialogDescription>
         </DialogHeader>
 
@@ -293,13 +293,13 @@ export function SecurityUserCreateDialog({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Role Akses</Label>
+              <Label>Peran Akses</Label>
               <Select
                 name="accessRole"
                 defaultValue={roleOptions[0]?.name ?? undefined}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Pilih role" />
+                  <SelectValue placeholder="Pilih peran" />
                 </SelectTrigger>
                 <SelectContent>
                   {roleOptions.map((role) => (
@@ -324,8 +324,7 @@ export function SecurityUserCreateDialog({
                 />
               </label>
               <div className="grid content-end text-sm text-muted-foreground">
-                Password ini langsung dibuat sebagai akun login credential untuk user
-                baru.
+                Password ini langsung digunakan untuk akun login pengguna baru.
               </div>
             </div>
           </div>

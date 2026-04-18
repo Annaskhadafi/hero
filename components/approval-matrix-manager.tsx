@@ -250,7 +250,7 @@ export function ApprovalMatrixManager({
         ...current.steps,
         {
           stepOrder: getNextStepOrder(current.steps),
-          label: `Level ${getNextStepOrder(current.steps)}`,
+          label: `Tahap ${getNextStepOrder(current.steps)}`,
           nodeId: "",
           fallbackNodeId: "",
           escalationNodeId: "",
@@ -277,12 +277,12 @@ export function ApprovalMatrixManager({
 
   const handleSave = async () => {
     if (!draftMatrix.name.trim()) {
-      toast.error("Nama approval matrix wajib diisi.");
+      toast.error("Nama jalur approval wajib diisi.");
       return;
     }
 
     if (draftMatrix.steps.length === 0) {
-      toast.error("Approval matrix minimal memiliki satu step.");
+      toast.error("Jalur approval minimal memiliki satu tahap.");
       return;
     }
 
@@ -379,21 +379,21 @@ export function ApprovalMatrixManager({
     <Card className="border-[#e2e8f0]">
       <CardHeader className="flex flex-row items-center justify-between pb-4">
         <div>
-          <CardTitle className="text-lg font-semibold text-[#1e293b]">Approval Matrix</CardTitle>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Jalur Approval</CardTitle>
           <CardDescription className="text-sm text-[#64748b]">
-            Tentukan rule approval berdasarkan struktur, requester, scope site, dan karakter aktivitas.
+            Tentukan alur pemeriksaan berdasarkan struktur, pemohon, lokasi, dan jenis aktivitas.
           </CardDescription>
         </div>
         <Button onClick={handleNewMatrix} className="bg-[#0f766e] hover:bg-[#115e59]">
           <Plus className="mr-2 size-4" />
-          Matrix Baru
+          Jalur Baru
         </Button>
       </CardHeader>
       <CardContent>
         <Alert className="mb-4 border-[#d1fae5] bg-[#ecfdf5]">
           <AlertCircle className="size-4 text-[#047857]" />
           <AlertDescription className="text-[#065f46]">
-            Pisahkan struktur organisasi dan matrix approval. Struktur menjawab siapa di mana, matrix menjawab transaksi tertentu harus lewat siapa.
+            Pisahkan struktur organisasi dan jalur approval. Struktur menjawab posisi dan area kerja, jalur approval menjawab siapa yang perlu memeriksa pengajuan.
           </AlertDescription>
         </Alert>
 
@@ -402,7 +402,7 @@ export function ApprovalMatrixManager({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
               <Input
-                placeholder="Cari approval matrix..."
+                placeholder="Cari jalur approval..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="w-full pl-9"
@@ -447,7 +447,7 @@ export function ApprovalMatrixManager({
                 ))
               ) : (
                 <div className="rounded-[1.05rem] bg-surface-container-lowest p-6 text-center text-sm text-muted-foreground">
-                  Belum ada approval matrix.
+                  Belum ada jalur approval.
                 </div>
               )}
             </div>
@@ -458,10 +458,10 @@ export function ApprovalMatrixManager({
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-semibold text-[#1e293b]">
-                    {draftMatrix.id ? "Edit Approval Matrix" : "Buat Approval Matrix"}
+                    {draftMatrix.id ? "Edit Jalur Approval" : "Buat Jalur Approval"}
                   </h3>
                   <p className="text-sm text-[#64748b]">
-                    Atur scope rule, requester, step approval, fallback, dan escalation target.
+                    Atur cakupan, pemohon, tahapan approval, pemeriksa pengganti, dan tujuan eskalasi.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -472,14 +472,14 @@ export function ApprovalMatrixManager({
                     </Button>
                   ) : null}
                   <Button type="button" onClick={handleSave} disabled={isSubmitting} className="bg-[#0f766e] hover:bg-[#115e59]">
-                    {isSubmitting ? "Menyimpan..." : "Simpan Matrix"}
+                    {isSubmitting ? "Menyimpan..." : "Simpan Jalur"}
                   </Button>
                 </div>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <label className="grid gap-2">
-                  <Label>Nama Matrix</Label>
+                  <Label>Nama Jalur</Label>
                   <Input
                     value={draftMatrix.name}
                     onChange={(event) => setDraftMatrix((current) => ({ ...current, name: event.target.value }))}
@@ -549,7 +549,7 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Department Requester</Label>
+                  <Label>Departemen Pemohon</Label>
                   <Select
                     value={draftMatrix.departmentId || "none"}
                     onValueChange={(value) =>
@@ -562,10 +562,10 @@ export function ApprovalMatrixManager({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Semua Department" />
+                      <SelectValue placeholder="Semua Departemen" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Semua Department</SelectItem>
+                      <SelectItem value="none">Semua Departemen</SelectItem>
                       {departments.map((department) => (
                         <SelectItem key={department.id} value={department.id.toString()}>
                           {department.name}
@@ -575,7 +575,7 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Section Requester</Label>
+                  <Label>Seksi Pemohon</Label>
                   <Select
                     value={draftMatrix.sectionId || "none"}
                     onValueChange={(value) =>
@@ -586,10 +586,10 @@ export function ApprovalMatrixManager({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Semua Section" />
+                      <SelectValue placeholder="Semua Seksi" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Semua Section</SelectItem>
+                      <SelectItem value="none">Semua Seksi</SelectItem>
                       {filteredSections.map((section) => (
                         <SelectItem key={section.id} value={section.id.toString()}>
                           {section.name}
@@ -599,7 +599,7 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Jabatan Requester</Label>
+                  <Label>Jabatan Pemohon</Label>
                   <Select
                     value={draftMatrix.requesterPositionId || "none"}
                     onValueChange={(value) =>
@@ -623,26 +623,26 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <label className="grid gap-2">
-                  <Label>Activity Type</Label>
+                  <Label>Jenis Aktivitas</Label>
                   <Input
                     value={draftMatrix.activityType}
                     onChange={(event) =>
                       setDraftMatrix((current) => ({ ...current, activityType: event.target.value }))
                     }
-                    placeholder="Kosongkan untuk semua activity"
+                    placeholder="Kosongkan untuk semua aktivitas"
                   />
                 </label>
                 <div className="grid gap-2">
-                  <Label>Priority</Label>
+                  <Label>Prioritas</Label>
                   <Select
                     value={draftMatrix.priority}
                     onValueChange={(value) => setDraftMatrix((current) => ({ ...current, priority: value }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Pilih priority" />
+                      <SelectValue placeholder="Pilih prioritas" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="any">Semua prioritas</SelectItem>
                       <SelectItem value="Normal">Normal</SelectItem>
                       <SelectItem value="Safety">Safety</SelectItem>
                       <SelectItem value="Emergency">Emergency</SelectItem>
@@ -650,7 +650,7 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <label className="grid gap-2">
-                  <Label>Min Overtime (menit)</Label>
+                  <Label>Minimum Lembur (menit)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -664,7 +664,7 @@ export function ApprovalMatrixManager({
                   />
                 </label>
                 <label className="grid gap-2">
-                  <Label>Max Overtime (menit)</Label>
+                  <Label>Maksimum Lembur (menit)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -679,7 +679,7 @@ export function ApprovalMatrixManager({
                   />
                 </label>
                 <label className="grid gap-2">
-                  <Label>Effective From</Label>
+                  <Label>Berlaku Mulai</Label>
                   <Input
                     type="datetime-local"
                     value={draftMatrix.effectiveFrom}
@@ -689,7 +689,7 @@ export function ApprovalMatrixManager({
                   />
                 </label>
                 <label className="grid gap-2">
-                  <Label>Effective To</Label>
+                  <Label>Berlaku Sampai</Label>
                   <Input
                     type="datetime-local"
                     value={draftMatrix.effectiveTo}
@@ -709,7 +709,7 @@ export function ApprovalMatrixManager({
                       setDraftMatrix((current) => ({ ...current, description: event.target.value }))
                     }
                     rows={3}
-                    placeholder="Catatan rule approval ini"
+                    placeholder="Catatan untuk jalur approval ini"
                   />
                 </label>
                 <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-low px-4 py-4">
@@ -720,8 +720,8 @@ export function ApprovalMatrixManager({
                     }
                   />
                   <div>
-                    <p className="font-medium text-[#1e293b]">Matrix aktif</p>
-                    <p className="text-xs text-[#64748b]">Hanya matrix aktif yang ikut dipakai resolver approval.</p>
+                    <p className="font-medium text-[#1e293b]">Jalur aktif</p>
+                    <p className="text-xs text-[#64748b]">Hanya jalur aktif yang dipakai saat pengajuan berjalan.</p>
                   </div>
                 </div>
               </div>
@@ -730,14 +730,14 @@ export function ApprovalMatrixManager({
             <div className="rounded-[1.3rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h4 className="text-lg font-semibold text-[#1e293b]">Approval Steps</h4>
+                  <h4 className="text-lg font-semibold text-[#1e293b]">Tahapan Approval</h4>
                   <p className="text-sm text-[#64748b]">
-                    Susun step approval berurutan, lengkap dengan fallback dan escalation target.
+                    Susun tahapan pemeriksaan berurutan, lengkap dengan pemeriksa pengganti dan tujuan eskalasi.
                   </p>
                 </div>
                 <Button type="button" variant="outline" onClick={addStep}>
                   <Plus className="mr-2 size-4" />
-                  Tambah Step
+                  Tambah Tahap
                 </Button>
               </div>
 
@@ -749,9 +749,9 @@ export function ApprovalMatrixManager({
                   <div key={`${step.stepOrder}-${originalIndex}`} className="rounded-[1.1rem] bg-surface-container-low px-4 py-4">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline">Step {step.stepOrder}</Badge>
+                        <Badge variant="outline">Tahap {step.stepOrder}</Badge>
                         <span className="text-sm font-medium text-[#334155]">
-                          {step.label || `Step ${step.stepOrder}`}
+                          {step.label || `Tahap ${step.stepOrder}`}
                         </span>
                       </div>
                       <Button type="button" variant="ghost" size="icon" onClick={() => removeStep(originalIndex)}>
@@ -761,7 +761,7 @@ export function ApprovalMatrixManager({
 
                     <div className="grid gap-3 lg:grid-cols-2">
                       <label className="grid gap-2">
-                        <Label>Level / Step Order</Label>
+                        <Label>Urutan Tahap</Label>
                         <Input
                           type="number"
                           min={1}
@@ -774,38 +774,38 @@ export function ApprovalMatrixManager({
                         />
                       </label>
                       <label className="grid gap-2">
-                        <Label>Label Step</Label>
+                        <Label>Nama Tahap</Label>
                         <Input
                           value={step.label}
                           onChange={(event) => updateStep(originalIndex, { label: event.target.value })}
-                          placeholder="Contoh: Foreman Review"
+                          placeholder="Contoh: Review Foreman"
                         />
                       </label>
                       <div className="grid gap-2">
-                        <Label>Approval Node</Label>
+                        <Label>Posisi Pemeriksa</Label>
                         <Select value={step.nodeId || "none"} onValueChange={(value) => updateStep(originalIndex, { nodeId: value === "none" ? "" : value })}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Pilih node approver" />
+                            <SelectValue placeholder="Pilih posisi pemeriksa" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">Tanpa node</SelectItem>
+                            <SelectItem value="none">Tanpa posisi</SelectItem>
                             {availableNodes.map((node) => (
                               <SelectItem key={node.id} value={node.id.toString()}>
                                 {node.label}
-                                {node.canApprove ? "" : " • non-approver"}
+                                {node.canApprove ? "" : " • tidak memeriksa"}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="grid gap-2">
-                        <Label>Fallback Node</Label>
+                        <Label>Pemeriksa Pengganti</Label>
                         <Select value={step.fallbackNodeId || "none"} onValueChange={(value) => updateStep(originalIndex, { fallbackNodeId: value === "none" ? "" : value })}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Fallback bila approver kosong" />
+                            <SelectValue placeholder="Pilih pengganti bila pemeriksa kosong" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">Tanpa fallback</SelectItem>
+                            <SelectItem value="none">Tanpa pengganti</SelectItem>
                             {availableNodes.map((node) => (
                               <SelectItem key={node.id} value={node.id.toString()}>
                                 {node.label}
@@ -815,13 +815,13 @@ export function ApprovalMatrixManager({
                         </Select>
                       </div>
                       <div className="grid gap-2">
-                        <Label>Escalation Node</Label>
+                        <Label>Tujuan Eskalasi</Label>
                         <Select value={step.escalationNodeId || "none"} onValueChange={(value) => updateStep(originalIndex, { escalationNodeId: value === "none" ? "" : value })}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Escalation target" />
+                            <SelectValue placeholder="Pilih tujuan eskalasi" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">Tanpa escalation</SelectItem>
+                            <SelectItem value="none">Tanpa eskalasi</SelectItem>
                             {availableNodes.map((node) => (
                               <SelectItem key={node.id} value={node.id.toString()}>
                                 {node.label}
@@ -831,7 +831,7 @@ export function ApprovalMatrixManager({
                         </Select>
                       </div>
                       <label className="grid gap-2">
-                        <Label>SLA (jam)</Label>
+                        <Label>Batas Waktu (jam)</Label>
                         <Input
                           type="number"
                           min={1}
@@ -845,12 +845,12 @@ export function ApprovalMatrixManager({
                         <Label>Mode</Label>
                         <Select value={step.approvalMode} onValueChange={(value) => updateStep(originalIndex, { approvalMode: value })}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Mode step" />
+                            <SelectValue placeholder="Pilih pola pemeriksaan" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="sequential">Sequential</SelectItem>
-                            <SelectItem value="parallel_all">Parallel All</SelectItem>
-                            <SelectItem value="parallel_any">Parallel Any-One</SelectItem>
+                            <SelectItem value="sequential">Berurutan</SelectItem>
+                            <SelectItem value="parallel_all">Semua pemeriksa bersama</SelectItem>
+                            <SelectItem value="parallel_any">Salah satu pemeriksa</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -863,8 +863,8 @@ export function ApprovalMatrixManager({
                           onCheckedChange={(checked) => updateStep(originalIndex, { canDelegate: checked })}
                         />
                         <div>
-                          <p className="font-medium text-[#1e293b]">Boleh delegate</p>
-                          <p className="text-xs text-[#64748b]">Delegate assignment bisa dipakai bila primary tidak tersedia.</p>
+                          <p className="font-medium text-[#1e293b]">Boleh didelegasikan</p>
+                          <p className="text-xs text-[#64748b]">Tugas dapat dialihkan bila pemeriksa utama tidak tersedia.</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
@@ -873,8 +873,8 @@ export function ApprovalMatrixManager({
                           onCheckedChange={(checked) => updateStep(originalIndex, { isRequired: checked })}
                         />
                         <div>
-                          <p className="font-medium text-[#1e293b]">Step wajib</p>
-                          <p className="text-xs text-[#64748b]">Pertahankan aktif untuk memastikan step ini tetap dilewati.</p>
+                          <p className="font-medium text-[#1e293b]">Tahap wajib</p>
+                          <p className="text-xs text-[#64748b]">Pertahankan aktif untuk memastikan tahap ini tetap dilewati.</p>
                         </div>
                       </div>
                     </div>
@@ -889,9 +889,9 @@ export function ApprovalMatrixManager({
                   <WandSparkles className="size-5" />
                 </div>
                 <div>
-                  <h4 className="text-lg font-semibold text-[#1e293b]">Route Simulator</h4>
+                  <h4 className="text-lg font-semibold text-[#1e293b]">Simulasi Jalur</h4>
                   <p className="text-sm text-[#64748b]">
-                    Uji kombinasi karyawan, activity, priority, dan overtime untuk melihat route approval yang akan dipakai engine.
+                    Uji kombinasi karyawan, aktivitas, prioritas, dan lembur untuk melihat jalur approval yang akan dipakai.
                   </p>
                 </div>
               </div>
@@ -922,7 +922,7 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <label className="grid gap-2">
-                  <Label>Activity Type</Label>
+                  <Label>Jenis Aktivitas</Label>
                   <Input
                     value={simulationForm.activityType}
                     onChange={(event) =>
@@ -931,7 +931,7 @@ export function ApprovalMatrixManager({
                   />
                 </label>
                 <div className="grid gap-2">
-                  <Label>Priority</Label>
+                  <Label>Prioritas</Label>
                   <Select
                     value={simulationForm.priority}
                     onValueChange={(value) =>
@@ -939,7 +939,7 @@ export function ApprovalMatrixManager({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Priority" />
+                      <SelectValue placeholder="Pilih prioritas" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Normal">Normal</SelectItem>
@@ -949,7 +949,7 @@ export function ApprovalMatrixManager({
                   </Select>
                 </div>
                 <label className="grid gap-2">
-                  <Label>Overtime (menit)</Label>
+                  <Label>Lembur (menit)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -974,7 +974,7 @@ export function ApprovalMatrixManager({
                 <div className="mt-4 rounded-[1.1rem] bg-surface-container-low px-4 py-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
-                      {simulationResult.status === "success" ? "Route Found" : "Route Error"}
+                      {simulationResult.status === "success" ? "Jalur ditemukan" : "Jalur belum tersedia"}
                     </Badge>
                     <p className="text-sm text-[#475569]">{simulationResult.message}</p>
                   </div>
@@ -983,7 +983,7 @@ export function ApprovalMatrixManager({
                     <div className="mt-4 space-y-3">
                       <div className="flex flex-wrap gap-2 text-xs text-[#64748b]">
                         <Badge variant="outline" className="bg-surface-container-lowest">
-                          Matrix: {simulationResult.route.matrixName ?? "Legacy Fallback"}
+                          Jalur: {simulationResult.route.matrixName ?? "Alur standar"}
                         </Badge>
                         <Badge variant="outline" className="bg-surface-container-lowest">
                           Struktur: {simulationResult.route.structureName ?? "N/A"}
@@ -996,17 +996,17 @@ export function ApprovalMatrixManager({
                             <div className="flex items-center justify-between gap-3">
                               <div>
                                 <p className="font-medium text-[#1e293b]">
-                                  Step {step.stepOrder} • {step.label}
+                                  Tahap {step.stepOrder} • {step.label}
                                 </p>
                                 <p className="text-sm text-[#64748b]">
-                                  {step.approverName} • source {step.resolutionSource}
+                                  {step.approverName}
                                 </p>
                               </div>
-                              <Badge variant="outline">SLA {step.slaHours} jam</Badge>
+                              <Badge variant="outline">Batas {step.slaHours} jam</Badge>
                             </div>
                             {(step.fallbackLabel || step.escalationLabel) ? (
                               <p className="mt-2 text-xs text-[#64748b]">
-                                Fallback: {step.fallbackLabel || "-"} • Escalation: {step.escalationLabel || "-"}
+                                Pengganti: {step.fallbackLabel || "-"} • Eskalasi: {step.escalationLabel || "-"}
                               </p>
                             ) : null}
                           </div>

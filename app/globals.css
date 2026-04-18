@@ -58,7 +58,7 @@
 }
 
 :root {
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   --background: #f3faff;
   --foreground: #071e27;
   --surface: #f3faff;
@@ -177,6 +177,11 @@
     background-attachment: fixed;
   }
 
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
+  }
+
   h1,
   h2,
   h3,
@@ -184,7 +189,7 @@
   h5,
   h6 {
     font-family: var(--font-manrope), var(--font-inter), sans-serif;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
   }
 
   ::selection {
@@ -195,12 +200,16 @@
 
 @layer components {
   .industrial-card {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 250, 255, 0.92));
-    box-shadow: 0 12px 24px rgba(0, 52, 97, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 250, 255, 0.94)),
+      radial-gradient(circle at 100% 0%, rgba(0, 75, 135, 0.08), transparent 34%);
+    box-shadow: 0 14px 32px rgba(0, 52, 97, 0.1);
   }
 
   .dark .industrial-card {
-    background: linear-gradient(180deg, rgba(17, 44, 63, 0.96), rgba(12, 32, 49, 0.92));
+    background:
+      linear-gradient(180deg, rgba(17, 44, 63, 0.96), rgba(12, 32, 49, 0.92)),
+      radial-gradient(circle at 100% 0%, rgba(255, 178, 136, 0.08), transparent 34%);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.26);
   }
 
@@ -213,15 +222,15 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 
   .industrial-kpi {
     font-family: var(--font-manrope), var(--font-inter), sans-serif;
-    font-size: clamp(2.25rem, 4vw, 3.5rem);
+    font-size: 3rem;
     font-weight: 800;
-    letter-spacing: -0.05em;
+    letter-spacing: 0;
     line-height: 0.95;
   }
 
@@ -245,7 +254,6 @@
 
   .surface-module-card {
     background: var(--surface-container-lowest);
-    box-shadow: 0 14px 28px rgba(0, 52, 97, 0.08);
     box-shadow: 0 14px 28px rgba(0, 52, 97, 0.08), inset 0 0 0 1px var(--outline-ghost);
   }
 
@@ -264,6 +272,31 @@
     box-shadow: inset 0 0 0 1px var(--outline-ghost);
   }
 
+  .auth-dark-input {
+    background-color: rgba(16, 40, 58, 0.92) !important;
+    caret-color: #9ac8ec;
+    color: #f8fafc !important;
+    box-shadow: inset 0 -1px 0 rgba(154, 200, 236, 0.12) !important;
+  }
+
+  .auth-dark-input:focus,
+  .auth-dark-input:focus-visible {
+    background-color: rgba(16, 40, 58, 0.96) !important;
+    border-bottom-color: #9ac8ec !important;
+    color: #ffffff !important;
+    box-shadow: 0 12px 24px rgba(0, 52, 97, 0.18), inset 0 -2px 0 #9ac8ec !important;
+  }
+
+  .auth-dark-input:-webkit-autofill,
+  .auth-dark-input:-webkit-autofill:hover,
+  .auth-dark-input:-webkit-autofill:focus,
+  .auth-dark-input:-webkit-autofill:active {
+    -webkit-text-fill-color: #f8fafc !important;
+    caret-color: #9ac8ec;
+    box-shadow: 0 0 0 1000px #10283a inset, inset 0 -2px 0 #9ac8ec !important;
+    transition: background-color 9999s ease-out;
+  }
+
   /*
    * Industrial normalizer:
    * legacy screens still contain many Tailwind border utilities. Keep them as
@@ -276,5 +309,44 @@
   :where(.bg-card, .bg-white) {
     background-color: var(--surface-container-lowest) !important;
     color: var(--foreground);
+  }
+
+  :where(
+    [data-slot="card"],
+    [data-slot="button"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="tabs-list"],
+    [data-slot="tabs-trigger"],
+    [data-slot="dialog-content"],
+    [data-slot="table-container"],
+    [class*="rounded-xl"],
+    [class*="rounded-2xl"],
+    [class*="rounded-3xl"],
+    [class*="rounded-[1."],
+    [class*="rounded-[2."]
+  ) {
+    border-radius: var(--radius) !important;
+  }
+
+  :where([class*="tracking-"]) {
+    letter-spacing: 0 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .industrial-kpi {
+    font-size: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

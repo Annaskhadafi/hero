@@ -9,7 +9,8 @@ export default async function SecurityOverviewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Security Overview</h1>
+        <p className="industrial-label">Governance</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-normal">Security Overview</h1>
         <p className="text-sm text-muted-foreground">
           Monitor user control, access posture, dan event keamanan terbaru.
         </p>
@@ -18,21 +19,21 @@ export default async function SecurityOverviewPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map((metric) => (
           <Link key={metric.title} href={metric.href}>
-            <Card className="h-full rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md">
+            <Card className="h-full rounded-lg transition hover:shadow-[0_18px_34px_rgba(0,52,97,0.12)]">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                   {metric.title}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-semibold tracking-tight">{metric.value}</p>
+                <p className="font-display text-3xl font-semibold tracking-normal">{metric.value}</p>
               </CardContent>
             </Card>
           </Link>
         ))}
       </div>
 
-      <Card className="rounded-2xl">
+      <Card className="rounded-lg">
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -50,7 +51,7 @@ export default async function SecurityOverviewPage() {
           {recentLogs.map((log) => (
             <div
               key={log.id}
-              className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+              className="surface-muted-card flex items-start justify-between gap-4 rounded-lg px-4 py-3"
             >
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -98,7 +99,7 @@ export default async function SecurityOverviewPage() {
           },
         ].map((item) => (
           <Link key={item.href} href={item.href}>
-            <Card className="h-full rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md">
+            <Card className="h-full rounded-lg transition hover:shadow-[0_18px_34px_rgba(0,52,97,0.12)]">
               <CardHeader>
                 <CardTitle className="text-base">{item.title}</CardTitle>
                 <CardDescription>{item.description}</CardDescription>

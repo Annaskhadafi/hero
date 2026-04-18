@@ -20,10 +20,10 @@ export function AdminTableCard({
   rows: (string | React.ReactNode)[][];
 }) {
   return (
-    <Card className="rounded-2xl p-0">
+    <Card className="rounded-lg p-0">
       <div className="bg-surface-container-low px-6 py-5">
         <p className="industrial-label">Command Module</p>
-        <h3 className="mt-2 font-display text-xl font-semibold tracking-[-0.03em]">{title}</h3>
+        <h3 className="mt-2 font-display text-xl font-semibold tracking-normal">{title}</h3>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
       <Table>

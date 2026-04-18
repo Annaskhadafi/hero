@@ -81,19 +81,19 @@ export function AppSidebar({
   documents: readonly SidebarDocumentItem[]
 }) {
   const mainItems = navMain.map((item) => ({
-    section: item.section ?? "Workspace",
+    section: item.section ?? "Menu",
     title: item.title,
     url: item.url,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
   }))
   const secondaryItems = navSecondary.map((item) => ({
-    section: item.section ?? "System",
+    section: item.section ?? "Sistem",
     title: item.title,
     url: item.url,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconHelp,
   }))
   const documentItems = documents.map((item) => ({
-    section: item.section ?? "Documents",
+    section: item.section ?? "Dokumen",
     name: item.title,
     url: item.url,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconFolder,
@@ -142,7 +142,7 @@ export function AppSidebar({
           <>
             <SidebarSeparator className="mx-2 mt-1" />
             <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
-              Documents
+              Dokumen
             </div>
             <NavDocuments items={documentItems} />
           </>
@@ -151,7 +151,7 @@ export function AppSidebar({
           <>
             <SidebarSeparator className="mx-2 mt-auto" />
             <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
-              System
+              Sistem
             </div>
             <NavSecondary items={secondaryItems} />
           </>

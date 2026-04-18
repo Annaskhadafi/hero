@@ -45,8 +45,10 @@ const toneMap: Record<string, string> = {
   due_soon: "bg-amber-100 text-amber-900",
   on_track: "bg-sky-100 text-sky-900",
   live: "bg-emerald-100 text-emerald-900",
+  ready: "bg-emerald-100 text-emerald-900",
   partial: "bg-sky-100 text-sky-900",
   backlog: "bg-slate-200 text-slate-900",
+  planned: "bg-slate-200 text-slate-900",
   blueprint: "bg-sky-100 text-sky-900",
   queued: "bg-sky-100 text-sky-900",
   sent: "bg-emerald-100 text-emerald-900",
@@ -65,13 +67,76 @@ function normalize(value: string) {
   return value.toLowerCase().replaceAll(" ", "_");
 }
 
+const labelMap: Record<string, string> = {
+  approved: "Disetujui",
+  approved_today: "Disetujui hari ini",
+  approved_today_display: "Disetujui hari ini",
+  pending: "Menunggu",
+  pending_l2: "Menunggu pemeriksa 2",
+  pending_l1: "Menunggu pemeriksa 1",
+  in_review: "Ditinjau",
+  draft_ready: "Draft siap",
+  draft: "Draft",
+  cancelled: "Dibatalkan",
+  ready_for_payroll: "Siap payroll",
+  needs_correction: "Perlu koreksi",
+  needs_revision: "Perlu revisi",
+  revised: "Direvisi",
+  rejected: "Ditolak",
+  skipped: "Dilewati",
+  delegated: "Didelegasikan",
+  expiring_soon: "Hampir berakhir",
+  urgent: "Mendesak",
+  active: "Aktif",
+  inactive: "Nonaktif",
+  probation: "Probation",
+  contract: "Kontrak",
+  on_leave: "Cuti",
+  resigned: "Resign",
+  healthy: "Aman",
+  follow_up: "Perlu tindak lanjut",
+  attention: "Perlu perhatian",
+  open: "Terbuka",
+  action_taken: "Ditangani",
+  investigating: "Ditinjau",
+  closed: "Selesai",
+  verified: "Terverifikasi",
+  needs_review: "Perlu review",
+  overtime: "Lembur",
+  emergency: "Darurat",
+  safety: "Keselamatan",
+  submitted: "Dikirim",
+  waiting: "Menunggu",
+  comment: "Komentar",
+  overdue: "Terlambat",
+  due_soon: "Segera jatuh tempo",
+  on_track: "Sesuai rencana",
+  live: "Aktif",
+  ready: "Siap",
+  partial: "Sebagian siap",
+  backlog: "Direncanakan",
+  planned: "Direncanakan",
+  blueprint: "Rancangan",
+  queued: "Menunggu",
+  sent: "Terkirim",
+  failed: "Gagal",
+  scheduled: "Terjadwal",
+  executed: "Selesai",
+  approval: "Approval",
+  delegation: "Delegasi",
+  escalation: "Eskalasi",
+  email: "Email",
+  in_app: "Di aplikasi",
+  before_due: "Sebelum jatuh tempo",
+};
+
 export function AdminStatusBadge({ value }: { value: string }) {
   const key = normalize(value);
   const className = toneMap[key] ?? "bg-slate-100 text-slate-800";
 
   return (
     <Badge className={`rounded-full border-0 px-3 py-1 font-medium ${className}`}>
-      {value.replaceAll("_", " ")}
+      {labelMap[key] ?? value.replaceAll("_", " ")}
     </Badge>
   );
 }

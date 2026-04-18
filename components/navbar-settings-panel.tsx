@@ -54,22 +54,22 @@ export function NavbarSettingsPanel({
     <div className="space-y-6">
       <Card className="rounded-2xl">
         <CardHeader>
-          <CardTitle>Navbar Theme</CardTitle>
+          <CardTitle>Tampilan Navigasi</CardTitle>
           <CardDescription>
-            Meniru area pengaturan visual navbar dari halaman referensi.
+            Atur warna dan identitas navigasi admin HERO.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label className="space-y-2 text-sm font-medium">
-            Theme name
+            Nama tema
             <Input value={theme?.themeName ?? ""} readOnly />
           </label>
           <label className="space-y-2 text-sm font-medium">
-            Background style
+            Gaya latar
             <Input value={theme?.backgroundStyle ?? ""} readOnly />
           </label>
           <label className="space-y-2 text-sm font-medium">
-            Accent color
+            Warna aksen
             <div className="flex items-center gap-3 rounded-md border px-3 py-2">
               <span
                 className="size-5 rounded-full border"
@@ -79,11 +79,11 @@ export function NavbarSettingsPanel({
             </div>
           </label>
           <label className="space-y-2 text-sm font-medium">
-            Text color
+            Warna teks
             <Input value={theme?.textColor ?? ""} readOnly />
           </label>
           <form action={formAction} className="space-y-2 text-sm font-medium">
-            Header navbar color
+            Warna header
             <div className="flex items-center gap-3 rounded-md border p-3">
               <input
                 type="color"
@@ -99,7 +99,7 @@ export function NavbarSettingsPanel({
                 required
               />
               <Button type="submit" size="sm" disabled={isPending} className="rounded-full">
-                {isPending ? "Saving..." : "Save"}
+                {isPending ? "Menyimpan..." : "Simpan"}
               </Button>
             </div>
             {state.status !== "idle" ? (
@@ -109,11 +109,11 @@ export function NavbarSettingsPanel({
             ) : null}
           </form>
           <label className="space-y-2 text-sm font-medium">
-            Density
+            Kerapatan
             <Input value={theme?.density ?? ""} readOnly />
           </label>
           <label className="space-y-2 text-sm font-medium">
-            Logo mode
+            Mode logo
             <Input value={theme?.logoMode ?? ""} readOnly />
           </label>
         </CardContent>
@@ -121,9 +121,9 @@ export function NavbarSettingsPanel({
 
       <Card className="rounded-2xl">
         <CardHeader>
-          <CardTitle>Navbar Menu</CardTitle>
+          <CardTitle>Menu Navigasi</CardTitle>
           <CardDescription>
-            Struktur menu governance yang tampil di sidebar admin.
+            Daftar menu yang tampil di sidebar admin.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -134,31 +134,25 @@ export function NavbarSettingsPanel({
             >
               <div className="space-y-1">
                 <p className="font-medium">{item.title}</p>
-                <p className="text-sm text-muted-foreground">{item.url}</p>
+                <p className="text-sm text-muted-foreground">Alamat halaman: {item.url}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="rounded-full">
                   {item.section}
                 </Badge>
-                <Badge variant="secondary" className="rounded-full">
-                  {item.iconName}
-                </Badge>
-                <Badge variant="outline" className="rounded-full">
-                  {item.resource}
-                </Badge>
               </div>
               <div className="space-y-2 text-sm">
-                <p className="text-muted-foreground">Sort order</p>
+                <p className="text-muted-foreground">Urutan tampil</p>
                 <p className="font-medium">{item.sortOrder}</p>
               </div>
               <div className="flex flex-wrap items-center gap-6">
                 <div className="flex items-center gap-2">
                   <Switch checked={item.isVisible} disabled />
-                  <span className="text-sm">Visible</span>
+                  <span className="text-sm">Tampil</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={item.openInNewTab} disabled />
-                  <span className="text-sm">New tab</span>
+                  <span className="text-sm">Tab baru</span>
                 </div>
               </div>
             </div>

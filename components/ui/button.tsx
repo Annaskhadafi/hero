@@ -9,7 +9,7 @@ import {
 } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold uppercase tracking-[0.08em] transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold uppercase tracking-normal transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
   {
     variants: {
       variant: {
@@ -26,10 +26,10 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-12 px-5 py-3 has-[>svg]:px-4",
-        sm: "h-12 gap-1.5 px-4 has-[>svg]:px-3.5",
-        lg: "h-12 px-7 has-[>svg]:px-5",
-        icon: "size-12",
+        default: "h-12 min-w-12 px-5 py-3 has-[>svg]:px-4",
+        sm: "h-11 min-w-11 gap-1.5 px-4 has-[>svg]:px-3.5",
+        lg: "h-12 min-w-12 px-7 has-[>svg]:px-5",
+        icon: "size-12 min-h-12 min-w-12",
       },
     },
     defaultVariants: {

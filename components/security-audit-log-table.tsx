@@ -32,6 +32,22 @@ type AuditLogRow = {
   actorEmail: string | null;
 };
 
+function formatAuditValue(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatSeverity(value: string) {
+  const labels: Record<string, string> = {
+    info: "Info",
+    medium: "Sedang",
+    high: "Tinggi",
+  };
+
+  return labels[value] ?? formatAuditValue(value);
+}
+
 export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
   const [keyword, setKeyword] = useState("");
   const [severity, setSeverity] = useState("all");
@@ -66,19 +82,19 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
           <Input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="Cari action, actor, deskripsi, atau entity..."
+            placeholder="Cari aktivitas, pengguna, atau deskripsi..."
             className="pl-9"
           />
         </div>
         <Select value={severity} onValueChange={setSeverity}>
           <SelectTrigger className="w-full md:w-44">
-            <SelectValue placeholder="Severity" />
+            <SelectValue placeholder="Tingkat Risiko" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All severity</SelectItem>
+            <SelectItem value="all">Semua tingkat</SelectItem>
             <SelectItem value="info">Info</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="high">High</SelectItem>
+            <SelectItem value="medium">Sedang</SelectItem>
+            <SelectItem value="high">Tinggi</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -87,26 +103,26 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Action</TableHead>
-              <TableHead>Entity</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Actor</TableHead>
-              <TableHead>Severity</TableHead>
-              <TableHead>Time</TableHead>
+              <TableHead>Aktivitas</TableHead>
+              <TableHead>Area</TableHead>
+              <TableHead>Deskripsi</TableHead>
+              <TableHead>Pengguna</TableHead>
+              <TableHead>Risiko</TableHead>
+              <TableHead>Waktu</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map((log) => (
               <TableRow key={log.id}>
                 <TableCell>
-                  <Badge variant="secondary" className="rounded-full font-mono">
-                    {log.action}
+                  <Badge variant="secondary" className="rounded-full">
+                    {formatAuditValue(log.action)}
                   </Badge>
                 </TableCell>
                 <TableCell>
                   <div>
                     <p className="font-medium">{log.entityLabel}</p>
-                    <p className="text-xs text-muted-foreground">{log.entityType}</p>
+                    <p className="text-xs text-muted-foreground">{formatAuditValue(log.entityType)}</p>
                   </div>
                 </TableCell>
                 <TableCell className="max-w-xl text-sm text-muted-foreground">
@@ -114,13 +130,13 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
                 </TableCell>
                 <TableCell>
                   <div>
-                    <p className="font-medium">{log.actorName ?? "System"}</p>
+                    <p className="font-medium">{log.actorName ?? "Sistem"}</p>
                     <p className="text-xs text-muted-foreground">{log.actorEmail ?? "—"}</p>
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={log.severity === "high" ? "destructive" : "outline"} className="rounded-full capitalize">
-                    {log.severity}
+                  <Badge variant={log.severity === "high" ? "destructive" : "outline"} className="rounded-full">
+                    {formatSeverity(log.severity)}
                   </Badge>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">

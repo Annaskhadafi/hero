@@ -9,7 +9,7 @@ import {
 } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-md border-0 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em] whitespace-nowrap [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:ring-[3px] focus-visible:ring-ring/50 transition-[color,box-shadow]",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-md border-0 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-normal whitespace-nowrap [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:ring-[3px] focus-visible:ring-ring/50 transition-[color,box-shadow]",
   {
     variants: {
       variant: {

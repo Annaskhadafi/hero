@@ -105,51 +105,51 @@ export function HeaderThemeControls() {
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Type a command or search..." />
+        <CommandInput placeholder="Cari menu atau aksi..." />
         <CommandList>
-          <CommandEmpty>No results found.</CommandEmpty>
-          <CommandGroup heading="Navigation">
+          <CommandEmpty>Tidak ada hasil.</CommandEmpty>
+          <CommandGroup heading="Navigasi">
             <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/analytics"))}>
               <LayoutDashboard className="mr-2 h-4 w-4" />
-              <span>Analytics Overview</span>
+              <span>Ringkasan Analytics</span>
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/users"))}>
               <Users className="mr-2 h-4 w-4" />
-              <span>User Management</span>
+              <span>Manajemen Pengguna</span>
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/roles"))}>
               <ShieldCheck className="mr-2 h-4 w-4" />
-              <span>Role & Permissions</span>
+              <span>Peran & Akses</span>
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/hc"))}>
               <Activity className="mr-2 h-4 w-4" />
-              <span>Performance Hub</span>
+              <span>Pusat Performance</span>
             </CommandItem>
           </CommandGroup>
           <CommandSeparator />
-          <CommandGroup heading="Quick Actions">
+          <CommandGroup heading="Aksi Cepat">
             <CommandItem>
               <FileText className="mr-2 h-4 w-4" />
-              <span>Generate Daily Report</span>
+              <span>Buat Laporan Harian</span>
             </CommandItem>
             <CommandItem>
               <Mail className="mr-2 h-4 w-4" />
-              <span>View Email Logs</span>
+              <span>Lihat Riwayat Email</span>
             </CommandItem>
             <CommandItem>
               <Settings className="mr-2 h-4 w-4" />
-              <span>System Settings</span>
+              <span>Pengaturan Sistem</span>
             </CommandItem>
           </CommandGroup>
           <CommandSeparator />
-          <CommandGroup heading="System">
+          <CommandGroup heading="Sistem">
             <CommandItem>
               <History className="mr-2 h-4 w-4" />
-              <span>Audit logs</span>
+              <span>Catatan Aktivitas</span>
             </CommandItem>
             <CommandItem>
               <HelpCircle className="mr-2 h-4 w-4" />
-              <span>Help & Support</span>
+              <span>Bantuan</span>
             </CommandItem>
           </CommandGroup>
         </CommandList>

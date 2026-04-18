@@ -22,6 +22,19 @@ type AttendanceRecord = {
   photoPreviewUrl?: string | null;
   latitude: string | null;
   longitude: string | null;
+  employeeName: string;
+  employeeEmail: string;
+  siteName: string;
+  workLocation: string;
+};
+
+type AttendanceEmployee = {
+  id: number;
+  name: string;
+  email: string;
+  jobTitle: string;
+  workLocation: string;
+  siteName: string;
 };
 
 type ReverseGeocodeResult = {
@@ -56,6 +69,15 @@ type SelectedPhoto = {
 
 function normalizeTextLine(value: string | null | undefined) {
   return value?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+}
+
+function splitAttendanceNote(value: string | null | undefined) {
+  const parts = value?.split("|").map((part) => part.trim()).filter(Boolean) ?? [];
+
+  return {
+    locationNote: parts[0] ?? null,
+    details: parts.slice(1),
+  };
 }
 
 function formatCoordinate(value: number | string) {
@@ -136,13 +158,15 @@ async function reverseGeocode(latitude: number, longitude: number) {
 
 export default function AttendanceRecordsPage() {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
+  const [employee, setEmployee] = useState<AttendanceEmployee | null>(null);
   const [locationLabels, setLocationLabels] = useState<Record<string, ReverseGeocodeResult>>({});
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
   const [photoErrorId, setPhotoErrorId] = useState<number | null>(null);
 
   useEffect(() => {
     getTodayAttendanceLogs().then((res) => {
-      if (res.success) {
+      if (res.success && res.employee) {
+        setEmployee(res.employee);
         setLogs(res.logs);
       }
     });
@@ -211,7 +235,8 @@ export default function AttendanceRecordsPage() {
     const coordinateText = getLogCoordinateLabel(log);
     const coordinateKey = log.latitude && log.longitude ? getCoordinateKey(log.latitude, log.longitude) : null;
     const resolvedLocation = coordinateKey ? locationLabels[coordinateKey] : null;
-    const note = isCoordinateOnly(log.locationNote) ? null : log.locationNote;
+    const parsedNote = splitAttendanceNote(log.locationNote);
+    const note = isCoordinateOnly(parsedNote.locationNote) ? null : parsedNote.locationNote;
 
     return [
       resolvedLocation?.label ?? note ?? (coordinateText ? "Mencari nama lokasi..." : "Lokasi belum tersedia"),
@@ -227,6 +252,8 @@ export default function AttendanceRecordsPage() {
     });
   };
 
+  const getOperationalDetails = (log: AttendanceRecord) => splitAttendanceNote(log.locationNote).details;
+
   const handleOpenPhoto = (log: AttendanceRecord) => {
     if (!log.photoUrl) {
       return;
@@ -237,7 +264,7 @@ export default function AttendanceRecordsPage() {
     setPhotoErrorId(null);
     setSelectedPhoto({
       id: log.id,
-      type: log.eventType.replace("-", " "),
+      type: log.eventType === "checked-out" ? "Clock Out / Jam Pulang" : "Clock In / Jam Masuk",
       time: log.eventTime,
       location: locationLines[0] ?? "Attendance record",
       url: log.photoUrl,
@@ -246,6 +273,11 @@ export default function AttendanceRecordsPage() {
   };
 
   const selectedPhotoFailed = selectedPhoto ? photoErrorId === selectedPhoto.id : false;
+  const clockInLog = logs.find((log) => log.eventType === "checked-in") ?? null;
+  const clockOutLog = logs.find((log) => log.eventType === "checked-out") ?? null;
+  const overtimeDetails = logs
+    .flatMap((log) => getOperationalDetails(log))
+    .filter((detail) => detail.toLowerCase().startsWith("lembur:") && !detail.toLowerCase().includes("tidak ada"));
 
   return (
     <div className="space-y-6 p-6 lg:p-8">
@@ -254,12 +286,37 @@ export default function AttendanceRecordsPage() {
         <h1 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-foreground">Attendance Records</h1>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="surface-muted-card rounded-[1.25rem] p-4 md:col-span-2">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">User & Site</p>
+          <p className="mt-2 text-lg font-semibold text-foreground">{employee?.name ?? "HERO User"}</p>
+          <p className="text-sm text-muted-foreground">{employee?.siteName ?? "Site belum tersedia"} - {employee?.workLocation ?? "Lokasi kerja belum tersedia"}</p>
+        </div>
+        <div className="surface-muted-card rounded-[1.25rem] p-4">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Jam Masuk</p>
+          <p className="mt-2 text-lg font-semibold text-foreground">
+            {clockInLog ? format(new Date(clockInLog.eventTime), "HH:mm") : "--:--"}
+          </p>
+          <p className="text-sm text-muted-foreground">Photo evidence tersimpan per record.</p>
+        </div>
+        <div className="surface-muted-card rounded-[1.25rem] p-4">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Jam Pulang / Lembur</p>
+          <p className="mt-2 text-lg font-semibold text-foreground">
+            {clockOutLog ? format(new Date(clockOutLog.eventTime), "HH:mm") : "--:--"}
+          </p>
+          <p className="text-sm text-muted-foreground">{overtimeDetails[0] ?? "Belum ada lembur tercatat"}</p>
+        </div>
+      </div>
+
       <div className="surface-module-card overflow-hidden rounded-[1.5rem]">
-        <table className="w-full border-collapse text-left">
+        <div className="overflow-x-auto">
+        <table className="min-w-[980px] w-full border-collapse text-left">
           <thead>
             <tr className="bg-surface-container-low text-sm font-semibold text-muted-foreground">
+              <th className="p-4">User / Site</th>
               <th className="p-4">Time</th>
               <th className="p-4">Type</th>
+              <th className="p-4">Shift & Overtime</th>
               <th className="p-4">Location</th>
               <th className="p-4">GPS Coordinates</th>
               <th className="p-4">Photo Evidence</th>
@@ -268,25 +325,44 @@ export default function AttendanceRecordsPage() {
           <tbody className="text-sm text-foreground">
             {logs.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                  No attendance records found for today.
+                <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  No attendance records found for this shift window.
                 </td>
               </tr>
             ) : (
               logs.map((log) => {
                 const coordinateText = getLogCoordinateLabel(log);
                 const locationLines = getLocationLines(log);
+                const operationalDetails = getOperationalDetails(log);
                 const mapUrl = coordinateText
                   ? `https://www.google.com/maps?q=${encodeURIComponent(coordinateText)}`
                   : null;
 
                 return (
                   <tr key={log.id} className="border-b border-[rgba(66,71,80,0.08)] last:border-0 hover:bg-surface-container-low">
+                    <td className="p-4">
+                      <p className="font-semibold text-foreground">{log.employeeName}</p>
+                      <p className="text-xs text-muted-foreground">{log.siteName}</p>
+                      <p className="text-xs text-muted-foreground">{log.workLocation}</p>
+                    </td>
                     <td className="p-4 font-medium">{format(new Date(log.eventTime), "PPpp")}</td>
                     <td className="p-4 capitalize">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${log.eventType === "checked-in" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-                        {log.eventType.replace("-", " ")}
+                        {log.eventType === "checked-out" ? "Clock Out / Jam Pulang" : "Clock In / Jam Masuk"}
                       </span>
+                    </td>
+                    <td className="p-4">
+                      {operationalDetails.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {operationalDetails.map((detail) => (
+                            <span key={detail} className="rounded-full bg-surface-container-low px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                              {detail}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Belum ada detail shift.</span>
+                      )}
                     </td>
                     <td className="p-4">
                       <div className="flex items-start gap-2">
@@ -337,6 +413,7 @@ export default function AttendanceRecordsPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Dialog

@@ -8,17 +8,18 @@ export default async function AuditLogsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Audit Logs</h1>
+        <p className="industrial-label">Riwayat Keamanan</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-normal">Catatan Aktivitas</h1>
         <p className="text-sm text-muted-foreground">
-          Track semua perubahan governance, security, dan settings dari backend HERO.
+          Pantau perubahan akses, pengaturan, dan aktivitas keamanan di HERO.
         </p>
       </div>
 
-      <Card className="rounded-2xl">
+      <Card className="rounded-lg">
         <CardHeader>
-          <CardTitle>Security Audit Trail</CardTitle>
+          <CardTitle>Riwayat Aktivitas Keamanan</CardTitle>
           <CardDescription>
-            Tabel audit yang mengikuti pola halaman audit logs dari referensi.
+            Daftar aktivitas penting yang perlu dipantau oleh admin.
           </CardDescription>
         </CardHeader>
         <CardContent>

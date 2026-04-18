@@ -7,9 +7,10 @@ export default async function NavbarSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Navbar Setting</h1>
+        <p className="industrial-label">Navigasi Admin</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-normal">Pengaturan Navigasi</h1>
         <p className="text-sm text-muted-foreground">
-          Konfigurasi visual dan struktur menu sidebar admin HERO.
+          Atur warna header dan daftar menu admin HERO.
         </p>
       </div>
 

@@ -27,24 +27,24 @@ export function AuthShell({
             <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
                 <div
                     className={cn(
-                        "w-full max-w-[460px] rounded-[32px] border-0 bg-[linear-gradient(180deg,rgba(16,39,57,0.88)_0%,rgba(10,28,43,0.95)_100%)] p-8 shadow-[0_28px_90px_rgba(2,8,23,0.58)] ring-1 ring-white/10 backdrop-blur-2xl sm:p-10",
+                        "w-full max-w-[460px] rounded-lg border-0 bg-[linear-gradient(180deg,rgba(16,39,57,0.9)_0%,rgba(10,28,43,0.96)_100%)] p-8 shadow-[0_28px_90px_rgba(2,8,23,0.58)] ring-1 ring-white/10 backdrop-blur-2xl sm:p-10",
                         panelClassName
                     )}
                 >
                     <div className="flex flex-col items-center text-center">
                         <div className="mb-6">
                             {headerBadge ?? (
-                                <div className="flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#003461_0%,#004b87_100%)] shadow-[0_18px_40px_rgba(0,52,97,0.35)]">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-inset ring-white/18">
-                                        <div className="h-4 w-4 rounded-full border-2 border-white/85" />
+                                <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#003461_0%,#004b87_72%,#5a2200_150%)] shadow-[0_18px_40px_rgba(0,52,97,0.35)]">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 ring-1 ring-inset ring-white/18">
+                                        <div className="h-4 w-4 rounded-sm border-2 border-white/85" />
                                     </div>
                                 </div>
                             )}
                         </div>
-                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
-                            Industrial Authority
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-normal text-slate-300/70">
+                            Secure Operations
                         </p>
-                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-[-0.04em] text-white">
+                        <h1 className="font-display mt-2 text-3xl font-semibold tracking-normal text-white">
                             {title}
                         </h1>
                         <p className="mt-3 max-w-sm text-sm leading-6 text-slate-300/80">

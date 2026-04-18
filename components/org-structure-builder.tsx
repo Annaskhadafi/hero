@@ -22,6 +22,16 @@ const INITIAL_ACTION_STATE: MasterDataActionState = {
   message: "",
 };
 
+function formatScopeType(value: string) {
+  const labels: Record<string, string> = {
+    site: "Site",
+    department: "Departemen",
+    custom: "Khusus",
+  };
+
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
 function toDateTimeLocalValue(value?: Date | string | null) {
   if (!value) {
     return "";
@@ -129,7 +139,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         employeeId: employee.id,
         employeeName: employee.name,
         assignmentType,
-        notes: assignmentType === "delegate" ? "Delegate approver" : "Primary assignee",
+        notes: assignmentType === "delegate" ? "Pemeriksa pengganti" : "Penanggung jawab utama",
         effectiveFrom: new Date(),
         effectiveTo: null,
         isActive: true,
@@ -211,7 +221,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
   };
 
   const handleDelete = async (org: OrgStructure) => {
-    if (!confirm(`Are you sure you want to delete organizational structure "${org.name}"?`)) {
+    if (!confirm(`Hapus struktur organisasi "${org.name}"?`)) {
       return;
     }
 
@@ -252,7 +262,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
 
   const addNodeToCanvas = () => {
     if (!newNodeLabel.trim()) {
-      toast.error("Label node wajib diisi.");
+      toast.error("Nama posisi wajib diisi.");
       return;
     }
 
@@ -295,7 +305,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   employeeId: employee.id,
                   employeeName: employee.name,
                   assignmentType: "primary",
-                  notes: "Primary assignee",
+                  notes: "Penanggung jawab utama",
                   effectiveFrom: new Date(),
                   effectiveTo: null,
                   isActive: true,
@@ -310,7 +320,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   employeeId: delegateEmployee.id,
                   employeeName: delegateEmployee.name,
                   assignmentType: "delegate",
-                  notes: "Delegate approver",
+                  notes: "Pemeriksa pengganti",
                   effectiveFrom: new Date(),
                   effectiveTo: null,
                   isActive: true,
@@ -399,7 +409,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
 
     const result = await manageOrgStructureAction(INITIAL_ACTION_STATE, form);
     if (result.status === "success") {
-      toast.success("Canvas struktur berhasil disimpan.");
+      toast.success("Bagan struktur berhasil disimpan.");
       router.refresh();
     } else {
       toast.error(result.message);
@@ -459,7 +469,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                 <Input
                   value={node.nodeCode}
                   onChange={(e) => updateNode(node.id, { nodeCode: e.target.value })}
-                  placeholder="Kode node"
+                  placeholder="Kode posisi"
                   className="h-8 text-[13px]"
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -468,11 +478,11 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     onValueChange={(value) => updateNode(node.id, { nodeType: value })}
                   >
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Tipe node" />
+                      <SelectValue placeholder="Tipe posisi" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="position">Position</SelectItem>
-                      <SelectItem value="approver">Approver</SelectItem>
+                      <SelectItem value="position">Posisi</SelectItem>
+                      <SelectItem value="approver">Pemeriksa</SelectItem>
                       <SelectItem value="support">Support</SelectItem>
                       <SelectItem value="worker">Worker</SelectItem>
                     </SelectContent>
@@ -480,7 +490,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   <Input
                     value={node.approvalRole}
                     onChange={(e) => updateNode(node.id, { approvalRole: e.target.value })}
-                    placeholder="Approval role"
+                    placeholder="Peran approval"
                     className="h-8 text-[13px]"
                   />
                 </div>
@@ -519,7 +529,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   }}
                 >
                   <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Primary assignee" />
+                    <SelectValue placeholder="Penanggung jawab utama" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Tanpa pengguna</SelectItem>
@@ -539,10 +549,10 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   }
                 >
                   <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Delegate approver" />
+                    <SelectValue placeholder="Pemeriksa pengganti" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Tanpa delegate</SelectItem>
+                    <SelectItem value="none">Tanpa pengganti</SelectItem>
                     {employees?.map((emp) => (
                       <SelectItem key={emp.id} value={emp.id.toString()}>
                         {emp.name}
@@ -562,10 +572,10 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     }}
                   >
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Fallback node" />
+                      <SelectValue placeholder="Pemeriksa pengganti" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Tanpa fallback</SelectItem>
+                      <SelectItem value="none">Tanpa pengganti</SelectItem>
                       {canvasNodes
                         .filter((candidate) => candidate.id !== node.id)
                         .map((candidate) => (
@@ -582,7 +592,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     onChange={(e) =>
                       updateNode(node.id, { slaHours: Number(e.target.value || "24") })
                     }
-                    placeholder="SLA (jam)"
+                    placeholder="Batas waktu (jam)"
                     className="h-8 text-[13px]"
                   />
                 </div>
@@ -592,14 +602,14 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                       checked={node.canApprove}
                       onCheckedChange={(checked) => updateNode(node.id, { canApprove: checked })}
                     />
-                    Approver
+                    Pemeriksa
                   </label>
                   <label className="flex items-center gap-2 text-xs text-[#475569]">
                     <Switch
                       checked={node.canDelegate}
                       onCheckedChange={(checked) => updateNode(node.id, { canDelegate: checked })}
                     />
-                    Delegate
+                    Delegasi
                   </label>
                   <label className="flex items-center gap-2 text-xs text-[#475569]">
                     <Switch
@@ -608,14 +618,14 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                         updateNode(node.id, { isEscalationTarget: checked })
                       }
                     />
-                    Escalation
+                    Eskalasi
                   </label>
                 </div>
 
                 <div className="flex items-center justify-between mt-1">
                   {depth > 0 ? (
                     <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => updateNode(node.id, { parentNodeId: null })}>
-                      Set Root
+                      Jadikan Utama
                     </Button>
                   ) : <div />}
                   <Button type="button" size="sm" className="h-7 text-xs bg-[#3b82f6] hover:bg-[#2563eb]" onClick={() => setEditingNodeId(null)}>
@@ -638,9 +648,9 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     </span>
                   )}
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {node.canApprove ? <Badge variant="outline" className="bg-[#eff6ff] text-[#1d4ed8]">Approver</Badge> : null}
+                    {node.canApprove ? <Badge variant="outline" className="bg-[#eff6ff] text-[#1d4ed8]">Pemeriksa</Badge> : null}
                     {node.approvalRole ? <Badge variant="outline">{node.approvalRole}</Badge> : null}
-                    {node.isEscalationTarget ? <Badge variant="outline" className="bg-[#fef3c7] text-[#92400e]">Escalation</Badge> : null}
+                    {node.isEscalationTarget ? <Badge variant="outline" className="bg-[#fef3c7] text-[#92400e]">Eskalasi</Badge> : null}
                   </div>
                 </div>
 
@@ -684,7 +694,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         <div>
           <CardTitle className="text-lg font-semibold text-[#1e293b]">Struktur Organisasi</CardTitle>
           <CardDescription className="text-sm text-[#64748b]">
-            Builder tree/canvas untuk banyak struktur organisasi: site, department, atau custom lain.
+            Susun struktur organisasi untuk site, departemen, atau kebutuhan operasional lain.
           </CardDescription>
         </div>
         <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
@@ -696,7 +706,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         <Alert className="mb-4 border-[#dbeafe] bg-[#eff6ff]">
           <AlertCircle className="size-4 text-[#3b82f6]" />
           <AlertDescription className="text-[#1e40af]">
-            Setiap struktur bisa punya banyak node, label custom, serta relasi tree yang bisa dipindah dengan drag & drop.
+            Setiap struktur dapat berisi posisi kerja, penanggung jawab, dan hubungan atasan-bawahan yang mudah dipindahkan.
           </AlertDescription>
         </Alert>
 
@@ -721,9 +731,9 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     <div>
                       <p className="font-semibold text-[#1e293b]">{org.name}</p>
                       <p className="mt-1 text-xs text-[#64748b]">
-                        v{org.version} • {org.scopeType} {org.scopeValue ? `• ${org.scopeValue}` : ""}
+                        Versi {org.version} • {formatScopeType(org.scopeType)} {org.scopeValue ? `• ${org.scopeValue}` : ""}
                       </p>
-                      <p className="mt-2 text-xs text-[#94a3b8]">{org.nodes.length} node</p>
+                      <p className="mt-2 text-xs text-[#94a3b8]">{org.nodes.length} posisi</p>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenDialog(org); }} className="size-8 text-[#3b82f6] hover:bg-[#dbeafe]">
@@ -750,7 +760,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   <div>
                     <h3 className="text-xl font-semibold text-[#1e293b]">{selectedStructure.name}</h3>
                     <p className="text-sm text-[#64748b]">
-                      Scope: <span className="capitalize">{selectedStructure.scopeType}</span>{selectedStructure.scopeValue ? ` • ${selectedStructure.scopeValue}` : ""}
+                      Cakupan: {formatScopeType(selectedStructure.scopeType)}{selectedStructure.scopeValue ? ` • ${selectedStructure.scopeValue}` : ""}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#64748b]">
                       <Badge variant="outline">v{selectedStructure.version}</Badge>
@@ -761,23 +771,23 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     </div>
                   </div>
                   <Button type="button" onClick={saveCanvas} disabled={isSubmitting} className="bg-[#1d4ed8] hover:bg-[#1e40af]">
-                    {isSubmitting ? "Menyimpan..." : "Simpan Canvas"}
+                    {isSubmitting ? "Menyimpan..." : "Simpan Struktur"}
                   </Button>
                 </div>
 
                 <div className="grid gap-3 rounded-[1.2rem] bg-surface-container-low p-4 lg:grid-cols-3">
-                  <Input value={newNodeLabel} onChange={(e) => setNewNodeLabel(e.target.value)} placeholder="Label custom node" />
-                  <Input value={newNodeCode} onChange={(e) => setNewNodeCode(e.target.value)} placeholder="Kode node" />
-                  <Input value={newNodeApprovalRole} onChange={(e) => setNewNodeApprovalRole(e.target.value)} placeholder="Approval role" />
+                  <Input value={newNodeLabel} onChange={(e) => setNewNodeLabel(e.target.value)} placeholder="Nama posisi" />
+                  <Input value={newNodeCode} onChange={(e) => setNewNodeCode(e.target.value)} placeholder="Kode posisi" />
+                  <Input value={newNodeApprovalRole} onChange={(e) => setNewNodeApprovalRole(e.target.value)} placeholder="Peran approval" />
                   <Select value={newNodeType} onValueChange={setNewNodeType}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Tipe node" />
+                      <SelectValue placeholder="Tipe posisi" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="position">Position</SelectItem>
-                      <SelectItem value="approver">Approver</SelectItem>
+                      <SelectItem value="position">Posisi</SelectItem>
+                      <SelectItem value="approver">Pemeriksa</SelectItem>
                       <SelectItem value="support">Support</SelectItem>
-                      <SelectItem value="worker">Worker</SelectItem>
+                      <SelectItem value="worker">Pelaksana</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={newNodePositionId || "none"} onValueChange={(value) => setNewNodePositionId(value === "none" ? "" : value)}>
@@ -808,10 +818,10 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   </Select>
                   <Select value={newNodeDelegateEmployeeId || "none"} onValueChange={(value) => setNewNodeDelegateEmployeeId(value === "none" ? "" : value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Pilih delegate" />
+                      <SelectValue placeholder="Pilih pengganti" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Tanpa delegate</SelectItem>
+                      <SelectItem value="none">Tanpa pengganti</SelectItem>
                       {employees?.map((emp) => (
                         <SelectItem key={emp.id} value={emp.id.toString()}>
                           {emp.name}
@@ -824,24 +834,24 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     min={1}
                     value={newNodeSlaHours}
                     onChange={(e) => setNewNodeSlaHours(Number(e.target.value || "24"))}
-                    placeholder="SLA (jam)"
+                    placeholder="Batas waktu (jam)"
                   />
                   <div className="col-span-full grid gap-3 md:grid-cols-3">
                     <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
                       <Switch checked={newNodeCanApprove} onCheckedChange={setNewNodeCanApprove} />
-                      <span className="text-sm text-[#475569]">Bisa approve</span>
+                      <span className="text-sm text-[#475569]">Bisa menyetujui</span>
                     </div>
                     <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
                       <Switch checked={newNodeCanDelegate} onCheckedChange={setNewNodeCanDelegate} />
-                      <span className="text-sm text-[#475569]">Bisa delegate</span>
+                      <span className="text-sm text-[#475569]">Bisa didelegasikan</span>
                     </div>
                     <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
                       <Switch checked={newNodeIsEscalationTarget} onCheckedChange={setNewNodeIsEscalationTarget} />
-                      <span className="text-sm text-[#475569]">Escalation target</span>
+                      <span className="text-sm text-[#475569]">Tujuan eskalasi</span>
                     </div>
                   </div>
                   <div className="col-span-full">
-                    <Button type="button" onClick={addNodeToCanvas}>Tambah Node</Button>
+                    <Button type="button" onClick={addNodeToCanvas}>Tambah Posisi</Button>
                   </div>
                 </div>
 
@@ -856,8 +866,8 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                   className="relative min-h-[440px] rounded-[28px] border border-transparent bg-[linear-gradient(180deg,#f8fbff_0%,#f1f5f9_100%)] p-6 overflow-auto"
                 >
                   <div className="mb-4 flex items-center justify-between sticky left-0 top-0 z-30">
-                    <p className="text-[13px] font-semibold tracking-wide text-[#334155] uppercase">Canvas Tree</p>
-                    <Badge variant="outline" className="bg-surface-container-lowest">{canvasNodes.length} node</Badge>
+                    <p className="text-[13px] font-semibold tracking-wide text-[#334155] uppercase">Bagan Struktur</p>
+                    <Badge variant="outline" className="bg-surface-container-lowest">{canvasNodes.length} posisi</Badge>
                   </div>
                   {canvasNodes.length > 0 ? (
                     <div className="flex flex-row items-start gap-12 min-w-max pb-16 pt-4 px-4 overflow-visible">
@@ -865,14 +875,14 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     </div>
                   ) : (
                     <div className="flex h-[320px] items-center justify-center rounded-3xl bg-surface-container-lowest/70 text-center text-sm text-muted-foreground">
-                      Tambah node pertama lalu drag ke node lain untuk membentuk tree struktur organisasi.
+                      Tambah posisi pertama lalu pindahkan ke posisi lain untuk membentuk struktur organisasi.
                     </div>
                   )}
                 </div>
               </div>
             ) : (
               <div className="flex min-h-[520px] items-center justify-center rounded-[28px] bg-surface-container-low p-10 text-center text-sm text-muted-foreground">
-                Pilih atau buat struktur baru untuk mulai menyusun tree organisasi.
+                Pilih atau buat struktur baru untuk mulai menyusun bagan organisasi.
               </div>
             )}
           </div>
@@ -883,7 +893,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>{editingOrg ? "Edit Struktur Organisasi" : "Tambah Struktur Organisasi"}</DialogTitle>
-            <DialogDescription>{editingOrg ? "Ubah metadata struktur organisasi" : "Buat struktur baru, lalu susun node-nya di canvas builder"}</DialogDescription>
+            <DialogDescription>{editingOrg ? "Ubah informasi struktur organisasi" : "Buat struktur baru, lalu susun posisi di bagan struktur"}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
@@ -892,26 +902,26 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="org-jobType">Scope Struktur</Label>
+                <Label htmlFor="org-jobType">Cakupan Struktur</Label>
                 <Select value={formData.jobType} onValueChange={(value) => setFormData({ ...formData, jobType: value, scopeValue: "" })}>
                   <SelectTrigger id="org-jobType">
-                    <SelectValue placeholder="Pilih scope" />
+                    <SelectValue placeholder="Pilih cakupan" />
                   </SelectTrigger>
                   <SelectContent>
                     {scopeTypes.map((type) => (
                       <SelectItem key={type} value={type}>
-                        <span className="capitalize">{type}</span>
+                        <span>{formatScopeType(type)}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="org-scope-value">Nilai Scope</Label>
+                <Label htmlFor="org-scope-value">Detail Cakupan</Label>
                 {scopeOptions.length > 0 ? (
                   <Select value={formData.scopeValue || "none"} onValueChange={(value) => setFormData({ ...formData, scopeValue: value === "none" ? "" : value })}>
                     <SelectTrigger id="org-scope-value">
-                      <SelectValue placeholder="Pilih nilai scope" />
+                      <SelectValue placeholder="Pilih detail cakupan" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">- Pilih -</SelectItem>
@@ -947,7 +957,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="org-effective-from">Effective From</Label>
+                <Label htmlFor="org-effective-from">Berlaku Mulai</Label>
                 <Input
                   id="org-effective-from"
                   type="datetime-local"
@@ -956,7 +966,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="org-effective-to">Effective To</Label>
+                <Label htmlFor="org-effective-to">Berlaku Sampai</Label>
                 <Input
                   id="org-effective-to"
                   type="datetime-local"

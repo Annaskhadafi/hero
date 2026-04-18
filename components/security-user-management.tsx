@@ -366,11 +366,10 @@ export function SecurityUserManagement({
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              User Management
+              Manajemen Pengguna
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Configure and audit personnel access levels across industrial
-              sectors.
+              Kelola akses karyawan, peran, dan status pengguna HERO.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -381,15 +380,14 @@ export function SecurityUserManagement({
                   className="h-10 rounded-lg border-[#e2e8f0] bg-white px-4 text-sm font-medium text-[#475569] hover:bg-[#F5F7F9] hover:text-[#1e293b]"
                 >
                   <Upload className="mr-2 size-4" />
-                  Import
+                  Import Pengguna
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-6xl">
                 <DialogHeader>
-                  <DialogTitle>Import User Dengan Mapping</DialogTitle>
+                  <DialogTitle>Import Daftar Pengguna</DialogTitle>
                   <DialogDescription>
-                    Upload atau paste CSV, cek preview header, lalu sesuaikan
-                    mapping sebelum import.
+                    Unggah atau tempel daftar karyawan, lalu cocokkan kolom sebelum data disimpan.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -404,7 +402,7 @@ export function SecurityUserManagement({
                   <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <p className="text-sm font-medium">Sumber CSV</p>
+                        <p className="text-sm font-medium">File daftar pengguna</p>
                         <Input
                           type="file"
                           accept=".csv,text/csv"
@@ -417,30 +415,30 @@ export function SecurityUserManagement({
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-sm font-medium">Paste CSV manual</p>
+                        <p className="text-sm font-medium">Tempel daftar manual</p>
                         <Textarea
                           value={rawCsv}
                           onChange={(event) =>
                             setRawCsv(event.target.value)
                           }
-                          className="min-h-56 font-mono text-xs"
-                          placeholder="Paste CSV di sini bila tidak upload file..."
+                          className="min-h-56 text-xs"
+                          placeholder="Tempel data pengguna di sini bila tidak mengunggah file..."
                         />
                       </div>
 
                       <div className="rounded-xl border p-4">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="text-sm font-medium">Preview data</p>
+                            <p className="text-sm font-medium">Pratinjau data</p>
                             <p className="text-xs text-muted-foreground">
                               {parsedImport.records.length} baris terbaca,{" "}
-                              {parsedImport.headers.length} header terdeteksi.
+                              {parsedImport.headers.length} kolom terdeteksi.
                             </p>
                           </div>
                           <Badge variant="outline" className="rounded-full">
                             {missingRequiredMappings.length === 0
                               ? "Siap import"
-                              : `${missingRequiredMappings.length} mapping wajib`}
+                              : `${missingRequiredMappings.length} kolom wajib`}
                           </Badge>
                         </div>
 
@@ -455,7 +453,7 @@ export function SecurityUserManagement({
                                     </TableHead>
                                   ))
                                 ) : (
-                                  <TableHead>Belum ada header</TableHead>
+                                  <TableHead>Belum ada kolom</TableHead>
                                 )}
                               </TableRow>
                             </TableHeader>
@@ -480,8 +478,7 @@ export function SecurityUserManagement({
                               ) : (
                                 <TableRow>
                                   <TableCell className="text-sm text-muted-foreground">
-                                    Upload atau paste CSV untuk melihat
-                                    preview.
+                                    Unggah atau tempel daftar pengguna untuk melihat pratinjau.
                                   </TableCell>
                                 </TableRow>
                               )}
@@ -493,10 +490,9 @@ export function SecurityUserManagement({
 
                     <div className="space-y-4">
                       <div className="rounded-xl border p-4">
-                        <p className="text-sm font-medium">Mapping field</p>
+                        <p className="text-sm font-medium">Cocokkan Kolom</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Field wajib harus dipetakan sebelum import
-                          dijalankan.
+                          Kolom wajib harus dipilih sebelum import dijalankan.
                         </p>
                         <div className="mt-4 grid gap-3">
                           {USER_IMPORT_FIELDS.map((field) => (
@@ -516,7 +512,7 @@ export function SecurityUserManagement({
                               </div>
                               <Command>
                                 <CommandInput
-                                  placeholder="Pilih header CSV"
+                                  placeholder="Pilih kolom sumber"
                                   value={mapping[field.key] || ""}
                                   onValueChange={(value) =>
                                     setMapping((current) => ({
@@ -527,7 +523,7 @@ export function SecurityUserManagement({
                                 />
                                 <CommandList className="max-h-[100px]">
                                   <CommandEmpty>
-                                    Tidak ada header yang cocok
+                                    Tidak ada kolom yang cocok
                                   </CommandEmpty>
                                   <CommandGroup>
                                     {parsedImport.headers.map((header) => (
@@ -553,7 +549,7 @@ export function SecurityUserManagement({
 
                       <div className="rounded-xl border bg-muted/30 p-4">
                         <p className="text-sm font-medium text-foreground">
-                          Ringkasan mapping
+                          Ringkasan Kolom
                         </p>
                         <p className="mt-2 whitespace-pre-line font-mono text-xs text-muted-foreground">
                           {toHeaderPreview(mapping)}
@@ -575,9 +571,9 @@ export function SecurityUserManagement({
                         {actionState.status === "success" ? (
                           <span>
                             {" "}
-                            Imported: {actionState.importedCount ?? 0},
-                            updated:{" "}
-                            {actionState.updatedCount ?? 0}, skipped:{" "}
+                            Baru: {actionState.importedCount ?? 0},
+                            diperbarui:{" "}
+                            {actionState.updatedCount ?? 0}, dilewati:{" "}
                             {actionState.skippedCount ?? 0}.
                           </span>
                         ) : null}
@@ -603,8 +599,8 @@ export function SecurityUserManagement({
                       }
                     >
                       {isPending
-                        ? "Mengimport..."
-                        : "Import ke User Management"}
+                        ? "Mengimpor..."
+                        : "Import ke Manajemen Pengguna"}
                     </Button>
                   </div>
                 </form>
@@ -694,7 +690,7 @@ export function SecurityUserManagement({
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Join {currentYear}
+                    Bergabung {currentYear}
                   </p>
                   <div className="mt-2 flex items-baseline gap-2">
                     <span className="text-3xl font-bold text-foreground">
@@ -707,7 +703,7 @@ export function SecurityUserManagement({
                 </div>
               </div>
               <div className="mt-3">
-                <span className="text-xs text-muted-foreground">New Hires</span>
+                <span className="text-xs text-muted-foreground">Karyawan Baru</span>
               </div>
             </CardContent>
           </Card>
@@ -719,7 +715,7 @@ export function SecurityUserManagement({
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Visible Result
+                    Cakupan Terlihat
                   </p>
                   <div className="mt-2 flex items-baseline gap-2">
                     <span className="text-3xl font-bold text-foreground">
@@ -754,7 +750,7 @@ export function SecurityUserManagement({
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
                     <Input
-                      placeholder="Search users..."
+                      placeholder="Cari pengguna..."
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                       onKeyDown={handleKeyDown}
@@ -765,7 +761,7 @@ export function SecurityUserManagement({
                     onClick={handleSearch}
                     className="h-9 rounded-lg bg-[#3b82f6] px-4 text-sm font-medium text-white hover:bg-[#2563eb]"
                   >
-                    Search
+                    Cari
                   </Button>
                 </div>
 
@@ -774,8 +770,8 @@ export function SecurityUserManagement({
                   options={departmentFilterOptions}
                   selected={selectedDepartments}
                   onChange={setSelectedDepartments}
-                  placeholder="All Departme..."
-                  label="Department"
+                  placeholder="Semua departemen"
+                  label="Departemen"
                 />
 
                 {/* Multi-select Role Filter */}
@@ -783,8 +779,8 @@ export function SecurityUserManagement({
                   options={roleNames}
                   selected={selectedRoles}
                   onChange={setSelectedRoles}
-                  placeholder="All Roles"
-                  label="Role"
+                  placeholder="Semua peran"
+                  label="Peran"
                 />
 
                 {/* Multi-select Status Type Filter */}
@@ -792,8 +788,8 @@ export function SecurityUserManagement({
                   options={statusTypeOptions}
                   selected={selectedStatusTypes}
                   onChange={setSelectedStatusTypes}
-                  placeholder="All Status Type"
-                  label="Status Type"
+                  placeholder="Semua tipe status"
+                  label="Tipe Status"
                 />
 
                 {/* Reset button */}
@@ -813,9 +809,9 @@ export function SecurityUserManagement({
               {/* Right side: Pagination info */}
               <div className="flex items-center gap-4">
                 <span className="text-sm text-muted-foreground">
-                  Showing 1-
-                  {Math.min(filteredUsers.length, 10)} of {filteredUsers.length}{" "}
-                  entries
+                  Menampilkan 1-
+                  {Math.min(filteredUsers.length, 10)} dari {filteredUsers.length}{" "}
+                  data
                 </span>
               </div>
             </div>
@@ -828,7 +824,7 @@ export function SecurityUserManagement({
                     variant="secondary"
                     className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-500"
                   >
-                    Search: {searchQuery}
+                    Cari: {searchQuery}
                     <button
                       onClick={() => {
                         setSearchInput("");
@@ -846,7 +842,7 @@ export function SecurityUserManagement({
                     variant="secondary"
                     className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-500"
                   >
-                    Dept: {dept}
+                    Departemen: {dept}
                     <button
                       onClick={() =>
                         setSelectedDepartments((prev) =>
@@ -865,7 +861,7 @@ export function SecurityUserManagement({
                     variant="secondary"
                     className="flex items-center gap-1 rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-500"
                   >
-                    Role: {role}
+                    Peran: {role}
                     <button
                       onClick={() =>
                         setSelectedRoles((prev) =>
@@ -951,7 +947,7 @@ export function SecurityUserManagement({
                     Departement
                   </TableHead>
                   <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Role
+                    Peran
                   </TableHead>
                   <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Lokasi Site
@@ -960,7 +956,7 @@ export function SecurityUserManagement({
                     Tipe Status
                   </TableHead>
                   <TableHead className="py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Action
+                    Tindakan
                   </TableHead>
                 </TableRow>
               </TableHeader>

@@ -300,15 +300,15 @@ export function ActivityTemplateForm({ data }: { data: ActivityTemplateFormData 
           <div className="space-y-2">
             <h2 className="text-2xl font-semibold tracking-tight">{data.template.name}</h2>
             <p className="text-sm text-muted-foreground">
-              Template-driven form dengan progress, preview, draft, attachment, watcher, dan signature field.
+              Isi laporan aktivitas, cek ringkasannya, lalu simpan atau kirim untuk approval.
             </p>
           </div>
 
           <Card className="rounded-[1.4rem] bg-surface-container-lowest py-0 shadow-none">
             <CardHeader>
-              <CardTitle className="text-base">Form Progress</CardTitle>
+              <CardTitle className="text-base">Kelengkapan Form</CardTitle>
               <CardDescription>
-                {progress}/{REQUIRED_FIELDS.length} field wajib terisi • {progressPercent}%
+                {progress}/{REQUIRED_FIELDS.length} isian wajib terisi • {progressPercent}%
               </CardDescription>
             </CardHeader>
             <CardContent className="pb-5">
@@ -322,7 +322,7 @@ export function ActivityTemplateForm({ data }: { data: ActivityTemplateFormData 
             <Card key={section.id} className="rounded-[1.4rem] bg-surface-container-lowest shadow-none">
               <CardHeader>
                 <CardTitle className="text-lg">{section.label}</CardTitle>
-                <CardDescription>{section.description || "Section form template."}</CardDescription>
+                <CardDescription>{section.description || "Lengkapi bagian ini sebelum dikirim."}</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 {section.fields.map((field) => (
@@ -336,24 +336,24 @@ export function ActivityTemplateForm({ data }: { data: ActivityTemplateFormData 
 
           <div className="flex flex-wrap justify-end gap-3">
             <Button formAction={saveActivityDraftAction} type="submit" variant="outline" className="rounded-full px-5">
-              Simpan Draft
+              Simpan Sementara
             </Button>
             <Button formAction={createActivityAction} type="submit" className="rounded-full px-5">
-              Submit Final
+              Kirim Laporan
             </Button>
           </div>
         </form>
 
         <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
           <CardHeader>
-            <CardTitle>Preview Sebelum Submit</CardTitle>
-            <CardDescription>Snapshot yang akan terbawa ke approval inbox dan request center.</CardDescription>
+            <CardTitle>Ringkasan Sebelum Dikirim</CardTitle>
+            <CardDescription>Pastikan isi laporan sudah benar sebelum masuk ke daftar approval.</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[840px] rounded-[1.2rem] bg-surface-container-low">
               <div className="space-y-4 p-4">
                 <div className="rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Header</p>
+                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Ringkasan</p>
                   <p className="mt-2 font-semibold text-[#0f172a]">{resolvedPreview.title}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {resolvedPreview.requester} • {resolvedPreview.activityType} • {resolvedPreview.unitNumber}
@@ -363,10 +363,10 @@ export function ActivityTemplateForm({ data }: { data: ActivityTemplateFormData 
                   {[
                     ["Tanggal kerja", resolvedPreview.workDate],
                     ["Shift", resolvedPreview.shift],
-                    ["Priority", resolvedPreview.priority],
+                    ["Prioritas", resolvedPreview.priority],
                     ["Durasi", resolvedPreview.duration],
-                    ["Overtime", resolvedPreview.overtimeMinutes],
-                    ["Remark", resolvedPreview.remarks],
+                    ["Lembur", resolvedPreview.overtimeMinutes],
+                    ["Catatan", resolvedPreview.remarks],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
                       <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
@@ -377,7 +377,7 @@ export function ActivityTemplateForm({ data }: { data: ActivityTemplateFormData 
 
                 {resolvedPreview.photoAttachmentUrl ? (
                   <div className="rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Photo Preview</p>
+                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Foto Pendukung</p>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={resolvedPreview.photoAttachmentUrl}
@@ -389,7 +389,7 @@ export function ActivityTemplateForm({ data }: { data: ActivityTemplateFormData 
 
                 {resolvedPreview.documentAttachmentUrl ? (
                   <div className="rounded-[1.05rem] bg-surface-container-lowest px-4 py-4">
-                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Document Attachment</p>
+                    <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Dokumen Pendukung</p>
                     <p className="mt-2 text-sm font-medium text-[#0f172a]">{resolvedPreview.documentAttachmentUrl}</p>
                   </div>
                 ) : null}
