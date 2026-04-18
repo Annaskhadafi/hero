@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>HSE Report - HERO</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-fixed": "#ffdbcb",
+                        "inverse-primary": "#a3c9ff",
+                        "on-primary-container": "#8abcff",
+                        "outline-variant": "#c2c6d1",
+                        "on-secondary-fixed": "#021f29",
+                        "on-background": "#071e27",
+                        "on-surface": "#071e27",
+                        "on-primary": "#ffffff",
+                        "on-secondary-fixed-variant": "#304a55",
+                        "on-secondary-container": "#4e6874",
+                        "secondary-fixed-dim": "#afcbd8",
+                        "primary-container": "#004b87",
+                        "surface": "#f3faff",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-variant": "#cfe6f2",
+                        "inverse-surface": "#1e333c",
+                        "secondary": "#48626e",
+                        "on-tertiary": "#ffffff",
+                        "secondary-fixed": "#cbe7f5",
+                        "on-tertiary-container": "#ffa273",
+                        "tertiary-fixed-dim": "#ffb692",
+                        "on-error-container": "#93000a",
+                        "on-error": "#ffffff",
+                        "background": "#f3faff",
+                        "on-surface-variant": "#424750",
+                        "primary-fixed-dim": "#a3c9ff",
+                        "inverse-on-surface": "#dff4ff",
+                        "on-primary-fixed-variant": "#004882",
+                        "surface-tint": "#27609d",
+                        "surface-bright": "#f3faff",
+                        "surface-container-highest": "#cfe6f2",
+                        "error": "#ba1a1a",
+                        "primary-fixed": "#d3e4ff",
+                        "outline": "#727781",
+                        "tertiary": "#5a2200",
+                        "secondary-container": "#cbe7f5",
+                        "on-secondary": "#ffffff",
+                        "tertiary-container": "#7e3200",
+                        "surface-container-low": "#e6f6ff",
+                        "primary": "#003461",
+                        "surface-container-high": "#d5ecf8",
+                        "on-primary-fixed": "#001c38",
+                        "surface-dim": "#c7dde9",
+                        "on-tertiary-fixed-variant": "#7a3000",
+                        "error-container": "#ffdad6",
+                        "surface-container": "#dbf1fe",
+                        "on-tertiary-fixed": "#341100"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, .font-headline { font-family: 'Manrope', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface pb-24">
+<!-- TopAppBar -->
+<nav class="bg-[#f3faff] text-[#003461] font-['Manrope'] font-bold tracking-tight w-full top-0 sticky flex justify-between items-center px-6 h-16 w-full z-50 shadow-none">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined cursor-pointer" data-icon="menu">menu</span>
+<span class="text-xl font-black text-[#003461]">HERO</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined cursor-pointer" data-icon="notifications">notifications</span>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="px-6 py-8 max-w-2xl mx-auto">
+<!-- Screen Title Section -->
+<header class="mb-8">
+<h1 class="text-3xl font-extrabold tracking-tight text-primary mb-2">HSE Report</h1>
+<p class="text-on-surface-variant body-lg">Document safety observations or incidents immediately from the field.</p>
+</header>
+<!-- Quick Report Buttons (Asymmetric Bento Style) -->
+<div class="grid grid-cols-12 gap-4 mb-8">
+<button class="col-span-12 md:col-span-6 bg-surface-container-lowest p-6 rounded-xl shadow-sm border-l-4 border-error flex flex-col items-start gap-4 active:scale-95 transition-transform duration-200 group">
+<div class="bg-error-container text-on-error-container p-3 rounded-lg group-hover:bg-error group-hover:text-white transition-colors">
+<span class="material-symbols-outlined" data-icon="report">report</span>
+</div>
+<div class="text-left">
+<h3 class="font-headline font-bold text-lg">Safety Hazard</h3>
+<p class="text-on-surface-variant text-sm">Report unsafe conditions or near misses.</p>
+</div>
+</button>
+<button class="col-span-6 md:col-span-3 bg-surface-container-lowest p-6 rounded-xl shadow-sm border-l-4 border-primary flex flex-col items-start gap-4 active:scale-95 transition-transform duration-200 group">
+<div class="bg-secondary-container text-on-secondary-container p-3 rounded-lg group-hover:bg-primary group-hover:text-white transition-colors">
+<span class="material-symbols-outlined" data-icon="verified_user">verified_user</span>
+</div>
+<div class="text-left">
+<h3 class="font-headline font-bold text-base">Safe Behavior</h3>
+</div>
+</button>
+<button class="col-span-6 md:col-span-3 bg-surface-container-lowest p-6 rounded-xl shadow-sm border-l-4 border-tertiary-container flex flex-col items-start gap-4 active:scale-95 transition-transform duration-200 group">
+<div class="bg-tertiary-fixed text-on-tertiary-fixed-variant p-3 rounded-lg group-hover:bg-tertiary-container group-hover:text-white transition-colors">
+<span class="material-symbols-outlined" data-icon="emergency">emergency</span>
+</div>
+<div class="text-left">
+<h3 class="font-headline font-bold text-base">Incident</h3>
+</div>
+</button>
+</div>
+<!-- Observation Form -->
+<div class="bg-surface-container-low rounded-xl p-8 space-y-8">
+<!-- Location Indicator (Auto-GPS) -->
+<div class="flex items-center justify-between p-4 bg-surface-container-lowest rounded-xl border-b-2 border-primary">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="location_on" style="font-variation-settings: 'FILL' 1;">location_on</span>
+</div>
+<div>
+<p class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Location (Auto-GPS)</p>
+<p class="text-on-surface font-semibold">Zone 4B - Heavy Machinery Bay</p>
+</div>
+</div>
+<span class="text-[10px] bg-primary text-white px-2 py-1 rounded-full font-bold">LIVE</span>
+</div>
+<!-- Description Field -->
+<div class="space-y-2">
+<label class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant block ml-1">Description of observation</label>
+<textarea class="w-full bg-surface-container-lowest border-none border-b-2 border-primary/20 focus:border-primary focus:ring-0 rounded-lg p-4 text-on-surface placeholder:text-on-surface-variant/40" placeholder="Describe what you observed in detail..." rows="4"></textarea>
+</div>
+<!-- Category Grid -->
+<div class="space-y-4">
+<label class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant block ml-1">Category selection</label>
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+<button class="flex items-center gap-2 p-3 bg-surface-container-lowest rounded-lg text-sm font-medium border border-transparent hover:border-primary transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="construction">construction</span> PPE
+                    </button>
+<button class="flex items-center gap-2 p-3 bg-primary text-white rounded-lg text-sm font-medium transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="bolt">bolt</span> Electrical
+                    </button>
+<button class="flex items-center gap-2 p-3 bg-surface-container-lowest rounded-lg text-sm font-medium border border-transparent hover:border-primary transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="fire_extinguisher">fire_extinguisher</span> Fire Safety
+                    </button>
+<button class="flex items-center gap-2 p-3 bg-surface-container-lowest rounded-lg text-sm font-medium border border-transparent hover:border-primary transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="cleaning_services">cleaning_services</span> Housekeeping
+                    </button>
+<button class="flex items-center gap-2 p-3 bg-surface-container-lowest rounded-lg text-sm font-medium border border-transparent hover:border-primary transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="height">height</span> Work at Height
+                    </button>
+<button class="flex items-center gap-2 p-3 bg-surface-container-lowest rounded-lg text-sm font-medium border border-transparent hover:border-primary transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="more_horiz">more_horiz</span> Other
+                    </button>
+</div>
+</div>
+<!-- Photo Attachment -->
+<div class="space-y-4">
+<label class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant block ml-1">Evidence / Photo attachment</label>
+<div class="grid grid-cols-2 gap-4">
+<div class="aspect-square rounded-xl overflow-hidden relative group cursor-pointer">
+<img class="w-full h-full object-cover" data-alt="Close-up of industrial machinery electrical panel with exposed wires and warning signs" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoAKsACloZ55Zw_FM45sG2zlIFfegIRtaCs088S-A4njALu5UIVnDF4Y71aKII_fR9-gLGNr4pn22BlLnbbLgFxTYJmsJjmlTDc1MNPGl6GY_mgXDc-cdrdSpoa2LwXyE_Nvrbo8zv5MDT8H8cXgHr31uu-Hv5oQ_RKlRdM7Wj68iAIdpbJzZDVM19vqNF5DVasjbdvsntFxb4rHFgWBXK00bRxj6ZU1engM9jck0pnIi1y76cl2aLTaKEYDqN9Rn9Urgkqd9SYpg"/>
+<div class="absolute inset-0 bg-primary/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-white text-3xl" data-icon="delete">delete</span>
+</div>
+</div>
+<div class="aspect-square rounded-xl border-2 border-dashed border-primary/30 flex flex-col items-center justify-center gap-2 bg-surface-container-lowest text-primary hover:bg-primary/5 transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-3xl" data-icon="add_a_photo">add_a_photo</span>
+<span class="text-xs font-bold uppercase">Add Photo</span>
+</div>
+</div>
+</div>
+<!-- Signature/Confirmation Toggle -->
+<div class="flex items-center justify-between p-4 bg-white rounded-xl shadow-sm">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface">Digital Signature</span>
+<span class="text-xs text-on-surface-variant">Confirming report accuracy</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+<!-- Action Button -->
+<button class="w-full h-14 bg-gradient-to-r from-tertiary-container to-tertiary text-white rounded-xl flex items-center justify-center gap-3 active:scale-95 transition-all duration-300 shadow-lg shadow-tertiary/20">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+<span class="font-headline font-bold uppercase tracking-widest text-sm">Send HSE Report</span>
+</button>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-4 pt-2 bg-[#ffffff]/70 dark:bg-[#0d2a38]/70 backdrop-blur-xl border-t border-[#003461]/10 shadow-[0_-12px_24px_rgba(0,52,97,0.08)]">
+<!-- Dashboard -->
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-[#939799] px-4 py-2 hover:text-[#003461] dark:hover:text-white active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1">Dashboard</span>
+</a>
+<!-- Activity -->
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-[#939799] px-4 py-2 hover:text-[#003461] dark:hover:text-white active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1">Activity</span>
+</a>
+<!-- HSE (Active) -->
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#003461] to-[#004b87] text-white rounded-xl px-4 py-2 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="security" style="font-variation-settings: 'FILL' 1;">security</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1">HSE</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-[#939799] px-4 py-2 hover:text-[#003461] dark:hover:text-white active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

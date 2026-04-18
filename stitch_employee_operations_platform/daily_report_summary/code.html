@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Daily Report Summary - HERO Platform</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#8abcff",
+                        "surface-tint": "#27609d",
+                        "error-container": "#ffdad6",
+                        "primary-fixed": "#d3e4ff",
+                        "on-tertiary-fixed-variant": "#7a3000",
+                        "on-primary-fixed": "#001c38",
+                        "secondary-container": "#cbe7f5",
+                        "primary-container": "#004b87",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#727781",
+                        "on-surface": "#071e27",
+                        "surface-container-high": "#d5ecf8",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#7e3200",
+                        "tertiary": "#5a2200",
+                        "on-secondary-fixed-variant": "#304a55",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#dbf1fe",
+                        "surface": "#f3faff",
+                        "error": "#ba1a1a",
+                        "on-secondary-container": "#4e6874",
+                        "surface-container-low": "#e6f6ff",
+                        "on-background": "#071e27",
+                        "secondary": "#48626e",
+                        "secondary-fixed": "#cbe7f5",
+                        "surface-container-highest": "#cfe6f2",
+                        "on-primary-fixed-variant": "#004882",
+                        "outline-variant": "#c2c6d1",
+                        "secondary-fixed-dim": "#afcbd8",
+                        "inverse-primary": "#a3c9ff",
+                        "surface-bright": "#f3faff",
+                        "primary-fixed-dim": "#a3c9ff",
+                        "on-primary": "#ffffff",
+                        "on-surface-variant": "#424750",
+                        "surface-dim": "#c7dde9",
+                        "on-tertiary-container": "#ffa273",
+                        "background": "#f3faff",
+                        "inverse-surface": "#1e333c",
+                        "on-secondary": "#ffffff",
+                        "tertiary-fixed": "#ffdbcb",
+                        "on-secondary-fixed": "#021f29",
+                        "primary": "#003461",
+                        "on-tertiary": "#ffffff",
+                        "inverse-on-surface": "#dff4ff",
+                        "tertiary-fixed-dim": "#ffb692",
+                        "surface-variant": "#cfe6f2",
+                        "on-tertiary-fixed": "#341100"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .active-pill {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="bg-[#f3faff] dark:bg-slate-900 sticky top-0 z-40 w-full px-6 py-4 flex justify-between items-center">
+<div class="flex items-center gap-4">
+<button class="text-[#003461] dark:text-blue-400 hover:bg-[#e6f6ff] transition-colors p-2 rounded-lg active:scale-95 duration-150">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="Manrope display-md font-bold uppercase tracking-tight text-[#003461] dark:text-blue-400">Daily Report Summary</h1>
+</div>
+<button class="text-[#003461] dark:text-blue-400 hover:bg-[#e6f6ff] transition-colors p-2 rounded-lg active:scale-95 duration-150">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</header>
+<main class="px-5 py-6 flex flex-col gap-6">
+<!-- Header Section: Date and Site ID -->
+<section class="flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<p class="font-headline text-on-surface-variant text-sm font-bold uppercase tracking-wider">Site ID: Site C-4</p>
+<p class="font-label text-primary font-bold text-sm bg-primary-fixed px-3 py-1 rounded-full">Oct 24, 2023</p>
+</div>
+<h2 class="font-headline text-2xl font-extrabold text-primary tracking-tight">Alpha Sector</h2>
+<div class="h-1 w-12 bg-primary rounded-full mt-1"></div>
+</section>
+<!-- Key Metrics Bento Grid -->
+<section class="grid grid-cols-2 gap-4">
+<!-- Large Metric: Manpower -->
+<div class="col-span-2 bg-surface-container-lowest p-6 rounded-xl shadow-[0_12px_24px_rgba(0,75,135,0.08)] flex flex-col justify-between relative overflow-hidden">
+<div class="absolute -right-4 -top-4 opacity-5">
+<span class="material-symbols-outlined text-8xl" style="font-variation-settings: 'FILL' 1;">groups</span>
+</div>
+<div>
+<p class="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant">Total Active Manpower</p>
+<div class="flex items-baseline gap-2 mt-2">
+<span class="font-headline text-5xl font-extrabold text-primary">128</span>
+<span class="font-label text-sm font-bold text-primary-container">Personnel</span>
+</div>
+</div>
+<div class="mt-4 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<p class="text-xs font-medium text-on-surface-variant">Live tracking active</p>
+</div>
+</div>
+<!-- Metric: Activities -->
+<div class="bg-surface-container-low p-5 rounded-xl flex flex-col gap-2">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">list_alt</span>
+<div>
+<p class="font-label text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Activities</p>
+<p class="font-headline text-3xl font-bold text-primary">10</p>
+</div>
+<p class="text-[10px] text-on-surface-variant font-medium">Recorded Today</p>
+</div>
+<!-- Metric: HSE Status -->
+<div class="bg-tertiary-container p-5 rounded-xl flex flex-col gap-2">
+<span class="material-symbols-outlined text-on-tertiary-container">health_and_safety</span>
+<div>
+<p class="font-label text-[10px] font-bold uppercase tracking-widest text-on-tertiary-container">HSE Status</p>
+<p class="font-headline text-3xl font-bold text-white">0</p>
+</div>
+<p class="text-[10px] text-on-tertiary-container font-medium">Incidents Reported</p>
+</div>
+</section>
+<!-- Activity Breakdown -->
+<section class="flex flex-col gap-4">
+<div class="flex items-center justify-between">
+<h3 class="font-headline text-lg font-extrabold text-primary uppercase tracking-tight">Activity Breakdown</h3>
+<span class="font-label text-xs font-bold text-primary bg-primary-fixed px-2 py-0.5 rounded">Current Shift</span>
+</div>
+<div class="flex flex-col gap-3">
+<!-- Maintenance -->
+<div class="bg-surface-container-lowest p-4 rounded-xl flex items-center justify-between border-l-4 border-primary">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">settings_suggest</span>
+</div>
+<div>
+<p class="font-headline font-bold text-on-surface">Maintenance</p>
+<p class="font-label text-xs text-on-surface-variant">Heavy Equipment Service</p>
+</div>
+</div>
+<p class="font-headline text-xl font-extrabold text-primary">3</p>
+</div>
+<!-- Inspections -->
+<div class="bg-surface-container-lowest p-4 rounded-xl flex items-center justify-between border-l-4 border-secondary">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">fact_check</span>
+</div>
+<div>
+<p class="font-headline font-bold text-on-surface">Inspections</p>
+<p class="font-label text-xs text-on-surface-variant">Safety &amp; Structural Checks</p>
+</div>
+</div>
+<p class="font-headline text-xl font-extrabold text-secondary">5</p>
+</div>
+<!-- Logistics -->
+<div class="bg-surface-container-lowest p-4 rounded-xl flex items-center justify-between border-l-4 border-primary-fixed-dim">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-surface-container-low flex items-center justify-center text-primary-fixed-dim">
+<span class="material-symbols-outlined">local_shipping</span>
+</div>
+<div>
+<p class="font-headline font-bold text-on-surface">Logistics</p>
+<p class="font-label text-xs text-on-surface-variant">Material Transport</p>
+</div>
+</div>
+<p class="font-headline text-xl font-extrabold text-primary-fixed-dim">2</p>
+</div>
+</div>
+</section>
+<!-- Safety & Compliance Segment -->
+<section class="bg-surface-dim/40 p-5 rounded-2xl flex flex-col gap-4">
+<h3 class="font-label text-xs font-extrabold text-primary uppercase tracking-widest flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">verified_user</span> Safety &amp; Compliance
+            </h3>
+<div class="flex gap-4">
+<div class="flex-1 bg-white p-3 rounded-lg flex flex-col items-center text-center">
+<p class="font-headline text-2xl font-extrabold text-tertiary">04</p>
+<p class="font-label text-[10px] font-bold text-on-surface-variant uppercase">Toolbox Meetings</p>
+</div>
+<div class="flex-1 bg-white p-3 rounded-lg flex flex-col items-center text-center">
+<div class="flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<p class="font-headline text-sm font-extrabold">Active</p>
+</div>
+<p class="font-label text-[10px] font-bold text-on-surface-variant uppercase mt-1">Safety Patrol</p>
+</div>
+</div>
+</section>
+<!-- Action Buttons -->
+<section class="flex flex-col gap-3 mt-4">
+<button class="w-full bg-surface-container-highest text-primary font-headline font-bold uppercase tracking-wider py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-surface-container-high transition-colors active:scale-95">
+<span class="material-symbols-outlined">picture_as_pdf</span>
+                Preview Full PDF
+            </button>
+<button class="w-full bg-gradient-to-br from-[#003461] to-[#004b87] text-white font-headline font-extrabold uppercase tracking-widest py-5 rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform">
+<span class="material-symbols-outlined">send</span>
+                Approve &amp; Send Report
+            </button>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl flex justify-around items-center px-4 py-3 pb-safe rounded-t-xl shadow-[0_-12px_24px_rgba(0,75,135,0.08)]">
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-slate-400 px-4 py-2 hover:text-[#004b87] dark:hover:text-blue-200 transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="Inter label-md uppercase tracking-wider font-semibold text-[10px] mt-1">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-slate-400 px-4 py-2 hover:text-[#004b87] dark:hover:text-blue-200 transition-colors" href="#">
+<span class="material-symbols-outlined">fact_check</span>
+<span class="Inter label-md uppercase tracking-wider font-semibold text-[10px] mt-1">Approvals</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#003461] to-[#004b87] text-white rounded-xl px-4 py-2 shadow-inner" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">description</span>
+<span class="Inter label-md uppercase tracking-wider font-semibold text-[10px] mt-1">Reports</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-slate-400 px-4 py-2 hover:text-[#004b87] dark:hover:text-blue-200 transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="Inter label-md uppercase tracking-wider font-semibold text-[10px] mt-1">Settings</span>
+</a>
+</nav>
+</body></html>

@@ -28,6 +28,11 @@ const DAILY_ACTIVITY_REVALIDATE_PATHS = [
   "/dashboard/activity-hub/configuration",
   "/dashboard/approval",
   "/dashboard/leaderboard",
+  "/mobile",
+  "/mobile/dashboard",
+  "/mobile/activity",
+  "/mobile/activity/input",
+  "/mobile/gamification",
 ] as const;
 
 const DEFAULT_LIBRARY_SEEDS = [

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>HERO Platform - Executive Command Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#d3e4ff",
+                        "on-surface-variant": "#424750",
+                        "surface-variant": "#cfe6f2",
+                        "surface-tint": "#27609d",
+                        "on-primary-container": "#8abcff",
+                        "primary-fixed-dim": "#a3c9ff",
+                        "primary": "#003461",
+                        "outline-variant": "#c2c6d1",
+                        "on-secondary-fixed": "#021f29",
+                        "inverse-primary": "#a3c9ff",
+                        "inverse-on-surface": "#dff4ff",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-high": "#d5ecf8",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#1e333c",
+                        "on-secondary-container": "#4e6874",
+                        "secondary": "#48626e",
+                        "error-container": "#ffdad6",
+                        "tertiary": "#5a2200",
+                        "on-tertiary-container": "#ffa273",
+                        "background": "#f3faff",
+                        "surface-container-highest": "#cfe6f2",
+                        "secondary-fixed": "#cbe7f5",
+                        "tertiary-container": "#7e3200",
+                        "surface-bright": "#f3faff",
+                        "primary-container": "#004b87",
+                        "surface": "#f3faff",
+                        "tertiary-fixed": "#ffdbcb",
+                        "on-background": "#071e27",
+                        "tertiary-fixed-dim": "#ffb692",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#dbf1fe",
+                        "on-surface": "#071e27",
+                        "on-secondary-fixed-variant": "#304a55",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-fixed-dim": "#afcbd8",
+                        "outline": "#727781",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed": "#341100",
+                        "on-primary-fixed": "#001c38",
+                        "surface-container-low": "#e6f6ff",
+                        "on-tertiary-fixed-variant": "#7a3000",
+                        "secondary-container": "#cbe7f5",
+                        "on-primary-fixed-variant": "#004882",
+                        "error": "#ba1a1a",
+                        "surface-dim": "#c7dde9"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .display-md { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="bg-slate-50 dark:bg-[#071e27] flex justify-between items-center w-full px-6 py-4 sticky top-0 z-50">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-primary-container flex items-center justify-center">
+<img alt="Executive User Profile" data-alt="Professional headshot of a high-level executive in a business suit with a confident expression and neutral office background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCeweaaQBlQVxSFblD5NXjNlcWA_zT-2KBJougDvWofttCYv6bF6K7MxdM5OPfcXjYEXat7sSX5QBTs-catILouZLmn4nHBdUr2AQSnPngnX0EESzd9O8fGyDVA1Ym_zXlfptSWZLiIQjt15J8b_im4_aHtrA8mRxdRQDRx7a13GD_7bsdIz7_K75JlSSg5cvoF1ahbPWuYJXsiqAa82LQ2ilKhaE-JDHEkZ1s74bDRCEh-YCebwftXRzv0YpksnlpjJ301YdIGe6U"/>
+</div>
+<h1 class="text-xl font-bold tracking-tight text-[#003461] dark:text-[#e6f6ff]">HERO Platform</h1>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex gap-8">
+<a class="text-[#003461] font-bold" href="#">Overview</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#003461] transition-colors" href="#">Analytics</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#003461] transition-colors" href="#">Operational</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#003461] transition-colors" href="#">Safety</a>
+</div>
+<button class="material-symbols-outlined text-[#003461] dark:text-[#e6f6ff] hover:bg-slate-200 p-2 rounded-full transition-colors">notifications</button>
+</div>
+</header>
+<main class="max-w-7xl mx-auto px-6 pt-8 pb-12">
+<!-- Dashboard Header & Filters -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+<div>
+<p class="text-label-md uppercase tracking-wider font-semibold text-on-surface-variant mb-1">Executive Dashboard</p>
+<h2 class="text-3xl font-extrabold text-primary">Command Center Overview</h2>
+</div>
+<div class="flex flex-wrap gap-3 bg-surface-container-low p-2 rounded-xl">
+<div class="relative">
+<select class="appearance-none bg-surface-container-lowest border-none rounded-lg py-2 pl-4 pr-10 text-sm font-semibold text-primary focus:ring-2 focus:ring-primary shadow-sm">
+<option>All Global Sites</option>
+<option>North Region Yard</option>
+<option>South Coastal Hub</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-primary">expand_more</span>
+</div>
+<div class="relative">
+<select class="appearance-none bg-surface-container-lowest border-none rounded-lg py-2 pl-4 pr-10 text-sm font-semibold text-primary focus:ring-2 focus:ring-primary shadow-sm">
+<option>Last 30 Days</option>
+<option>Quarter to Date</option>
+<option>Annual Report</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-primary">calendar_today</span>
+</div>
+<button class="bg-primary text-white px-4 py-2 rounded-lg font-bold text-sm uppercase tracking-tight flex items-center gap-2 hover:bg-primary-container transition-all">
+<span class="material-symbols-outlined text-sm">filter_list</span> Apply
+                </button>
+</div>
+</div>
+<!-- KPI Bento Grid -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+<!-- Productivity KPI -->
+<div class="md:col-span-2 bg-surface-container-lowest p-6 rounded-xl shadow-sm flex flex-col justify-between border-l-4 border-primary">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="label-md uppercase tracking-wider font-semibold text-on-surface-variant">Overall Site Productivity</span>
+<span class="bg-primary-fixed text-on-primary-fixed text-xs px-2 py-1 rounded-full font-bold">+12.4%</span>
+</div>
+<div class="flex items-baseline gap-2">
+<span class="text-5xl font-extrabold tracking-tighter text-primary">87.2</span>
+<span class="text-xl font-bold text-on-surface-variant">%</span>
+</div>
+</div>
+<div class="mt-6 h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container w-[87.2%]"></div>
+</div>
+</div>
+<!-- Manpower KPI -->
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border-l-4 border-secondary">
+<span class="label-md uppercase tracking-wider font-semibold text-on-surface-variant block mb-4">Manpower Utilization</span>
+<div class="flex items-baseline gap-2 mb-2">
+<span class="text-4xl font-extrabold text-secondary">94.1</span>
+<span class="text-lg font-bold text-on-surface-variant">%</span>
+</div>
+<div class="flex items-center gap-1 text-error text-xs font-bold">
+<span class="material-symbols-outlined text-sm">trending_down</span> 2.1% vs last month
+                </div>
+</div>
+<!-- HSE KPI -->
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border-l-4 border-tertiary">
+<span class="label-md uppercase tracking-wider font-semibold text-on-surface-variant block mb-4">HSE Incident Rate</span>
+<div class="flex items-baseline gap-2 mb-2">
+<span class="text-4xl font-extrabold text-tertiary">0.02</span>
+</div>
+<div class="flex items-center gap-1 text-primary text-xs font-bold">
+<span class="material-symbols-outlined text-sm">verified_user</span> Benchmark Leading
+                </div>
+</div>
+</div>
+<!-- Middle Section: Trends & Site Comparison -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+<!-- Activity Trends Chart (Placeholder Visualization) -->
+<div class="lg:col-span-2 bg-surface-container-lowest p-8 rounded-xl shadow-sm">
+<div class="flex justify-between items-center mb-8">
+<h3 class="text-xl font-bold text-primary">Activity Trends</h3>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-primary"></div>
+<span class="text-xs font-semibold text-on-surface-variant">Planned</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-tertiary-fixed-dim"></div>
+<span class="text-xs font-semibold text-on-surface-variant">Actual</span>
+</div>
+</div>
+</div>
+<!-- Asymmetric Chart Visualization -->
+<div class="relative h-64 flex items-end gap-2 md:gap-4">
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[40%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[35%]"></div>
+<span class="text-[10px] font-bold text-center mt-2">MON</span>
+</div>
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[60%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[55%]"></div>
+<span class="text-[10px] font-bold text-center mt-2">TUE</span>
+</div>
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[85%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[70%]"></div>
+<span class="text-[10px] font-bold text-center mt-2">WED</span>
+</div>
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[50%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[60%] border-t-2 border-tertiary"></div>
+<span class="text-[10px] font-bold text-center mt-2">THU</span>
+</div>
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[95%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[92%]"></div>
+<span class="text-[10px] font-bold text-center mt-2">FRI</span>
+</div>
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[30%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[20%]"></div>
+<span class="text-[10px] font-bold text-center mt-2">SAT</span>
+</div>
+<div class="flex-1 flex flex-col justify-end gap-1 group">
+<div class="w-full bg-surface-container rounded-t-sm h-[20%] transition-all"></div>
+<div class="w-full bg-primary rounded-t-sm h-[15%]"></div>
+<span class="text-[10px] font-bold text-center mt-2">SUN</span>
+</div>
+</div>
+</div>
+<!-- Site-by-site Comparison -->
+<div class="bg-surface-container-low p-6 rounded-xl">
+<h3 class="text-lg font-bold text-primary mb-6">Site Comparison</h3>
+<div class="space-y-6">
+<div class="flex items-center justify-between group cursor-pointer">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface">Balikpapan Hub</span>
+<span class="text-[10px] uppercase text-on-surface-variant font-semibold">East Kalimantan</span>
+</div>
+<div class="text-right">
+<span class="block text-sm font-extrabold text-primary">92% Prod.</span>
+<span class="block text-[10px] text-primary font-bold">TOP PERFORMER</span>
+</div>
+</div>
+<div class="h-px bg-outline-variant/20"></div>
+<div class="flex items-center justify-between group cursor-pointer">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface">Jakarta Terminal</span>
+<span class="text-[10px] uppercase text-on-surface-variant font-semibold">Central Office</span>
+</div>
+<div class="text-right">
+<span class="block text-sm font-extrabold text-secondary">78% Prod.</span>
+<span class="block text-[10px] text-on-surface-variant font-bold">STABLE</span>
+</div>
+</div>
+<div class="h-px bg-outline-variant/20"></div>
+<div class="flex items-center justify-between group cursor-pointer">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface">Surabaya Port</span>
+<span class="text-[10px] uppercase text-on-surface-variant font-semibold">Logistics</span>
+</div>
+<div class="text-right">
+<span class="block text-sm font-extrabold text-tertiary">64% Prod.</span>
+<span class="block text-[10px] text-tertiary font-bold">ACTION REQ.</span>
+</div>
+</div>
+<div class="h-px bg-outline-variant/20"></div>
+<div class="flex items-center justify-between group cursor-pointer">
+<div class="flex flex-col">
+<span class="text-sm font-bold text-on-surface">Timika Mine Site</span>
+<span class="text-[10px] uppercase text-on-surface-variant font-semibold">Heavy Ops</span>
+</div>
+<div class="text-right">
+<span class="block text-sm font-extrabold text-primary">85% Prod.</span>
+<span class="block text-[10px] text-primary font-bold">UPWARD TREND</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Strategic Wins & Leaderboard -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<!-- Strategic Wins (Industrial Card with Image) -->
+<div class="relative overflow-hidden rounded-xl bg-primary-container text-white p-8 group">
+<div class="relative z-10">
+<span class="material-symbols-outlined text-tertiary-fixed-dim text-4xl mb-4">military_tech</span>
+<h3 class="text-2xl font-extrabold mb-2">Strategic Wins</h3>
+<p class="text-primary-fixed opacity-90 max-w-sm mb-6">Fleet expansion in the Papua sector has resulted in a 14% reduction in downtime for mission-critical haulage.</p>
+<button class="bg-white text-primary px-6 py-2 rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-primary-fixed transition-colors">Read Case Study</button>
+</div>
+<div class="absolute top-0 right-0 w-1/2 h-full opacity-20 group-hover:opacity-30 transition-opacity">
+<img class="w-full h-full object-cover" data-alt="High-angle shot of a massive open-pit mine with heavy industrial machinery and hauling trucks moving across dusty terraced roads under bright sunlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMojE_GnShh152jxbpHEfSNTidjFdvvVHRvFMFEbGeW_wKp-9bHMtU3SMc1a6W0T9MnQoEjXzSroIGhg4EcRKsGZF1OoEbocXrZbtKA_Sof_TGXfGZH8X7BF28LXAFjsVhSJOxLdh2ZiQZ_HinN9DftbLz4iVpqIrz6V1NPCGNv53cg9P2y4Yjq_JQXUAlDbD0T_xJrh3Vi75D-kvzrk_CSAcnnikRRrhDP991FtOzDKBPCJNy5Lncs9W0Fa5zTsNczEbrn8JpBy0"/>
+</div>
+</div>
+<!-- Gamification Leaderboard -->
+<div class="bg-surface-container-lowest p-8 rounded-xl shadow-sm border border-surface-container">
+<div class="flex items-center justify-between mb-8">
+<h3 class="text-xl font-bold text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary">leaderboard</span>
+                        Safety Leaderboard
+                    </h3>
+<span class="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Q3 Standings</span>
+</div>
+<div class="space-y-4">
+<div class="flex items-center gap-4 bg-surface-container-low p-3 rounded-xl border-l-4 border-primary">
+<div class="w-8 h-8 flex items-center justify-center font-bold text-primary bg-primary-fixed rounded-full">1</div>
+<div class="flex-1">
+<p class="text-sm font-bold text-on-surface">Balikpapan Engineering</p>
+<p class="text-[10px] text-on-surface-variant uppercase">340 Days Incident Free</p>
+</div>
+<div class="flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">stars</span>
+<span class="text-sm font-extrabold">2,450</span>
+</div>
+</div>
+<div class="flex items-center gap-4 p-3 rounded-xl">
+<div class="w-8 h-8 flex items-center justify-center font-bold text-on-surface-variant bg-surface-container rounded-full">2</div>
+<div class="flex-1">
+<p class="text-sm font-bold text-on-surface">Timika Heavy Ops</p>
+<p class="text-[10px] text-on-surface-variant uppercase">212 Days Incident Free</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-xl">stars</span>
+<span class="text-sm font-extrabold">1,890</span>
+</div>
+</div>
+<div class="flex items-center gap-4 p-3 rounded-xl">
+<div class="w-8 h-8 flex items-center justify-center font-bold text-on-surface-variant bg-surface-container rounded-full">3</div>
+<div class="flex-1">
+<p class="text-sm font-bold text-on-surface">Jakarta Logistics Hub</p>
+<p class="text-[10px] text-on-surface-variant uppercase">185 Days Incident Free</p>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-xl">stars</span>
+<span class="text-sm font-extrabold">1,240</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-white/70 dark:bg-[#071e27]/70 backdrop-blur-xl border-t border-slate-200 dark:border-[#004b87]/30 shadow-[0_-12px_24px_rgba(0,75,135,0.08)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-[#003461] text-white rounded-xl py-2 px-4 scale-90 duration-200 transition-transform" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-[10px] font-semibold uppercase tracking-wider mt-1">Overview</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 py-2 hover:text-[#004b87] dark:hover:text-[#e6f6ff]" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span class="text-[10px] font-semibold uppercase tracking-wider mt-1">Analytics</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 py-2 hover:text-[#004b87] dark:hover:text-[#e6f6ff]" href="#">
+<span class="material-symbols-outlined">engineering</span>
+<span class="text-[10px] font-semibold uppercase tracking-wider mt-1">Operational</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 py-2 hover:text-[#004b87] dark:hover:text-[#e6f6ff]" href="#">
+<span class="material-symbols-outlined">health_and_safety</span>
+<span class="text-[10px] font-semibold uppercase tracking-wider mt-1">Safety</span>
+</a>
+</nav>
+</body></html>

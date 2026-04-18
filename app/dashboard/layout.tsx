@@ -1,4 +1,4 @@
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import {
@@ -8,6 +8,7 @@ import {
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { getServerSession } from "@/lib/auth-session"
+import { isMobileUserAgent } from "@/lib/device"
 import { getEmployeeDisplayDataByEmail, getNavbarSettingsData, getSidebarDataForUser } from "@/lib/hero-admin"
 
 import "@/app/dashboard/theme.css"
@@ -21,6 +22,11 @@ export default async function DashboardLayout({
 
   if (!session?.user) {
     redirect("/sign-in")
+  }
+
+  const headerStore = await headers()
+  if (isMobileUserAgent(headerStore.get("user-agent"))) {
+    redirect("/mobile")
   }
 
   const cookieStore = await cookies()

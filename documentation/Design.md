@@ -122,6 +122,13 @@ Do not use opaque 1px borders to separate major sections. Create boundaries thro
 - Tab content should stay clean: compact summary + command bar + table or focused content block.
 - When two related lists would otherwise sit beside each other, convert them into sibling tabs.
 
+### Mobile App Router
+
+- Phone users should enter a dedicated mobile route (`/mobile`) instead of receiving a squeezed desktop dashboard.
+- Mobile screens should use app-native structure: compact top bar, hamburger sheet menu, bottom tab navigation, safe-area spacing, and large touch targets.
+- Mobile pages should prioritize one primary task per screen, with short cards and action buttons instead of dense desktop tables.
+- Desktop admin routes remain table-first; mobile routes may use focused cards when they behave like native app task surfaces.
+
 ### Glass Panels
 
 - Navigation bars and floating command surfaces should use 70% opacity containers with strong backdrop blur.

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary-fixed": "#ffdbcb",
+                    "inverse-primary": "#a3c9ff",
+                    "on-primary-container": "#8abcff",
+                    "outline-variant": "#c2c6d1",
+                    "on-secondary-fixed": "#021f29",
+                    "on-background": "#071e27",
+                    "on-surface": "#071e27",
+                    "on-primary": "#ffffff",
+                    "on-secondary-fixed-variant": "#304a55",
+                    "on-secondary-container": "#4e6874",
+                    "secondary-fixed-dim": "#afcbd8",
+                    "primary-container": "#004b87",
+                    "surface": "#f3faff",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-variant": "#cfe6f2",
+                    "inverse-surface": "#1e333c",
+                    "secondary": "#48626e",
+                    "on-tertiary": "#ffffff",
+                    "secondary-fixed": "#cbe7f5",
+                    "on-tertiary-container": "#ffa273",
+                    "tertiary-fixed-dim": "#ffb692",
+                    "on-error-container": "#93000a",
+                    "on-error": "#ffffff",
+                    "background": "#f3faff",
+                    "on-surface-variant": "#424750",
+                    "primary-fixed-dim": "#a3c9ff",
+                    "inverse-on-surface": "#dff4ff",
+                    "on-primary-fixed-variant": "#004882",
+                    "surface-tint": "#27609d",
+                    "surface-bright": "#f3faff",
+                    "surface-container-highest": "#cfe6f2",
+                    "error": "#ba1a1a",
+                    "primary-fixed": "#d3e4ff",
+                    "outline": "#727781",
+                    "tertiary": "#5a2200",
+                    "secondary-container": "#cbe7f5",
+                    "on-secondary": "#ffffff",
+                    "tertiary-container": "#7e3200",
+                    "surface-container-low": "#e6f6ff",
+                    "primary": "#003461",
+                    "surface-container-high": "#d5ecf8",
+                    "on-primary-fixed": "#001c38",
+                    "surface-dim": "#c7dde9",
+                    "on-tertiary-fixed-variant": "#7a3000",
+                    "error-container": "#ffdad6",
+                    "surface-container": "#dbf1fe",
+                    "on-tertiary-fixed": "#341100"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="bg-[#f3faff] dark:bg-[#071e27] text-[#003461] dark:text-[#e6f6ff] w-full top-0 sticky flex justify-between items-center px-6 h-16 z-50 shadow-none">
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined hover:bg-[#e6f6ff]/50 dark:hover:bg-[#ffffff]/10 p-2 rounded-full active:scale-95 transition-transform duration-200">
+                menu
+            </button>
+<h1 class="text-xl font-black font-['Manrope'] tracking-tight">HERO</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="material-symbols-outlined hover:bg-[#e6f6ff]/50 dark:hover:bg-[#ffffff]/10 p-2 rounded-full active:scale-95 transition-transform duration-200">
+                notifications
+            </button>
+</div>
+</header>
+<main class="max-w-2xl mx-auto px-6 pt-8 space-y-8">
+<!-- Hero Section & Title -->
+<section>
+<h2 class="text-3xl font-extrabold tracking-tight text-primary mb-2">Activity Hub</h2>
+<p class="text-on-surface-variant body-lg">Manage and monitor active heavy machinery tasks.</p>
+</section>
+<!-- Search & Filters -->
+<section class="space-y-4">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-container-low border-none border-b-2 border-primary/20 focus:border-primary focus:ring-0 h-14 pl-12 rounded-t-xl font-medium transition-colors" placeholder="Search Unit ID or Job Name..." type="text"/>
+</div>
+<div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+<button class="bg-primary text-on-primary px-5 py-2 rounded-full text-sm font-bold tracking-wide active:scale-95 transition-all">ALL JOBS</button>
+<button class="bg-surface-container-high text-on-surface-variant px-5 py-2 rounded-full text-sm font-bold tracking-wide hover:bg-surface-container-highest transition-all">IN PROGRESS</button>
+<button class="bg-surface-container-high text-on-surface-variant px-5 py-2 rounded-full text-sm font-bold tracking-wide hover:bg-surface-container-highest transition-all">SCHEDULED</button>
+</div>
+</section>
+<!-- Job List (Bento-ish Cards) -->
+<section class="space-y-6">
+<!-- Card 1: Maintenance Unit #104 -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-[0_12px_24px_rgba(0,52,97,0.04)] group transition-all">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="w-2 h-2 bg-tertiary rounded-full animate-pulse"></span>
+<span class="text-xs font-bold uppercase tracking-widest text-tertiary">Priority: High</span>
+</div>
+<h3 class="text-xl font-bold text-primary group-hover:text-primary-container transition-colors">Maintenance Unit #104</h3>
+</div>
+<span class="bg-primary-container/10 text-primary-container px-3 py-1 rounded-lg text-xs font-black">IN PROGRESS</span>
+</div>
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="bg-surface-container-low p-3 rounded-lg">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">Unit ID</p>
+<p class="font-bold text-on-surface">CAT-797F-X1</p>
+</div>
+<div class="bg-surface-container-low p-3 rounded-lg">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">Location</p>
+<p class="font-bold text-on-surface">Sector B-12</p>
+</div>
+</div>
+<div class="relative w-full h-32 rounded-lg overflow-hidden mb-4">
+<img class="w-full h-full object-cover" data-alt="Heavy industrial machinery in a modern maintenance workshop with bright overhead lighting and professional tools" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDz7yUVNDUI-xUqtSN5mhNjxiEePtGQ2l2dq3C21Epm0xbMmMCMt6Ot-Ic85ghoXm7Lm-k7Wd8P9Qg2g4Auh7liGvD0efUVlZWpJjBRJ1C1tVaT10i5rAUJ4qRZuS0mNXFgIGdvT2ZDLqhOUWsEeET7Ezqkn670xQ0uSNka7FH8l1ojGARgpqnGyh_qsP13qYEvK353gtdhntwd4TZnlP8ZdSbBph2hbS3udUzCfOBHhrc-KwJDVqgfI_rm2a_zuZCs35C_iIjQILw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/40 to-transparent"></div>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-white bg-secondary-container flex items-center justify-center text-[10px] font-bold">JD</div>
+<div class="w-8 h-8 rounded-full border-2 border-white bg-tertiary-container flex items-center justify-center text-[10px] font-bold text-white">MK</div>
+</div>
+<button class="flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-wider">
+                        View Details <span class="material-symbols-outlined text-sm">arrow_forward_ios</span>
+</button>
+</div>
+</div>
+<!-- Card 2: Equipment Inspection -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-[0_12px_24px_rgba(0,52,97,0.04)] group transition-all">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="w-2 h-2 bg-primary/40 rounded-full"></span>
+<span class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Priority: Medium</span>
+</div>
+<h3 class="text-xl font-bold text-primary group-hover:text-primary-container transition-colors">Equipment Inspection</h3>
+</div>
+<span class="bg-surface-container-high text-on-surface-variant px-3 py-1 rounded-lg text-xs font-black">PENDING</span>
+</div>
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="bg-surface-container-low p-3 rounded-lg">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">Unit ID</p>
+<p class="font-bold text-on-surface">DR-204-GEN</p>
+</div>
+<div class="bg-surface-container-low p-3 rounded-lg">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">Location</p>
+<p class="font-bold text-on-surface">Main Warehouse</p>
+</div>
+</div>
+<div class="w-full bg-secondary-container/20 h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-0 transition-all duration-1000"></div>
+</div>
+<p class="text-[10px] font-bold text-outline mt-2 uppercase tracking-tighter">Ready for technician assignment</p>
+</div>
+<!-- Card 3: Material Delivery -->
+<div class="bg-surface-container-lowest rounded-xl p-6 shadow-[0_12px_24px_rgba(0,52,97,0.04)] group transition-all">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<span class="w-2 h-2 bg-on-secondary-container/40 rounded-full"></span>
+<span class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Priority: Low</span>
+</div>
+<h3 class="text-xl font-bold text-primary group-hover:text-primary-container transition-colors">Material Delivery</h3>
+</div>
+<span class="bg-surface-container-high text-on-surface-variant px-3 py-1 rounded-lg text-xs font-black">SCHEDULED</span>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-3 rounded-lg">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">Unit ID</p>
+<p class="font-bold text-on-surface">LOG-HVL-09</p>
+</div>
+<div class="bg-surface-container-low p-3 rounded-lg">
+<p class="text-[10px] font-bold text-outline uppercase tracking-wider mb-1">Location</p>
+<p class="font-bold text-on-surface">Gate 4 Arrival</p>
+</div>
+</div>
+<div class="mt-4 flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span class="text-xs font-medium">Expected: Oct 24, 08:00 AM</span>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Activity active) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-4 pt-2 bg-[#ffffff]/70 dark:bg-[#0d2a38]/70 backdrop-blur-xl border-t border-[#003461]/10 shadow-[0_-12px_24px_rgba(0,52,97,0.08)] rounded-t-xl">
+<!-- Dashboard -->
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-[#939799] px-4 py-2 hover:text-[#003461] dark:hover:text-white active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="dashboard">dashboard</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider">Dashboard</span>
+</a>
+<!-- Activity (Active) -->
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#003461] to-[#004b87] text-white rounded-xl px-4 py-2 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="analytics" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider">Activity</span>
+</a>
+<!-- HSE -->
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-[#939799] px-4 py-2 hover:text-[#003461] dark:hover:text-white active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="security">security</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider">HSE</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-[#424750] dark:text-[#939799] px-4 py-2 hover:text-[#003461] dark:hover:text-white active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="person">person</span>
+<span class="font-['Inter'] text-[10px] font-bold uppercase tracking-wider">Profile</span>
+</a>
+</nav>
+</body></html>

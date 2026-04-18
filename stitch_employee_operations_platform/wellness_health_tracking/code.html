@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#1e333c",
+                    "on-secondary-fixed-variant": "#304a55",
+                    "primary-fixed-dim": "#a3c9ff",
+                    "primary": "#003461",
+                    "on-secondary-fixed": "#021f29",
+                    "surface-container-low": "#e6f6ff",
+                    "surface-dim": "#c7dde9",
+                    "surface": "#f3faff",
+                    "secondary-container": "#cbe7f5",
+                    "on-tertiary-fixed": "#341100",
+                    "on-surface": "#071e27",
+                    "tertiary": "#5a2200",
+                    "on-primary-fixed": "#001c38",
+                    "surface-container-highest": "#cfe6f2",
+                    "secondary-fixed": "#cbe7f5",
+                    "error": "#ba1a1a",
+                    "on-surface-variant": "#424750",
+                    "secondary": "#48626e",
+                    "secondary-fixed-dim": "#afcbd8",
+                    "surface-tint": "#27609d",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "on-secondary-container": "#4e6874",
+                    "primary-container": "#004b87",
+                    "outline": "#727781",
+                    "surface-container-high": "#d5ecf8",
+                    "background": "#f3faff",
+                    "surface-bright": "#f3faff",
+                    "on-secondary": "#ffffff",
+                    "tertiary-fixed": "#ffdbcb",
+                    "on-primary-container": "#8abcff",
+                    "tertiary-container": "#7e3200",
+                    "surface-variant": "#cfe6f2",
+                    "on-error-container": "#93000a",
+                    "surface-container": "#dbf1fe",
+                    "inverse-primary": "#a3c9ff",
+                    "tertiary-fixed-dim": "#ffb692",
+                    "inverse-on-surface": "#dff4ff",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-container": "#ffa273",
+                    "outline-variant": "#c2c6d1",
+                    "on-tertiary": "#ffffff",
+                    "on-tertiary-fixed-variant": "#7a3000",
+                    "primary-fixed": "#d3e4ff",
+                    "on-primary-fixed-variant": "#004882",
+                    "on-background": "#071e27",
+                    "on-error": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface mb-24 min-h-screen">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#f3faff] dark:bg-slate-950/70 backdrop-blur-xl flex items-center justify-between px-6 h-16 w-full">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-highest">
+<img alt="Technician profile photo" class="w-full h-full object-cover" data-alt="professional headshot of an industrial technician wearing navy blue uniform with subtle safety gear in high-tech setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKXbRwgpgtSR6Pzjq7iX4lcQW_vzdP9yTYLpsGJP9c-0OFQXJs7-dWYxVp9MdAh0CHxsWSV0b8035x5l5rQR0C20_f_wjszd9r6o-qBroA5PFwAgOVV4fRlgzlNPyfN4qNhwSWbYeJgom86296Xj_9f693ygLRdI0ZocloW-XK8hOzioDsXWKSJEFs1nnDoRgFOTki3rSwmb1_S7u3EkdKtWUTtpqLLyqcXyqbnjQDkAP_SEhFppXzIlf6Rw8qTKkJNsNniCXJMRw"/>
+</div>
+<h1 class="text-xl font-extrabold text-[#003461] dark:text-blue-400 font-headline tracking-tight">Tactical Wellness</h1>
+</div>
+<button class="text-slate-500 hover:bg-[#e6f6ff] transition-colors p-2 rounded-lg">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+</header>
+<main class="pt-20 px-4 space-y-6 max-w-2xl mx-auto">
+<!-- Health Overview Dashboard (Bento Grid) -->
+<section>
+<div class="grid grid-cols-2 gap-4">
+<!-- BMI Card -->
+<div class="col-span-1 bg-surface-container-lowest rounded-xl p-4 shadow-[12px_24px_rgba(0,75,135,0.04)] flex flex-col justify-between h-40">
+<div class="flex items-start justify-between">
+<span class="label-md font-bold text-on-surface-variant uppercase tracking-wider text-[10px]">Body Mass Index</span>
+<span class="material-symbols-outlined text-primary" data-icon="scale">scale</span>
+</div>
+<div>
+<div class="text-3xl font-extrabold text-primary font-headline">24.2</div>
+<div class="flex items-center gap-1 mt-1">
+<div class="w-2 h-2 rounded-full bg-green-500"></div>
+<span class="text-xs font-semibold text-on-surface-variant">Healthy</span>
+</div>
+</div>
+</div>
+<!-- Heart Rate Card -->
+<div class="col-span-1 bg-surface-container-lowest rounded-xl p-4 shadow-[12px_24px_rgba(0,75,135,0.04)] flex flex-col justify-between h-40">
+<div class="flex items-start justify-between">
+<span class="label-md font-bold text-on-surface-variant uppercase tracking-wider text-[10px]">Resting Heart Rate</span>
+<span class="material-symbols-outlined text-tertiary" data-icon="favorite">favorite</span>
+</div>
+<div>
+<div class="text-3xl font-extrabold text-primary font-headline">72 <span class="text-sm font-normal text-on-surface-variant">BPM</span></div>
+<div class="text-xs font-semibold text-on-surface-variant mt-1">Stable Command</div>
+</div>
+</div>
+<!-- Blood Pressure (Wide) -->
+<div class="col-span-2 bg-gradient-to-br from-primary to-primary-container rounded-xl p-5 shadow-[12px_24px_rgba(0,75,135,0.08)] flex items-center justify-between text-white">
+<div class="space-y-1">
+<span class="label-md font-bold uppercase tracking-widest text-[10px] opacity-80">Blood Pressure</span>
+<div class="text-4xl font-extrabold font-headline">118/76 <span class="text-sm font-normal opacity-70">mmHg</span></div>
+</div>
+<div class="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-md">
+<span class="material-symbols-outlined text-white text-3xl" data-icon="pulse_alert">pulse_alert</span>
+</div>
+</div>
+</div>
+</section>
+<!-- MCU Status -->
+<section class="bg-surface-container-low rounded-xl p-6 relative overflow-hidden">
+<div class="relative z-10">
+<div class="flex items-center gap-3 mb-4">
+<span class="material-symbols-outlined text-primary" data-icon="verified_user" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+<h2 class="text-lg font-bold font-headline text-primary">Annual Medical Check-up</h2>
+</div>
+<div class="flex items-end justify-between">
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant uppercase font-bold tracking-tighter">Latest Evaluation</p>
+<p class="text-xl font-bold">14 Oct 2023</p>
+<p class="text-sm text-on-surface font-medium mt-2">Status: <span class="text-primary font-bold">FIT FOR DUTY</span></p>
+</div>
+<button class="bg-primary text-white px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest shadow-lg active:scale-95 transition-transform">
+                        Full Report
+                    </button>
+</div>
+</div>
+<div class="absolute -right-8 -bottom-8 opacity-5">
+<span class="material-symbols-outlined text-[120px]" data-icon="health_and_safety">health_and_safety</span>
+</div>
+</section>
+<!-- Daily Activity Tracker -->
+<section class="space-y-4">
+<div class="flex items-baseline justify-between px-1">
+<h2 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant">Operational Activity</h2>
+<span class="text-xs font-bold text-primary">82% of Goal</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-5 shadow-[12px_24px_rgba(0,75,135,0.04)]">
+<div class="flex items-center gap-6">
+<div class="relative w-24 h-24 flex items-center justify-center">
+<svg class="w-full h-full -rotate-90">
+<circle cx="48" cy="48" fill="none" r="40" stroke="#e6f6ff" stroke-width="8"></circle>
+<circle cx="48" cy="48" fill="none" r="40" stroke="#003461" stroke-dasharray="251.2" stroke-dashoffset="45.2" stroke-linecap="round" stroke-width="8"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="directions_walk">directions_walk</span>
+</div>
+</div>
+<div class="flex-1 space-y-4">
+<div class="flex justify-between items-end">
+<div>
+<p class="text-2xl font-black font-headline text-primary">8,244</p>
+<p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Daily Steps</p>
+</div>
+<div class="text-right">
+<p class="text-lg font-bold text-tertiary">420</p>
+<p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Kcal Burnt</p>
+</div>
+</div>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[82%]"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Sickness History -->
+<section class="space-y-4">
+<h2 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant px-1">Service History &amp; Absences</h2>
+<div class="space-y-3">
+<div class="bg-surface-container-lowest rounded-xl p-4 flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-tertiary-fixed flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary-container" data-icon="medical_services">medical_services</span>
+</div>
+<div>
+<h3 class="font-bold text-sm">Industrial Fatigue</h3>
+<p class="text-xs text-on-surface-variant">Reported Absence</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-bold text-sm">2 Days</p>
+<p class="text-[10px] font-bold text-on-surface-variant opacity-60">AUG 12-14</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-4 flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-secondary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="vaccines">vaccines</span>
+</div>
+<div>
+<h3 class="font-bold text-sm">Mandatory Vaccination</h3>
+<p class="text-xs text-on-surface-variant">General Clinic Visit</p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-bold text-sm">Completed</p>
+<p class="text-[10px] font-bold text-on-surface-variant opacity-60">MAY 05</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Wellness Tips -->
+<section class="pb-10">
+<h2 class="text-sm font-bold uppercase tracking-widest text-on-surface-variant px-1 mb-4">Industrial Wellness Briefs</h2>
+<div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+<div class="min-w-[280px] bg-white rounded-2xl overflow-hidden shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+<div class="h-32 bg-slate-200">
+<img alt="Proper Lifting" class="w-full h-full object-cover" data-alt="technician lifting a heavy box using proper ergonomic technique safety boots and gloves industrial background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUWB7zBuZdVkBUJDPriun0RPANXx8Sr182yAMzqk57kyRVyooRmX7pJf6FA5nhkH5CYBmE7ii1ntkOWOedkPOz6bGO4PMKKSBYrmLBf_he3SypxEwYokvj2fCitz9xb_tFe_i8GZLg-P7qHpiqEfhsOhLK36DghZc_Z-TNEXYZ61kDt7pIcdtAE8Vwov6QT211vgcrOgYI9Jaq5Cx999aeLHB2dCzmpVWlDQ1poEKsoXFBPkkAFNVZmW8W7JLGvXXvI0CR888kcAQ"/>
+</div>
+<div class="p-4 space-y-2">
+<span class="text-[10px] font-bold text-tertiary-container bg-tertiary-fixed px-2 py-0.5 rounded uppercase tracking-widest">Ergonomics</span>
+<h3 class="font-bold">Proper Lifting Protocol</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">Engage your core and lift with legs, not your back, to prevent field injuries.</p>
+</div>
+</div>
+<div class="min-w-[280px] bg-white rounded-2xl overflow-hidden shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+<div class="h-32 bg-slate-200">
+<img alt="Stay Hydrated" class="w-full h-full object-cover" data-alt="close-up of a rugged water bottle on an industrial workbench with cool lighting and hydration focus" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC09eK1LQNTHgZsCtKiBkiwdB2IhnPR953bygHN7-z_v2G2kVBdAhEgNN3htvVIKbYb2KCvjN_iReIWCuixN5TK02H6GtsDZIOjshFuChMFKDivNcLKvRnmFvcGb7l8h-BqlCR7umc66J20U0BMBeM94KD6iw0Rt3ZYY85T5VuPV0SXIuunlBk98eaASziKOv-G7FSAi4awJERsw20_1ByU31yPYJ1BOQnSD-OH1EkubziLF20kf9bFd3rHKZ94VFQlviXNRq1CGts"/>
+</div>
+<div class="p-4 space-y-2">
+<span class="text-[10px] font-bold text-primary bg-primary-fixed px-2 py-0.5 rounded uppercase tracking-widest">Vitality</span>
+<h3 class="font-bold">Hydration Command</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">Maintain cognitive precision by consuming at least 3L of water during high-heat shifts.</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-3 bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl border-t border-[#003461]/10 z-50 rounded-t-xl shadow-[0_-12px_24px_rgba(0,75,135,0.08)]">
+<a class="flex flex-col items-center justify-center text-slate-500 px-4 py-1.5 hover:text-[#003461] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-['Inter'] text-[11px] font-bold uppercase tracking-wider mt-1">Overview</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#003461] to-[#004b87] text-white rounded-xl px-4 py-1.5 active:scale-95 duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="monitor_heart" style="font-variation-settings: 'FILL' 1;">monitor_heart</span>
+<span class="font-['Inter'] text-[11px] font-bold uppercase tracking-wider mt-1">Health</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 px-4 py-1.5 hover:text-[#003461] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+<span class="font-['Inter'] text-[11px] font-bold uppercase tracking-wider mt-1">Records</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 px-4 py-1.5 hover:text-[#003461] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="font-['Inter'] text-[11px] font-bold uppercase tracking-wider mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

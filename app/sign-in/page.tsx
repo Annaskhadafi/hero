@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient, signIn, useSession } from "@/lib/auth-client";
+import { isMobileUserAgent } from "@/lib/device";
 
 function GoogleIcon() {
     return (
@@ -22,6 +23,17 @@ function GoogleIcon() {
             <path fill="#34A853" d="M12 6.06c1.49 0 2.83.51 3.89 1.51l2.92-2.92C17.02 2.98 14.72 2 12 2 8.04 2 4.61 4.27 2.96 7.59l3.41 2.62c.79-2.38 3.01-4.15 5.63-4.15Z" />
         </svg>
     );
+}
+
+function getClientPostLoginPath() {
+    if (typeof window === "undefined") {
+        return "/dashboard";
+    }
+
+    const isPhoneLike = isMobileUserAgent(window.navigator.userAgent);
+    const isNarrowViewport = window.matchMedia("(max-width: 767px)").matches;
+
+    return isPhoneLike || isNarrowViewport ? "/mobile" : "/dashboard";
 }
 
 function SignInContent() {
@@ -39,7 +51,7 @@ function SignInContent() {
 
     useEffect(() => {
         if (session?.user) {
-            router.replace("/dashboard");
+            router.replace(getClientPostLoginPath());
         }
     }, [router, session]);
 
@@ -56,11 +68,12 @@ function SignInContent() {
         setMessage("");
 
         try {
+            const callbackURL = getClientPostLoginPath();
             const result = await signIn.email({
                 email,
                 password,
                 rememberMe,
-                callbackURL: "/dashboard",
+                callbackURL,
             });
 
             if (result.error) {
@@ -68,7 +81,7 @@ function SignInContent() {
                 return;
             }
 
-            router.replace("/dashboard");
+            router.replace(callbackURL);
         } catch {
             setError("An unexpected error occurred");
         } finally {
@@ -87,9 +100,10 @@ function SignInContent() {
         setMessage("");
 
         try {
+            const callbackURL = getClientPostLoginPath();
             const result = await authClient.signIn.magicLink({
                 email,
-                callbackURL: "/dashboard",
+                callbackURL,
                 errorCallbackURL: "/sign-in",
             });
 
@@ -112,9 +126,10 @@ function SignInContent() {
         setMessage("");
 
         try {
+            const callbackURL = getClientPostLoginPath();
             const result = await signIn.social({
                 provider: "google",
-                callbackURL: "/dashboard",
+                callbackURL,
                 errorCallbackURL: "/sign-in",
             });
 

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>HC Suite &amp; Training - HERO Platform</title>
+<!-- Fonts: Manrope & Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Manrope:wght@500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "tertiary-container": "#7e3200",
+                "surface-variant": "#cfe6f2",
+                "on-secondary": "#ffffff",
+                "on-surface-variant": "#424750",
+                "surface-container-high": "#d5ecf8",
+                "secondary-fixed-dim": "#afcbd8",
+                "on-primary": "#ffffff",
+                "on-secondary-fixed": "#021f29",
+                "on-primary-fixed-variant": "#004882",
+                "inverse-surface": "#1e333c",
+                "surface-dim": "#c7dde9",
+                "on-primary-container": "#8abcff",
+                "secondary-container": "#cbe7f5",
+                "primary": "#003461",
+                "outline": "#727781",
+                "on-tertiary-fixed": "#341100",
+                "on-secondary-fixed-variant": "#304a55",
+                "surface": "#f3faff",
+                "surface-container-highest": "#cfe6f2",
+                "tertiary": "#5a2200",
+                "on-tertiary-container": "#ffa273",
+                "secondary-fixed": "#cbe7f5",
+                "secondary": "#48626e",
+                "inverse-primary": "#a3c9ff",
+                "outline-variant": "#c2c6d1",
+                "surface-container": "#dbf1fe",
+                "error": "#ba1a1a",
+                "tertiary-fixed": "#ffdbcb",
+                "on-tertiary": "#ffffff",
+                "surface-container-lowest": "#ffffff",
+                "on-surface": "#071e27",
+                "inverse-on-surface": "#dff4ff",
+                "background": "#f3faff",
+                "surface-tint": "#27609d",
+                "on-error-container": "#93000a",
+                "on-error": "#ffffff",
+                "on-secondary-container": "#4e6874",
+                "on-primary-fixed": "#001c38",
+                "primary-fixed": "#d3e4ff",
+                "primary-container": "#004b87",
+                "primary-fixed-dim": "#a3c9ff",
+                "surface-bright": "#f3faff",
+                "surface-container-low": "#e6f6ff",
+                "tertiary-fixed-dim": "#ffb692",
+                "on-tertiary-fixed-variant": "#7a3000",
+                "on-background": "#071e27",
+                "error-container": "#ffdad6"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+            },
+            "fontFamily": {
+                "headline": ["Manrope"],
+                "body": ["Inter"],
+                "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .tactile-press:active {
+        transform: scale(0.97);
+        transition: transform 0.1s ease;
+      }
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(24px);
+      }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface min-h-screen pb-24">
+<!-- TopAppBar (From JSON) -->
+<header class="bg-slate-50 dark:bg-slate-950 flex justify-between items-center px-6 py-4 w-full sticky top-0 z-40">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-primary-container flex items-center justify-center">
+<img alt="User Profile Avatar" class="w-full h-full object-cover" data-alt="professional portrait of an industrial engineer wearing a subtle uniform and clear protective glasses in a bright facility" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6gJ8rrO6KqKTKxcSq3CWXURybaVH75y9E2cQhbuCzuwn0iSuGh7_160MPxYtgYxSN404TvsvFXlUaBWW_VG9EJP_1HsqmDnKRrIOTRW1eokhRuZbRSzpZ6vQXYfmo8_D-ry_nLHimjH2_m2rjvp2-NQvI0xZDHImnOvY5ofSGkPbvY7QhUZIicCPnnue95w4Wox7exKsUv-aKzit70AR562f4DmQ7Gy9X6W1uT4WdNAoSRpm1R47ZwnEMiyjRGFa_sOyJ3Lwd_ik"/>
+</div>
+<div>
+<h1 class="text-xl font-bold tracking-tight text-blue-900 dark:text-blue-100 font-headline">HC Suite &amp; Training</h1>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-label font-bold">Module M7 • Expert Tier</p>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-50 transition-colors">
+<span class="material-symbols-outlined text-blue-900" data-icon="notifications">notifications</span>
+</button>
+</header>
+<main class="px-5 pt-4 space-y-6">
+<!-- Hero Progress Card (Bento Style) -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Training Tracker -->
+<div class="bg-surface-container-lowest p-6 rounded-xl relative overflow-hidden shadow-[0_12px_24px_rgba(0,52,97,0.08)] flex flex-col justify-between min-h-[200px]">
+<div>
+<span class="label-md uppercase tracking-wider text-on-surface-variant font-bold text-[11px] font-label">Mandatory Completion</span>
+<div class="mt-4 flex items-baseline gap-2">
+<span class="text-5xl font-extrabold font-headline text-primary tracking-tighter">75%</span>
+<span class="text-on-surface-variant font-medium">Complete</span>
+</div>
+</div>
+<!-- Progress Bar Layout -->
+<div class="mt-6">
+<div class="h-4 w-full bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container rounded-full w-3/4"></div>
+</div>
+<div class="flex justify-between mt-2 text-[10px] font-bold text-primary uppercase">
+<span>L1 Core</span>
+<span>Next: Expert Cert</span>
+</div>
+</div>
+<div class="absolute -right-6 -top-6 w-32 h-32 bg-primary/5 rounded-full blur-3xl"></div>
+</div>
+<!-- Skill Matrix Summary -->
+<div class="bg-primary p-6 rounded-xl shadow-lg flex flex-col justify-between text-white relative">
+<div>
+<h3 class="font-headline font-bold text-lg mb-4">Skill Matrix Summary</h3>
+<div class="space-y-3">
+<div class="flex justify-between items-center">
+<span class="text-sm font-medium text-white/80">Tire Service</span>
+<div class="flex gap-1">
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white/30"></span>
+</div>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm font-medium text-white/80">HSE Compliance</span>
+<div class="flex gap-1">
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white"></span>
+</div>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm font-medium text-white/80">Hydraulic Systems</span>
+<div class="flex gap-1">
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white"></span>
+<span class="w-2 h-2 rounded-full bg-white/30"></span>
+<span class="w-2 h-2 rounded-full bg-white/30"></span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-4">
+<button class="w-full py-2 bg-white/10 hover:bg-white/20 transition-colors border border-white/20 rounded-lg text-xs font-bold uppercase tracking-widest">View Full Matrix</button>
+</div>
+</div>
+</section>
+<!-- Mandatory Courses -->
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline font-bold text-xl text-primary">Mandatory Courses</h2>
+<span class="text-[10px] font-bold bg-error-container text-on-error-container px-2 py-0.5 rounded uppercase">2 Actions Required</span>
+</div>
+<div class="space-y-3">
+<!-- Course Card -->
+<div class="bg-surface-container-low p-4 rounded-xl flex items-center justify-between group hover:bg-surface-container transition-colors cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="construction">construction</span>
+</div>
+<div>
+<h4 class="font-bold text-sm leading-tight">Advanced Heavy Equipment Safety</h4>
+<p class="text-xs text-on-surface-variant mt-0.5">Deadline: Oct 24, 2024</p>
+</div>
+</div>
+<span class="text-[10px] font-bold bg-tertiary-container text-on-tertiary-container px-2 py-1 rounded uppercase">Due Soon</span>
+</div>
+<!-- Course Card -->
+<div class="bg-surface-container-low p-4 rounded-xl flex items-center justify-between group hover:bg-surface-container transition-colors cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container-highest rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="medical_services">medical_services</span>
+</div>
+<div>
+<h4 class="font-bold text-sm leading-tight">First Aid Refresher</h4>
+<p class="text-xs text-on-surface-variant mt-0.5">Schedule: Nov 12, 2024</p>
+</div>
+</div>
+<span class="text-[10px] font-bold bg-primary-container text-on-primary-container px-2 py-1 rounded uppercase">Enrolled</span>
+</div>
+</div>
+</section>
+<!-- Certificates Hub -->
+<section class="bg-surface-container-low p-5 rounded-2xl">
+<h2 class="font-headline font-bold text-lg mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="verified">verified</span>
+                Certificates Hub
+            </h2>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center text-center">
+<div class="w-10 h-10 mb-3 bg-blue-50 text-primary rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-tighter block mb-1">ISO 9001:2015</span>
+<span class="text-[9px] text-green-600 font-bold uppercase">Active</span>
+</div>
+<div class="bg-white p-4 rounded-xl shadow-sm flex flex-col items-center text-center">
+<div class="w-10 h-10 mb-3 bg-blue-50 text-primary rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-tighter block mb-1">Rigging Expert</span>
+<span class="text-[9px] text-tertiary font-bold uppercase">Expires 30d</span>
+</div>
+</div>
+<button class="w-full mt-5 py-3 border-2 border-dashed border-outline-variant rounded-xl text-on-surface-variant font-bold text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-all tactile-press">
+<span class="flex items-center justify-center gap-2">
+<span class="material-symbols-outlined" data-icon="upload">upload</span>
+                    Upload Certificate
+                </span>
+</button>
+</section>
+<!-- Skill Matrix Banner -->
+<section class="relative h-32 rounded-xl overflow-hidden group cursor-pointer">
+<img alt="Skill Matrix Summary" class="w-full h-full object-cover" data-alt="dramatic wide shot of a technician analyzing heavy equipment blueprints on a digital tablet in a clean industrial workshop" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqC6GzawHHxOU4AGKpVSK-CGi_egMmdSXZEtJJmsQwLVqOTw_d7blkP1sm1EGoZKSkFVS27XUJy6G_LDp_-AbLXpB-ql0_DxRs50ew_h5_gSImI83X9W3RwNaadh4GEhGiuc5G_MpbA0dpI2eQIPjSSblt1wcEX2Jw-97kM1s8fmethiJ7_dTFkLgwvrsJW5KC-89GlYHcMqmDDceCIMezMJ6L2I6C_ebssDnibRsTIwCdov0dH_ygJs_JUXXB_n1X7ZHzCgQVLO0"/>
+<div class="absolute inset-0 bg-gradient-to-r from-primary/90 to-transparent flex flex-col justify-center px-6">
+<h3 class="text-white font-headline font-extrabold text-xl">Explore All Courses</h3>
+<p class="text-white/80 text-xs">Unlock 42 new professional paths</p>
+</div>
+<div class="absolute right-4 bottom-4">
+<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-primary shadow-lg">
+<span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (From JSON) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-4 pt-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl shadow-[0_-12px_24px_rgba(0,52,97,0.08)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 p-2 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[10px] uppercase tracking-wider font-label font-bold mt-1">Dashboard</span>
+</a>
+<!-- ACTIVE ITEM: Training -->
+<a class="flex flex-col items-center justify-center bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100 rounded-xl px-4 py-1 border-l-4 border-blue-600 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="school">school</span>
+<span class="text-[10px] uppercase tracking-wider font-label font-bold mt-1">Training</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 p-2 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="verified">verified</span>
+<span class="text-[10px] uppercase tracking-wider font-label font-bold mt-1">Certificates</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 p-2 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="text-[10px] uppercase tracking-wider font-label font-bold mt-1">Profile</span>
+</a>
+</nav>
+</body></html>
