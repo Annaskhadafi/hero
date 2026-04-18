@@ -2056,6 +2056,15 @@ export async function getEmailDeliveryLogsData() {
     .orderBy(desc(emailDeliveryLogs.createdAt));
 }
 
+export async function getEmailTemplatesData() {
+  await ensureHeroGovernanceSeedData();
+
+  return db
+    .select()
+    .from(emailTemplates)
+    .orderBy(desc(emailTemplates.isActive), asc(emailTemplates.name), asc(emailTemplates.id));
+}
+
 export async function getEmailSmtpSettingsData() {
   await ensureHeroGovernanceSeedData();
 
@@ -2081,6 +2090,49 @@ export async function getEmailSmtpSettingsData() {
     ...settings,
     hasPassword: Boolean(settings.passwordSecret),
   };
+}
+
+export async function getPwaPushSettingsData() {
+  await ensureHeroGovernanceSeedData();
+
+  const [settings] = await db
+    .select()
+    .from(notificationChannelSettings)
+    .where(eq(notificationChannelSettings.channel, "pwa_push"))
+    .limit(1);
+
+  if (!settings) {
+    const fallback = NOTIFICATION_CHANNEL_SETTING_SEEDS.find((item) => item.channel === "pwa_push") ?? {
+      channel: "pwa_push",
+      isEnabled: true,
+      realtimeBadge: false,
+      soundEnabled: false,
+      autoMarkRead: false,
+      vapidPublicKey: "",
+      vapidPrivateKey: "",
+      pushSubject: "mailto:noreply@chitraparatama.co.id",
+      serviceWorkerPath: "/sw.js",
+    };
+
+    const [created] = await db
+      .insert(notificationChannelSettings)
+      .values({
+        channel: fallback.channel,
+        isEnabled: fallback.isEnabled,
+        realtimeBadge: fallback.realtimeBadge,
+        soundEnabled: fallback.soundEnabled,
+        autoMarkRead: fallback.autoMarkRead,
+        vapidPublicKey: fallback.vapidPublicKey,
+        vapidPrivateKey: fallback.vapidPrivateKey,
+        pushSubject: fallback.pushSubject,
+        serviceWorkerPath: fallback.serviceWorkerPath,
+      })
+      .returning();
+
+    return created;
+  }
+
+  return settings;
 }
 
 export async function getNavbarSettingsData() {

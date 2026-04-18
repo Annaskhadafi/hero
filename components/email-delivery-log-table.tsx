@@ -158,8 +158,8 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
       </div>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="max-w-5xl">
-          <DialogHeader>
+        <DialogContent className="w-[min(96vw,1100px)] max-w-[min(96vw,1100px)] overflow-hidden p-0">
+          <DialogHeader className="px-6 pt-6">
             <DialogTitle>Pratinjau Email</DialogTitle>
             <DialogDescription>
               Lihat isi email dan informasi pengiriman kepada penerima.
@@ -167,19 +167,19 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
           </DialogHeader>
 
           {selected ? (
-            <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-              <div className="space-y-3 rounded-xl border p-4 text-sm">
+            <div className="grid min-h-0 gap-4 px-6 pb-6 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-3 rounded-xl border p-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Penerima</p>
-                  <p className="font-mono">{selected.toEmail}</p>
+                  <p className="break-all font-mono">{selected.toEmail}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">CC</p>
-                  <p className="font-mono">{selected.ccEmail ?? "—"}</p>
+                  <p className="break-all font-mono">{selected.ccEmail ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Pengirim</p>
-                  <p className="font-mono">{selected.fromEmail ?? "—"}</p>
+                  <p className="break-all font-mono">{selected.fromEmail ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Jenis Pesan</p>
@@ -203,13 +203,16 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                 </div>
               </div>
 
-              <Tabs defaultValue={selected.htmlContent ? "html" : "text"} className="min-h-[420px]">
-                <TabsList className="w-full sm:w-auto">
+              <Tabs
+                defaultValue={selected.htmlContent ? "html" : "text"}
+                className="min-w-0"
+              >
+                <TabsList className="grid w-full grid-cols-2 sm:w-fit">
                   <TabsTrigger value="html">Tampilan Email</TabsTrigger>
                   <TabsTrigger value="text">Isi Teks</TabsTrigger>
                 </TabsList>
-                <TabsContent value="html" className="h-[420px]">
-                  <div className="h-full overflow-hidden rounded-xl border bg-white">
+                <TabsContent value="html" className="mt-4 h-[min(65vh,560px)] min-w-0">
+                  <div className="h-full min-w-0 overflow-hidden rounded-xl border bg-white">
                     {selected.htmlContent ? (
                       <iframe
                         srcDoc={selected.htmlContent}
@@ -224,7 +227,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                     )}
                   </div>
                 </TabsContent>
-                <TabsContent value="text" className="h-[420px]">
+                <TabsContent value="text" className="mt-4 h-[min(65vh,560px)] min-w-0">
                   <div className="h-full overflow-auto rounded-xl border p-4">
                     <pre className="whitespace-pre-wrap break-words font-mono text-sm">
                       {selected.textContent ?? "Isi teks tidak tersedia."}

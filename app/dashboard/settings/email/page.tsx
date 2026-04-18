@@ -11,15 +11,13 @@ import {
 } from "lucide-react";
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
+import { EmailTemplateSettingsPanel } from "@/components/email-template-settings-panel";
+import { PwaPushSettingsPanel } from "@/components/pwa-push-settings-panel";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -30,42 +28,12 @@ import {
 } from "@/components/ui/table";
 import { getNotificationCenterData } from "@/lib/approval-blueprint";
 import { getServerSession } from "@/lib/auth-session";
-import { getEmailDeliveryLogsData, getEmailSmtpSettingsData } from "@/lib/hero-admin";
-
-const defaultTemplates = [
-  {
-    name: "Auth Magic Link",
-    code: "auth_magic_link",
-    type: "Magic Link",
-    channel: "Email",
-    subject: "Magic link masuk untuk {{userName}}",
-    active: true,
-  },
-  {
-    name: "Approval Assignment",
-    code: "approval_assignment",
-    type: "Notification",
-    channel: "Email + Bell",
-    subject: "Tugas approval baru #{{requestId}}",
-    active: true,
-  },
-  {
-    name: "Approval SLA Reminder",
-    code: "approval_sla_reminder",
-    type: "Reminder",
-    channel: "Email + Bell + PWA",
-    subject: "Reminder SLA untuk request #{{requestId}}",
-    active: true,
-  },
-  {
-    name: "Daily Report Delivery",
-    code: "daily_report_delivery",
-    type: "Report",
-    channel: "Email",
-    subject: "Daily Report {{siteName}} - {{reportDate}}",
-    active: true,
-  },
-];
+import {
+  getEmailDeliveryLogsData,
+  getEmailSmtpSettingsData,
+  getEmailTemplatesData,
+  getPwaPushSettingsData,
+} from "@/lib/hero-admin";
 
 const bellRules = [
   {
@@ -130,26 +98,13 @@ function CompactMetric({
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Label className="grid gap-2 text-sm font-semibold">
-      {label}
-      {children}
-    </Label>
-  );
-}
-
 export default async function EmailSettingsPage() {
-  const [logs, notifications, smtpSettings, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
+    getEmailTemplatesData(),
+    getPwaPushSettingsData(),
     getServerSession(),
   ]);
 
@@ -162,21 +117,6 @@ export default async function EmailSettingsPage() {
   const pwaDeliveries = notifications.deliveries.filter(
     (delivery) => delivery.deliveryChannel === "pwa_push" || delivery.deliveryChannel === "push",
   );
-
-  const templatesFromLogs = logs
-    .filter((log) => log.templateName || log.templateCode)
-    .map((log) => ({
-      name: log.templateName ?? log.templateCode ?? "Email langsung",
-      code: log.templateCode ?? "direct_email",
-      type: log.templateName?.includes("Reset") ? "Auth" : "Notification",
-      channel: log.deliveryChannel === "email" ? "Email" : log.deliveryChannel,
-      subject: log.subject,
-      active: log.status !== "failed",
-    }));
-  const templateMap = new Map(
-    [...defaultTemplates, ...templatesFromLogs].map((template) => [template.code, template]),
-  );
-  const templates = [...templateMap.values()];
 
   return (
     <div className="space-y-5">
@@ -236,58 +176,7 @@ export default async function EmailSettingsPage() {
         </TabsContent>
 
         <TabsContent value="templates">
-          <Card className="rounded-lg p-4 shadow-sm">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-display text-lg font-semibold">Email Template</h2>
-                <p className="text-sm text-muted-foreground">
-                  Gunakan format {"{{variable}}"} untuk data dinamis.
-                </p>
-              </div>
-              <Button className="w-fit rounded-lg bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]">
-                <Plus className="size-4" />
-                Template Baru
-              </Button>
-            </div>
-            <div className="overflow-x-auto rounded-lg bg-surface-container-low p-2">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Nama</TableHead>
-                    <TableHead>Tipe</TableHead>
-                    <TableHead>Kode</TableHead>
-                    <TableHead>Channel</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Aktif</TableHead>
-                    <TableHead>Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {templates.map((template) => (
-                    <TableRow key={template.code} className="hover:bg-surface-container">
-                      <TableCell className="font-semibold">{template.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="rounded-full">{template.type}</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{template.code}</TableCell>
-                      <TableCell>{template.channel}</TableCell>
-                      <TableCell className="max-w-[360px] truncate text-muted-foreground">
-                        {template.subject}
-                      </TableCell>
-                      <TableCell>
-                        <Switch defaultChecked={template.active} />
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="outline" size="sm" className="rounded-lg">
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
+          <EmailTemplateSettingsPanel templates={templates} />
         </TabsContent>
 
         <TabsContent value="bell">
@@ -330,37 +219,8 @@ export default async function EmailSettingsPage() {
         </TabsContent>
 
         <TabsContent value="pwa">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-            <Card className="rounded-lg p-4 shadow-sm">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="font-display text-lg font-semibold">PWA Push Settings</h2>
-                <Badge className="rounded-full border-0 bg-tertiary-container text-on-tertiary-container">
-                  VAPID required
-                </Badge>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field label="VAPID Public Key">
-                  <Textarea rows={3} defaultValue="BKx...public-key-placeholder" />
-                </Field>
-                <Field label="VAPID Private Key">
-                  <Textarea rows={3} defaultValue="************" />
-                </Field>
-                <Field label="Push Subject">
-                  <Input defaultValue="mailto:noreply@chitraparatama.co.id" />
-                </Field>
-                <Field label="Service Worker">
-                  <Input defaultValue="/sw.js" />
-                </Field>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button className="rounded-lg bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]">
-                  Simpan Push
-                </Button>
-                <Button variant="outline" className="rounded-lg">
-                  Test Push
-                </Button>
-              </div>
-            </Card>
+          <div className="space-y-4">
+            <PwaPushSettingsPanel settings={pwaPushSettings} />
 
             <Card className="rounded-lg p-4 shadow-sm">
               <h2 className="font-display text-lg font-semibold">Push Rules</h2>

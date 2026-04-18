@@ -4,10 +4,14 @@ import { desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { emailSmtpSettings } from "@/db/schema/hero";
+import { emailSmtpSettings, emailTemplates, notificationChannelSettings } from "@/db/schema/hero";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
 import { getServerSession } from "@/lib/auth-session";
-import { ensureHeroGovernanceSeedData, getEmailSmtpSettingsData } from "@/lib/hero-admin";
+import {
+  ensureHeroGovernanceSeedData,
+  getEmailSmtpSettingsData,
+  getPwaPushSettingsData,
+} from "@/lib/hero-admin";
 
 export type EmailSettingsActionState = {
   status: "idle" | "success" | "error";
@@ -40,6 +44,49 @@ const smtpSettingsSchema = z.object({
     }),
 });
 
+const pwaPushSettingsSchema = z.object({
+  vapidPublicKey: z.string().trim().min(1, "VAPID Public Key wajib diisi."),
+  vapidPrivateKey: z.string().trim().min(1, "VAPID Private Key wajib diisi."),
+  pushSubject: z
+    .string()
+    .trim()
+    .min(1, "Push Subject wajib diisi.")
+    .refine(
+      (value) =>
+        value.startsWith("mailto:") ||
+        z.string().url().safeParse(value).success,
+      {
+        message: "Push Subject harus berupa mailto: atau URL yang valid.",
+      },
+    ),
+  serviceWorkerPath: z.string().trim().min(1, "Service Worker path wajib diisi."),
+});
+
+const emailTemplateSchema = z.object({
+  intent: z.enum(["create", "update"]),
+  id: z.coerce.number().int().positive().optional(),
+  name: z.string().trim().min(1, "Nama template wajib diisi.").max(120),
+  templateCode: z
+    .string()
+    .trim()
+    .min(1, "Kode template wajib diisi.")
+    .max(100)
+    .regex(/^[a-z0-9_]+$/, "Kode template hanya boleh huruf kecil, angka, dan underscore."),
+  templateType: z.string().trim().min(1, "Tipe template wajib diisi.").max(50),
+  deliveryChannel: z.string().trim().min(1, "Channel pengiriman wajib diisi.").max(120),
+  recipientScope: z.string().trim().min(1, "Scope penerima wajib diisi.").max(120),
+  ccEmail: z.string().trim().max(500).default(""),
+  subject: z.string().trim().min(1, "Subject email wajib diisi.").max(200),
+  htmlContent: z.string().default(""),
+  textContent: z.string().default(""),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+const emailTemplateToggleSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
 const INITIAL_STATE: EmailSettingsActionState = {
   status: "idle",
   message: "",
@@ -63,6 +110,22 @@ async function getExistingSmtpSettings() {
     ...fallback,
     passwordSecret: fallback.passwordSecret,
   };
+}
+
+async function getExistingPwaPushSettings() {
+  await ensureHeroGovernanceSeedData();
+
+  const [settings] = await db
+    .select()
+    .from(notificationChannelSettings)
+    .where(eq(notificationChannelSettings.channel, "pwa_push"))
+    .limit(1);
+
+  if (settings) {
+    return settings;
+  }
+
+  return getPwaPushSettingsData();
 }
 
 function buildTransportSettings(
@@ -195,6 +258,216 @@ export async function sendEmailTestAction(
     return {
       status: "error",
       message: `Test email gagal: ${message}`,
+    };
+  }
+}
+
+export async function savePwaPushSettingsAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  const parsed = pwaPushSettingsSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi PWA Push belum valid.",
+    };
+  }
+
+  try {
+    const existing = await getExistingPwaPushSettings();
+
+    await db
+      .update(notificationChannelSettings)
+      .set({
+        isEnabled: true,
+        vapidPublicKey: parsed.data.vapidPublicKey,
+        vapidPrivateKey: parsed.data.vapidPrivateKey,
+        pushSubject: parsed.data.pushSubject,
+        serviceWorkerPath: parsed.data.serviceWorkerPath,
+        updatedAt: new Date(),
+      })
+      .where(eq(notificationChannelSettings.id, existing.id));
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Konfigurasi PWA Push berhasil disimpan.",
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Gagal menyimpan konfigurasi PWA Push.";
+    return {
+      status: "error",
+      message,
+    };
+  }
+}
+
+export async function testPwaPushSettingsAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  const parsed = pwaPushSettingsSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi PWA Push belum valid.",
+    };
+  }
+
+  return {
+    status: "success",
+    message:
+      "Konfigurasi PWA Push valid. Test dispatch belum dikirim karena subscription browser untuk target test belum dikelola di modul ini.",
+  };
+}
+
+export async function saveEmailTemplateAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = emailTemplateSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Template email belum valid.",
+    };
+  }
+
+  const {
+    intent,
+    id,
+    name,
+    templateCode,
+    templateType,
+    deliveryChannel,
+    recipientScope,
+    ccEmail,
+    subject,
+    htmlContent,
+    textContent,
+    isActive,
+  } = parsed.data;
+
+  try {
+    const existingWithCode = await db
+      .select({ id: emailTemplates.id })
+      .from(emailTemplates)
+      .where(eq(emailTemplates.templateCode, templateCode))
+      .limit(1);
+
+    if (existingWithCode.length > 0 && existingWithCode[0]?.id !== id) {
+      return {
+        status: "error",
+        message: "Kode template sudah dipakai template lain.",
+      };
+    }
+
+    if (intent === "create") {
+      await db.insert(emailTemplates).values({
+        name,
+        templateCode,
+        templateType,
+        deliveryChannel,
+        recipientScope,
+        ccEmail,
+        subject,
+        htmlContent,
+        textContent,
+        isActive,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      revalidatePath("/dashboard/settings/email");
+      return {
+        status: "success",
+        message: "Template email berhasil dibuat.",
+      };
+    }
+
+    if (!id) {
+      return {
+        status: "error",
+        message: "ID template wajib ada untuk update.",
+      };
+    }
+
+    await db
+      .update(emailTemplates)
+      .set({
+        name,
+        templateCode,
+        templateType,
+        deliveryChannel,
+        recipientScope,
+        ccEmail,
+        subject,
+        htmlContent,
+        textContent,
+        isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(emailTemplates.id, id));
+
+    revalidatePath("/dashboard/settings/email");
+    return {
+      status: "success",
+      message: "Template email berhasil diperbarui.",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gagal menyimpan template email.";
+    return {
+      status: "error",
+      message,
+    };
+  }
+}
+
+export async function toggleEmailTemplateActiveAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = emailTemplateToggleSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Status template email belum valid.",
+    };
+  }
+
+  try {
+    await db
+      .update(emailTemplates)
+      .set({
+        isActive: parsed.data.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(emailTemplates.id, parsed.data.id));
+
+    revalidatePath("/dashboard/settings/email");
+    return {
+      status: "success",
+      message: parsed.data.isActive
+        ? "Template email berhasil diaktifkan."
+        : "Template email berhasil dinonaktifkan.",
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Gagal mengubah status template email.";
+    return {
+      status: "error",
+      message,
     };
   }
 }
