@@ -880,6 +880,9 @@ export async function reviewApprovalAction(formData: FormData) {
       priority: activities.priority,
       startTime: activities.startTime,
       endTime: activities.endTime,
+      submissionTime: activities.submissionTime,
+      pointsAwarded: activities.pointsAwarded,
+      penaltyDeducted: activities.penaltyDeducted,
       employeeId: activities.employeeId,
       siteId: activities.siteId,
     })
@@ -1149,7 +1152,59 @@ export async function reviewApprovalAction(formData: FormData) {
         overtimeAmount: Math.round((approval.overtimeMinutes / 60) * overtimeRate),
         status: "ready_for_payroll",
         updatedAt: now,
-      });
+        });
+    }
+
+    if (approval.submissionTime != null) {
+      const [existingAwardEvent] = await tx
+        .select({ id: pointEvents.id })
+        .from(pointEvents)
+        .where(
+          and(
+            eq(pointEvents.sourceType, "activity"),
+            eq(pointEvents.sourceId, approval.activityId),
+          ),
+        )
+        .limit(1);
+
+      if (!existingAwardEvent) {
+        const netPoints = approval.pointsAwarded - approval.penaltyDeducted;
+        const [employeePointState] = await tx
+          .select({
+            totalPoints: employees.totalPoints,
+          })
+          .from(employees)
+          .where(eq(employees.id, approval.employeeId))
+          .limit(1);
+
+        if (employeePointState) {
+          const updatedBalance = Math.max(0, employeePointState.totalPoints + netPoints);
+
+          await tx.insert(pointEvents).values({
+            employeeId: approval.employeeId,
+            transactionType: netPoints >= 0 ? "reward" : "penalty",
+            sourceType: "activity",
+            sourceId: approval.activityId,
+            category: "Daily Activity Approval",
+            label: `${approval.activityTitle} • Approved`,
+            points: netPoints,
+            balanceAfter: updatedBalance,
+            metadata: JSON.stringify({
+              approvalId: approval.approvalId,
+              approvalLevel: approval.level,
+              penaltyDeducted: approval.penaltyDeducted,
+            }),
+            createdAt: now,
+          });
+
+          await tx
+            .update(employees)
+            .set({
+              totalPoints: updatedBalance,
+            })
+            .where(eq(employees.id, approval.employeeId));
+        }
+      }
     }
 
     await tx

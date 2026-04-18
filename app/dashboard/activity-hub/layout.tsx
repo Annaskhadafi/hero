@@ -3,12 +3,20 @@ import { Activity } from "lucide-react";
 
 const tabs = [
   {
-    label: "Activity Queue",
+    label: "My Day",
     href: "/dashboard/activity-hub/my-day",
   },
   {
-    label: "Operations Board",
+    label: "Team Board",
     href: "/dashboard/activity-hub/team-board",
+  },
+  {
+    label: "Library",
+    href: "/dashboard/activity-hub/library",
+  },
+  {
+    label: "Configuration",
+    href: "/dashboard/activity-hub/configuration",
   },
 ];
 
@@ -24,7 +32,7 @@ export default function ActivityHubLayout({
           <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
             <Activity className="size-4" aria-hidden="true" />
           </span>
-          Activity administration
+          Daily Activity System
         </h1>
         <nav className="flex flex-wrap gap-2">
           {tabs.map((tab) => (

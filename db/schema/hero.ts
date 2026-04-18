@@ -63,6 +63,64 @@ export const employees = pgTable("hero_employees", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const activityLibraries = pgTable("hero_activity_libraries", {
+  id: serial("id").primaryKey(),
+  activityCode: text("activity_code").notNull().unique(),
+  activityName: text("activity_name").notNull(),
+  category: text("category").notNull().default("Technical"),
+  departmentId: integer("department_id"),
+  sectionId: integer("section_id"),
+  basePoints: integer("base_points").notNull().default(5),
+  complexityLevel: integer("complexity_level").notNull().default(1),
+  requiresPhoto: boolean("requires_photo").notNull().default(false),
+  requiresEquipmentNo: boolean("requires_equipment_no").notNull().default(false),
+  requiresDuration: boolean("requires_duration").notNull().default(true),
+  requiresLocationGps: boolean("requires_location_gps").notNull().default(false),
+  requiresMaterialUsed: boolean("requires_material_used").notNull().default(false),
+  maxDailyCount: integer("max_daily_count").notNull().default(3),
+  maxPointsPerDay: integer("max_points_per_day").notNull().default(50),
+  isAssignable: boolean("is_assignable").notNull().default(true),
+  isSelfInput: boolean("is_self_input").notNull().default(true),
+  approvalRequired: boolean("approval_required").notNull().default(true),
+  autoApproveIfGpsValid: boolean("auto_approve_if_gps_valid").notNull().default(false),
+  slaHours: integer("sla_hours").notNull().default(24),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const jobAssignments = pgTable("hero_job_assignments", {
+  id: serial("id").primaryKey(),
+  assignedByEmployeeId: integer("assigned_by_employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  assignedToEmployeeId: integer("assigned_to_employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  libraryActivityId: integer("library_activity_id").references(() => activityLibraries.id, {
+    onDelete: "set null",
+  }),
+  customJobName: text("custom_job_name").notNull().default(""),
+  priority: text("priority").notNull().default("Normal"),
+  estimatedDuration: integer("estimated_duration").notNull().default(60),
+  notes: text("notes").notNull().default(""),
+  assignmentType: text("assignment_type").notNull().default("individual"),
+  assignedDate: timestamp("assigned_date").notNull().defaultNow(),
+  deadline: timestamp("deadline"),
+  status: text("status").notNull().default("NOT_STARTED"),
+  isMandatory: boolean("is_mandatory").notNull().default(false),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  recurrenceRule: text("recurrence_rule").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const activities = pgTable("hero_activities", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id")
@@ -75,12 +133,26 @@ export const activities = pgTable("hero_activities", {
   activityType: text("activity_type").notNull(),
   title: text("title").notNull(),
   unitNumber: text("unit_number").notNull(),
+  libraryActivityId: integer("library_activity_id"),
+  assignmentId: integer("assignment_id"),
+  sourceMode: text("source_mode").notNull().default("self_input"),
+  customActivityName: text("custom_activity_name").notNull().default(""),
+  customActivityDescription: text("custom_activity_description").notNull().default(""),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   status: text("status").notNull(),
   priority: text("priority").notNull().default("normal"),
+  submissionTime: timestamp("submission_time"),
+  submissionCategory: text("submission_category").notNull().default("on_time"),
+  equipmentNo: text("equipment_no").notNull().default(""),
+  materialUsed: text("material_used").notNull().default(""),
+  gpsLat: text("gps_lat").notNull().default(""),
+  gpsLng: text("gps_lng").notNull().default(""),
+  gpsValid: boolean("gps_valid").notNull().default(false),
+  photoCount: integer("photo_count").notNull().default(0),
   remarks: text("remarks").notNull().default(""),
   pointsAwarded: integer("points_awarded").notNull().default(0),
+  penaltyDeducted: integer("penalty_deducted").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -102,6 +174,20 @@ export const approvals = pgTable("hero_approvals", {
   resolutionSource: text("resolution_source").notNull().default("matrix"),
   routeSnapshot: text("route_snapshot").notNull().default(""),
   decisionNote: text("decision_note").notNull().default(""),
+  pointsOverride: integer("points_override"),
+  rejectionReason: text("rejection_reason").notNull().default(""),
+  pointsOverrideReason: text("points_override_reason").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const activityPhotos = pgTable("hero_activity_photos", {
+  id: serial("id").primaryKey(),
+  activityId: integer("activity_id")
+    .notNull()
+    .references(() => activities.id, { onDelete: "cascade" }),
+  fileUrl: text("file_url").notNull(),
+  caption: text("caption").notNull().default(""),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
 });
 
 export const timesheetEntries = pgTable("hero_timesheet_entries", {
@@ -141,10 +227,101 @@ export const pointEvents = pgTable("hero_point_events", {
   employeeId: integer("employee_id")
     .notNull()
     .references(() => employees.id, { onDelete: "cascade" }),
+  transactionType: text("transaction_type").notNull().default("reward"),
+  sourceType: text("source_type").notNull().default("activity"),
+  sourceId: integer("source_id"),
   category: text("category").notNull(),
   label: text("label").notNull(),
   points: integer("points").notNull(),
+  balanceAfter: integer("balance_after"),
+  metadata: text("metadata").notNull().default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const penaltyEvents = pgTable("hero_penalty_events", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  activityId: integer("activity_id").references(() => activities.id, {
+    onDelete: "set null",
+  }),
+  penaltyCode: text("penalty_code").notNull(),
+  penaltyType: text("penalty_type").notNull(),
+  referenceDate: timestamp("reference_date").notNull().defaultNow(),
+  pointsDeducted: integer("points_deducted").notNull().default(0),
+  description: text("description").notNull().default(""),
+  isDisputed: boolean("is_disputed").notNull().default(false),
+  disputeStatus: text("dispute_status").notNull().default("none"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const pointDisputes = pgTable("hero_point_disputes", {
+  id: serial("id").primaryKey(),
+  penaltyEventId: integer("penalty_event_id")
+    .notNull()
+    .references(() => penaltyEvents.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  evidenceUrls: text("evidence_urls").notNull().default("[]"),
+  status: text("status").notNull().default("pending"),
+  resolvedByEmployeeId: integer("resolved_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  resolutionNotes: text("resolution_notes").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export const streakRecords = pgTable("hero_streak_records", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  streakStartDate: timestamp("streak_start_date").notNull().defaultNow(),
+  currentStreakDays: integer("current_streak_days").notNull().default(0),
+  longestStreakDays: integer("longest_streak_days").notNull().default(0),
+  lastActivityDate: timestamp("last_activity_date"),
+  streakBonusActive: boolean("streak_bonus_active").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const activityModifiers = pgTable("hero_activity_modifiers", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  eventName: text("event_name").notNull(),
+  description: text("description").notNull().default(""),
+  multiplier: integer("multiplier").notNull().default(100),
+  startDate: timestamp("start_date").notNull().defaultNow(),
+  endDate: timestamp("end_date"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const dailyActivityConfigs = pgTable("hero_daily_activity_configs", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  configKey: text("config_key").notNull().unique(),
+  configLabel: text("config_label").notNull(),
+  configValue: text("config_value").notNull().default(""),
+  valueType: text("value_type").notNull().default("number"),
+  description: text("description").notNull().default(""),
+  isEditableBySectionHead: boolean("is_editable_by_section_head").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedByEmployeeId: integer("updated_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const hseObservations = pgTable("hero_hse_observations", {
