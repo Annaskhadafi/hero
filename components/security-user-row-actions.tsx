@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Eye, Pencil, ShieldBan, Trash2 } from "lucide-react";
 import {
   manageSecurityUserAction,
@@ -80,6 +81,8 @@ export function SecurityUserRowActions({
   roleOptions: Array<{ id: number; name: string }>;
   positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
 }) {
+  const router = useRouter();
+  const [, startRefreshTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(manageSecurityUserAction, INITIAL_STATE);
   const [selectedJobTitle, setSelectedJobTitle] = useState(user.jobTitle);
@@ -89,10 +92,13 @@ export function SecurityUserRowActions({
   const resolvedWorkLocation = selectedPosition?.siteLocation || user.workLocation || "";
 
   useEffect(() => {
-    if (state.status === "success" && state.message.toLowerCase().includes("dihapus")) {
-      setOpen(false);
+    if (state.status === "success") {
+      if (state.message.toLowerCase().includes("dihapus")) {
+        setOpen(false);
+      }
+      startRefreshTransition(() => router.refresh());
     }
-  }, [state]);
+  }, [router, state, startRefreshTransition]);
 
   useEffect(() => {
     if (open) {

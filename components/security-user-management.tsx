@@ -287,6 +287,15 @@ export function SecurityUserManagement({
     });
   }, [parsedImport.headers]);
 
+  useEffect(() => {
+    if (actionState.status === "success") {
+      setIsImportOpen(false);
+      setRawCsv("");
+      setMapping({});
+      startRefreshTransition(() => router.refresh());
+    }
+  }, [actionState.status, router, startRefreshTransition]);
+
   const handleSearch = () => {
     setSearchQuery(searchInput.trim().toLowerCase());
   };

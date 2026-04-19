@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Plus, UserPlus } from "lucide-react";
 import {
   manageSecurityUserAction,
@@ -57,6 +58,8 @@ export function SecurityUserCreateDialog({
   departments: Array<{ id: number; code: string; name: string }>;
   positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
 }) {
+  const router = useRouter();
+  const [, startRefreshTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [state, formAction] = useActionState(
@@ -92,8 +95,9 @@ export function SecurityUserCreateDialog({
       setSelectedDepartmentId("");
       setSelectedSectionId("");
       setSelectedJobTitle("");
+      startRefreshTransition(() => router.refresh());
     }
-  }, [state.status]);
+  }, [router, state.status, startRefreshTransition]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

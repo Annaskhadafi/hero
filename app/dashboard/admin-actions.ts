@@ -171,6 +171,11 @@ export type AdminMutationState = {
   message: string;
 };
 
+const optionalFormString = z.preprocess(
+  (value) => (value === null || value === undefined ? undefined : value),
+  z.string().trim().optional(),
+);
+
 const navbarThemeSchema = z.object({
   headerBackgroundColor: z
     .string()
@@ -191,24 +196,24 @@ const manageSecurityUserSchema = z.object({
     (value) => (value === "" || value === null || value === undefined ? undefined : value),
     z.coerce.number().int().positive().optional(),
   ),
-  fullName: z.string().trim().optional(),
-  employeeSn: z.string().trim().optional(),
-  profileImage: z.string().trim().optional(),
-  joinYear: z.string().trim().optional(),
-  birthPlaceDate: z.string().trim().optional(),
-  domicile: z.string().trim().optional(),
-  directManagerId: z.string().trim().optional(),
-  section: z.string().trim().optional(),
-  department: z.string().trim().optional(),
-  jobTitle: z.string().trim().optional(),
-  workLocation: z.string().trim().optional(),
-  phoneNumber: z.string().trim().optional(),
-  email: z.string().trim().optional(),
-  employmentStatus: z.string().trim().optional(),
-  employeeStatusType: z.string().trim().optional(),
-  accessRole: z.string().trim().optional(),
-  password: z.string().trim().optional(),
-  newPassword: z.string().trim().optional(),
+  fullName: optionalFormString,
+  employeeSn: optionalFormString,
+  profileImage: optionalFormString,
+  joinYear: optionalFormString,
+  birthPlaceDate: optionalFormString,
+  domicile: optionalFormString,
+  directManagerId: optionalFormString,
+  section: optionalFormString,
+  department: optionalFormString,
+  jobTitle: optionalFormString,
+  workLocation: optionalFormString,
+  phoneNumber: optionalFormString,
+  email: optionalFormString,
+  employmentStatus: optionalFormString,
+  employeeStatusType: optionalFormString,
+  accessRole: optionalFormString,
+  password: optionalFormString,
+  newPassword: optionalFormString,
 });
 
 const manageSecurityRoleSchema = z.object({
@@ -218,12 +223,12 @@ const manageSecurityRoleSchema = z.object({
     "delete-role",
     "save-menu-permissions",
   ]),
-  roleId: z.string().trim().optional(),
-  roleName: z.string().trim().optional(),
-  description: z.string().trim().optional(),
-  scope: z.string().trim().optional(),
-  sourceRoleId: z.string().trim().optional(),
-  permissionsJson: z.string().trim().optional(),
+  roleId: optionalFormString,
+  roleName: optionalFormString,
+  description: optionalFormString,
+  scope: optionalFormString,
+  sourceRoleId: optionalFormString,
+  permissionsJson: optionalFormString,
 });
 
 const optionalRecordId = z.preprocess(
@@ -1648,7 +1653,7 @@ export async function manageSecurityUserAction(
         };
       }
 
-      const [[defaultSite], [existingEmployee], [existingAuthUser], [role]] =
+      const [[currentDefaultSite], [existingEmployee], [existingAuthUser], [role]] =
         await Promise.all([
           db.select().from(sites).limit(1),
           db
@@ -1668,13 +1673,6 @@ export async function manageSecurityUserAction(
             .limit(1),
         ]);
 
-      if (!defaultSite) {
-        return {
-          status: "error",
-          message: "Site default belum tersedia untuk membuat user manual.",
-        };
-      }
-
       if (existingEmployee || existingAuthUser) {
         return {
           status: "error",
@@ -1688,6 +1686,21 @@ export async function manageSecurityUserAction(
           message: "Role yang dipilih tidak valid.",
         };
       }
+
+      const defaultSite =
+        currentDefaultSite ??
+        (
+          await db
+            .insert(sites)
+            .values({
+              name: payload.workLocation?.trim() || "Default Site",
+              location: payload.workLocation?.trim() || "Default Site",
+              customerName: "PT Chitra Paratama",
+              contractNumber: "MANUAL-DEFAULT",
+              isActive: true,
+            })
+            .returning()
+        )[0];
 
       const authUserId = randomUUID();
       const now = new Date();

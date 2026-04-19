@@ -1919,7 +1919,7 @@ export async function getSecurityUsersData() {
     })
     .from(employees)
     .leftJoin(authUser, eq(employees.authUserId, authUser.id))
-    .innerJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .orderBy(employees.name);
 
   const employeeNameById = new Map(rows.map((row) => [row.id, row.name]));
@@ -1949,7 +1949,7 @@ export async function getSecurityUsersData() {
     levelName: row.levelName,
     fitStatus: row.fitStatus,
     isActive: row.isActive,
-    siteName: row.siteName,
+    siteName: row.siteName ?? row.workLocation ?? "Belum diisi",
     totalPoints: row.totalPoints,
   }));
 }
