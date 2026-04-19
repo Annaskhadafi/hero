@@ -13,11 +13,20 @@ import {
   dailyActivityConfigs,
   employees,
   jobAssignments,
+  masterDepartments,
+  masterSections,
   penaltyEvents,
   pointDisputes,
   pointEvents,
   streakRecords,
 } from "@/db/schema/hero";
+import {
+  type ActivityLibraryImportState,
+  getActivityLibraryImportValue,
+  parseActivityLibraryBoolean,
+  parseActivityLibraryCsv,
+  parseActivityLibraryInteger,
+} from "@/lib/activity-library-import";
 import {
   DAILY_ACTIVITY_REVALIDATE_PATHS,
   ensureDailyActivitySeedData,
@@ -163,6 +172,49 @@ function normalizeEvidenceUrls(value: string) {
     .slice(0, 5);
 
   return JSON.stringify(urls);
+}
+
+function normalizeImportLookup(value: string | number | null | undefined) {
+  return `${value ?? ""}`.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ");
+}
+
+function resolveMasterReference(
+  value: string,
+  rows: Array<{ id: number; code: string; name: string }>,
+) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const numericId = Number(trimmed);
+  if (Number.isInteger(numericId) && numericId > 0) {
+    return rows.find((row) => row.id === numericId)?.id ?? null;
+  }
+
+  const normalized = normalizeImportLookup(trimmed);
+  return (
+    rows.find(
+      (row) =>
+        normalizeImportLookup(row.code) === normalized ||
+        normalizeImportLookup(row.name) === normalized,
+    )?.id ?? null
+  );
+}
+
+async function getImportCsvText(formData: FormData) {
+  const file = formData.get("file");
+  if (
+    file &&
+    typeof file === "object" &&
+    "size" in file &&
+    "text" in file &&
+    typeof file.text === "function" &&
+    Number(file.size) > 0
+  ) {
+    return file.text();
+  }
+
+  const rawCsv = formData.get("rawCsv");
+  return typeof rawCsv === "string" ? rawCsv : "";
 }
 
 function parseDateTime(value: string, label: string) {
@@ -392,6 +444,127 @@ export async function manageActivityLibraryAction(formData: FormData) {
   }
 
   revalidateDailyActivitySurfaces();
+}
+
+export async function importActivityLibraryAction(
+  _state: ActivityLibraryImportState,
+  formData: FormData,
+): Promise<ActivityLibraryImportState> {
+  try {
+    await ensureDailyActivitySeedData();
+
+    const rawCsv = (await getImportCsvText(formData)).trim();
+    if (!rawCsv) {
+      return {
+        status: "error",
+        message: "CSV kosong. Upload file atau paste data example dulu.",
+      };
+    }
+
+    const parsed = parseActivityLibraryCsv(rawCsv);
+    if (parsed.records.length === 0) {
+      return {
+        status: "error",
+        message: "CSV tidak punya baris data.",
+      };
+    }
+
+    const createdByEmployeeIdValue = Number(formData.get("createdByEmployeeId"));
+    const createdByEmployeeId =
+      Number.isInteger(createdByEmployeeIdValue) && createdByEmployeeIdValue > 0
+        ? createdByEmployeeIdValue
+        : null;
+    const [departmentRows, sectionRows] = await Promise.all([
+      db
+        .select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name })
+        .from(masterDepartments),
+      db
+        .select({
+          id: masterSections.id,
+          code: masterSections.code,
+          name: masterSections.name,
+          departmentId: masterSections.departmentId,
+        })
+        .from(masterSections),
+    ]);
+
+    let importedCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+
+    for (const row of parsed.records) {
+      const activityCode = getActivityLibraryImportValue(row, "activityCode");
+      const activityName = getActivityLibraryImportValue(row, "activityName");
+
+      if (!activityCode || !activityName) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const sectionId = resolveMasterReference(getActivityLibraryImportValue(row, "section"), sectionRows);
+      const section = sectionId ? sectionRows.find((item) => item.id === sectionId) : null;
+      const departmentId =
+        resolveMasterReference(getActivityLibraryImportValue(row, "department"), departmentRows) ??
+        section?.departmentId ??
+        null;
+      const values = {
+        activityCode,
+        activityName,
+        category: getActivityLibraryImportValue(row, "category") || "Technical",
+        departmentId,
+        sectionId,
+        basePoints: parseActivityLibraryInteger(getActivityLibraryImportValue(row, "basePoints"), 5, 0, 500),
+        complexityLevel: parseActivityLibraryInteger(getActivityLibraryImportValue(row, "complexityLevel"), 1, 1, 5),
+        requiresPhoto: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "requiresPhoto"), false),
+        requiresEquipmentNo: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "requiresEquipmentNo"), false),
+        requiresDuration: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "requiresDuration"), true),
+        requiresLocationGps: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "requiresLocationGps"), false),
+        requiresMaterialUsed: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "requiresMaterialUsed"), false),
+        maxDailyCount: parseActivityLibraryInteger(getActivityLibraryImportValue(row, "maxDailyCount"), 3, 1, 20),
+        maxPointsPerDay: parseActivityLibraryInteger(getActivityLibraryImportValue(row, "maxPointsPerDay"), 50, 1, 1000),
+        isAssignable: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "isAssignable"), true),
+        isSelfInput: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "isSelfInput"), true),
+        approvalRequired: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "approvalRequired"), true),
+        autoApproveIfGpsValid: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "autoApproveIfGpsValid"), false),
+        slaHours: parseActivityLibraryInteger(getActivityLibraryImportValue(row, "slaHours"), 24, 1, 240),
+        isActive: parseActivityLibraryBoolean(getActivityLibraryImportValue(row, "isActive"), true),
+        createdByEmployeeId,
+        updatedAt: new Date(),
+      };
+
+      const [existing] = await db
+        .select({ id: activityLibraries.id })
+        .from(activityLibraries)
+        .where(eq(activityLibraries.activityCode, activityCode))
+        .limit(1);
+
+      if (existing) {
+        await db.update(activityLibraries).set(values).where(eq(activityLibraries.id, existing.id));
+        updatedCount += 1;
+      } else {
+        await db.insert(activityLibraries).values({
+          ...values,
+          createdAt: new Date(),
+        });
+        importedCount += 1;
+      }
+    }
+
+    revalidateDailyActivitySurfaces();
+
+    return {
+      status: "success",
+      message: "Import Activity Library selesai.",
+      importedCount,
+      updatedCount,
+      skippedCount,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Import Activity Library gagal.",
+    };
+  }
 }
 
 export async function manageJobAssignmentAction(formData: FormData) {

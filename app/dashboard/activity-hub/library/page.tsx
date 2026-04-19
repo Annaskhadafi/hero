@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Layers3, Settings2 } from "lucide-react";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityLibraryImportExport } from "@/components/activity-library-import-export";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,12 +58,15 @@ export default async function DailyActivityLibraryPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {data.categories.map((item) => (
-                  <Badge key={item.label} variant="secondary">
-                    {item.label} • {item.count}
-                  </Badge>
-                ))}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {data.categories.map((item) => (
+                    <Badge key={item.label} variant="secondary">
+                      {item.label} • {item.count}
+                    </Badge>
+                  ))}
+                </div>
+                <ActivityLibraryImportExport rows={data.rows} currentEmployeeId={data.currentEmployee?.id ?? null} />
               </div>
 
               <MinimalTableShell

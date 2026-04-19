@@ -9,17 +9,42 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+const INSTALL_PROMPT_SEEN_KEY = "hero:pwa-install-prompt-seen";
+
+function hasSeenInstallPrompt() {
+  return window.localStorage.getItem(INSTALL_PROMPT_SEEN_KEY) === "true";
+}
+
+function rememberInstallPromptSeen() {
+  window.localStorage.setItem(INSTALL_PROMPT_SEEN_KEY, "true");
+}
+
+function isStandaloneApp() {
+  return window.matchMedia("(display-mode: standalone)").matches;
+}
+
 export function PwaInstallPrompt() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
+    if (hasSeenInstallPrompt() || isStandaloneApp()) {
+      setIsDismissed(true);
+      return;
+    }
+
     const handleBeforeInstallPrompt = (event: Event) => {
+      if (hasSeenInstallPrompt() || isStandaloneApp()) {
+        return;
+      }
+
       event.preventDefault();
+      rememberInstallPromptSeen();
       setInstallEvent(event as BeforeInstallPromptEvent);
     };
 
     const handleInstalled = () => {
+      rememberInstallPromptSeen();
       setInstallEvent(null);
       setIsDismissed(true);
     };
@@ -56,6 +81,7 @@ export function PwaInstallPrompt() {
               onClick={async () => {
                 await installEvent.prompt();
                 const choice = await installEvent.userChoice;
+                setIsDismissed(true);
                 if (choice.outcome === "accepted") {
                   setInstallEvent(null);
                 }
@@ -69,7 +95,10 @@ export function PwaInstallPrompt() {
               size="sm"
               variant="ghost"
               className="rounded-xl"
-              onClick={() => setIsDismissed(true)}
+              onClick={() => {
+                rememberInstallPromptSeen();
+                setIsDismissed(true);
+              }}
             >
               Nanti saja
             </Button>
