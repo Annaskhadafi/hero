@@ -4,6 +4,7 @@ import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { notificationDeliveries, notificationEvents } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
+import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
 
 type NotificationPayloadSnapshot = {
   title?: string;
@@ -34,6 +35,7 @@ export async function GET() {
   }
 
   const recentWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  await ensureNotificationInfrastructure();
 
   const [rows, countRows] = await Promise.all([
     db

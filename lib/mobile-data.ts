@@ -21,6 +21,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { ensureHeroSeedData } from "@/lib/hero-admin";
+import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
 
 function startOfMonth(reference = new Date()) {
   return new Date(reference.getFullYear(), reference.getMonth(), 1);
@@ -78,6 +79,8 @@ export async function getMobileEmployeeContext(
 }
 
 export async function getMobileNotifications(email?: string | null) {
+  await ensureNotificationInfrastructure();
+
   if (!email) {
     return [];
   }
@@ -105,6 +108,8 @@ export async function getMobileNotifications(email?: string | null) {
 }
 
 export async function getMobileNotificationCount(email?: string | null) {
+  await ensureNotificationInfrastructure();
+
   if (!email) {
     return 0;
   }
@@ -126,6 +131,8 @@ export async function getMobileNotificationCount(email?: string | null) {
 }
 
 export async function getMobileNotificationSettings(email?: string | null) {
+  await ensureNotificationInfrastructure();
+
   if (!email) {
     return {
       preferences: null,

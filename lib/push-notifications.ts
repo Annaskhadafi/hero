@@ -11,7 +11,7 @@ import {
   notificationPushSubscriptions,
   notificationUserPreferences,
 } from "@/db/schema/hero";
-import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
+import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
 
 export type NotificationCategory =
   | "approval_requests"
@@ -111,7 +111,7 @@ async function getEmployeeTargetById(employeeId: number): Promise<EmployeeNotifi
 }
 
 export async function getEmployeeTargetByEmail(email: string) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -129,7 +129,7 @@ export async function getEmployeeTargetByEmail(email: string) {
 }
 
 export async function getNotificationPreferences(employeeId: number) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   const [preferences] = await db
     .select()
@@ -166,7 +166,7 @@ export async function getNotificationPreferences(employeeId: number) {
 }
 
 export async function updateNotificationPreferences(employeeId: number, patch: NotificationPreferencePatch) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
   const existing = await getNotificationPreferences(employeeId);
 
   const [updated] = await db
@@ -182,7 +182,7 @@ export async function updateNotificationPreferences(employeeId: number, patch: N
 }
 
 export async function getPushChannelConfig() {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   const [settings] = await db
     .select()
@@ -199,7 +199,7 @@ export async function upsertPushSubscription(input: {
   deviceLabel?: string;
   userAgent?: string;
 }) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   const existing = await db
     .select()
@@ -244,7 +244,7 @@ export async function upsertPushSubscription(input: {
 }
 
 export async function deactivatePushSubscription(employeeId: number, endpoint: string) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   await db
     .update(notificationPushSubscriptions)
@@ -261,7 +261,7 @@ export async function deactivatePushSubscription(employeeId: number, endpoint: s
 }
 
 export async function listPushSubscriptions(employeeId: number) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   return db
     .select()
@@ -287,7 +287,7 @@ export async function createNotificationEventForEmployee(input: {
   approvalId?: number | null;
   createdAt?: Date;
 }) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   const employee = await getEmployeeTargetById(input.employeeId);
   if (!employee) {
@@ -330,7 +330,7 @@ export async function createNotificationEventForEmployee(input: {
 }
 
 export async function sendPushNotification(input: PushDispatchInput) {
-  await ensureHeroGovernanceSeedData();
+  await ensureNotificationInfrastructure();
 
   const [employee, preferences, settings, subscriptions] = await Promise.all([
     getEmployeeTargetById(input.employeeId),
