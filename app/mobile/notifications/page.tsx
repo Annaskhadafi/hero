@@ -1,13 +1,7 @@
 import { redirect } from "next/navigation";
 import { MobileNotificationsCenter } from "@/components/mobile/mobile-notifications-center";
 import { getServerSession } from "@/lib/auth-session";
-import { getMobileNotifications } from "@/lib/mobile-data";
-import {
-  getEmployeeTargetByEmail,
-  getNotificationPreferences,
-  getPushChannelConfig,
-  listPushSubscriptions,
-} from "@/lib/push-notifications";
+import { getMobileNotificationSettings, getMobileNotifications } from "@/lib/mobile-data";
 
 export default async function MobileNotificationsPage() {
   const session = await getServerSession();
@@ -16,33 +10,9 @@ export default async function MobileNotificationsPage() {
     redirect("/sign-in");
   }
 
-  const [employee, notifications] = await Promise.all([
-    getEmployeeTargetByEmail(session.user.email),
+  const [notifications, settings] = await Promise.all([
     getMobileNotifications(session.user.email),
-  ]);
-
-  if (!employee) {
-    return (
-      <MobileNotificationsCenter
-        initialData={{
-          notifications: notifications.map((item) => ({
-            ...item,
-            createdAt: item.createdAt.toISOString(),
-            sentAt: item.sentAt?.toISOString() ?? null,
-          })),
-          preferences: null,
-          pushPublicKey: "",
-          pushConfigured: false,
-          activeSubscriptions: 0,
-        }}
-      />
-    );
-  }
-
-  const [preferences, pushConfig, subscriptions] = await Promise.all([
-    getNotificationPreferences(employee.id),
-    getPushChannelConfig(),
-    listPushSubscriptions(employee.id),
+    getMobileNotificationSettings(session.user.email),
   ]);
 
   return (
@@ -53,15 +23,7 @@ export default async function MobileNotificationsPage() {
           createdAt: item.createdAt.toISOString(),
           sentAt: item.sentAt?.toISOString() ?? null,
         })),
-        preferences,
-        pushPublicKey: pushConfig?.vapidPublicKey ?? "",
-        pushConfigured: Boolean(
-          pushConfig?.isEnabled &&
-            pushConfig.vapidPublicKey &&
-            pushConfig.vapidPrivateKey &&
-            pushConfig.pushSubject,
-        ),
-        activeSubscriptions: subscriptions.length,
+        ...settings,
       }}
     />
   );

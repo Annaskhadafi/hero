@@ -32,8 +32,27 @@ const stripExtensionHydrationAttrs = `
 
   const shouldStrip = (name) => fixedAttributes.has(name) || /^__processed_[\\w-]+__$/.test(name);
 
+  const shouldRemoveNode = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.tagName !== "SCRIPT") return false;
+
+    const src = node.getAttribute("src") || "";
+    return (
+      src.startsWith("chrome-extension://") ||
+      src.startsWith("moz-extension://") ||
+      node.hasAttribute("bis_use") ||
+      node.hasAttribute("data-bis-config") ||
+      node.hasAttribute("data-dynamic-id")
+    );
+  };
+
   const stripNode = (node) => {
     if (!node || node.nodeType !== 1) return;
+    if (shouldRemoveNode(node)) {
+      node.remove();
+      return;
+    }
+
     for (const attr of Array.from(node.attributes)) {
       if (shouldStrip(attr.name)) node.removeAttribute(attr.name);
     }

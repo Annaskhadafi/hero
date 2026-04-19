@@ -9,8 +9,11 @@ import {
   employees,
   hseIncidents,
   hseObservations,
+  notificationChannelSettings,
   notificationDeliveries,
   notificationEvents,
+  notificationPushSubscriptions,
+  notificationUserPreferences,
   pointEvents,
   sites,
   timesheetEntries,
@@ -37,6 +40,16 @@ function minutesToHoursLabel(minutes: number) {
 
 type MobileReadOptions = {
   ensureSeed?: boolean;
+};
+
+const DEFAULT_MOBILE_NOTIFICATION_PREFERENCES = {
+  pushEnabled: true,
+  inAppEnabled: true,
+  emailEnabled: true,
+  approvalRequestsEnabled: true,
+  shiftRemindersEnabled: true,
+  hseAlertsEnabled: true,
+  pointsUpdatesEnabled: true,
 };
 
 export async function getMobileEmployeeContext(
@@ -110,6 +123,96 @@ export async function getMobileNotificationCount(email?: string | null) {
     );
 
   return row?.count ?? 0;
+}
+
+export async function getMobileNotificationSettings(email?: string | null) {
+  if (!email) {
+    return {
+      preferences: null,
+      pushPublicKey: "",
+      pushConfigured: false,
+      activeSubscriptions: 0,
+    };
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const [employee] = await db
+    .select({
+      id: employees.id,
+    })
+    .from(employees)
+    .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
+    .limit(1);
+
+  if (!employee) {
+    return {
+      preferences: null,
+      pushPublicKey: "",
+      pushConfigured: false,
+      activeSubscriptions: 0,
+    };
+  }
+
+  const [existingPreferences] = await db
+    .select()
+    .from(notificationUserPreferences)
+    .where(eq(notificationUserPreferences.employeeId, employee.id))
+    .limit(1);
+
+  const preferences =
+    existingPreferences ??
+    (
+      await db
+        .insert(notificationUserPreferences)
+        .values({
+          employeeId: employee.id,
+          ...DEFAULT_MOBILE_NOTIFICATION_PREFERENCES,
+        })
+        .onConflictDoNothing({
+          target: notificationUserPreferences.employeeId,
+        })
+        .returning()
+    )[0] ??
+    (
+      await db
+        .select()
+        .from(notificationUserPreferences)
+        .where(eq(notificationUserPreferences.employeeId, employee.id))
+        .limit(1)
+    )[0] ??
+    null;
+
+  const [pushConfig, subscriptionCount] = await Promise.all([
+    db
+      .select()
+      .from(notificationChannelSettings)
+      .where(eq(notificationChannelSettings.channel, "pwa_push"))
+      .limit(1),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notificationPushSubscriptions)
+      .where(
+        and(
+          eq(notificationPushSubscriptions.employeeId, employee.id),
+          eq(notificationPushSubscriptions.isActive, true),
+        ),
+      ),
+  ]);
+
+  const pushSettings = pushConfig[0] ?? null;
+
+  return {
+    preferences,
+    pushPublicKey: pushSettings?.vapidPublicKey ?? "",
+    pushConfigured: Boolean(
+      pushSettings?.isEnabled &&
+        pushSettings.vapidPublicKey &&
+        pushSettings.vapidPrivateKey &&
+        pushSettings.pushSubject,
+    ),
+    activeSubscriptions: subscriptionCount[0]?.count ?? 0,
+  };
 }
 
 export async function getMobileTimesheet(email?: string | null) {

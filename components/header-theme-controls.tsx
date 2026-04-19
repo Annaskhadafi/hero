@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { 
   Bell, 
+  BellRing,
   Search, 
   LayoutDashboard, 
   Users, 
@@ -14,7 +15,6 @@ import {
   Mail,
   FileText,
   Activity,
-  UserPlus
 } from "lucide-react";
 import { SimpleThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -35,40 +35,35 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 
-const MOCK_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: "New User Registered",
-    description: "Ani Wijaya has joined the platform.",
-    time: "2 minutes ago",
-    unread: true,
-    icon: UserPlus,
-    color: "text-blue-500 bg-blue-50",
-  },
-  {
-    id: 2,
-    title: "System Update",
-    description: "Security patch v2.4.1 has been applied.",
-    time: "1 hour ago",
-    unread: true,
-    icon: ShieldCheck,
-    color: "text-emerald-500 bg-emerald-50",
-  },
-  {
-    id: 3,
-    title: "Export Failed",
-    description: "Monthly analytics export encountered an error.",
-    time: "5 hours ago",
-    unread: false,
-    icon: Activity,
-    color: "text-rose-500 bg-rose-50",
-  },
-];
+type NotificationItem = {
+  id: number;
+  title: string;
+  body: string;
+  href: string;
+  channel: string;
+  status: string;
+  createdAt: string;
+};
+
+type NotificationResponse = {
+  count: number;
+  notifications: NotificationItem[];
+};
+
+function formatNotificationTime(value: string) {
+  return new Date(value).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function HeaderThemeControls() {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const notifications = React.useMemo(() => MOCK_NOTIFICATIONS, []);
+  const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = React.useState(0);
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -81,7 +76,45 @@ export function HeaderThemeControls() {
     return () => document.removeEventListener("keydown", down);
   }, []);
 
-  const unreadCount = notifications.filter((n) => n.unread).length;
+  React.useEffect(() => {
+    let isMounted = true;
+
+    async function loadNotifications() {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch("/api/notifications", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as NotificationResponse;
+        if (isMounted) {
+          setNotifications(payload.notifications);
+          setUnreadCount(payload.count);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    void loadNotifications();
+    const interval = window.setInterval(() => void loadNotifications(), 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const runCommand = React.useCallback((command: () => void) => {
     setOpen(false);
@@ -188,36 +221,42 @@ export function HeaderThemeControls() {
             </div>
           </div>
           <div className="mt-2 max-h-[420px] space-y-2 overflow-auto pr-1">
-            {unreadCount > 0 && (
-              notifications.length > 0 ? (
-                notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`surface-module-card rounded-2xl p-4 transition-transform hover:-translate-y-0.5 ${n.unread ? "bg-surface-container-lowest" : ""}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-0.5 rounded-2xl p-2.5 ${n.color}`}>
-                        <n.icon className="h-4 w-4" />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold leading-none text-foreground">{n.title}</p>
-                          <span className="text-xs text-muted-foreground">{n.time}</span>
-                        </div>
-                        <p className="text-sm leading-6 text-muted-foreground">{n.description}</p>
-                      </div>
-                      {n.unread && (
-                        <div className="mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
-                      )}
+            {notifications.length > 0 ? (
+              notifications.map((notification) => (
+                <button
+                  type="button"
+                  key={notification.id}
+                  onClick={() => router.push(notification.href || "/dashboard/notifications")}
+                  className="surface-module-card w-full rounded-2xl bg-surface-container-lowest p-4 text-left transition-transform hover:-translate-y-0.5"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-2xl bg-surface-container-low p-2.5 text-primary">
+                      <BellRing className="h-4 w-4" />
                     </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-semibold leading-none text-foreground">
+                          {notification.title}
+                        </p>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {formatNotificationTime(notification.createdAt)}
+                        </span>
+                      </div>
+                      <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
+                        {notification.body}
+                      </p>
+                    </div>
+                    {notification.status !== "failed" ? (
+                      <div className="mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
+                    ) : null}
                   </div>
-                ))
-              ) : (
-                <div className="surface-module-card flex flex-col items-center justify-center rounded-2xl py-12 text-center">
-                  <Bell className="mb-2 h-8 w-8 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">No notifications yet</p>
-                </div>
-              )
+                </button>
+              ))
+            ) : (
+              <div className="surface-module-card flex flex-col items-center justify-center rounded-2xl py-12 text-center">
+                <Bell className="mb-2 h-8 w-8 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">Belum ada notification.</p>
+              </div>
             )}
           </div>
           <div className="mt-2">

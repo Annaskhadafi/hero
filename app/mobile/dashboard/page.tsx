@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock3,
   MapPin,
-  Radio,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
@@ -39,58 +38,6 @@ function formatShortTime(value?: Date | null) {
 
 function firstName(name?: string | null) {
   return name?.trim().split(/\s+/)[0] || "User";
-}
-
-function normalizeWorkStatus(value?: string | null) {
-  return value?.trim().toLowerCase().replaceAll("_", " ") ?? "";
-}
-
-function getWorkStatus(data: NonNullable<Awaited<ReturnType<typeof getDailyActivityEmployeeData>>>) {
-  const activeAssignment = data.assignments.find((assignment) =>
-    !["approved", "completed", "done", "cancelled"].includes(normalizeWorkStatus(assignment.status)),
-  );
-  const latestActivity = data.activities[0];
-  const pendingActivity = data.activities.find((activity) =>
-    normalizeWorkStatus(activity.status).includes("pending"),
-  );
-
-  if (pendingActivity) {
-    return {
-      label: "Menunggu Approval",
-      detail: pendingActivity.title,
-      tone: "warning",
-    };
-  }
-
-  if (data.summary.jobsAssigned > 0 && data.summary.jobsCompleted >= data.summary.jobsAssigned) {
-    return {
-      label: "Target Hari Ini Aman",
-      detail: `${data.summary.jobsCompleted}/${data.summary.jobsAssigned} job tercatat`,
-      tone: "ready",
-    };
-  }
-
-  if (latestActivity) {
-    return {
-      label: "On Duty",
-      detail: `${latestActivity.title} • ${latestActivity.statusLabel}`,
-      tone: "active",
-    };
-  }
-
-  if (activeAssignment) {
-    return {
-      label: "Assignment Siap",
-      detail: activeAssignment.customJobName || activeAssignment.activityName || "Mulai input aktivitas",
-      tone: "active",
-    };
-  }
-
-  return {
-    label: "Standby",
-    detail: data.site?.name ?? data.employee.workLocation ?? "Menunggu assignment",
-    tone: "ready",
-  };
 }
 
 function getNextAction(data: NonNullable<Awaited<ReturnType<typeof getDailyActivityEmployeeData>>>) {
@@ -190,7 +137,6 @@ export default async function MobileDashboardPage() {
   }
 
   const primaryAssignment = data.assignments[0];
-  const workStatus = getWorkStatus(data);
   const nextAction = getNextAction(data);
   const recentFeed = buildRecentFeed(data);
   const progressPercent =
@@ -207,51 +153,6 @@ export default async function MobileDashboardPage() {
         <h1 className="text-2xl font-black tracking-tight text-[#003461]">
           {getGreeting()}, {firstName(data.employee.name)}
         </h1>
-      </section>
-
-      <section className="overflow-hidden rounded-[1.25rem] bg-[#e9f6fd] p-3 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-lg",
-                  workStatus.tone === "warning" ? "bg-[#f6dfcf] text-[#5a2200]" : "bg-[#d7ecf9] text-[#003f78]",
-                )}
-              >
-                <Radio className="size-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-[#082033]">{workStatus.label}</p>
-                <p className="truncate text-[10px] font-bold text-[#486275]">{workStatus.detail}</p>
-              </div>
-            </div>
-          </div>
-          <Link
-            prefetch={false}
-            href={nextAction.href}
-            className="flex min-h-11 shrink-0 items-center gap-2 rounded-lg bg-[#003f78] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-white shadow-[0_12px_26px_rgba(0,63,120,0.22)] active:scale-[0.98]"
-          >
-            {nextAction.label}
-            <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-lg bg-white px-2 py-2 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#486275]">Shift</p>
-            <p className="mt-1 truncate text-xs font-black text-[#082033]">{data.summary.shift}</p>
-          </div>
-          <div className="rounded-lg bg-white px-2 py-2 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#486275]">Mission</p>
-            <p className="mt-1 truncate text-xs font-black text-[#082033]">
-              {data.summary.jobsCompleted}/{data.summary.jobsAssigned || 0}
-            </p>
-          </div>
-          <div className="rounded-lg bg-white px-2 py-2 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#486275]">Next</p>
-            <p className="mt-1 truncate text-xs font-black text-[#082033]">{nextAction.detail}</p>
-          </div>
-        </div>
       </section>
 
       <section className="overflow-hidden rounded-[1.35rem] bg-[#003f78] p-4 text-white shadow-[0_20px_42px_rgba(0,63,120,0.26)]">

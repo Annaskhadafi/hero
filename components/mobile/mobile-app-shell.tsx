@@ -23,6 +23,10 @@ import {
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
+type NotificationCountResponse = {
+  count: number;
+};
+
 const bottomNavItems = [
   { label: "Dashboard", href: "/mobile/dashboard", icon: Home },
   { label: "Activity", href: "/mobile/activity", icon: ClipboardList },
@@ -56,10 +60,54 @@ export function MobileAppShell({
 }) {
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [liveNotificationCount, setLiveNotificationCount] = useState(notificationCount);
 
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
+
+  useEffect(() => {
+    setLiveNotificationCount(notificationCount);
+  }, [notificationCount]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNotificationCount() {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch("/api/notifications", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as NotificationCountResponse;
+        if (isMounted) {
+          setLiveNotificationCount(payload.count);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    void loadNotificationCount();
+    const interval = window.setInterval(() => void loadNotificationCount(), 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -203,9 +251,9 @@ export function MobileAppShell({
               className="relative flex size-10 items-center justify-center rounded-lg text-[#004b87] transition active:scale-95 active:bg-[#e6f2fb]"
             >
               <Bell className="size-5" />
-              {notificationCount > 0 ? (
+              {liveNotificationCount > 0 ? (
                 <span className="absolute right-1 top-1 flex min-w-4 items-center justify-center rounded-full bg-[#5a2200] px-1 text-[9px] font-black leading-4 text-white shadow-[0_6px_14px_rgba(90,34,0,0.24)]">
-                  {notificationCount > 9 ? "9+" : notificationCount}
+                  {liveNotificationCount > 9 ? "9+" : liveNotificationCount}
                 </span>
               ) : null}
             </Link>

@@ -9,7 +9,6 @@ import {
   Navigation,
   Save,
   SendHorizontal,
-  ShieldAlert,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -588,16 +587,6 @@ export function MobileDailyActivityForm({
         </Button>
       </div>
 
-      <div className="rounded-[1.1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8a5a00]">
-        <p className="flex items-center gap-2 font-black uppercase tracking-[0.12em]">
-          <ShieldAlert className="size-3.5" />
-          Conflict handling
-        </p>
-        <p className="mt-2">
-          Jika sync bentrok dengan activity existing, item pindah ke conflict queue. Buka lagi dari indikator header,
-          revisi waktu/lokasi, lalu retry.
-        </p>
-      </div>
     </form>
   );
 }

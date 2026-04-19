@@ -46,10 +46,6 @@ export default async function MobileActivityInputPage() {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Recording Activity</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Add Activity</h1>
-          <p className="mt-2 text-sm font-medium leading-6 text-[#486275]">
-            Submit work log langsung ke Daily Activity System. Data masuk ke workflow approval, points, dan log
-            produktivitas.
-          </p>
         </div>
       </section>
 
@@ -79,13 +75,6 @@ export default async function MobileActivityInputPage() {
             <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
               {data.assignments.length} assignment
             </Badge>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-[1rem] bg-[#f6fbff] px-4 py-3 text-xs font-semibold leading-5 text-[#486275]">
-          <div className="flex items-center gap-2">
-            <MapPinned className="size-3.5 text-[#003f78]" />
-            GPS auto-capture aktif. Kalau boundary site belum terpasang, form tetap simpan fallback manual location lalu masuk review.
           </div>
         </div>
 

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   ArrowRight,
-  Camera,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -12,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { MobileActivityLog } from "@/components/mobile/mobile-activity-log";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 
@@ -205,61 +205,14 @@ export default async function MobileActivityPage() {
           </Link>
         </div>
 
-        {data.activities.length > 0 ? (
-          data.activities.map((activity) => (
-            <article key={activity.id} className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-              <div className="flex items-start gap-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
-                  {activity.photoCount > 0 ? <Camera className="size-4" /> : <CheckCircle2 className="size-4" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-black text-[#082033]">{activity.title}</h3>
-                      <p className="mt-1 text-xs font-semibold text-[#486275]">
-                        {activity.activityCode} • {activity.sourceMode} • {activity.unitNumber}
-                      </p>
-                    </div>
-                    <Badge className={statusBadgeClass(activity.statusLabel)}>{activity.statusLabel}</Badge>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
-                    <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Waktu</p>
-                      <p className="mt-1 text-sm text-[#082033]">
-                        {formatTime(activity.startTime)} - {formatTime(activity.endTime)}
-                      </p>
-                    </div>
-                    <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Net Point</p>
-                      <p className="mt-1 text-sm text-[#082033]">
-                        {activity.pointsNet >= 0 ? "+" : ""}
-                        {activity.pointsNet}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#486275]">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef6fb] px-3 py-1.5">
-                      <Clock3 className="size-3.5" />
-                      {activity.durationLabel}
-                    </span>
-                    {activity.photoCount > 0 ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eef6fb] px-3 py-1.5">
-                        <Camera className="size-3.5" />
-                        {activity.photoCount} foto
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </article>
-          ))
-        ) : (
-          <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-            Belum ada activity yang disubmit hari ini.
-          </div>
-        )}
+        <MobileActivityLog
+          activities={data.activities.map((activity) => ({
+            ...activity,
+            startTime: activity.startTime.toISOString(),
+            endTime: activity.endTime.toISOString(),
+            submissionTime: activity.submissionTime?.toISOString() ?? null,
+          }))}
+        />
       </section>
     </div>
   );
