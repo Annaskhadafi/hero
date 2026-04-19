@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
+import { OfflineSyncProvider } from "@/components/offline-sync-provider";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -106,7 +107,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f766e",
+  themeColor: "#003461",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -128,9 +129,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           enableSystem
           disableTransitionOnChange
         >
-          <PwaRegistration />
-          <PwaInstallPrompt />
-          {children}
+          <OfflineSyncProvider>
+            <PwaRegistration />
+            <PwaInstallPrompt />
+            {children}
+          </OfflineSyncProvider>
         </ThemeProvider>
       </body>
     </html>

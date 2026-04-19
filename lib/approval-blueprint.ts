@@ -33,6 +33,7 @@ import {
   workflowTemplates,
 } from "@/db/schema/hero";
 import { parseApprovalNoteEntries } from "@/lib/approval-notes";
+import { sendPushNotification, type PushDispatchInput } from "@/lib/push-notifications";
 
 const DAILY_ACTIVITY_TEMPLATE_KEY = "daily-activity";
 const DAILY_ACTIVITY_WORKFLOW_KEY = "daily-activity-org";
@@ -1247,6 +1248,7 @@ export async function syncActivityWorkflowArtifacts(
   };
 
   const requestStatus = getRequestStatus(activity.status);
+  const pushDispatchQueue: PushDispatchInput[] = [];
   const routeSnapshot = approvalRows.find((row) => row.routeSnapshot.trim())?.routeSnapshot ?? "";
 
   const [submission] = existingSubmission
@@ -1481,6 +1483,17 @@ export async function syncActivityWorkflowArtifacts(
         }
 
         if (normalizeStatus(approval.status) === "pending") {
+          const [approverRecipientProfile] =
+            approval.approverEmployeeId == null
+              ? []
+              : await tx
+                  .select({
+                    email: employees.email,
+                    name: employees.name,
+                  })
+                  .from(employees)
+                  .where(eq(employees.id, approval.approverEmployeeId))
+                  .limit(1);
           const [createdInboxItem] = await tx
             .insert(inboxItems)
             .values({
@@ -1498,7 +1511,10 @@ export async function syncActivityWorkflowArtifacts(
             })
             .returning();
 
-          const recipient = approval.approverName;
+          const recipient =
+            approverRecipientProfile?.email ||
+            approverRecipientProfile?.name ||
+            approval.approverName;
           const [assignedEvent] = await tx
             .insert(notificationEvents)
             .values({
@@ -1536,6 +1552,25 @@ export async function syncActivityWorkflowArtifacts(
             },
           ]);
 
+          if (approval.approverEmployeeId) {
+            pushDispatchQueue.push({
+              employeeId: approval.approverEmployeeId,
+              category: "approval_requests",
+              title: `Approval request ${submission.requestNumber}`,
+              body: `${activity.title} menunggu review sebelum ${dueAt.toLocaleTimeString("id-ID", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}.`,
+              url: "/mobile/notifications",
+              tag: `approval-${createdInboxItem.id}`,
+              notificationEventId: assignedEvent.id,
+              metadata: {
+                inboxItemId: createdInboxItem.id,
+                requestNumber: submission.requestNumber,
+              },
+            });
+          }
+
           await tx.insert(reminderJobs).values([
             {
               inboxItemId: createdInboxItem.id,
@@ -1560,7 +1595,7 @@ export async function syncActivityWorkflowArtifacts(
               approvalId: approval.id,
               channel: "in_app",
               eventType: "step_decision",
-              recipient: activity.requesterName,
+              recipient: activity.requesterEmail || activity.requesterName,
               payloadSnapshot: JSON.stringify({
                 requestNumber: submission.requestNumber,
                 activityTitle: activity.title,
@@ -1575,7 +1610,7 @@ export async function syncActivityWorkflowArtifacts(
             {
               notificationEventId: decisionEvent.id,
               deliveryChannel: "in_app",
-              recipient: activity.requesterName,
+              recipient: activity.requesterEmail || activity.requesterName,
               status: "delivered",
               sentAt: approval.reviewedAt ?? new Date(),
             },
@@ -1619,7 +1654,7 @@ export async function syncActivityWorkflowArtifacts(
             groupMode === "parallel_any" || groupMode === "any_one"
               ? "parallel_any_status"
               : "approval_group_status",
-          recipient: activity.requesterName,
+          recipient: activity.requesterEmail || activity.requesterName,
           payloadSnapshot: JSON.stringify({
             stepLevel: group[0]?.level ?? 0,
             mode: groupMode,
@@ -1633,12 +1668,16 @@ export async function syncActivityWorkflowArtifacts(
       await tx.insert(notificationDeliveries).values({
         notificationEventId: groupEvent.id,
         deliveryChannel: "in_app",
-        recipient: activity.requesterName,
+        recipient: activity.requesterEmail || activity.requesterName,
         status: "delivered",
         sentAt: new Date(),
       });
     }
   });
+
+  if (pushDispatchQueue.length > 0) {
+    await Promise.all(pushDispatchQueue.map((job) => sendPushNotification(job)));
+  }
 
   return submission;
 }
@@ -2152,6 +2191,7 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
 
   let remindersExecuted = 0;
   let expiredRequests = 0;
+  const pushDispatchQueue: PushDispatchInput[] = [];
 
   await db.transaction(async (tx) => {
     for (const job of executedReminderJobs) {
@@ -2195,6 +2235,28 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
         sentAt: referenceDate,
       });
 
+      if (job.assigneeEmployeeId) {
+        pushDispatchQueue.push({
+          employeeId: job.assigneeEmployeeId,
+          category: "approval_requests",
+          title:
+            job.reminderType === "overdue"
+              ? `Approval overdue ${job.requestNumber}`
+              : `Approval reminder ${job.requestNumber}`,
+          body:
+            job.reminderType === "overdue"
+              ? "Approval melewati SLA. Buka inbox untuk tindak lanjut."
+              : "Approval mendekati SLA. Review sebelum jatuh tempo.",
+          url: "/mobile/notifications",
+          tag: `approval-reminder-${job.id}`,
+          notificationEventId: event.id,
+          metadata: {
+            requestNumber: job.requestNumber,
+            reminderType: job.reminderType,
+          },
+        });
+      }
+
       await tx
         .update(reminderJobs)
         .set({
@@ -2236,6 +2298,10 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
       expiredRequests += 1;
     }
   });
+
+  if (pushDispatchQueue.length > 0) {
+    await Promise.all(pushDispatchQueue.map((job) => sendPushNotification(job)));
+  }
 
   return {
     remindersExecuted,

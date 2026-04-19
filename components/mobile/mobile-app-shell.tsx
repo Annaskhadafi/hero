@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   Bell,
+  CheckCircle2,
   ClipboardList,
   Dumbbell,
   FileText,
@@ -19,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 
+import { MobileOfflineIndicator } from "@/components/offline-sync-provider";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ const bottomNavItems = [
 const drawerItems = [
   { label: "Mobile Dashboard", href: "/mobile/dashboard", icon: Home },
   { label: "Daily Activity", href: "/mobile/activity", icon: ClipboardList },
+  { label: "Approval", href: "/mobile/approval", icon: CheckCircle2 },
   { label: "Activity Input", href: "/mobile/activity/input", icon: Grid3X3 },
   { label: "HSE Report", href: "/mobile/hse", icon: ShieldCheck },
   { label: "Daily Report", href: "/mobile/reports", icon: FileText },
@@ -116,9 +119,15 @@ export function MobileAppShell({
               </SheetContent>
             </Sheet>
 
-            <Link href="/mobile/dashboard" className="text-sm font-black uppercase tracking-[0.12em] text-[#003f78]">
-              HERO
-            </Link>
+            <div className="flex min-w-0 items-center gap-2">
+              <Link
+                href="/mobile/dashboard"
+                className="truncate text-sm font-black uppercase tracking-[0.12em] text-[#003f78]"
+              >
+                HERO
+              </Link>
+              <MobileOfflineIndicator />
+            </div>
 
             <Link
               href="/mobile/notifications"

@@ -2,8 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Clock3, MapPinned, UserRound } from "lucide-react";
 
-import { submitDailyActivityWithStateAction } from "@/app/dashboard/activity-hub/actions";
-import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
+import { MobileDailyActivityForm } from "@/components/mobile/mobile-daily-activity-form";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -81,7 +80,7 @@ export default async function MobileActivityInputPage() {
         <div className="mt-4 rounded-[1rem] bg-[#f6fbff] px-4 py-3 text-xs font-semibold leading-5 text-[#486275]">
           <div className="flex items-center gap-2">
             <MapPinned className="size-3.5 text-[#003f78]" />
-            GPS validasi masih default `false`. Kalau nanti ada capture koordinat, workflow approval akan langsung ikut pakai.
+            GPS auto-capture aktif. Kalau boundary site belum terpasang, form tetap simpan fallback manual location lalu masuk review.
           </div>
         </div>
 
@@ -92,15 +91,13 @@ export default async function MobileActivityInputPage() {
         </div>
       </section>
 
-      <DailyActivitySubmitForm
-        action={submitDailyActivityWithStateAction}
+      <MobileDailyActivityForm
         employeeId={data.employee.id}
         assignments={data.assignments}
         availableLibrary={data.availableLibrary}
         defaultStartTime={dateTimeLocalValue(defaultStart)}
         defaultEndTime={dateTimeLocalValue(now)}
-        defaultSourceMode="self_input"
-        variant="mobile"
+        site={data.site}
       />
     </div>
   );

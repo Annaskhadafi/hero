@@ -25,6 +25,8 @@ import {
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
+  notificationPushSubscriptions,
+  notificationUserPreferences,
   approvalMatrices,
   approvalMatrixSteps,
   roleMenuPermissions,
@@ -185,6 +187,48 @@ async function ensureHeroSiteLocationColumns() {
 
   await db.execute(sql`
     alter table hero_sites add column if not exists address_detail text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists geo_latitude text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists geo_longitude text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_sites add column if not exists geo_radius_meters integer not null default 500;
+  `);
+}
+
+async function ensureEmergencyIncidentColumns() {
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists employee_id integer references hero_employees(id) on delete set null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists location text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists latitude text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists longitude text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists notes text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists photo_url text not null default '';
+  `);
+
+  await db.execute(sql`
+    alter table hero_hse_incidents add column if not exists alert_status text not null default 'pending';
   `);
 }
 
@@ -830,6 +874,38 @@ async function ensureHeroGovernanceTables() {
   `);
 
   await db.execute(sql`
+    create table if not exists hero_notification_user_preferences (
+      id serial primary key,
+      employee_id integer not null unique references hero_employees(id) on delete cascade,
+      push_enabled boolean not null default true,
+      in_app_enabled boolean not null default true,
+      email_enabled boolean not null default true,
+      approval_requests_enabled boolean not null default true,
+      shift_reminders_enabled boolean not null default true,
+      hse_alerts_enabled boolean not null default true,
+      points_updates_enabled boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_notification_push_subscriptions (
+      id serial primary key,
+      employee_id integer not null references hero_employees(id) on delete cascade,
+      endpoint text not null unique,
+      p256dh_key text not null,
+      auth_key text not null,
+      device_label text not null default 'Browser',
+      user_agent text not null default '',
+      is_active boolean not null default true,
+      last_seen_at timestamp not null default now(),
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
     create table if not exists hero_audit_logs (
       id serial primary key,
       actor_employee_id integer references hero_employees(id) on delete set null,
@@ -1222,6 +1298,7 @@ export async function ensureHeroSeedData() {
   seedPromise = (async () => {
     await ensureHeroEmployeeProfileColumns();
     await ensureHeroSiteLocationColumns();
+    await ensureEmergencyIncidentColumns();
     await ensureApprovalBlueprintSeedData();
   })().catch((error) => {
     seedPromise = null;
@@ -1249,6 +1326,8 @@ export async function ensureHeroGovernanceSeedData() {
       emailSmtpSettingCount,
       emailTemplateCount,
       notificationChannelSettingCount,
+      notificationPreferenceCount,
+      notificationSubscriptionCount,
     ] =
       await Promise.all([
         db.select({ count: sql<number>`count(*)::int` }).from(securityPermissions),
@@ -1258,6 +1337,8 @@ export async function ensureHeroGovernanceSeedData() {
         db.select({ count: sql<number>`count(*)::int` }).from(emailSmtpSettings),
         db.select({ count: sql<number>`count(*)::int` }).from(emailTemplates),
         db.select({ count: sql<number>`count(*)::int` }).from(notificationChannelSettings),
+        db.select({ count: sql<number>`count(*)::int` }).from(notificationUserPreferences),
+        db.select({ count: sql<number>`count(*)::int` }).from(notificationPushSubscriptions),
       ]);
 
     const currentRoles = await db.select().from(securityRoles);
@@ -1459,6 +1540,9 @@ export async function ensureHeroGovernanceSeedData() {
     if ((notificationChannelSettingCount[0]?.count ?? 0) === 0) {
       await db.insert(notificationChannelSettings).values(NOTIFICATION_CHANNEL_SETTING_SEEDS);
     }
+
+    void notificationPreferenceCount;
+    void notificationSubscriptionCount;
 
     const [rolesForMenu, menuItemsForRole, existingRoleMenuPermissions] = await Promise.all([
       db.select().from(securityRoles),

@@ -36,6 +36,10 @@ import {
   ensureHeroSeedData,
 } from "@/lib/hero-admin";
 import {
+  createNotificationEventForEmployee,
+  sendPushNotification,
+} from "@/lib/push-notifications";
+import {
   getMappedValue,
   parseCsv,
   type UserImportMapping,
@@ -90,6 +94,11 @@ const saveActivityDraftSchema = z.object({
 const reviewApprovalSchema = z.object({
   approvalId: z.coerce.number().int().positive(),
   decision: z.enum(["approved", "rejected", "needs_correction"]),
+  note: z.string().trim().max(1000).optional().default(""),
+});
+
+const bulkApproveApprovalSchema = z.object({
+  approvalIds: z.array(z.coerce.number().int().positive()).min(1),
   note: z.string().trim().max(1000).optional().default(""),
 });
 
@@ -460,6 +469,373 @@ function parseApprovalRouteSnapshot(routeSnapshot: string) {
   }
 }
 
+async function applyApprovalDecision(params: {
+  approvalId: number;
+  decision: "approved" | "rejected" | "needs_correction";
+  note: string;
+}) {
+  const trimmedNote = params.note.trim();
+
+  if (params.decision === "rejected" && !trimmedNote) {
+    throw new Error("Komentar penolakan wajib diisi.");
+  }
+
+  const [approval] = await db
+    .select({
+      approvalId: approvals.id,
+      level: approvals.level,
+      status: approvals.status,
+      approverName: approvals.approverName,
+      approvalStepId: approvals.approvalStepId,
+      routeSnapshot: approvals.routeSnapshot,
+      decisionNote: approvals.decisionNote,
+      overtimeMinutes: approvals.overtimeMinutes,
+      activityId: activities.id,
+      activityTitle: activities.title,
+      activityType: activities.activityType,
+      priority: activities.priority,
+      startTime: activities.startTime,
+      endTime: activities.endTime,
+      submissionTime: activities.submissionTime,
+      pointsAwarded: activities.pointsAwarded,
+      penaltyDeducted: activities.penaltyDeducted,
+      employeeId: activities.employeeId,
+      siteId: activities.siteId,
+    })
+    .from(approvals)
+    .innerJoin(activities, eq(approvals.activityId, activities.id))
+    .where(eq(approvals.id, params.approvalId))
+    .limit(1);
+
+  if (!approval) {
+    throw new Error("Approval tidak ditemukan.");
+  }
+
+  if (approval.status !== "pending") {
+    return false;
+  }
+
+  const now = new Date();
+  const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot);
+  const currentStepIndex =
+    approvalRoute?.steps.findIndex(
+      (step) =>
+        step.stepOrder === approval.level &&
+        (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId),
+    ) ?? -1;
+  const currentStep =
+    approvalRoute != null && currentStepIndex >= 0 ? approvalRoute.steps[currentStepIndex] ?? null : null;
+  const currentStepGroup =
+    approvalRoute != null && currentStep != null
+      ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
+      : [];
+  const nextStepGroup =
+    approvalRoute != null && currentStep != null
+      ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
+      : [];
+
+  await db.transaction(async (tx) => {
+    const defaultDecisionMessage =
+      params.decision === "approved"
+        ? "Approval diteruskan sesuai workflow."
+        : params.decision === "rejected"
+          ? "Request ditolak pada step ini."
+          : "Request dikembalikan untuk revisi.";
+
+    await tx
+      .update(approvals)
+      .set({
+        status: params.decision,
+        reviewedAt: now,
+        decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
+          kind: params.decision,
+          actor: approval.approverName,
+          message: trimmedNote || defaultDecisionMessage,
+          at: now.toISOString(),
+        }),
+      })
+      .where(eq(approvals.id, approval.approvalId));
+
+    if (params.decision === "needs_correction") {
+      if (currentStepGroup.length > 1) {
+        await tx
+          .update(approvals)
+          .set({
+            status: "skipped",
+            reviewedAt: now,
+          })
+          .where(
+            and(
+              eq(approvals.activityId, approval.activityId),
+              eq(approvals.level, approval.level),
+              eq(approvals.status, "pending"),
+            ),
+          );
+      }
+
+      await tx
+        .update(activities)
+        .set({
+          status: "Needs Correction",
+        })
+        .where(eq(activities.id, approval.activityId));
+
+      return;
+    }
+
+    if (params.decision === "rejected") {
+      if (currentStepGroup.length > 1) {
+        await tx
+          .update(approvals)
+          .set({
+            status: "skipped",
+            reviewedAt: now,
+          })
+          .where(
+            and(
+              eq(approvals.activityId, approval.activityId),
+              eq(approvals.level, approval.level),
+              eq(approvals.status, "pending"),
+            ),
+          );
+      }
+
+      await tx
+        .update(activities)
+        .set({
+          status: "Rejected",
+        })
+        .where(eq(activities.id, approval.activityId));
+
+      return;
+    }
+
+    if (
+      currentStep != null &&
+      normalizeLookupValue(currentStep.approvalMode) !== "parallel_any" &&
+      normalizeLookupValue(currentStep.approvalMode) !== "any_one"
+    ) {
+      const sameLevelApprovals = await tx
+        .select({
+          id: approvals.id,
+          status: approvals.status,
+        })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.activityId, approval.activityId),
+            eq(approvals.level, approval.level),
+          ),
+        );
+
+      if (sameLevelApprovals.some((row) => row.status === "pending")) {
+        await tx
+          .update(activities)
+          .set({
+            status: getPendingActivityStatus(approval.level),
+          })
+          .where(eq(activities.id, approval.activityId));
+
+        return;
+      }
+    }
+
+    if (
+      currentStep != null &&
+      (normalizeLookupValue(currentStep.approvalMode) === "parallel_any" ||
+        normalizeLookupValue(currentStep.approvalMode) === "any_one")
+    ) {
+      await tx
+        .update(approvals)
+        .set({
+          status: "skipped",
+          reviewedAt: now,
+          decisionNote: appendApprovalNoteEntry("", {
+            kind: "system",
+            actor: approval.approverName,
+            message: "Step parallel-any diselesaikan oleh approver lain pada level yang sama.",
+            at: now.toISOString(),
+          }),
+        })
+        .where(
+          and(
+            eq(approvals.activityId, approval.activityId),
+            eq(approvals.level, approval.level),
+            eq(approvals.status, "pending"),
+          ),
+        );
+    }
+
+    if (nextStepGroup.length > 0 && approvalRoute != null) {
+      await createPendingApprovalsForStepGroup({
+        tx,
+        activityId: approval.activityId,
+        stepGroup: nextStepGroup,
+        approvalRoute,
+        submittedAt: now,
+        overtimeMinutes: approval.overtimeMinutes,
+      });
+
+      await tx
+        .update(activities)
+        .set({
+          status: getPendingActivityStatus(nextStepGroup[0].stepOrder),
+        })
+        .where(eq(activities.id, approval.activityId));
+
+      return;
+    }
+
+    if (approvalRoute == null || currentStepIndex < 0) {
+      const fallbackRoute = await resolveApprovalRouteForActivity({
+        employeeId: approval.employeeId,
+        activityType: approval.activityType,
+        priority: approval.priority,
+        overtimeMinutes: approval.overtimeMinutes,
+        transactionType: "activity",
+        at: approval.endTime,
+      });
+      const fallbackNextStep = fallbackRoute.steps.find((step) => step.stepOrder > approval.level);
+
+      if (fallbackNextStep) {
+        const fallbackNextGroup = getRouteStepGroup(fallbackRoute.steps, fallbackNextStep.stepOrder);
+        await createPendingApprovalsForStepGroup({
+          tx,
+          activityId: approval.activityId,
+          stepGroup: fallbackNextGroup,
+          approvalRoute: fallbackRoute,
+          submittedAt: now,
+          overtimeMinutes: approval.overtimeMinutes,
+        });
+
+        await tx
+          .update(activities)
+          .set({
+            status: getPendingActivityStatus(fallbackNextStep.stepOrder),
+          })
+          .where(eq(activities.id, approval.activityId));
+
+        return;
+      }
+    }
+
+    const durationMinutes = Math.max(
+      0,
+      Math.round((approval.endTime.getTime() - approval.startTime.getTime()) / 60000),
+    );
+    const regularMinutes = Math.max(0, durationMinutes - approval.overtimeMinutes);
+    const overtimeRate = 70000;
+    const periodLabel = getPeriodLabel(approval.endTime);
+
+    const [existingTimesheet] = await tx
+      .select({
+        id: timesheetEntries.id,
+        regularMinutes: timesheetEntries.regularMinutes,
+        overtimeMinutes: timesheetEntries.overtimeMinutes,
+        overtimeAmount: timesheetEntries.overtimeAmount,
+      })
+      .from(timesheetEntries)
+      .where(
+        and(
+          eq(timesheetEntries.employeeId, approval.employeeId),
+          eq(timesheetEntries.siteId, approval.siteId),
+          eq(timesheetEntries.periodLabel, periodLabel),
+        ),
+      )
+      .limit(1);
+
+    if (existingTimesheet) {
+      await tx
+        .update(timesheetEntries)
+        .set({
+          regularMinutes: existingTimesheet.regularMinutes + regularMinutes,
+          overtimeMinutes: existingTimesheet.overtimeMinutes + approval.overtimeMinutes,
+          overtimeAmount:
+            existingTimesheet.overtimeAmount +
+            Math.round((approval.overtimeMinutes / 60) * overtimeRate),
+          status: "ready_for_payroll",
+          updatedAt: now,
+        })
+        .where(eq(timesheetEntries.id, existingTimesheet.id));
+    } else {
+      await tx.insert(timesheetEntries).values({
+        employeeId: approval.employeeId,
+        siteId: approval.siteId,
+        periodLabel,
+        regularMinutes,
+        overtimeMinutes: approval.overtimeMinutes,
+        overtimeAmount: Math.round((approval.overtimeMinutes / 60) * overtimeRate),
+        status: "ready_for_payroll",
+        updatedAt: now,
+      });
+    }
+
+    if (approval.submissionTime != null) {
+      const [existingAwardEvent] = await tx
+        .select({ id: pointEvents.id })
+        .from(pointEvents)
+        .where(
+          and(
+            eq(pointEvents.sourceType, "activity"),
+            eq(pointEvents.sourceId, approval.activityId),
+          ),
+        )
+        .limit(1);
+
+      if (!existingAwardEvent) {
+        const netPoints = approval.pointsAwarded - approval.penaltyDeducted;
+        const [employeePointState] = await tx
+          .select({
+            totalPoints: employees.totalPoints,
+          })
+          .from(employees)
+          .where(eq(employees.id, approval.employeeId))
+          .limit(1);
+
+        if (employeePointState) {
+          const updatedBalance = Math.max(0, employeePointState.totalPoints + netPoints);
+
+          await tx.insert(pointEvents).values({
+            employeeId: approval.employeeId,
+            transactionType: netPoints >= 0 ? "reward" : "penalty",
+            sourceType: "activity",
+            sourceId: approval.activityId,
+            category: "Daily Activity Approval",
+            label: `${approval.activityTitle} • Approved`,
+            points: netPoints,
+            balanceAfter: updatedBalance,
+            metadata: JSON.stringify({
+              approvalId: approval.approvalId,
+              approvalLevel: approval.level,
+              penaltyDeducted: approval.penaltyDeducted,
+            }),
+            createdAt: now,
+          });
+
+          await tx
+            .update(employees)
+            .set({
+              totalPoints: updatedBalance,
+            })
+            .where(eq(employees.id, approval.employeeId));
+        }
+      }
+    }
+
+    await tx
+      .update(activities)
+      .set({
+        status: "Approved",
+      })
+      .where(eq(activities.id, approval.activityId));
+  });
+
+  await syncActivityWorkflowArtifacts(approval.activityId);
+  await runApprovalAutomationTick();
+
+  return true;
+}
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
@@ -726,6 +1102,11 @@ function revalidateAdminSurfaces() {
     "/dashboard/leaderboard",
     "/dashboard/security",
     "/dashboard/security/users",
+    "/mobile",
+    "/mobile/dashboard",
+    "/mobile/activity",
+    "/mobile/menu",
+    "/mobile/approval",
   ];
 
   for (const path of paths) {
@@ -873,360 +1254,30 @@ export async function reviewApprovalAction(formData: FormData) {
     decision: formData.get("decision"),
     note: formData.get("note"),
   });
-
-  const [approval] = await db
-    .select({
-      approvalId: approvals.id,
-      level: approvals.level,
-      status: approvals.status,
-      approverName: approvals.approverName,
-      approvalMatrixId: approvals.approvalMatrixId,
-      approvalStepId: approvals.approvalStepId,
-      routeSnapshot: approvals.routeSnapshot,
-      decisionNote: approvals.decisionNote,
-      overtimeMinutes: approvals.overtimeMinutes,
-      activityId: activities.id,
-      activityTitle: activities.title,
-      activityType: activities.activityType,
-      priority: activities.priority,
-      startTime: activities.startTime,
-      endTime: activities.endTime,
-      submissionTime: activities.submissionTime,
-      pointsAwarded: activities.pointsAwarded,
-      penaltyDeducted: activities.penaltyDeducted,
-      employeeId: activities.employeeId,
-      siteId: activities.siteId,
-    })
-    .from(approvals)
-    .innerJoin(activities, eq(approvals.activityId, activities.id))
-    .where(eq(approvals.id, payload.approvalId))
-    .limit(1);
-
-  if (!approval) {
-    throw new Error("Approval tidak ditemukan.");
-  }
-
-  if (approval.status !== "pending") {
-    revalidateAdminSurfaces();
-    return;
-  }
-
-  const now = new Date();
-  const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot);
-  const currentStepIndex =
-    approvalRoute?.steps.findIndex(
-      (step) =>
-        step.stepOrder === approval.level &&
-        (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId),
-    ) ?? -1;
-  const currentStep =
-    approvalRoute != null && currentStepIndex >= 0 ? approvalRoute.steps[currentStepIndex] ?? null : null;
-  const currentStepGroup =
-    approvalRoute != null && currentStep != null
-      ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
-      : [];
-  const nextStepGroup =
-    approvalRoute != null && currentStep != null
-      ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
-      : [];
-
-  await db.transaction(async (tx) => {
-    const defaultDecisionMessage =
-      payload.decision === "approved"
-        ? "Approval diteruskan sesuai workflow."
-        : payload.decision === "rejected"
-          ? "Request ditolak pada step ini."
-          : "Request dikembalikan untuk revisi.";
-
-    await tx
-      .update(approvals)
-      .set({
-        status: payload.decision,
-        reviewedAt: now,
-        decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
-          kind: payload.decision,
-          actor: approval.approverName,
-          message: payload.note || defaultDecisionMessage,
-          at: now.toISOString(),
-        }),
-      })
-      .where(eq(approvals.id, approval.approvalId));
-
-    if (payload.decision === "needs_correction") {
-      if (currentStepGroup.length > 1) {
-        await tx
-          .update(approvals)
-          .set({
-            status: "skipped",
-            reviewedAt: now,
-          })
-          .where(
-            and(
-              eq(approvals.activityId, approval.activityId),
-              eq(approvals.level, approval.level),
-              eq(approvals.status, "pending"),
-            ),
-          );
-      }
-
-      await tx
-        .update(activities)
-        .set({
-          status: "Needs Correction",
-        })
-        .where(eq(activities.id, approval.activityId));
-
-      return;
-    }
-
-    if (payload.decision === "rejected") {
-      if (currentStepGroup.length > 1) {
-        await tx
-          .update(approvals)
-          .set({
-            status: "skipped",
-            reviewedAt: now,
-          })
-          .where(
-            and(
-              eq(approvals.activityId, approval.activityId),
-              eq(approvals.level, approval.level),
-              eq(approvals.status, "pending"),
-            ),
-          );
-      }
-
-      await tx
-        .update(activities)
-        .set({
-          status: "Rejected",
-        })
-        .where(eq(activities.id, approval.activityId));
-
-      return;
-    }
-
-    if (
-      currentStep != null &&
-      normalizeLookupValue(currentStep.approvalMode) !== "parallel_any" &&
-      normalizeLookupValue(currentStep.approvalMode) !== "any_one"
-    ) {
-      const sameLevelApprovals = await tx
-        .select({
-          id: approvals.id,
-          status: approvals.status,
-        })
-        .from(approvals)
-        .where(
-          and(
-            eq(approvals.activityId, approval.activityId),
-            eq(approvals.level, approval.level),
-          ),
-        );
-
-      if (sameLevelApprovals.some((row) => row.status === "pending")) {
-        await tx
-          .update(activities)
-          .set({
-            status: getPendingActivityStatus(approval.level),
-          })
-          .where(eq(activities.id, approval.activityId));
-
-        return;
-      }
-    }
-
-    if (
-      currentStep != null &&
-      (normalizeLookupValue(currentStep.approvalMode) === "parallel_any" ||
-        normalizeLookupValue(currentStep.approvalMode) === "any_one")
-    ) {
-      await tx
-        .update(approvals)
-        .set({
-          status: "skipped",
-          reviewedAt: now,
-          decisionNote: appendApprovalNoteEntry("", {
-            kind: "system",
-            actor: approval.approverName,
-            message: "Step parallel-any diselesaikan oleh approver lain pada level yang sama.",
-            at: now.toISOString(),
-          }),
-        })
-        .where(
-          and(
-            eq(approvals.activityId, approval.activityId),
-            eq(approvals.level, approval.level),
-            eq(approvals.status, "pending"),
-          ),
-        );
-    }
-
-    if (nextStepGroup.length > 0 && approvalRoute != null) {
-      await createPendingApprovalsForStepGroup({
-        tx,
-        activityId: approval.activityId,
-        stepGroup: nextStepGroup,
-        approvalRoute,
-        submittedAt: now,
-        overtimeMinutes: approval.overtimeMinutes,
-      });
-
-      await tx
-        .update(activities)
-        .set({
-          status: getPendingActivityStatus(nextStepGroup[0].stepOrder),
-        })
-        .where(eq(activities.id, approval.activityId));
-
-      return;
-    }
-
-    if (approvalRoute == null || currentStepIndex < 0) {
-      const fallbackRoute = await resolveApprovalRouteForActivity({
-        employeeId: approval.employeeId,
-        activityType: approval.activityType,
-        priority: approval.priority,
-        overtimeMinutes: approval.overtimeMinutes,
-        transactionType: "activity",
-        at: approval.endTime,
-      });
-      const fallbackNextStep = fallbackRoute.steps.find((step) => step.stepOrder > approval.level);
-
-      if (fallbackNextStep) {
-        const fallbackNextGroup = getRouteStepGroup(fallbackRoute.steps, fallbackNextStep.stepOrder);
-        await createPendingApprovalsForStepGroup({
-          tx,
-          activityId: approval.activityId,
-          stepGroup: fallbackNextGroup,
-          approvalRoute: fallbackRoute,
-          submittedAt: now,
-          overtimeMinutes: approval.overtimeMinutes,
-        });
-
-        await tx
-          .update(activities)
-          .set({
-            status: getPendingActivityStatus(fallbackNextStep.stepOrder),
-          })
-          .where(eq(activities.id, approval.activityId));
-
-        return;
-      }
-    }
-
-    const durationMinutes = Math.max(
-      0,
-      Math.round((approval.endTime.getTime() - approval.startTime.getTime()) / 60000),
-    );
-    const regularMinutes = Math.max(0, durationMinutes - approval.overtimeMinutes);
-    const overtimeRate = 70000;
-    const periodLabel = getPeriodLabel(approval.endTime);
-
-    const [existingTimesheet] = await tx
-      .select({
-        id: timesheetEntries.id,
-        regularMinutes: timesheetEntries.regularMinutes,
-        overtimeMinutes: timesheetEntries.overtimeMinutes,
-        overtimeAmount: timesheetEntries.overtimeAmount,
-      })
-      .from(timesheetEntries)
-      .where(
-        and(
-          eq(timesheetEntries.employeeId, approval.employeeId),
-          eq(timesheetEntries.siteId, approval.siteId),
-          eq(timesheetEntries.periodLabel, periodLabel),
-        ),
-      )
-      .limit(1);
-
-    if (existingTimesheet) {
-      await tx
-        .update(timesheetEntries)
-        .set({
-          regularMinutes: existingTimesheet.regularMinutes + regularMinutes,
-          overtimeMinutes: existingTimesheet.overtimeMinutes + approval.overtimeMinutes,
-          overtimeAmount:
-            existingTimesheet.overtimeAmount +
-            Math.round((approval.overtimeMinutes / 60) * overtimeRate),
-          status: "ready_for_payroll",
-          updatedAt: now,
-        })
-        .where(eq(timesheetEntries.id, existingTimesheet.id));
-    } else {
-      await tx.insert(timesheetEntries).values({
-        employeeId: approval.employeeId,
-        siteId: approval.siteId,
-        periodLabel,
-        regularMinutes,
-        overtimeMinutes: approval.overtimeMinutes,
-        overtimeAmount: Math.round((approval.overtimeMinutes / 60) * overtimeRate),
-        status: "ready_for_payroll",
-        updatedAt: now,
-        });
-    }
-
-    if (approval.submissionTime != null) {
-      const [existingAwardEvent] = await tx
-        .select({ id: pointEvents.id })
-        .from(pointEvents)
-        .where(
-          and(
-            eq(pointEvents.sourceType, "activity"),
-            eq(pointEvents.sourceId, approval.activityId),
-          ),
-        )
-        .limit(1);
-
-      if (!existingAwardEvent) {
-        const netPoints = approval.pointsAwarded - approval.penaltyDeducted;
-        const [employeePointState] = await tx
-          .select({
-            totalPoints: employees.totalPoints,
-          })
-          .from(employees)
-          .where(eq(employees.id, approval.employeeId))
-          .limit(1);
-
-        if (employeePointState) {
-          const updatedBalance = Math.max(0, employeePointState.totalPoints + netPoints);
-
-          await tx.insert(pointEvents).values({
-            employeeId: approval.employeeId,
-            transactionType: netPoints >= 0 ? "reward" : "penalty",
-            sourceType: "activity",
-            sourceId: approval.activityId,
-            category: "Daily Activity Approval",
-            label: `${approval.activityTitle} • Approved`,
-            points: netPoints,
-            balanceAfter: updatedBalance,
-            metadata: JSON.stringify({
-              approvalId: approval.approvalId,
-              approvalLevel: approval.level,
-              penaltyDeducted: approval.penaltyDeducted,
-            }),
-            createdAt: now,
-          });
-
-          await tx
-            .update(employees)
-            .set({
-              totalPoints: updatedBalance,
-            })
-            .where(eq(employees.id, approval.employeeId));
-        }
-      }
-    }
-
-    await tx
-      .update(activities)
-      .set({
-        status: "Approved",
-      })
-      .where(eq(activities.id, approval.activityId));
+  await applyApprovalDecision({
+    approvalId: payload.approvalId,
+    decision: payload.decision,
+    note: payload.note,
   });
 
-  await syncActivityWorkflowArtifacts(approval.activityId);
+  revalidateAdminSurfaces();
+}
+
+export async function approveApprovalGroupAction(formData: FormData) {
+  await ensureHeroSeedData();
+
+  const payload = bulkApproveApprovalSchema.parse({
+    approvalIds: formData.getAll("approvalIds"),
+    note: formData.get("note"),
+  });
+
+  for (const approvalId of payload.approvalIds) {
+    await applyApprovalDecision({
+      approvalId,
+      decision: "approved",
+      note: payload.note,
+    });
+  }
 
   revalidateAdminSurfaces();
 }
@@ -2280,6 +2331,80 @@ function revalidateOperationalPages(...paths: string[]) {
   revalidatePath("/dashboard/analytics");
 }
 
+async function getActiveSiteEmployeeIds(siteId: number) {
+  const rows = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(and(eq(employees.siteId, siteId), eq(employees.isActive, true)));
+
+  return rows.map((row) => row.id);
+}
+
+async function notifyEmployeesForHseAlert(input: {
+  siteId: number;
+  title: string;
+  body: string;
+  eventType: string;
+}) {
+  const employeeIds = await getActiveSiteEmployeeIds(input.siteId);
+
+  await Promise.all(
+    employeeIds.map(async (employeeId) => {
+      const event = await createNotificationEventForEmployee({
+        employeeId,
+        eventType: input.eventType,
+        category: "hse_alerts",
+        title: input.title,
+        body: input.body,
+        url: "/mobile/hse",
+      });
+
+      if (!event) {
+        return;
+      }
+
+      await sendPushNotification({
+        employeeId,
+        category: "hse_alerts",
+        title: input.title,
+        body: input.body,
+        url: "/mobile/hse",
+        tag: `hse-${event.id}`,
+        notificationEventId: event.id,
+      });
+    }),
+  );
+}
+
+async function notifyEmployeeForPointUpdate(input: {
+  employeeId: number;
+  title: string;
+  body: string;
+}) {
+  const event = await createNotificationEventForEmployee({
+    employeeId: input.employeeId,
+    eventType: "points_updated",
+    category: "points_updates",
+    title: input.title,
+    body: input.body,
+    url: "/mobile/gamification",
+  });
+
+  if (!event) {
+    return;
+  }
+
+  await sendPushNotification({
+    employeeId: input.employeeId,
+    category: "points_updates",
+    title: input.title,
+    body: input.body,
+    url: "/mobile/gamification",
+    tag: `points-${event.id}`,
+    notificationEventId: event.id,
+  });
+}
+
 export async function manageHseObservationAction(formData: FormData): Promise<AdminMutationState> {
   try {
     const payload = manageHseObservationSchema.parse(Object.fromEntries(formData));
@@ -2302,6 +2427,13 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
         observedAt: parseOperationalDate(payload.observedAt),
       });
 
+      await notifyEmployeesForHseAlert({
+        siteId: payload.siteId,
+        title: `HSE alert: ${payload.title}`,
+        body: `${payload.severity} di ${payload.location}. ${payload.notes.slice(0, 96)}`,
+        eventType: "hse_observation_created",
+      });
+
       revalidateOperationalPages("/dashboard/hse");
       return { status: "success", message: "Observasi HSE berhasil ditambahkan." };
     }
@@ -2310,6 +2442,26 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
 
     if (payload.intent === "update-status") {
       await db.update(hseObservations).set({ status: payload.status }).where(eq(hseObservations.id, id));
+
+      const [currentObservation] = await db
+        .select({
+          siteId: hseObservations.siteId,
+          title: hseObservations.title,
+          location: hseObservations.location,
+        })
+        .from(hseObservations)
+        .where(eq(hseObservations.id, id))
+        .limit(1);
+
+      if (currentObservation) {
+        await notifyEmployeesForHseAlert({
+          siteId: currentObservation.siteId,
+          title: `HSE update: ${currentObservation.title}`,
+          body: `Status berubah ke ${payload.status.replaceAll("_", " ")} di ${currentObservation.location}.`,
+          eventType: "hse_observation_status_changed",
+        });
+      }
+
       revalidateOperationalPages("/dashboard/hse");
       return { status: "success", message: "Status observasi HSE diperbarui." };
     }
@@ -2369,6 +2521,13 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
         reportedAt: parseOperationalDate(payload.reportedAt),
       });
 
+      await notifyEmployeesForHseAlert({
+        siteId: payload.siteId,
+        title: `Incident HSE: ${payload.title}`,
+        body: `${payload.type} · ${payload.impact.slice(0, 96)}`,
+        eventType: "hse_incident_created",
+      });
+
       revalidateOperationalPages("/dashboard/hse");
       return { status: "success", message: "Incident HSE berhasil ditambahkan." };
     }
@@ -2377,6 +2536,26 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
 
     if (payload.intent === "update-status") {
       await db.update(hseIncidents).set({ status: payload.status }).where(eq(hseIncidents.id, id));
+
+      const [currentIncident] = await db
+        .select({
+          siteId: hseIncidents.siteId,
+          title: hseIncidents.title,
+          unitNumber: hseIncidents.unitNumber,
+        })
+        .from(hseIncidents)
+        .where(eq(hseIncidents.id, id))
+        .limit(1);
+
+      if (currentIncident) {
+        await notifyEmployeesForHseAlert({
+          siteId: currentIncident.siteId,
+          title: `Incident update: ${currentIncident.title}`,
+          body: `Status berubah ke ${payload.status.replaceAll("_", " ")} untuk ${currentIncident.unitNumber}.`,
+          eventType: "hse_incident_status_changed",
+        });
+      }
+
       revalidateOperationalPages("/dashboard/hse");
       return { status: "success", message: "Status incident HSE diperbarui." };
     }
@@ -2770,6 +2949,12 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
           .where(eq(employees.id, payload.employeeId!));
       });
 
+      await notifyEmployeeForPointUpdate({
+        employeeId: payload.employeeId,
+        title: payload.points > 0 ? "Points added" : "Points adjusted",
+        body: `${payload.label} • ${payload.points > 0 ? "+" : ""}${payload.points} poin.`,
+      });
+
       revalidateOperationalPages("/dashboard/leaderboard");
       return { status: "success", message: "Point event berhasil ditambahkan." };
     }
@@ -2807,6 +2992,12 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} + ${payload.points}` })
           .where(eq(employees.id, payload.employeeId!));
+      });
+
+      await notifyEmployeeForPointUpdate({
+        employeeId: payload.employeeId,
+        title: "Points updated",
+        body: `${payload.label} disesuaikan menjadi ${payload.points > 0 ? "+" : ""}${payload.points} poin.`,
       });
 
       revalidateOperationalPages("/dashboard/leaderboard");

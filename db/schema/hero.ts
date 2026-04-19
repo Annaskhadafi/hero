@@ -22,6 +22,9 @@ export const sites = pgTable("hero_sites", {
   villageId: text("village_id").notNull().default(""),
   villageName: text("village_name").notNull().default(""),
   addressDetail: text("address_detail").notNull().default(""),
+  geoLatitude: text("geo_latitude").notNull().default(""),
+  geoLongitude: text("geo_longitude").notNull().default(""),
+  geoRadiusMeters: integer("geo_radius_meters").notNull().default(500),
   customerName: text("customer_name").notNull(),
   contractNumber: text("contract_number").notNull(),
   isActive: boolean("is_active").notNull().default(true),
@@ -347,10 +350,19 @@ export const hseIncidents = pgTable("hero_hse_incidents", {
   siteId: integer("site_id")
     .notNull()
     .references(() => sites.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
   type: text("type").notNull(),
   title: text("title").notNull(),
   unitNumber: text("unit_number").notNull(),
   impact: text("impact").notNull(),
+  location: text("location").notNull().default(""),
+  latitude: text("latitude").notNull().default(""),
+  longitude: text("longitude").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  photoUrl: text("photo_url").notNull().default(""),
+  alertStatus: text("alert_status").notNull().default("pending"),
   status: text("status").notNull(),
   reportedAt: timestamp("reported_at").notNull(),
 });
@@ -505,6 +517,39 @@ export const notificationChannelRules = pgTable("hero_notification_channel_rules
   templateCode: text("template_code").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const notificationUserPreferences = pgTable("hero_notification_user_preferences", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" })
+    .unique(),
+  pushEnabled: boolean("push_enabled").notNull().default(true),
+  inAppEnabled: boolean("in_app_enabled").notNull().default(true),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  approvalRequestsEnabled: boolean("approval_requests_enabled").notNull().default(true),
+  shiftRemindersEnabled: boolean("shift_reminders_enabled").notNull().default(true),
+  hseAlertsEnabled: boolean("hse_alerts_enabled").notNull().default(true),
+  pointsUpdatesEnabled: boolean("points_updates_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const notificationPushSubscriptions = pgTable("hero_notification_push_subscriptions", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dhKey: text("p256dh_key").notNull(),
+  authKey: text("auth_key").notNull(),
+  deviceLabel: text("device_label").notNull().default("Browser"),
+  userAgent: text("user_agent").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -518,6 +518,317 @@ export async function getApprovalWorkbenchData() {
   };
 }
 
+function normalizeMatchValue(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function getDateKey(value: Date) {
+  return `${value.getFullYear()}-${`${value.getMonth() + 1}`.padStart(2, "0")}-${`${value.getDate()}`.padStart(2, "0")}`;
+}
+
+function formatDateLabel(value: Date) {
+  return value.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatTimeRange(startTime: Date, endTime: Date) {
+  return `${startTime.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })} - ${endTime.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function formatLastDecision(notes: ApprovalComment[]) {
+  const latestDecision =
+    notes.find((note) =>
+      ["approved", "rejected", "needs_correction"].includes(note.kind),
+    ) ?? notes[0] ?? null;
+
+  return latestDecision?.message ?? "Belum ada keputusan akhir.";
+}
+
+async function getEmployeeByEmail(email: string) {
+  const [employee] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+    })
+    .from(employees)
+    .where(eq(employees.email, email))
+    .limit(1);
+
+  return employee ?? null;
+}
+
+export async function getApprovalCenterData(email: string) {
+  await ensureHeroSeedData();
+
+  const now = new Date();
+  const [currentEmployee, approvalRows] = await Promise.all([
+    getEmployeeByEmail(email),
+    fetchApprovalRows(),
+  ]);
+  const queue = approvalRows
+    .map((row) => enrichApprovalRow(row, now))
+    .sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime());
+
+  const normalizedEmail = normalizeMatchValue(email);
+  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name);
+
+  const inboxRows = queue.filter(
+    (item) =>
+      item.isPending &&
+      ((currentEmployee?.id != null && item.approverEmployeeId === currentEmployee.id) ||
+        (normalizedEmployeeName && normalizeMatchValue(item.approverName) === normalizedEmployeeName)),
+  );
+
+  const inboxGroupsMap = new Map<
+    string,
+    {
+      id: string;
+      requesterName: string;
+      requesterJobTitle: string;
+      requesterEmail: string;
+      siteName: string;
+      workDate: Date;
+      workDateLabel: string;
+      activityCount: number;
+      dueSoonCount: number;
+      overdueCount: number;
+      totalOvertimeMinutes: number;
+      items: Array<{
+        approvalId: number;
+        activityId: number;
+        title: string;
+        activityType: string;
+        unitNumber: string;
+        priority: string;
+        currentStepLabel: string;
+        remarks: string;
+        submittedAt: Date;
+        dueAt: Date;
+        dueState: ApprovalQueueItem["dueState"];
+        timeRange: string;
+        shiftLabel: string;
+        overtimeLabel: string;
+        requesterName: string;
+        requesterJobTitle: string;
+        siteName: string;
+        notes: ApprovalComment[];
+        lastNote: ApprovalComment | null;
+      }>;
+    }
+  >();
+
+  for (const item of inboxRows) {
+    const groupKey = `${normalizeMatchValue(item.requesterEmail)}:${getDateKey(item.startTime)}`;
+    const notes = buildApprovalComments([item]);
+    const group = inboxGroupsMap.get(groupKey) ?? {
+      id: groupKey,
+      requesterName: item.requesterName,
+      requesterJobTitle: item.requesterJobTitle,
+      requesterEmail: item.requesterEmail,
+      siteName: item.siteName,
+      workDate: item.startTime,
+      workDateLabel: formatDateLabel(item.startTime),
+      activityCount: 0,
+      dueSoonCount: 0,
+      overdueCount: 0,
+      totalOvertimeMinutes: 0,
+      items: [],
+    };
+
+    group.activityCount += 1;
+    group.totalOvertimeMinutes += item.overtimeMinutes;
+    if (item.dueState === "due_soon") {
+      group.dueSoonCount += 1;
+    }
+    if (item.dueState === "overdue") {
+      group.overdueCount += 1;
+    }
+    group.items.push({
+      approvalId: item.approvalId,
+      activityId: item.activityId,
+      title: item.activityTitle,
+      activityType: item.activityType,
+      unitNumber: item.unitNumber,
+      priority: item.priority,
+      currentStepLabel: item.currentStepLabel,
+      remarks: item.remarks,
+      submittedAt: item.submittedAt,
+      dueAt: item.dueAt,
+      dueState: item.dueState,
+      timeRange: formatTimeRange(item.startTime, item.endTime),
+      shiftLabel: getShiftLabel(item.startTime),
+      overtimeLabel: minutesToHours(item.overtimeMinutes),
+      requesterName: item.requesterName,
+      requesterJobTitle: item.requesterJobTitle,
+      siteName: item.siteName,
+      notes,
+      lastNote: notes[0] ?? null,
+    });
+    inboxGroupsMap.set(groupKey, group);
+  }
+
+  const inboxGroups = Array.from(inboxGroupsMap.values())
+    .map((group) => ({
+      ...group,
+      totalOvertimeLabel: minutesToHours(group.totalOvertimeMinutes),
+      items: group.items.sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime()),
+    }))
+    .sort((left, right) => right.workDate.getTime() - left.workDate.getTime());
+
+  const requestActivityMap = new Map<number, ApprovalQueueItem[]>();
+  for (const item of queue) {
+    if (normalizeMatchValue(item.requesterEmail) !== normalizedEmail) {
+      continue;
+    }
+
+    const current = requestActivityMap.get(item.activityId) ?? [];
+    current.push(item);
+    requestActivityMap.set(item.activityId, current);
+  }
+
+  const historyGroupsMap = new Map<
+    string,
+    {
+      id: string;
+      workDate: Date;
+      workDateLabel: string;
+      activityCount: number;
+      approvedCount: number;
+      rejectedCount: number;
+      revisionCount: number;
+      pendingCount: number;
+      items: Array<{
+        activityId: number;
+        title: string;
+        activityType: string;
+        unitNumber: string;
+        siteName: string;
+        priority: string;
+        status: string;
+        statusLabel: string;
+        submittedAt: Date;
+        timeRange: string;
+        shiftLabel: string;
+        pendingWith: string;
+        currentStepLabel: string;
+        workflowLabel: string;
+        lastDecision: string;
+        notes: ApprovalComment[];
+        steps: Array<{
+          approvalId: number;
+          approverName: string;
+          level: number;
+          label: string;
+          status: string;
+          reviewedAt: Date | null;
+        }>;
+      }>;
+    }
+  >();
+
+  for (const relatedRows of requestActivityMap.values()) {
+    const sortedRows = relatedRows
+      .slice()
+      .sort((left, right) => left.level - right.level || left.approvalId - right.approvalId);
+    const seed = sortedRows[0];
+    const currentPending = sortedRows.find((item) => item.status === "pending") ?? null;
+    const latestApproval = sortedRows[sortedRows.length - 1] ?? null;
+    const notes = buildApprovalComments(sortedRows);
+    const status = mapRequestStatus(seed.activityStatus);
+    const groupKey = getDateKey(seed.startTime);
+    const group = historyGroupsMap.get(groupKey) ?? {
+      id: groupKey,
+      workDate: seed.startTime,
+      workDateLabel: formatDateLabel(seed.startTime),
+      activityCount: 0,
+      approvedCount: 0,
+      rejectedCount: 0,
+      revisionCount: 0,
+      pendingCount: 0,
+      items: [],
+    };
+
+    group.activityCount += 1;
+    if (status === "approved") {
+      group.approvedCount += 1;
+    } else if (status === "rejected") {
+      group.rejectedCount += 1;
+    } else if (status === "needs_revision") {
+      group.revisionCount += 1;
+    } else {
+      group.pendingCount += 1;
+    }
+
+    group.items.push({
+      activityId: seed.activityId,
+      title: seed.activityTitle,
+      activityType: seed.activityType,
+      unitNumber: seed.unitNumber,
+      siteName: seed.siteName,
+      priority: seed.priority,
+      status,
+      statusLabel: seed.activityStatus,
+      submittedAt: seed.createdAt,
+      timeRange: formatTimeRange(seed.startTime, seed.endTime),
+      shiftLabel: getShiftLabel(seed.startTime),
+      pendingWith: currentPending?.approverName ?? latestApproval?.approverName ?? "-",
+      currentStepLabel: currentPending?.currentStepLabel ?? latestApproval?.currentStepLabel ?? "-",
+      workflowLabel: currentPending?.route?.matrixName ?? latestApproval?.route?.matrixName ?? "Workflow Activity",
+      lastDecision: formatLastDecision(notes),
+      notes,
+      steps: sortedRows.map((row) => ({
+        approvalId: row.approvalId,
+        approverName: row.approverName,
+        level: row.level,
+        label: row.currentStepLabel,
+        status: row.status,
+        reviewedAt: row.reviewedAt,
+      })),
+    });
+
+    historyGroupsMap.set(groupKey, group);
+  }
+
+  const historyGroups = Array.from(historyGroupsMap.values())
+    .map((group) => ({
+      ...group,
+      items: group.items.sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime()),
+    }))
+    .sort((left, right) => right.workDate.getTime() - left.workDate.getTime());
+
+  const historyItems = historyGroups.flatMap((group) => group.items);
+
+  return {
+    currentUserName: currentEmployee?.name ?? email,
+    inboxMetrics: {
+      pendingGroups: inboxGroups.length,
+      pendingActivities: inboxRows.length,
+      dueSoon: inboxRows.filter((item) => item.dueState === "due_soon").length,
+      overdue: inboxRows.filter((item) => item.dueState === "overdue").length,
+    },
+    historyMetrics: {
+      total: historyItems.length,
+      approved: historyItems.filter((item) => item.status === "approved").length,
+      rejected: historyItems.filter((item) => item.status === "rejected").length,
+      needsRevision: historyItems.filter((item) => item.status === "needs_revision").length,
+      inReview: historyItems.filter((item) => item.status === "in_review" || item.status === "submitted").length,
+    },
+    inboxGroups,
+    historyGroups,
+  };
+}
+
 export async function getRequestCenterData(email?: string) {
   await ensureHeroSeedData();
 

@@ -57,6 +57,13 @@
       "when": 1776467400000,
       "tag": "0007_email_notification_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776609134525,
+      "tag": "0008_simple_vargas",
+      "breakpoints": true
     }
   ]
 }

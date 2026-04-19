@@ -1,0 +1,72 @@
+import { NextResponse } from "next/server";
+
+import { submitDailyActivityAction } from "@/app/dashboard/activity-hub/actions";
+import type { ActivitySyncPayload } from "@/lib/offline-sync";
+
+export async function POST(request: Request) {
+  try {
+    const payload = (await request.json()) as ActivitySyncPayload;
+    const formData = new FormData();
+
+    formData.append("employeeId", String(payload.employeeId));
+    formData.append("sourceMode", payload.sourceMode);
+    formData.append("assignmentId", payload.assignmentId);
+    formData.append("libraryActivityId", payload.libraryActivityId);
+    formData.append("customActivityName", payload.customActivityName);
+    formData.append("customActivityDescription", payload.customActivityDescription);
+    formData.append("equipmentNo", payload.equipmentNo);
+    formData.append("startTime", payload.startTime);
+    formData.append("endTime", payload.endTime);
+    formData.append("materialUsed", payload.materialUsed);
+
+    const locationBlock = [
+      payload.locationName ? `Lokasi: ${payload.locationName}` : null,
+      payload.manualLocation ? `Fallback: ${payload.manualLocation}` : null,
+      payload.boundaryMessage ? `Boundary: ${payload.boundaryMessage}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    formData.append(
+      "notes",
+      [locationBlock, payload.notes.trim()].filter(Boolean).join("\n"),
+    );
+    formData.append("gpsLat", payload.gpsLat);
+    formData.append("gpsLng", payload.gpsLng);
+    formData.append("gpsValid", String(payload.gpsValid));
+
+    if (payload.photo) {
+      const matches = payload.photo.dataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (!matches) {
+        throw new Error("Payload foto activity tidak valid.");
+      }
+
+      const [, mimeType, base64] = matches;
+      const buffer = Buffer.from(base64, "base64");
+      const file = new File([buffer], payload.photo.name || `activity-${Date.now()}.jpg`, {
+        type: payload.photo.type || mimeType,
+      });
+      formData.append("photoFile", file);
+    }
+
+    await submitDailyActivityAction(formData);
+
+    return NextResponse.json({
+      success: true,
+      message: "Activity berhasil disinkronkan.",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Sync activity gagal.";
+
+    return NextResponse.json(
+      {
+        success: false,
+        conflict:
+          message.toLowerCase().includes("bertabrakan") ||
+          message.toLowerCase().includes("sudah pernah"),
+        message,
+      },
+      { status: 400 },
+    );
+  }
+}

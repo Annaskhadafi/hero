@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   Bell,
+  CheckCircle2,
   ClipboardList,
   Dumbbell,
   FileText,
@@ -16,6 +17,12 @@ import { getServerSession } from "@/lib/auth-session";
 
 const menuItems = [
   { label: "Daily Activity", detail: "Assignment, check-in, dan log kerja", href: "/mobile/activity", icon: ClipboardList },
+  {
+    label: "Approval",
+    detail: "Inbox grouped per user dan history hasil approval activity",
+    href: "/mobile/approval",
+    icon: CheckCircle2,
+  },
   { label: "Activity Input", detail: "Submit aktivitas real ke database", href: "/mobile/activity/input", icon: Grid3X3 },
   { label: "HSE Report", detail: "Observasi dan incident site", href: "/mobile/hse", icon: ShieldCheck },
   { label: "Daily Report", detail: "Summary laporan site harian", href: "/mobile/reports", icon: FileText },

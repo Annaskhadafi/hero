@@ -12,6 +12,7 @@ import {
   getEmailSmtpSettingsData,
   getPwaPushSettingsData,
 } from "@/lib/hero-admin";
+import { getEmployeeTargetByEmail, sendPushNotification } from "@/lib/push-notifications";
 
 export type EmailSettingsActionState = {
   status: "idle" | "success" | "error";
@@ -319,11 +320,56 @@ export async function testPwaPushSettingsAction(
     };
   }
 
-  return {
-    status: "success",
-    message:
-      "Konfigurasi PWA Push valid. Test dispatch belum dikirim karena subscription browser untuk target test belum dikelola di modul ini.",
-  };
+  try {
+    const session = await getServerSession();
+    const email = session?.user?.email?.trim();
+
+    if (!email) {
+      return {
+        status: "error",
+        message: "Login dengan akun yang punya email agar test push bisa diarahkan.",
+      };
+    }
+
+    const employee = await getEmployeeTargetByEmail(email);
+
+    if (!employee) {
+      return {
+        status: "error",
+        message: "Employee untuk akun login belum ditemukan.",
+      };
+    }
+
+    const result = await sendPushNotification({
+      employeeId: employee.id,
+      category: "approval_requests",
+      title: "HERO test push",
+      body: "Konfigurasi PWA push aktif dan browser subscription terdeteksi.",
+      url: "/mobile/notifications",
+      tag: `hero-test-${employee.id}`,
+      requirePreference: false,
+      metadata: {
+        source: "settings_email_test",
+      },
+    });
+
+    if (result.status !== "sent") {
+      return {
+        status: "error",
+        message: `Test push belum terkirim (${result.reason ?? "unknown"}). Pastikan browser sudah subscribe dan VAPID valid.`,
+      };
+    }
+
+    return {
+      status: "success",
+      message: `Test push berhasil dikirim ke ${employee.email}.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal mengirim test push.",
+    };
+  }
 }
 
 export async function saveEmailTemplateAction(

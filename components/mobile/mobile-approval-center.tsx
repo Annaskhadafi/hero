@@ -1,0 +1,258 @@
+import { approveApprovalGroupAction, reviewApprovalAction } from "@/app/dashboard/admin-actions";
+import { AdminStatusBadge } from "@/components/admin-status-badge";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import type { getApprovalCenterData } from "@/lib/approval-workspace";
+
+type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>;
+
+function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
+  if (groups.length === 0) {
+    return (
+      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        Tidak ada activity yang menunggu approval Anda.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {groups.map((group, groupIndex) => (
+        <details
+          key={group.id}
+          open={groupIndex === 0}
+          className="overflow-hidden rounded-[1.35rem] bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]"
+        >
+          <summary className="list-none cursor-pointer px-4 py-4">
+            <p className="text-base font-black tracking-tight text-[#082033]">{group.requesterName}</p>
+            <p className="mt-1 text-xs font-semibold text-[#5d7485]">
+              {group.requesterJobTitle || "-"} • {group.workDateLabel}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <AdminStatusBadge value={`${group.activityCount} activity`} />
+              {group.dueSoonCount > 0 ? <AdminStatusBadge value="due_soon" /> : null}
+              {group.overdueCount > 0 ? <AdminStatusBadge value="overdue" /> : null}
+            </div>
+          </summary>
+
+          <div className="space-y-3 border-t border-[#e6f0f7] bg-[#f6fbff] px-4 py-4">
+            <div className="rounded-[1.05rem] bg-white px-4 py-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#5d7485]">Approve Group</p>
+              <p className="mt-2 text-sm text-[#082033]">
+                {group.activityCount} activity • overtime {group.totalOvertimeLabel}
+              </p>
+              <form action={approveApprovalGroupAction} className="mt-3">
+                {group.items.map((item) => (
+                  <input key={item.approvalId} type="hidden" name="approvalIds" value={item.approvalId} />
+                ))}
+                <Button type="submit" className="h-11 rounded-full px-4">
+                  Approve Semua
+                </Button>
+              </form>
+            </div>
+
+            {group.items.map((item, itemIndex) => (
+              <details
+                key={item.approvalId}
+                open={groupIndex === 0 && itemIndex === 0}
+                className="overflow-hidden rounded-[1.05rem] bg-white"
+              >
+                <summary className="list-none cursor-pointer px-4 py-4">
+                  <p className="text-sm font-black text-[#082033]">
+                    {item.title} • {item.unitNumber}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-[#5d7485]">
+                    {item.activityType} • {item.timeRange}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <AdminStatusBadge value={item.priority} />
+                    <AdminStatusBadge value={item.dueState} />
+                  </div>
+                </summary>
+
+                <div className="space-y-3 border-t border-[#eef4f8] px-4 py-4">
+                  <div className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5d7485]">Ringkasan</p>
+                    <p className="mt-2 text-sm text-[#082033]">
+                      Step {item.currentStepLabel} • due {item.dueAt.toLocaleString("id-ID")}
+                    </p>
+                    <p className="mt-2 text-sm text-[#5d7485]">{item.remarks || "Tanpa remark tambahan."}</p>
+                  </div>
+
+                  <form action={reviewApprovalAction} className="space-y-3 rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
+                    <input type="hidden" name="approvalId" value={item.approvalId} />
+                    <Textarea
+                      name="note"
+                      rows={3}
+                      placeholder="Reject wajib komentar. Revisi juga bisa isi catatan."
+                      className="bg-white"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="submit" name="decision" value="approved" className="h-11 rounded-full px-4">
+                        Approve
+                      </Button>
+                      <Button
+                        type="submit"
+                        name="decision"
+                        value="rejected"
+                        variant="secondary"
+                        className="h-11 rounded-full px-4"
+                      >
+                        Reject
+                      </Button>
+                      <Button
+                        type="submit"
+                        name="decision"
+                        value="needs_correction"
+                        variant="outline"
+                        className="h-11 rounded-full px-4"
+                      >
+                        Revisi
+                      </Button>
+                    </div>
+                  </form>
+
+                  {item.notes.length > 0 ? (
+                    <div className="space-y-2">
+                      {item.notes.map((note) => (
+                        <div key={note.id} className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-bold text-[#082033]">{note.actor}</p>
+                            <AdminStatusBadge value={note.kind} />
+                          </div>
+                          <p className="mt-2 text-sm text-[#082033]">{note.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"] }) {
+  if (groups.length === 0) {
+    return (
+      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        Belum ada history approval dari activity Anda.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {groups.map((group, groupIndex) => (
+        <details
+          key={group.id}
+          open={groupIndex === 0}
+          className="overflow-hidden rounded-[1.35rem] bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]"
+        >
+          <summary className="list-none cursor-pointer px-4 py-4">
+            <p className="text-base font-black tracking-tight text-[#082033]">{group.workDateLabel}</p>
+            <p className="mt-1 text-xs font-semibold text-[#5d7485]">{group.activityCount} activity diajukan</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {group.pendingCount > 0 ? <AdminStatusBadge value="in_review" /> : null}
+              {group.approvedCount > 0 ? <AdminStatusBadge value="approved" /> : null}
+              {group.rejectedCount > 0 ? <AdminStatusBadge value="rejected" /> : null}
+              {group.revisionCount > 0 ? <AdminStatusBadge value="needs_revision" /> : null}
+            </div>
+          </summary>
+
+          <div className="space-y-3 border-t border-[#e6f0f7] bg-[#f6fbff] px-4 py-4">
+            {group.items.map((item, itemIndex) => (
+              <details
+                key={item.activityId}
+                open={groupIndex === 0 && itemIndex === 0}
+                className="overflow-hidden rounded-[1.05rem] bg-white"
+              >
+                <summary className="list-none cursor-pointer px-4 py-4">
+                  <p className="text-sm font-black text-[#082033]">
+                    {item.title} • {item.unitNumber}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-[#5d7485]">
+                    {item.activityType} • {item.siteName} • {item.timeRange}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <AdminStatusBadge value={item.status} />
+                    <AdminStatusBadge value={item.priority} />
+                  </div>
+                </summary>
+
+                <div className="space-y-3 border-t border-[#eef4f8] px-4 py-4">
+                  <div className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5d7485]">Hasil</p>
+                    <p className="mt-2 text-sm text-[#082033]">{item.lastDecision}</p>
+                    <p className="mt-2 text-xs font-semibold text-[#5d7485]">
+                      Menunggu {item.pendingWith} • {item.currentStepLabel}
+                    </p>
+                  </div>
+
+                  {item.notes.map((note) => (
+                    <div key={note.id} className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-[#082033]">{note.actor}</p>
+                        <AdminStatusBadge value={note.kind} />
+                      </div>
+                      <p className="mt-2 text-sm text-[#082033]">{note.message}</p>
+                      <p className="mt-2 text-xs text-[#5d7485]">{note.at.toLocaleString("id-ID")}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
+  return (
+    <div className="space-y-5">
+      <section className="space-y-1">
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Approval Center</p>
+        <h1 className="text-2xl font-black tracking-tight text-[#003461]">Approval</h1>
+        <p className="text-sm font-semibold text-[#5d7485]">
+          Inbox grouped per user dan history hasil approval activity Anda.
+        </p>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Inbox Group</p>
+          <p className="mt-3 text-2xl font-black text-[#082033]">{data.inboxMetrics.pendingGroups}</p>
+        </div>
+        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Pending Item</p>
+          <p className="mt-3 text-2xl font-black text-[#082033]">{data.inboxMetrics.pendingActivities}</p>
+        </div>
+      </section>
+
+      <Tabs defaultValue="inbox" className="space-y-4">
+        <TabsList className="grid h-auto w-full grid-cols-2 rounded-[1rem] bg-[#dcebf6] p-1">
+          <TabsTrigger value="inbox" className="rounded-[0.8rem]">
+            Inbox
+          </TabsTrigger>
+          <TabsTrigger value="history" className="rounded-[0.8rem]">
+            History
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="inbox" className="space-y-3">
+          <MobileInbox groups={data.inboxGroups} />
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-3">
+          <MobileHistory groups={data.historyGroups} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

@@ -129,7 +129,19 @@ export async function getMobileReports(email?: string | null) {
     .orderBy(desc(dailyReports.reportDate))
     .limit(12);
 
-  return { context, reports };
+  const chartSeries = [...reports]
+    .reverse()
+    .map((report) => ({
+      label: report.reportDate.toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+      }),
+      readiness: Math.round((report.readySections / Math.max(1, report.totalSections)) * 100),
+      jobsCompleted: report.jobsCompleted,
+      manpowerPresent: report.manpowerPresent,
+    }));
+
+  return { context, reports, chartSeries };
 }
 
 export async function getMobileHse(email?: string | null) {
@@ -241,12 +253,25 @@ export async function getMobileGamification(email?: string | null) {
   ]);
 
   const rank = leaderboard.findIndex((employee) => employee.id === context.employee.id) + 1;
+  const weeklyPoints = [...events]
+    .reverse()
+    .slice(-7)
+    .map((event) => ({
+      label: event.createdAt.toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+      }),
+      points: event.points,
+    }));
+  const pointsDelta = events.slice(0, 5).reduce((sum, event) => sum + event.points, 0);
 
   return {
     context,
     leaderboard,
     events,
     rank: rank > 0 ? rank : null,
+    weeklyPoints,
+    pointsDelta,
   };
 }
 

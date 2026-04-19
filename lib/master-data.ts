@@ -57,6 +57,9 @@ export type MasterSite = {
   villageId: string;
   villageName: string;
   addressDetail: string;
+  geoLatitude: string;
+  geoLongitude: string;
+  geoRadiusMeters: number;
   customerName: string;
   contractNumber: string;
   isActive: boolean;
@@ -311,12 +314,15 @@ export async function getMasterSites(): Promise<MasterSite[]> {
         regencyName: sites.regencyName,
         districtId: sites.districtId,
         districtName: sites.districtName,
-        villageId: sites.villageId,
-        villageName: sites.villageName,
-        addressDetail: sites.addressDetail,
-        customerName: sites.customerName,
-        contractNumber: sites.contractNumber,
-        isActive: sites.isActive,
+      villageId: sites.villageId,
+      villageName: sites.villageName,
+      addressDetail: sites.addressDetail,
+      geoLatitude: sites.geoLatitude,
+      geoLongitude: sites.geoLongitude,
+      geoRadiusMeters: sites.geoRadiusMeters,
+      customerName: sites.customerName,
+      contractNumber: sites.contractNumber,
+      isActive: sites.isActive,
         createdAt: sites.createdAt,
       })
       .from(sites)
