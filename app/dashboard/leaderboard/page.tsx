@@ -1,12 +1,18 @@
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminTableCard } from "@/components/admin-table-card";
-import { PointEventCrudForm, PointEventRowActions } from "@/components/operational-crud-panels";
+import { 
+  PointEventCrudForm, 
+  PointEventRowActions,
+  PenaltyEventCrudForm,
+  DisputeReviewActions
+} from "@/components/operational-crud-panels";
+import { LevelConfigPanel, BadgeConfigPanel } from "@/components/gamification-config-panels";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getOperationalCrudOptions, getPointsPageData } from "@/lib/hero-admin";
 
 export default async function LeaderboardPage() {
-  const [{ leaderboard, recentPointEvents }, options] = await Promise.all([
+  const [{ leaderboard, recentPointEvents, recentPenaltyEvents, disputes, allLevels, allBadges }, options] = await Promise.all([
     getPointsPageData(),
     getOperationalCrudOptions(),
   ]);
@@ -35,12 +41,15 @@ export default async function LeaderboardPage() {
         ]}
       />
 
-      <PointEventCrudForm employees={options.employees} />
+      <PointEventCrudForm employees={options.employees} categoryOptions={options.categoryOptions} />
 
       <Tabs defaultValue="leaderboard" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           <TabsTrigger value="leaderboard">Site Leaderboard</TabsTrigger>
-          <TabsTrigger value="events">Recent Point Events</TabsTrigger>
+          <TabsTrigger value="events">Recent Events</TabsTrigger>
+          <TabsTrigger value="penalties">Penalties</TabsTrigger>
+          <TabsTrigger value="disputes">Disputes</TabsTrigger>
+          <TabsTrigger value="configuration">Configuration</TabsTrigger>
         </TabsList>
 
         <TabsContent value="leaderboard">
@@ -71,10 +80,82 @@ export default async function LeaderboardPage() {
               row.label,
               `${row.points > 0 ? "+" : ""}${row.points}`,
               row.createdAt.toLocaleDateString("id-ID"),
-              <PointEventRowActions key={`${row.id}-actions`} row={row} employees={options.employees} />,
+              <PointEventRowActions
+                key={`${row.id}-actions`}
+                row={row}
+                employees={options.employees}
+                categoryOptions={options.categoryOptions}
+              />,
             ])}
           />
         </TabsContent>
+
+        <TabsContent value="penalties" className="space-y-4">
+          <PenaltyEventCrudForm employees={options.employees} />
+          <AdminTableCard
+            title="Penalty Events"
+            description="Riwayat pemotongan poin untuk karyawan."
+            columns={["Employee", "Penalty Code", "Deducted", "Date", "Dispute Status"]}
+            dateFilter
+            rows={recentPenaltyEvents.map((row) => [
+              row.employeeName,
+              row.penaltyCode,
+              `-${row.pointsDeducted}`,
+              row.createdAt.toLocaleDateString("id-ID"),
+              row.isDisputed ? (
+                 <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900 dark:text-red-300">
+                  Disputed
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-300">
+                  No Dispute
+                </span>
+              ),
+            ])}
+          />
+        </TabsContent>
+
+        <TabsContent value="disputes" className="space-y-4">
+          <AdminTableCard
+            title="Dispute Queue"
+            description="Daftar pengajuan keberatan penalti karyawan yang butuh review (Phase A)."
+            columns={["Employee", "Penalty Code", "Deducted", "Reason", "Status", "Review"]}
+            dateFilter
+            rows={disputes.map((row) => [
+              row.employeeName,
+              row.penaltyCode,
+              `${row.pointsDeducted}`,
+              row.reason,
+              row.status === "pending" ? (
+                 <span className="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                  Pending
+                </span>
+              ) : row.status === "accepted" ? (
+                 <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300">
+                  Accepted
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-300">
+                  Rejected
+                </span>
+              ),
+              row.status === "pending" ? (
+                 <DisputeReviewActions key={row.id} disputeId={row.id} />
+              ) : (
+                // Only show reviewer notes if already resolved
+                <span className="text-sm text-foreground/75 truncate max-w-[200px] block">
+                  {row.resolutionNotes || "-"}
+                </span>
+              )
+            ])}
+          />
+        </TabsContent>
+
+        <TabsContent value="configuration" className="space-y-4">
+          <LevelConfigPanel levels={allLevels} />
+          <BadgeConfigPanel badges={allBadges} />
+        </TabsContent>
+        
       </Tabs>
     </AdminPageShell>
   );

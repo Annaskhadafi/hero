@@ -38,7 +38,7 @@ export default async function HsePage() {
         ]}
       />
 
-      <HseCrudForms employees={options.employees} sites={options.sites} />
+      <HseCrudForms employees={options.employees} sites={options.sites} categoryOptions={options.categoryOptions} />
 
       <Tabs defaultValue="observations" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
@@ -64,6 +64,7 @@ export default async function HsePage() {
                 row={row}
                 employees={options.employees}
                 sites={options.sites}
+                categoryOptions={options.categoryOptions}
               />,
             ])}
           />
@@ -86,6 +87,7 @@ export default async function HsePage() {
                 key={`${row.id}-actions`}
                 row={row}
                 sites={options.sites}
+                categoryOptions={options.categoryOptions}
               />,
             ])}
           />

@@ -31,7 +31,7 @@ export default async function HcPage() {
         ]}
       />
 
-      <HcCrudForms employees={options.employees} sites={options.sites} />
+      <HcCrudForms employees={options.employees} sites={options.sites} categoryOptions={options.categoryOptions} />
 
       <Tabs defaultValue="attendance" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
@@ -58,6 +58,7 @@ export default async function HcPage() {
               row={row}
               employees={options.employees}
               sites={options.sites}
+              categoryOptions={options.categoryOptions}
             />,
           ])}
         />
@@ -79,6 +80,7 @@ export default async function HcPage() {
                 key={`${row.id}-actions`}
                 row={row}
                 employees={options.employees}
+                categoryOptions={options.categoryOptions}
               />,
             ])}
           />
@@ -100,6 +102,7 @@ export default async function HcPage() {
                 key={`${row.id}-actions`}
                 row={row}
                 employees={options.employees}
+                categoryOptions={options.categoryOptions}
               />,
             ])}
           />

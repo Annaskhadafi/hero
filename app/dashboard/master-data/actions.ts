@@ -9,6 +9,7 @@ import {
   approvalMatrices,
   approvalMatrixSteps,
   employees,
+  masterCategoryOptions,
   masterAttendanceShifts,
   masterSections,
   masterDepartments,
@@ -24,6 +25,10 @@ import {
 import { auth } from "@/lib/auth";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
 import { resolveApprovalRouteForActivity } from "@/lib/approval-engine";
+import {
+  ensureMasterCategoryTables,
+  MASTER_CATEGORY_TYPES,
+} from "@/lib/master-categories";
 
 const optionalPositiveIntField = z.preprocess(
   (value) => {
@@ -112,6 +117,22 @@ const attendanceShiftSchema = z.object({
   windowLabel: z.string().trim().max(100).optional(),
   helper: z.string().trim().max(240).optional(),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+  isActive: formBooleanField(true),
+});
+
+const categoryTypeValues = MASTER_CATEGORY_TYPES.map((category) => category.type) as [
+  string,
+  ...string[],
+];
+
+const masterCategoryOptionSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveIntField,
+  type: z.enum(categoryTypeValues),
+  code: z.string().trim().min(1).max(120),
+  label: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(500).optional(),
+  sortOrder: z.coerce.number().int().min(0).max(9999).default(0),
   isActive: formBooleanField(true),
 });
 
@@ -531,6 +552,144 @@ export async function manageAttendanceShiftAction(
   } catch (error) {
     console.error("Attendance shift action error:", error);
     return { status: "error", message: "Terjadi kendala saat menyimpan shift attendance." };
+  }
+}
+
+export async function manageMasterCategoryOptionAction(
+  _state: MasterDataActionState,
+  formData: FormData,
+): Promise<MasterDataActionState> {
+  await ensureHeroGovernanceSeedData();
+  await ensureMasterCategoryTables();
+
+  if (!(await canEditMasterData())) {
+    return {
+      status: "error",
+      message: "Role Anda belum memiliki izin edit Master Data.",
+    };
+  }
+
+  const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db
+        .delete(masterCategoryOptions)
+        .where(eq(masterCategoryOptions.id, deletePayload.data.id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Kategori master berhasil dihapus." };
+    } catch (error) {
+      console.error("Master category action error:", error);
+      return { status: "error", message: "Kategori master belum bisa dihapus." };
+    }
+  }
+
+  const parsed = masterCategoryOptionSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Validation failed",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const {
+    intent,
+    id,
+    type,
+    code,
+    label,
+    description,
+    sortOrder,
+    isActive,
+  } = parsed.data;
+
+  try {
+    const duplicate = await db
+      .select({ id: masterCategoryOptions.id })
+      .from(masterCategoryOptions)
+      .where(
+        id
+          ? and(
+              eq(masterCategoryOptions.type, type),
+              eq(masterCategoryOptions.code, code),
+              sql`${masterCategoryOptions.id} != ${id}`,
+            )
+          : and(
+              eq(masterCategoryOptions.type, type),
+              eq(masterCategoryOptions.code, code),
+            ),
+      )
+      .limit(1);
+
+    if (duplicate.length > 0) {
+      return { status: "error", message: "Kode kategori sudah dipakai di tipe ini." };
+    }
+
+    if (intent === "create") {
+      await db.insert(masterCategoryOptions).values({
+        type,
+        code,
+        label,
+        description: description || "",
+        sortOrder,
+        isActive,
+        createdAt: now(),
+        updatedAt: now(),
+      });
+
+      revalidatePath("/dashboard/master-data");
+      revalidatePath("/dashboard/hse");
+      revalidatePath("/dashboard/hc");
+      revalidatePath("/dashboard/timesheet");
+      revalidatePath("/dashboard/reports");
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Kategori master berhasil ditambahkan." };
+    }
+
+    if (intent === "update") {
+      if (!id) {
+        return { status: "error", message: "ID is required for update" };
+      }
+
+      await db
+        .update(masterCategoryOptions)
+        .set({
+          type,
+          code,
+          label,
+          description: description || "",
+          sortOrder,
+          isActive,
+          updatedAt: now(),
+        })
+        .where(eq(masterCategoryOptions.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      revalidatePath("/dashboard/hse");
+      revalidatePath("/dashboard/hc");
+      revalidatePath("/dashboard/timesheet");
+      revalidatePath("/dashboard/reports");
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Kategori master berhasil diperbarui." };
+    }
+
+    return { status: "error", message: "Invalid intent" };
+  } catch (error) {
+    console.error("Master category action error:", error);
+    return { status: "error", message: "Terjadi kendala saat menyimpan kategori master." };
   }
 }
 

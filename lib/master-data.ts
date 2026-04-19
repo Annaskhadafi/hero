@@ -5,6 +5,7 @@ import {
   approvalMatrices,
   approvalMatrixSteps,
   employees,
+  masterCategoryOptions,
   masterAttendanceShifts,
   masterDepartments,
   masterPositions,
@@ -15,6 +16,10 @@ import {
   sites,
 } from "@/db/schema/hero";
 import { ensureHeroGovernanceSeedData } from "./hero-admin";
+import {
+  ensureMasterCategoryTables,
+  type MasterCategoryOption,
+} from "@/lib/master-categories";
 
 const fallbackNodes = aliasedTable(orgChartNodes, "fallback_nodes");
 const fallbackStepNodes = aliasedTable(orgChartNodes, "fallback_step_nodes");
@@ -97,6 +102,8 @@ export type MasterAttendanceShift = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type { MasterCategoryOption };
 
 export type OrgStructureNodeAssignment = {
   id: number;
@@ -201,6 +208,7 @@ export type ApprovalMatrix = {
 
 export async function getMasterDataPageData() {
   await ensureHeroGovernanceSeedData();
+  await ensureMasterCategoryTables();
 
   const [
     sections,
@@ -210,6 +218,7 @@ export async function getMasterDataPageData() {
     attendanceShifts,
     orgStructuresData,
     approvalMatricesData,
+    categoryOptions,
     employeesData,
   ] =
     await Promise.all([
@@ -220,6 +229,7 @@ export async function getMasterDataPageData() {
       getMasterAttendanceShifts(),
       getOrgStructures(),
       getApprovalMatrices(),
+      getMasterCategoryOptionsForManagement(),
       db
         .select({
           id: employees.id,
@@ -243,8 +253,22 @@ export async function getMasterDataPageData() {
     attendanceShifts,
     orgStructures: orgStructuresData,
     approvalMatrices: approvalMatricesData,
+    categoryOptions,
     employees: employeesData,
   };
+}
+
+export async function getMasterCategoryOptionsForManagement(): Promise<MasterCategoryOption[]> {
+  await ensureMasterCategoryTables();
+
+  return db
+    .select()
+    .from(masterCategoryOptions)
+    .orderBy(
+      asc(masterCategoryOptions.type),
+      asc(masterCategoryOptions.sortOrder),
+      asc(masterCategoryOptions.label),
+    );
 }
 
 export function getAttendanceShiftWindow(shift: {

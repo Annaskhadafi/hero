@@ -1178,3 +1178,50 @@ export const stepDecisionHistories = pgTable("hero_step_decision_histories", {
   decidedAt: timestamp("decided_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const masterCategoryOptions = pgTable("hero_master_category_options", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  code: text("code").notNull(),
+  label: text("label").notNull(),
+  description: text("description").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const levels = pgTable("hero_levels", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  minPoints: integer("min_points").notNull(),
+  description: text("description").notNull().default(""),
+  colorCode: text("color_code").notNull().default("#000000"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const badges = pgTable("hero_badges", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  iconUrl: text("icon_url").notNull().default(""),
+  colorCode: text("color_code").notNull().default("#000000"),
+  autoAssignRule: text("auto_assign_rule").notNull().default("none"),
+  autoAssignThreshold: integer("auto_assign_threshold").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const employeeBadges = pgTable("hero_employee_badges", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  badgeId: integer("badge_id")
+    .notNull()
+    .references(() => badges.id, { onDelete: "cascade" }),
+  awardedAt: timestamp("awarded_at").notNull().defaultNow(),
+});

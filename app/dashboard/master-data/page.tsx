@@ -12,6 +12,7 @@ export default async function MasterDataPage() {
         sites={data.sites}
         positions={data.positions}
         attendanceShifts={data.attendanceShifts}
+        categoryOptions={data.categoryOptions}
         orgStructures={data.orgStructures}
         approvalMatrices={data.approvalMatrices}
         employees={data.employees}

@@ -37,7 +37,7 @@ export default async function ReportsPage() {
           },
         ]}
       />
-      <DailyReportCrudForm sites={options.sites} />
+      <DailyReportCrudForm sites={options.sites} categoryOptions={options.categoryOptions} />
       <AdminTableCard
         title="Daily Reports"
         description="Report yang sudah dirakit dari aktivitas, approval, timesheet, dan HSE summary."
@@ -54,6 +54,7 @@ export default async function ReportsPage() {
             key={`${row.id}-actions`}
             row={row}
             sites={options.sites}
+            categoryOptions={options.categoryOptions}
           />,
         ])}
       />

@@ -23,6 +23,11 @@ import {
   orgChartNodes,
   orgChartStructures,
   pointEvents,
+  penaltyEvents,
+  pointDisputes,
+  levels,
+  badges,
+  employeeBadges,
   roleMenuPermissions,
   securityRolePermissions,
   securityRoles,
@@ -3076,5 +3081,261 @@ export async function updateNavbarThemeAction(
       status: "error",
       message: "Gagal memperbarui warna header navbar.",
     };
+  }
+}
+
+const managePenaltyEventSchema = z.object({
+  employeeId: z.coerce.number().int().positive(),
+  penaltyCode: z.string().trim().min(2).max(100),
+  description: z.string().trim().max(1000).optional().default(""),
+  pointsDeducted: z.coerce.number().int().min(1).max(10000),
+});
+
+const resolveDisputeSchema = z.object({
+  disputeId: z.coerce.number().int().positive(),
+  status: z.enum(["accepted", "rejected"]),
+  resolutionNotes: z.string().trim().max(1000).optional().default(""),
+});
+
+export async function createPenaltyEvent(
+  _previousState: AdminMutationState,
+  formData: FormData,
+): Promise<AdminMutationState> {
+  try {
+    const payload = managePenaltyEventSchema.parse({
+      employeeId: formData.get("employeeId"),
+      penaltyCode: formData.get("penaltyCode"),
+      description: formData.get("description"),
+      pointsDeducted: formData.get("pointsDeducted"),
+    });
+
+    await db.transaction(async (tx) => {
+      const [employee] = await tx
+        .select({ siteId: employees.siteId })
+        .from(employees)
+        .where(eq(employees.id, payload.employeeId))
+        .limit(1);
+
+      if (!employee) {
+        throw new Error("Employee not found.");
+      }
+
+      await tx.insert(penaltyEvents).values({
+        employeeId: payload.employeeId,
+        siteId: employee.siteId,
+        penaltyCode: payload.penaltyCode,
+        penaltyType: "manual",
+        description: payload.description,
+        pointsDeducted: payload.pointsDeducted,
+      });
+
+      await tx
+        .update(employees)
+        .set({ totalPoints: sql`${employees.totalPoints} - ${payload.pointsDeducted}` })
+        .where(eq(employees.id, payload.employeeId));
+    });
+
+    revalidatePath("/dashboard/leaderboard");
+    return { status: "success", message: "Penalty berhasil ditambahkan." };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { status: "error", message: error.issues[0]?.message ?? "Input tidak valid." };
+    }
+    return { status: "error", message: "Gagal memproses penalty event." };
+  }
+}
+
+export async function resolveDisputeAction(
+  _previousState: AdminMutationState,
+  formData: FormData,
+): Promise<AdminMutationState> {
+  try {
+    const payload = resolveDisputeSchema.parse({
+      disputeId: formData.get("disputeId"),
+      status: formData.get("status"),
+      resolutionNotes: formData.get("resolutionNotes"),
+    });
+
+    const [dispute] = await db
+      .select()
+      .from(pointDisputes)
+      .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
+      .where(eq(pointDisputes.id, payload.disputeId))
+      .limit(1);
+
+    if (!dispute) return { status: "error", message: "Dispute tidak ditemukan." };
+    if (dispute.hero_point_disputes.status !== "pending") {
+      return { status: "error", message: "Dispute sudah diproses." };
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.update(pointDisputes).set({
+        status: payload.status,
+        resolutionNotes: payload.resolutionNotes,
+        resolvedAt: new Date(),
+      }).where(eq(pointDisputes.id, payload.disputeId));
+
+      if (payload.status === "accepted") {
+        // Refund points if accepted
+        await tx
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} + ${dispute.hero_penalty_events.pointsDeducted}` })
+          .where(eq(employees.id, dispute.hero_penalty_events.employeeId));
+      }
+
+      await tx.update(penaltyEvents).set({ isDisputed: false })
+        .where(eq(penaltyEvents.id, dispute.hero_penalty_events.id));
+    });
+
+    revalidatePath("/dashboard/leaderboard");
+    return { status: "success", message: `Dispute berhasil di-${payload.status}.` };
+  } catch (error) {
+    return { status: "error", message: "Gagal memproses dispute." };
+  }
+}
+
+export async function exportPointsExcel() {
+  // Stub for Excel export. This would typically return a URL or trigger a client-side download based on provided filters.
+  // In a Server Action, we either send data down or handle via a dedicated API route. We will wire this up later.
+  return { status: "success", data: "Data exported" };
+}
+
+const manageLevelSchema = z.object({
+  id: z.coerce.number().optional(),
+  name: z.string().min(1, "Nama level harus diisi"),
+  minPoints: z.coerce.number().min(0, "Poin minimum harus >= 0"),
+  description: z.string().optional().default(""),
+  colorCode: z.string().min(1, "Kode warna harus diisi"),
+  isActive: z.coerce.boolean().default(true),
+});
+
+export async function manageLevelAction(
+  _prevState: AdminMutationState,
+  formData: FormData
+): Promise<AdminMutationState> {
+  try {
+    const intent = formData.get("intent");
+    const payload = manageLevelSchema.parse({
+      id: formData.get("id"),
+      name: formData.get("name"),
+      minPoints: formData.get("minPoints"),
+      description: formData.get("description"),
+      colorCode: formData.get("colorCode"),
+      isActive: formData.get("isActive") === "true",
+    });
+
+    if (intent === "create") {
+      await db.insert(levels).values({
+        name: payload.name,
+        minPoints: payload.minPoints,
+        description: payload.description,
+        colorCode: payload.colorCode,
+        isActive: payload.isActive,
+      });
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Level berhasil dibuat." };
+    }
+
+    if (intent === "update" && payload.id) {
+      await db
+        .update(levels)
+        .set({
+          name: payload.name,
+          minPoints: payload.minPoints,
+          description: payload.description,
+          colorCode: payload.colorCode,
+          isActive: payload.isActive,
+        })
+        .where(eq(levels.id, payload.id));
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Level berhasil diupdate." };
+    }
+
+    if (intent === "delete" && payload.id) {
+      await db.delete(levels).where(eq(levels.id, payload.id));
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Level berhasil dihapus." };
+    }
+
+    return { status: "error", message: "Intent tidak valid." };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { status: "error", message: error.errors[0]?.message || "Input tidak valid." };
+    }
+    return { status: "error", message: "Gagal menyimpan level." };
+  }
+}
+
+const manageBadgeSchema = z.object({
+  id: z.coerce.number().optional(),
+  name: z.string().min(1, "Nama badge harus diisi"),
+  description: z.string().optional().default(""),
+  iconUrl: z.string().optional().default("🏆"), // Support lucide/emoji text if no actual file
+  colorCode: z.string().min(1, "Kode warna harus diisi"),
+  autoAssignRule: z.enum(["none", "points_threshold"]).default("none"),
+  autoAssignThreshold: z.coerce.number().default(0),
+  isActive: z.coerce.boolean().default(true),
+});
+
+export async function manageBadgeAction(
+  _prevState: AdminMutationState,
+  formData: FormData
+): Promise<AdminMutationState> {
+  try {
+    const intent = formData.get("intent");
+    const payload = manageBadgeSchema.parse({
+      id: formData.get("id"),
+      name: formData.get("name"),
+      description: formData.get("description"),
+      iconUrl: formData.get("iconUrl"),
+      colorCode: formData.get("colorCode"),
+      autoAssignRule: formData.get("autoAssignRule"),
+      autoAssignThreshold: formData.get("autoAssignThreshold"),
+      isActive: formData.get("isActive") === "true",
+    });
+
+    if (intent === "create") {
+      await db.insert(badges).values({
+        name: payload.name,
+        description: payload.description,
+        iconUrl: payload.iconUrl,
+        colorCode: payload.colorCode,
+        autoAssignRule: payload.autoAssignRule,
+        autoAssignThreshold: payload.autoAssignThreshold,
+        isActive: payload.isActive,
+      });
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Badge berhasil dibuat." };
+    }
+
+    if (intent === "update" && payload.id) {
+      await db
+        .update(badges)
+        .set({
+          name: payload.name,
+          description: payload.description,
+          iconUrl: payload.iconUrl,
+          colorCode: payload.colorCode,
+          autoAssignRule: payload.autoAssignRule,
+          autoAssignThreshold: payload.autoAssignThreshold,
+          isActive: payload.isActive,
+        })
+        .where(eq(badges.id, payload.id));
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Badge berhasil diupdate." };
+    }
+
+    if (intent === "delete" && payload.id) {
+      await db.delete(badges).where(eq(badges.id, payload.id));
+      revalidatePath("/dashboard/leaderboard");
+      return { status: "success", message: "Badge berhasil dihapus." };
+    }
+
+    return { status: "error", message: "Intent tidak valid." };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { status: "error", message: error.errors[0]?.message || "Input tidak valid." };
+    }
+    return { status: "error", message: "Gagal menyimpan badge." };
   }
 }

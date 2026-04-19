@@ -36,7 +36,7 @@ export default async function TimesheetPage() {
         ]}
       />
 
-      <TimesheetCrudForm employees={options.employees} sites={options.sites} />
+      <TimesheetCrudForm employees={options.employees} sites={options.sites} categoryOptions={options.categoryOptions} />
 
       <AdminTableCard
         title="Timesheet Entries"
@@ -55,6 +55,7 @@ export default async function TimesheetPage() {
             row={row}
             employees={options.employees}
             sites={options.sites}
+            categoryOptions={options.categoryOptions}
           />,
         ])}
       />

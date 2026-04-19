@@ -5,12 +5,14 @@ import {
   Bell,
   BellRing,
   BriefcaseBusiness,
+  ChevronDown,
   ShieldAlert,
   Sparkles,
   Smartphone,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 
 type NotificationPreferences = {
@@ -86,15 +88,139 @@ function formatDate(value?: string | null) {
   });
 }
 
-function parsePayloadPreview(raw?: string | null) {
-  if (!raw) return "";
+type NotificationPayload = Record<string, unknown> & {
+  title?: unknown;
+  body?: unknown;
+  requestNumber?: unknown;
+  activityTitle?: unknown;
+  dueAt?: unknown;
+  decision?: unknown;
+  stepLevel?: unknown;
+  mode?: unknown;
+  groupStatus?: unknown;
+  type?: unknown;
+  impact?: unknown;
+  location?: unknown;
+};
+
+function asText(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function parsePayload(raw?: string | null) {
+  if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(raw) as { body?: string; title?: string };
-    return parsed.body || parsed.title || raw;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as NotificationPayload;
+    }
   } catch {
-    return raw;
+    return { body: raw };
   }
+
+  return null;
+}
+
+function humanizeToken(value?: string | null) {
+  if (!value) return "";
+
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatNotificationTitle(item: NotificationRow) {
+  const payload = parsePayload(item.payloadSnapshot);
+  const payloadTitle = asText(payload?.title);
+  if (payloadTitle) return payloadTitle;
+
+  switch (item.eventType) {
+    case "step_assigned":
+      return "Approval menunggu review";
+    case "step_decision":
+      return "Keputusan approval";
+    case "approval_group_status":
+    case "parallel_any_status":
+      return "Status grup approval";
+    case "submitted":
+      return "Pengajuan terkirim";
+    case "emergency_incident_reported":
+      return "Emergency incident";
+    case "points_updated":
+      return "Update poin HERO";
+    case "hse_observation_created":
+      return "Alert observasi HSE";
+    case "hse_observation_status_changed":
+      return "Update observasi HSE";
+    case "hse_incident_created":
+      return "Incident HSE baru";
+    case "hse_incident_status_changed":
+      return "Update incident HSE";
+    default:
+      return humanizeToken(item.eventType ?? item.channel) || "Update HERO";
+  }
+}
+
+function formatNotificationBody(item: NotificationRow) {
+  const payload = parsePayload(item.payloadSnapshot);
+  const payloadBody = asText(payload?.body);
+  if (payloadBody) return payloadBody;
+
+  const requestNumber = asText(payload?.requestNumber);
+  const activityTitle = asText(payload?.activityTitle);
+  const dueAt = asText(payload?.dueAt);
+  const decision = humanizeToken(asText(payload?.decision));
+  const stepLevel = asText(payload?.stepLevel);
+  const mode = humanizeToken(asText(payload?.mode));
+  const groupStatus = humanizeToken(asText(payload?.groupStatus));
+  const title = asText(payload?.title);
+  const type = humanizeToken(asText(payload?.type));
+  const impact = asText(payload?.impact);
+  const location = asText(payload?.location);
+
+  switch (item.eventType) {
+    case "step_assigned": {
+      const titlePart = activityTitle ? ` untuk ${activityTitle}` : "";
+      const duePart = dueAt ? ` Batas waktu ${formatDate(dueAt)}.` : "";
+      return `${requestNumber || "Request baru"} menunggu review${titlePart}.${duePart}`;
+    }
+    case "step_decision": {
+      const titlePart = activityTitle ? ` untuk ${activityTitle}` : "";
+      const decisionPart = decision ? decision.toLowerCase() : "baru";
+      return `${requestNumber || "Request"} mendapat keputusan ${decisionPart}${titlePart}.`;
+    }
+    case "approval_group_status":
+    case "parallel_any_status": {
+      const stepPart = stepLevel ? `Step ${stepLevel}` : "Approval";
+      const modePart = mode ? ` (${mode})` : "";
+      const statusPart = groupStatus ? ` status ${groupStatus.toLowerCase()}` : " diperbarui";
+      return `${stepPart}${modePart}${statusPart}.`;
+    }
+    case "emergency_incident_reported": {
+      const titlePart = title || "Incident baru";
+      const typePart = type ? ` - ${type}` : "";
+      const locationPart = location ? ` di ${location}` : "";
+      const impactPart = impact ? ` Dampak: ${impact}.` : "";
+      return `${titlePart}${typePart}${locationPart}.${impactPart}`;
+    }
+    default:
+      return (
+        [requestNumber, activityTitle || title, location, impact].filter(Boolean).join(" - ") ||
+        item.errorMessage ||
+        `Status ${humanizeToken(item.status).toLowerCase()} via ${humanizeToken(item.channel)}.`
+      );
+  }
+}
+
+function getNotificationDisplayKey(item: NotificationRow) {
+  return [
+    item.eventType ?? item.channel,
+    item.payloadSnapshot || item.errorMessage || "",
+    formatDate(item.sentAt ?? item.createdAt),
+  ].join("|");
 }
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -123,6 +249,7 @@ export function MobileNotificationsCenter({
   );
   const [feedback, setFeedback] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const refreshData = useEffectEvent(async () => {
     const response = await fetch("/api/mobile/notifications", { cache: "no-store" });
@@ -312,6 +439,10 @@ export function MobileNotificationsCenter({
   }
 
   const preferences = data.preferences;
+  const visibleNotifications = data.notifications.filter((item, index, notifications) => {
+    const displayKey = getNotificationDisplayKey(item);
+    return notifications.findIndex((candidate) => getNotificationDisplayKey(candidate) === displayKey) === index;
+  });
 
   return (
     <div className="space-y-5">
@@ -368,80 +499,94 @@ export function MobileNotificationsCenter({
         </div>
       ) : null}
 
-      <section className="space-y-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Preferences</p>
-          <h2 className="mt-1 text-lg font-black text-[#082033]">Kategori alert per user</h2>
-        </div>
+      <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen} className="space-y-3">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 rounded-[1.2rem] bg-white px-4 py-3 text-left shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+          >
+            <span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">
+                Setting Notifikasi
+              </span>
+              <span className="mt-1 block text-sm font-black text-[#082033]">Kategori alert per user</span>
+            </span>
+            <ChevronDown
+              className={`size-5 shrink-0 text-[#003f78] transition-transform ${isSettingsOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+        </CollapsibleTrigger>
 
-        {preferences ? (
-          <>
-            <article className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black text-[#082033]">Push notifications</p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                    Kirim alert ke browser/mobile yang sudah subscribe.
-                  </p>
-                </div>
-                <Switch
-                  checked={preferences.pushEnabled}
-                  disabled={isBusy}
-                  onCheckedChange={(checked) => void updatePreferences({ pushEnabled: checked })}
-                />
-              </div>
-            </article>
-
-            {categoryCards.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article
-                  key={item.key}
-                  className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 gap-3">
-                      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
-                        <Icon className="size-5" />
-                      </span>
-                      <div>
-                        <p className="text-sm font-black text-[#082033]">{item.label}</p>
-                        <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{item.description}</p>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => void sendTestPush(item.category)}
-                          className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-[#003f78]"
-                        >
-                          Send test
-                        </button>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={preferences[item.key]}
-                      disabled={isBusy}
-                      onCheckedChange={(checked) => {
-                        const patch = {
-                          [item.key]: checked,
-                        } as Partial<NotificationPreferences>;
-                        void updatePreferences(patch);
-                      }}
-                    />
+        <CollapsibleContent className="space-y-3">
+          {preferences ? (
+            <>
+              <article className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-[#082033]">Push notifications</p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
+                      Kirim alert ke browser/mobile yang sudah subscribe.
+                    </p>
                   </div>
-                </article>
-              );
-            })}
-          </>
-        ) : (
-          <div className="rounded-[1.2rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-            Employee profile belum tersedia. Preference belum bisa dipakai.
-          </div>
-        )}
-      </section>
+                  <Switch
+                    checked={preferences.pushEnabled}
+                    disabled={isBusy}
+                    onCheckedChange={(checked) => void updatePreferences({ pushEnabled: checked })}
+                  />
+                </div>
+              </article>
+
+              {categoryCards.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <article
+                    key={item.key}
+                    className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 gap-3">
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
+                          <Icon className="size-5" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-black text-[#082033]">{item.label}</p>
+                          <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{item.description}</p>
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => void sendTestPush(item.category)}
+                            className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-[#003f78]"
+                          >
+                            Send test
+                          </button>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={preferences[item.key]}
+                        disabled={isBusy}
+                        onCheckedChange={(checked) => {
+                          const patch = {
+                            [item.key]: checked,
+                          } as Partial<NotificationPreferences>;
+                          void updatePreferences(patch);
+                        }}
+                      />
+                    </div>
+                  </article>
+                );
+              })}
+            </>
+          ) : (
+            <div className="rounded-[1.2rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+              Employee profile belum tersedia. Preference belum bisa dipakai.
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
 
       <section className="space-y-3">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Recent Alerts</p>
-        {data.notifications.map((item) => (
+        {visibleNotifications.map((item) => (
           <article
             key={item.id}
             className="flex items-center gap-3 rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
@@ -451,10 +596,10 @@ export function MobileNotificationsCenter({
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-black text-[#082033]">
-                {(item.eventType ?? item.channel).replaceAll("_", " ")}
+                {formatNotificationTitle(item)}
               </p>
               <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">
-                {parsePayloadPreview(item.payloadSnapshot) || item.errorMessage || `${item.channel} ${item.status}`}
+                {formatNotificationBody(item)}
               </p>
               <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
                 {formatDate(item.sentAt ?? item.createdAt)}
@@ -462,7 +607,7 @@ export function MobileNotificationsCenter({
             </div>
           </article>
         ))}
-        {data.notifications.length === 0 ? (
+        {visibleNotifications.length === 0 ? (
           <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada notifikasi untuk akun ini.
           </div>

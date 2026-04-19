@@ -12,9 +12,12 @@ import {
   managePointEventAction,
   manageTimesheetEntryAction,
   manageTrainingRecordAction,
+  createPenaltyEvent,
+  resolveDisputeAction,
   manageWellnessRecordAction,
   type AdminMutationState,
 } from "@/app/dashboard/admin-actions";
+import type { MasterCategoryOptionMap } from "@/lib/master-categories";
 
 type CrudAction = (formData: FormData) => Promise<AdminMutationState>;
 type NativeFormAction = (formData: FormData) => Promise<void>;
@@ -123,6 +126,21 @@ type PointEventRow = {
   points: number;
 };
 
+type CategoryType =
+  | "point_event_category"
+  | "hse_observation_category"
+  | "hse_incident_type"
+  | "hse_severity"
+  | "hse_observation_status"
+  | "hse_incident_status"
+  | "attendance_event_type"
+  | "attendance_status"
+  | "training_status"
+  | "wellness_metric_type"
+  | "wellness_status"
+  | "timesheet_status"
+  | "daily_report_status";
+
 function formatDateTimeInput(value: TimestampValue) {
   if (!value) return "";
 
@@ -159,6 +177,55 @@ function SelectField({
         {children}
       </select>
     </label>
+  );
+}
+
+function getCategoryOptions(
+  categoryOptions: MasterCategoryOptionMap | undefined,
+  type: CategoryType,
+  fallback: Array<{ code: string; label: string }>,
+) {
+  const options = categoryOptions?.[type]?.filter((option) => option.isActive) ?? [];
+
+  if (options.length === 0) {
+    return fallback;
+  }
+
+  return options.map((option) => ({
+    code: option.code,
+    label: option.label,
+  }));
+}
+
+function CategorySelectField({
+  name,
+  label,
+  type,
+  defaultValue,
+  categoryOptions,
+  fallback,
+}: {
+  name: string;
+  label: string;
+  type: CategoryType;
+  defaultValue?: string;
+  categoryOptions?: MasterCategoryOptionMap;
+  fallback: Array<{ code: string; label: string }>;
+}) {
+  const options = getCategoryOptions(categoryOptions, type, fallback);
+  const hasCurrentValue = defaultValue ? options.some((option) => option.code === defaultValue) : true;
+
+  return (
+    <SelectField name={name} label={label} defaultValue={defaultValue}>
+      {!hasCurrentValue && defaultValue ? (
+        <option value={defaultValue}>{defaultValue}</option>
+      ) : null}
+      {options.map((option) => (
+        <option key={`${type}-${option.code}`} value={option.code}>
+          {option.label}
+        </option>
+      ))}
+    </SelectField>
   );
 }
 
@@ -345,17 +412,19 @@ export function HseObservationRowActions({
   row,
   employees,
   sites,
+  categoryOptions,
 }: {
   row: HseObservationRow;
   employees: EmployeeOption[];
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageHseObservationAction}
-        statusOptions={hseObservationStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "hse_observation_status", hseObservationStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageHseObservationAction}>
@@ -371,15 +440,42 @@ export function HseObservationRowActions({
             <option value="none">Tanpa reporter</option>
             <EmployeeOptions employees={employees} />
           </SelectField>
-          <TextField name="category" label="Kategori" defaultValue={row.category} />
-          <TextField name="severity" label="Severity" defaultValue={row.severity} />
+          <CategorySelectField
+            name="category"
+            label="Kategori"
+            type="hse_observation_category"
+            defaultValue={row.category}
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Unsafe condition", label: "Unsafe condition" },
+              { code: "Unsafe act", label: "Unsafe act" },
+              { code: "Observation", label: "Observation" },
+            ]}
+          />
+          <CategorySelectField
+            name="severity"
+            label="Severity"
+            type="hse_severity"
+            defaultValue={row.severity}
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Low", label: "Low" },
+              { code: "Medium", label: "Medium" },
+              { code: "High", label: "High" },
+              { code: "Critical", label: "Critical" },
+            ]}
+          />
           <TextField name="title" label="Judul" defaultValue={row.title} />
           <TextField name="location" label="Lokasi" defaultValue={row.location} />
           <TextField name="observedAt" label="Waktu observasi" type="datetime-local" defaultValue={formatDateTimeInput(row.observedAt)} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {hseObservationStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "hse_observation_status",
+              hseObservationStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -393,16 +489,18 @@ export function HseObservationRowActions({
 export function HseIncidentRowActions({
   row,
   sites,
+  categoryOptions,
 }: {
   row: HseIncidentRow;
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageHseIncidentAction}
-        statusOptions={hseIncidentStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "hse_incident_status", hseIncidentStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageHseIncidentAction}>
@@ -410,14 +508,29 @@ export function HseIncidentRowActions({
           <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
             <SiteOptions sites={sites} />
           </SelectField>
-          <TextField name="type" label="Tipe" defaultValue={row.type} />
+          <CategorySelectField
+            name="type"
+            label="Tipe"
+            type="hse_incident_type"
+            defaultValue={row.type}
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Near miss", label: "Near miss" },
+              { code: "Property damage", label: "Property damage" },
+              { code: "Incident", label: "Incident" },
+            ]}
+          />
           <TextField name="title" label="Judul" defaultValue={row.title} />
           <TextField name="unitNumber" label="Unit / Area" defaultValue={row.unitNumber} />
           <TextField name="reportedAt" label="Waktu laporan" type="datetime-local" defaultValue={formatDateTimeInput(row.reportedAt)} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {hseIncidentStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "hse_incident_status",
+              hseIncidentStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -432,17 +545,19 @@ export function AttendanceRowActions({
   row,
   employees,
   sites,
+  categoryOptions,
 }: {
   row: AttendanceRow;
   employees: EmployeeOption[];
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageAttendanceRecordAction}
-        statusOptions={attendanceStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "attendance_status", attendanceStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageAttendanceRecordAction}>
@@ -453,14 +568,25 @@ export function AttendanceRowActions({
           <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
             <SiteOptions sites={sites} />
           </SelectField>
-          <SelectField name="eventType" label="Event" defaultValue={row.eventType}>
-            <option value="checked-in">Clock In</option>
-            <option value="checked-out">Clock Out</option>
-          </SelectField>
+          <CategorySelectField
+            name="eventType"
+            label="Event"
+            type="attendance_event_type"
+            defaultValue={row.eventType}
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "checked-in", label: "Clock In" },
+              { code: "checked-out", label: "Clock Out" },
+            ]}
+          />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {attendanceStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "attendance_status",
+              attendanceStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -478,16 +604,18 @@ export function AttendanceRowActions({
 export function TrainingRowActions({
   row,
   employees,
+  categoryOptions,
 }: {
   row: TrainingRow;
   employees: EmployeeOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageTrainingRecordAction}
-        statusOptions={trainingStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "training_status", trainingStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageTrainingRecordAction}>
@@ -499,9 +627,13 @@ export function TrainingRowActions({
           <TextField name="provider" label="Provider" defaultValue={row.provider} />
           <TextField name="expiresAt" label="Tanggal expiry" type="date" defaultValue={formatDateInput(row.expiresAt)} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {trainingStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "training_status",
+              trainingStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -514,16 +646,18 @@ export function TrainingRowActions({
 export function WellnessRowActions({
   row,
   employees,
+  categoryOptions,
 }: {
   row: WellnessRow;
   employees: EmployeeOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageWellnessRecordAction}
-        statusOptions={wellnessStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "wellness_status", wellnessStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageWellnessRecordAction}>
@@ -531,13 +665,28 @@ export function WellnessRowActions({
           <EmployeeOptions employees={employees} />
         </SelectField>
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField name="metricType" label="Metrik" defaultValue={row.metricType} />
+          <CategorySelectField
+            name="metricType"
+            label="Metrik"
+            type="wellness_metric_type"
+            defaultValue={row.metricType}
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Fit for Work", label: "Fit for Work" },
+              { code: "MCU", label: "MCU" },
+              { code: "BMI", label: "BMI" },
+            ]}
+          />
           <TextField name="metricValue" label="Nilai" defaultValue={row.metricValue} />
           <TextField name="recordedAt" label="Waktu catat" type="datetime-local" defaultValue={formatDateTimeInput(row.recordedAt)} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {wellnessStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "wellness_status",
+              wellnessStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -552,17 +701,19 @@ export function TimesheetRowActions({
   row,
   employees,
   sites,
+  categoryOptions,
 }: {
   row: TimesheetRow;
   employees: EmployeeOption[];
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageTimesheetEntryAction}
-        statusOptions={timesheetStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "timesheet_status", timesheetStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageTimesheetEntryAction}>
@@ -575,9 +726,13 @@ export function TimesheetRowActions({
           </SelectField>
           <TextField name="periodLabel" label="Periode" defaultValue={row.periodLabel} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {timesheetStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "timesheet_status",
+              timesheetStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -593,16 +748,18 @@ export function TimesheetRowActions({
 export function DailyReportRowActions({
   row,
   sites,
+  categoryOptions,
 }: {
   row: DailyReportRow;
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
       <RowStatusDeleteActions
         id={row.id}
         action={manageDailyReportAction}
-        statusOptions={dailyReportStatusOptions}
+        statusOptions={getCategoryOptions(categoryOptions, "daily_report_status", dailyReportStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageDailyReportAction}>
@@ -613,9 +770,13 @@ export function DailyReportRowActions({
           <TextField name="reportDate" label="Tanggal report" type="date" defaultValue={formatDateInput(row.reportDate)} />
           <TextField name="customerName" label="Customer" defaultValue={row.customerName} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
-            {dailyReportStatusOptions.map((status) => (
-              <option key={status} value={status}>
-                {status.replaceAll("_", " ")}
+            {getCategoryOptions(
+              categoryOptions,
+              "daily_report_status",
+              dailyReportStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
               </option>
             ))}
           </SelectField>
@@ -633,9 +794,11 @@ export function DailyReportRowActions({
 export function PointEventRowActions({
   row,
   employees,
+  categoryOptions,
 }: {
   row: PointEventRow;
   employees: EmployeeOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
@@ -647,7 +810,18 @@ export function PointEventRowActions({
           <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
             <EmployeeOptions employees={employees} />
           </SelectField>
-          <TextField name="category" label="Kategori" defaultValue={row.category} />
+          <CategorySelectField
+            name="category"
+            label="Kategori"
+            type="point_event_category"
+            defaultValue={row.category}
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Manual Adjustment", label: "Manual Adjustment" },
+              { code: "Bonus", label: "Bonus" },
+              { code: "Penalty", label: "Penalty" },
+            ]}
+          />
           <TextField name="label" label="Label" defaultValue={row.label} />
           <TextField name="points" label="Poin" type="number" defaultValue={row.points} />
         </div>
@@ -659,9 +833,11 @@ export function PointEventRowActions({
 export function HseCrudForms({
   employees,
   sites,
+  categoryOptions,
 }: {
   employees: EmployeeOption[];
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -678,15 +854,43 @@ export function HseCrudForms({
             <option value="none">Tanpa reporter</option>
             <EmployeeOptions employees={employees} />
           </SelectField>
-          <TextField name="category" label="Kategori" placeholder="Unsafe condition" />
-          <TextField name="severity" label="Severity" placeholder="Low / Medium / High" defaultValue="Low" />
+          <CategorySelectField
+            name="category"
+            label="Kategori"
+            type="hse_observation_category"
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Unsafe condition", label: "Unsafe condition" },
+              { code: "Unsafe act", label: "Unsafe act" },
+              { code: "Observation", label: "Observation" },
+            ]}
+          />
+          <CategorySelectField
+            name="severity"
+            label="Severity"
+            type="hse_severity"
+            defaultValue="Low"
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Low", label: "Low" },
+              { code: "Medium", label: "Medium" },
+              { code: "High", label: "High" },
+              { code: "Critical", label: "Critical" },
+            ]}
+          />
           <TextField name="title" label="Judul" placeholder="Temuan area kerja" />
           <TextField name="location" label="Lokasi" placeholder="Workshop / pit / office" />
           <TextField name="observedAt" label="Waktu observasi" type="datetime-local" />
           <SelectField name="status" label="Status" defaultValue="open">
-            <option value="open">Open</option>
-            <option value="action_taken">Action Taken</option>
-            <option value="closed">Closed</option>
+            {getCategoryOptions(
+              categoryOptions,
+              "hse_observation_status",
+              hseObservationStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
+              </option>
+            ))}
           </SelectField>
         </div>
         <Textarea name="notes" placeholder="Catatan temuan dan tindakan awal" rows={3} />
@@ -701,14 +905,30 @@ export function HseCrudForms({
           <SelectField name="siteId" label="Site">
             <SiteOptions sites={sites} />
           </SelectField>
-          <TextField name="type" label="Tipe" placeholder="Near miss / property damage" />
+          <CategorySelectField
+            name="type"
+            label="Tipe"
+            type="hse_incident_type"
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "Near miss", label: "Near miss" },
+              { code: "Property damage", label: "Property damage" },
+              { code: "Incident", label: "Incident" },
+            ]}
+          />
           <TextField name="title" label="Judul" placeholder="Ringkasan incident" />
           <TextField name="unitNumber" label="Unit / Area" placeholder="Unit-001" defaultValue="-" />
           <TextField name="reportedAt" label="Waktu laporan" type="datetime-local" />
           <SelectField name="status" label="Status" defaultValue="investigating">
-            <option value="investigating">Investigating</option>
-            <option value="closed">Closed</option>
-            <option value="open">Open</option>
+            {getCategoryOptions(
+              categoryOptions,
+              "hse_incident_status",
+              hseIncidentStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
+              </option>
+            ))}
           </SelectField>
         </div>
         <Textarea name="impact" placeholder="Dampak dan tindak lanjut awal" rows={3} />
@@ -720,9 +940,11 @@ export function HseCrudForms({
 export function HcCrudForms({
   employees,
   sites,
+  categoryOptions,
 }: {
   employees: EmployeeOption[];
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-3">
@@ -738,14 +960,27 @@ export function HcCrudForms({
           <SiteOptions sites={sites} />
         </SelectField>
         <div className="grid gap-3 sm:grid-cols-2">
-          <SelectField name="eventType" label="Event" defaultValue="checked-in">
-            <option value="checked-in">Clock In</option>
-            <option value="checked-out">Clock Out</option>
-          </SelectField>
+          <CategorySelectField
+            name="eventType"
+            label="Event"
+            type="attendance_event_type"
+            defaultValue="checked-in"
+            categoryOptions={categoryOptions}
+            fallback={[
+              { code: "checked-in", label: "Clock In" },
+              { code: "checked-out", label: "Clock Out" },
+            ]}
+          />
           <SelectField name="status" label="Status" defaultValue="verified">
-            <option value="verified">Verified</option>
-            <option value="needs_review">Needs Review</option>
-            <option value="overtime">Overtime</option>
+            {getCategoryOptions(
+              categoryOptions,
+              "attendance_status",
+              attendanceStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+            ).map((status) => (
+              <option key={status.code} value={status.code}>
+                {status.label}
+              </option>
+            ))}
           </SelectField>
           <TextField name="eventTime" label="Waktu" type="datetime-local" />
           <TextField name="locationNote" label="Lokasi / Catatan" placeholder="GPS / area kerja" />
@@ -766,9 +1001,15 @@ export function HcCrudForms({
         <TextField name="provider" label="Provider" placeholder="Provider training" />
         <TextField name="expiresAt" label="Tanggal expiry" type="date" />
         <SelectField name="status" label="Status" defaultValue="active">
-          <option value="active">Active</option>
-          <option value="expiring_soon">Expiring Soon</option>
-          <option value="urgent">Urgent</option>
+          {getCategoryOptions(
+            categoryOptions,
+            "training_status",
+            trainingStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+          ).map((status) => (
+            <option key={status.code} value={status.code}>
+              {status.label}
+            </option>
+          ))}
         </SelectField>
       </CrudFormCard>
 
@@ -780,13 +1021,29 @@ export function HcCrudForms({
         <SelectField name="employeeId" label="Karyawan">
           <EmployeeOptions employees={employees} />
         </SelectField>
-        <TextField name="metricType" label="Metrik" placeholder="Fit for Work / MCU / BMI" />
+        <CategorySelectField
+          name="metricType"
+          label="Metrik"
+          type="wellness_metric_type"
+          categoryOptions={categoryOptions}
+          fallback={[
+            { code: "Fit for Work", label: "Fit for Work" },
+            { code: "MCU", label: "MCU" },
+            { code: "BMI", label: "BMI" },
+          ]}
+        />
         <TextField name="metricValue" label="Nilai" placeholder="Fit / 24.1 / normal" />
         <TextField name="recordedAt" label="Waktu catat" type="datetime-local" />
         <SelectField name="status" label="Status" defaultValue="healthy">
-          <option value="healthy">Healthy</option>
-          <option value="follow_up">Follow Up</option>
-          <option value="attention">Attention</option>
+          {getCategoryOptions(
+            categoryOptions,
+            "wellness_status",
+            wellnessStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+          ).map((status) => (
+            <option key={status.code} value={status.code}>
+              {status.label}
+            </option>
+          ))}
         </SelectField>
         <Textarea name="notes" placeholder="Catatan HC/wellness" rows={3} />
       </CrudFormCard>
@@ -797,9 +1054,11 @@ export function HcCrudForms({
 export function TimesheetCrudForm({
   employees,
   sites,
+  categoryOptions,
 }: {
   employees: EmployeeOption[];
   sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
     <CrudFormCard
@@ -816,9 +1075,15 @@ export function TimesheetCrudForm({
         </SelectField>
         <TextField name="periodLabel" label="Periode" placeholder="April 2026 - Week 3" />
         <SelectField name="status" label="Status" defaultValue="pending">
-          <option value="pending">Pending</option>
-          <option value="ready_for_payroll">Ready for Payroll</option>
-          <option value="needs_correction">Needs Correction</option>
+          {getCategoryOptions(
+            categoryOptions,
+            "timesheet_status",
+            timesheetStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+          ).map((status) => (
+            <option key={status.code} value={status.code}>
+              {status.label}
+            </option>
+          ))}
         </SelectField>
         <TextField name="regularMinutes" label="Menit reguler" type="number" defaultValue={480} />
         <TextField name="overtimeMinutes" label="Menit lembur" type="number" defaultValue={0} />
@@ -828,7 +1093,13 @@ export function TimesheetCrudForm({
   );
 }
 
-export function DailyReportCrudForm({ sites }: { sites: SiteOption[] }) {
+export function DailyReportCrudForm({
+  sites,
+  categoryOptions,
+}: {
+  sites: SiteOption[];
+  categoryOptions?: MasterCategoryOptionMap;
+}) {
   return (
     <CrudFormCard
       title="Daily Report"
@@ -842,9 +1113,15 @@ export function DailyReportCrudForm({ sites }: { sites: SiteOption[] }) {
         <TextField name="reportDate" label="Tanggal report" type="date" />
         <TextField name="customerName" label="Customer" placeholder="Nama customer" />
         <SelectField name="status" label="Status" defaultValue="draft">
-          <option value="draft">Draft</option>
-          <option value="ready">Ready</option>
-          <option value="sent">Sent</option>
+          {getCategoryOptions(
+            categoryOptions,
+            "daily_report_status",
+            dailyReportStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+          ).map((status) => (
+            <option key={status.code} value={status.code}>
+              {status.label}
+            </option>
+          ))}
         </SelectField>
         <TextField name="totalSections" label="Total section" type="number" defaultValue={4} />
         <TextField name="readySections" label="Section siap" type="number" defaultValue={0} />
@@ -856,7 +1133,13 @@ export function DailyReportCrudForm({ sites }: { sites: SiteOption[] }) {
   );
 }
 
-export function PointEventCrudForm({ employees }: { employees: EmployeeOption[] }) {
+export function PointEventCrudForm({
+  employees,
+  categoryOptions,
+}: {
+  employees: EmployeeOption[];
+  categoryOptions?: MasterCategoryOptionMap;
+}) {
   return (
     <CrudFormCard
       title="Point Event"
@@ -867,7 +1150,18 @@ export function PointEventCrudForm({ employees }: { employees: EmployeeOption[] 
         <SelectField name="employeeId" label="Karyawan">
           <EmployeeOptions employees={employees} />
         </SelectField>
-        <TextField name="category" label="Kategori" placeholder="Manual Adjustment" />
+        <CategorySelectField
+          name="category"
+          label="Kategori"
+          type="point_event_category"
+          defaultValue="Manual Adjustment"
+          categoryOptions={categoryOptions}
+          fallback={[
+            { code: "Manual Adjustment", label: "Manual Adjustment" },
+            { code: "Bonus", label: "Bonus" },
+            { code: "Penalty", label: "Penalty" },
+          ]}
+        />
         <TextField name="label" label="Label" placeholder="Bonus kedisiplinan" />
         <TextField name="points" label="Poin" type="number" defaultValue={5} />
       </div>
@@ -881,4 +1175,55 @@ export const attendanceStatusOptions = ["verified", "needs_review", "overtime"];
 export const trainingStatusOptions = ["active", "expiring_soon", "urgent"];
 export const wellnessStatusOptions = ["healthy", "follow_up", "attention"];
 export const timesheetStatusOptions = ["pending", "ready_for_payroll", "needs_correction"];
-export const dailyReportStatusOptions = ["draft", "ready", "sent"];
+export const dailyReportStatusOptions = ["draft", "submitted", "approved"];
+
+export function PenaltyEventCrudForm({
+  employees,
+}: {
+  employees: EmployeeOption[];
+}) {
+  return (
+    <CrudFormCard
+      title="Manual Penalty"
+      description="Tambahkan catatan penalti manual untuk karyawan (mengurangi poin)."
+      action={createPenaltyEvent as unknown as CrudAction}
+    >
+      <div className="grid gap-3 md:grid-cols-3">
+        <SelectField name="employeeId" label="Karyawan">
+          <EmployeeOptions employees={employees} />
+        </SelectField>
+        <TextField name="penaltyCode" label="Kode Penalti" placeholder="Misal: ALPA" />
+        <TextField name="pointsDeducted" label="Potongan Poin" type="number" defaultValue={50} />
+      </div>
+      <Textarea name="description" placeholder="Deskripsi atau alasan penalti" rows={2} className="mt-3" />
+    </CrudFormCard>
+  );
+}
+
+export function DisputeReviewActions({
+  disputeId,
+}: {
+  disputeId: number;
+}) {
+  const formAction = resolveDisputeAction as unknown as NativeFormAction;
+  
+  return (
+    <details className="min-w-[280px] rounded-lg border border-input bg-background p-3">
+      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-normal text-muted-foreground">
+        Review Dispute
+      </summary>
+      <form action={formAction} className="mt-3 grid gap-3">
+        <input type="hidden" name="disputeId" value={disputeId} />
+        <Textarea name="resolutionNotes" placeholder="Catatan hasil review" rows={2} />
+        <div className="flex gap-2">
+          <Button type="submit" name="status" value="accepted" size="sm" variant="default" className="w-full">
+            Terima (Refund Poin)
+          </Button>
+          <Button type="submit" name="status" value="rejected" size="sm" variant="destructive" className="w-full">
+            Tolak
+          </Button>
+        </div>
+      </form>
+    </details>
+  );
+}

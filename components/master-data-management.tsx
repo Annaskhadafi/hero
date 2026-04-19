@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3 } from "lucide-react";
+import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3, Tags } from "lucide-react";
 import { toast } from "sonner";
-import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift } from "@/lib/master-data";
+import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift, MasterCategoryOption } from "@/lib/master-data";
 import {
   manageAttendanceShiftAction,
+  manageMasterCategoryOptionAction,
   manageSectionAction,
   manageDepartmentAction,
   manageSiteAction,
@@ -58,6 +59,7 @@ interface MasterDataManagementProps {
   sites: MasterSite[];
   positions: MasterPosition[];
   attendanceShifts: MasterAttendanceShift[];
+  categoryOptions: MasterCategoryOption[];
   orgStructures: OrgStructure[];
   approvalMatrices: ApprovalMatrix[];
   employees: any[];
@@ -67,6 +69,25 @@ const INITIAL_ACTION_STATE: MasterDataActionState = {
   status: "idle",
   message: "",
 };
+
+const CATEGORY_TYPE_TABS = [
+  { type: "activity_category", label: "Activity" },
+  { type: "point_event_category", label: "Point Event" },
+  { type: "hse_observation_category", label: "HSE Observation" },
+  { type: "hse_incident_type", label: "HSE Incident" },
+  { type: "hse_severity", label: "HSE Severity" },
+  { type: "hse_observation_status", label: "Observation Status" },
+  { type: "hse_incident_status", label: "Incident Status" },
+  { type: "attendance_event_type", label: "Attendance Event" },
+  { type: "attendance_status", label: "Attendance Status" },
+  { type: "training_status", label: "Training Status" },
+  { type: "wellness_metric_type", label: "Wellness Metric" },
+  { type: "wellness_status", label: "Wellness Status" },
+  { type: "timesheet_status", label: "Timesheet Status" },
+  { type: "daily_report_status", label: "Report Status" },
+] as const;
+
+type CategoryTypeKey = (typeof CATEGORY_TYPE_TABS)[number]["type"];
 
 type IndonesiaRegionOption = {
   id: string;
@@ -142,6 +163,7 @@ export function MasterDataManagement({
   sites,
   positions,
   attendanceShifts,
+  categoryOptions,
   orgStructures,
   approvalMatrices,
   employees,
@@ -162,7 +184,7 @@ export function MasterDataManagement({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 bg-surface-container-low p-2 lg:grid-cols-8">
+        <TabsList className="grid w-full grid-cols-2 bg-surface-container-low p-2 lg:grid-cols-9">
           <TabsTrigger value="sections" className="flex items-center gap-2">
             <Layers className="size-4" />
             <span>Section</span>
@@ -196,6 +218,13 @@ export function MasterDataManagement({
             <span>Shift</span>
             <Badge variant="secondary" className="ml-1 bg-[#e0f2fe] text-[#0369a1]">
               {attendanceShifts.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="categories" className="flex items-center gap-2">
+            <Tags className="size-4" />
+            <span>Kategori</span>
+            <Badge variant="secondary" className="ml-1 bg-[#eef2ff] text-[#4f46e5]">
+              {categoryOptions.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="org-structures" className="flex items-center gap-2">
@@ -238,6 +267,10 @@ export function MasterDataManagement({
           <AttendanceShiftManagement attendanceShifts={attendanceShifts} />
         </TabsContent>
 
+        <TabsContent value="categories" className="space-y-4">
+          <CategoryManagement categoryOptions={categoryOptions} />
+        </TabsContent>
+
         <TabsContent value="org-structures" className="space-y-4">
           <OrgStructureBuilder
             orgStructures={orgStructures}
@@ -278,6 +311,304 @@ function getAttendanceShiftWindowLabel(shift: Pick<MasterAttendanceShift, "start
   }
 
   return "Sesuai assignment";
+}
+
+function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCategoryOption[] }) {
+  const router = useRouter();
+  const [activeType, setActiveType] = useState<CategoryTypeKey>(
+    CATEGORY_TYPE_TABS[0].type,
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingOption, setEditingOption] = useState<MasterCategoryOption | null>(null);
+  const [formData, setFormData] = useState<{
+    type: CategoryTypeKey;
+    code: string;
+    label: string;
+    description: string;
+    sortOrder: number;
+    isActive: boolean;
+  }>({
+    type: CATEGORY_TYPE_TABS[0].type,
+    code: "",
+    label: "",
+    description: "",
+    sortOrder: 0,
+    isActive: true,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const optionsForType = categoryOptions.filter((option) => option.type === activeType);
+  const filteredOptions = optionsForType.filter((option) => {
+    const searchValue = `${option.code} ${option.label} ${option.description}`.toLowerCase();
+    return searchValue.includes(searchQuery.toLowerCase());
+  });
+
+  const activeTypeMeta = CATEGORY_TYPE_TABS.find((item) => item.type === activeType) ?? CATEGORY_TYPE_TABS[0];
+
+  const handleOpenDialog = (option?: MasterCategoryOption) => {
+    if (option) {
+      setEditingOption(option);
+      setFormData({
+        type: option.type as CategoryTypeKey,
+        code: option.code,
+        label: option.label,
+        description: option.description,
+        sortOrder: option.sortOrder,
+        isActive: option.isActive,
+      });
+    } else {
+      setEditingOption(null);
+      setFormData({
+        type: activeType,
+        code: "",
+        label: "",
+        description: "",
+        sortOrder: optionsForType.length + 1,
+        isActive: true,
+      });
+    }
+
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+
+    const form = new FormData();
+    form.append("intent", editingOption ? "update" : "create");
+    if (editingOption) form.append("id", editingOption.id.toString());
+    form.append("type", formData.type);
+    form.append("code", formData.code);
+    form.append("label", formData.label);
+    form.append("description", formData.description);
+    form.append("sortOrder", formData.sortOrder.toString());
+    form.append("isActive", formData.isActive.toString());
+
+    const result = await manageMasterCategoryOptionAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      setIsDialogOpen(false);
+      setEditingOption(null);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const handleDelete = async (option: MasterCategoryOption) => {
+    if (!confirm(`Hapus kategori "${option.label}"?`)) {
+      return;
+    }
+
+    const form = new FormData();
+    form.append("intent", "delete");
+    form.append("id", option.id.toString());
+
+    const result = await manageMasterCategoryOptionAction(INITIAL_ACTION_STATE, form);
+    if (result.status === "success") {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  return (
+    <Card className="border-[#e2e8f0]">
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Master Kategori Operasional</CardTitle>
+          <CardDescription className="text-sm text-[#64748b]">
+            Satu pusat opsi untuk dropdown HSE, HC, timesheet, report, activity, dan point event.
+          </CardDescription>
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+          <Plus className="mr-2 size-4" />
+          Tambah Kategori
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Tabs value={activeType} onValueChange={(value) => setActiveType(value as typeof activeType)}>
+          <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+            {CATEGORY_TYPE_TABS.map((item) => (
+              <TabsTrigger key={item.type} value={item.type}>
+                {item.label}
+                <Badge variant="secondary" className="ml-2">
+                  {categoryOptions.filter((option) => option.type === item.type).length}
+                </Badge>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#1e293b]">{activeTypeMeta.label}</p>
+              <p className="text-xs text-[#64748b]">Kode dipakai sebagai nilai yang tersimpan di database.</p>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+              <Input
+                placeholder="Cari kategori..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="w-full pl-9 sm:w-[260px]"
+              />
+            </div>
+          </div>
+          {CATEGORY_TYPE_TABS.map((item) => (
+            <TabsContent key={item.type} value={item.type} className="mt-4">
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#F5F7F9]">
+                      <TableHead className="w-[180px]">Kode</TableHead>
+                      <TableHead>Label</TableHead>
+                      <TableHead>Deskripsi</TableHead>
+                      <TableHead className="w-[90px]">Urutan</TableHead>
+                      <TableHead className="w-[100px]">Status</TableHead>
+                      <TableHead className="w-[100px]">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredOptions.length > 0 ? (
+                      filteredOptions.map((option) => (
+                        <TableRow key={option.id}>
+                          <TableCell className="font-mono text-sm font-medium">{option.code}</TableCell>
+                          <TableCell className="font-medium">{option.label}</TableCell>
+                          <TableCell className="text-[#64748b]">{option.description || "-"}</TableCell>
+                          <TableCell>{option.sortOrder}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={option.isActive ? "default" : "secondary"}
+                              className={option.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
+                            >
+                              {option.isActive ? "Aktif" : "Nonaktif"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(option)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                                <Pencil className="size-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(option)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                          Tidak ada kategori untuk tipe ini.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+          ))}
+        </Tabs>
+      </CardContent>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>{editingOption ? "Edit Kategori" : "Tambah Kategori"}</DialogTitle>
+            <DialogDescription>
+              Opsi aktif langsung muncul di dropdown halaman terkait.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="category-type">Jenis Kategori</Label>
+              <Select
+                value={formData.type}
+                onValueChange={(value) => setFormData({ ...formData, type: value as typeof formData.type })}
+              >
+                <SelectTrigger id="category-type">
+                  <SelectValue placeholder="Pilih jenis kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORY_TYPE_TABS.map((item) => (
+                    <SelectItem key={item.type} value={item.type}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="category-code">Kode / Value</Label>
+                <Input
+                  id="category-code"
+                  value={formData.code}
+                  onChange={(event) => setFormData({ ...formData, code: event.target.value })}
+                  placeholder="Manual Adjustment"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category-label">Label Tampilan</Label>
+                <Input
+                  id="category-label"
+                  value={formData.label}
+                  onChange={(event) => setFormData({ ...formData, label: event.target.value })}
+                  placeholder="Manual Adjustment"
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category-description">Deskripsi</Label>
+              <Textarea
+                id="category-description"
+                value={formData.description}
+                onChange={(event) => setFormData({ ...formData, description: event.target.value })}
+                rows={3}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="category-sort">Urutan</Label>
+                <Input
+                  id="category-sort"
+                  type="number"
+                  min={0}
+                  value={formData.sortOrder}
+                  onChange={(event) => setFormData({ ...formData, sortOrder: Number(event.target.value) || 0 })}
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-7">
+                <Switch
+                  id="category-active"
+                  checked={formData.isActive}
+                  onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                />
+                <Label htmlFor="category-active">Aktif</Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Batal
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+                {isSubmitting ? "Menyimpan..." : "Simpan Kategori"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
 }
 
 function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: MasterAttendanceShift[] }) {

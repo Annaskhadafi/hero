@@ -22,6 +22,11 @@ import {
   orgChartStructures,
   orgNodeAssignments,
   pointEvents,
+  penaltyEvents,
+  pointDisputes,
+  levels,
+  badges,
+  employeeBadges,
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
@@ -40,6 +45,10 @@ import {
 } from "@/db/schema/hero";
 import { session, user as authUser } from "@/db/schema/auth";
 import { ensureApprovalBlueprintSeedData } from "@/lib/approval-blueprint";
+import {
+  ensureMasterCategoryTables,
+  getActiveMasterCategoryOptionMap,
+} from "@/lib/master-categories";
 
 let seedPromise: Promise<void> | null = null;
 let governanceSeedPromise: Promise<void> | null = null;
@@ -1802,9 +1811,93 @@ export async function getPointsPageData() {
     })
     .from(pointEvents)
     .innerJoin(employees, eq(pointEvents.employeeId, employees.id))
-    .orderBy(desc(pointEvents.createdAt));
+    .orderBy(desc(pointEvents.createdAt))
+    .limit(50);
 
-  return { leaderboard, recentPointEvents };
+  const recentPenaltyEvents = await db
+    .select({
+      id: penaltyEvents.id,
+      employeeId: penaltyEvents.employeeId,
+      employeeName: employees.name,
+      penaltyCode: penaltyEvents.penaltyCode,
+      description: penaltyEvents.description,
+      pointsDeducted: penaltyEvents.pointsDeducted,
+      isDisputed: penaltyEvents.isDisputed,
+      createdAt: penaltyEvents.createdAt,
+    })
+    .from(penaltyEvents)
+    .innerJoin(employees, eq(penaltyEvents.employeeId, employees.id))
+    .orderBy(desc(penaltyEvents.createdAt))
+    .limit(50);
+
+  const disputesQueue = await db
+    .select({
+      id: pointDisputes.id,
+      penaltyEventId: pointDisputes.penaltyEventId,
+      employeeId: penaltyEvents.employeeId,
+      employeeName: employees.name,
+      reason: pointDisputes.reason,
+      status: pointDisputes.status,
+      resolutionNotes: pointDisputes.resolutionNotes,
+      createdAt: pointDisputes.createdAt,
+      penaltyCode: penaltyEvents.penaltyCode,
+      pointsDeducted: penaltyEvents.pointsDeducted,
+    })
+    .from(pointDisputes)
+    .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
+    .innerJoin(employees, eq(penaltyEvents.employeeId, employees.id))
+    .orderBy(desc(pointDisputes.createdAt));
+
+  const allLevels = await db.select().from(levels).orderBy(asc(levels.minPoints));
+  const allBadges = await db.select().from(badges);
+
+  return { 
+    leaderboard, 
+    recentPointEvents, 
+    recentPenaltyEvents, 
+    disputes: disputesQueue, 
+    allLevels, 
+    allBadges 
+  };
+}
+
+export async function evaluatePointThresholdBadges(
+  tx: any,
+  employeeId: number,
+  currentPoints: number
+) {
+  // Find badges with rule "points_threshold" where threshold <= currentPoints
+  const eligibleBadges = await tx
+    .select()
+    .from(badges)
+    .where(
+      and(
+        eq(badges.isActive, true),
+        eq(badges.autoAssignRule, "points_threshold"),
+        sql`${badges.autoAssignThreshold} <= ${currentPoints}`
+      )
+    );
+
+  if (eligibleBadges.length === 0) return;
+
+  // Retrieve badges already earned by the employee to avoid duplication
+  const existingEmployeeBadges = await tx
+    .select({ badgeId: employeeBadges.badgeId })
+    .from(employeeBadges)
+    .where(eq(employeeBadges.employeeId, employeeId));
+
+  const existingBadgeIds = new Set(existingEmployeeBadges.map((e: any) => e.badgeId));
+
+  const badgesToAssign = eligibleBadges.filter((b: any) => !existingBadgeIds.has(b.id));
+
+  if (badgesToAssign.length > 0) {
+    await tx.insert(employeeBadges).values(
+      badgesToAssign.map((b: any) => ({
+        employeeId,
+        badgeId: b.id,
+      }))
+    );
+  }
 }
 
 export async function getHsePageData() {
@@ -1901,8 +1994,9 @@ export async function getHcPageData() {
 
 export async function getOperationalCrudOptions() {
   await ensureHeroSeedData();
+  await ensureMasterCategoryTables();
 
-  const [employeeRows, siteRows] = await Promise.all([
+  const [employeeRows, siteRows, categoryOptions] = await Promise.all([
     db
       .select({
         id: employees.id,
@@ -1923,11 +2017,13 @@ export async function getOperationalCrudOptions() {
       .from(sites)
       .where(eq(sites.isActive, true))
       .orderBy(asc(sites.name)),
+    getActiveMasterCategoryOptionMap(),
   ]);
 
   return {
     employees: employeeRows,
     sites: siteRows,
+    categoryOptions,
   };
 }
 
