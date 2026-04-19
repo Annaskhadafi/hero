@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
+import Script from "next/script";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -22,6 +23,65 @@ const manrope = Manrope({
   subsets: ["latin"],
   display: "swap",
 });
+
+const stripExtensionHydrationAttrs = `
+(() => {
+  const fixedAttributes = new Set([
+    "bis_skin_checked",
+    "bis_register",
+    "data-atm-ext-installed"
+  ]);
+
+  const shouldStrip = (name) => fixedAttributes.has(name) || /^__processed_[\\w-]+__$/.test(name);
+
+  const stripNode = (node) => {
+    if (!node || node.nodeType !== 1) return;
+    for (const attr of Array.from(node.attributes)) {
+      if (shouldStrip(attr.name)) node.removeAttribute(attr.name);
+    }
+  };
+
+  const stripTree = (root) => {
+    stripNode(root);
+    if (!document.createTreeWalker) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    let node = walker.nextNode();
+    while (node) {
+      stripNode(node);
+      node = walker.nextNode();
+    }
+  };
+
+  const start = () => {
+    stripTree(document.documentElement);
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          stripNode(mutation.target);
+          continue;
+        }
+        for (const node of mutation.addedNodes) {
+          stripTree(node);
+        }
+      }
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true
+    });
+    window.addEventListener("load", () => window.setTimeout(() => observer.disconnect(), 3000), {
+      once: true
+    });
+  };
+
+  if (document.readyState === "loading") {
+    start();
+  } else {
+    start();
+  }
+})();
+`;
 
 export const metadata: Metadata = {
   title: "HERO",
@@ -53,8 +113,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
+      <Script id="strip-extension-hydration-attrs" strategy="beforeInteractive">
+        {stripExtensionHydrationAttrs}
+      </Script>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
       >
         <ThemeProvider
           attribute="class"
