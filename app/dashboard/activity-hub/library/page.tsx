@@ -83,7 +83,7 @@ export default async function DailyActivityLibraryPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[280px]">Activity</TableHead>
-                      <TableHead className="min-w-[160px]">Scope</TableHead>
+                      <TableHead className="min-w-[210px]">Scope</TableHead>
                       <TableHead className="min-w-[150px]">Scoring</TableHead>
                       <TableHead className="min-w-[220px]">Validation</TableHead>
                       <TableHead className="min-w-[190px]">Status</TableHead>
@@ -105,6 +105,9 @@ export default async function DailyActivityLibraryPage() {
                           <div className="text-sm">
                             <p>{row.departmentName ?? "Global"}</p>
                             <p className="text-xs text-muted-foreground">{row.sectionName ?? "-"}</p>
+                            <p className="mt-1 text-xs font-semibold text-primary">
+                              {row.siteName ?? "Semua site"}
+                            </p>
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
@@ -138,6 +141,7 @@ export default async function DailyActivityLibraryPage() {
                             row={row}
                             departments={data.departments}
                             sections={data.sections}
+                            sites={data.sites}
                             currentEmployeeId={data.currentEmployee?.id ?? null}
                           />
                         </TableCell>
@@ -184,6 +188,17 @@ export default async function DailyActivityLibraryPage() {
                   <Label className="grid gap-2 sm:col-span-2">
                     Activity name
                     <Input name="activityName" placeholder="Nama aktivitas resmi yang tampil ke karyawan" required />
+                  </Label>
+                  <Label className="grid gap-2 sm:col-span-2">
+                    Lokasi kerja / Site
+                    <select name="siteId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
+                      <option value="">Global - semua site</option>
+                      {data.sites.map((site) => (
+                        <option key={site.id} value={site.id}>
+                          {site.name}
+                        </option>
+                      ))}
+                    </select>
                   </Label>
                   <Label className="grid gap-2">
                     Department

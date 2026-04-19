@@ -32,6 +32,7 @@ type ActivityLibraryRow = {
   activityCode: string;
   activityName: string;
   category: string;
+  siteName: string | null;
   departmentName: string | null;
   sectionName: string | null;
   basePoints: number;
@@ -66,6 +67,7 @@ function toCsvRows(rows: ActivityLibraryRow[]): ActivityLibraryCsvRow[] {
     activityCode: row.activityCode,
     activityName: row.activityName,
     category: row.category,
+    site: row.siteName ?? "",
     department: row.departmentName ?? "",
     section: row.sectionName ?? "",
     basePoints: row.basePoints,
@@ -259,4 +261,3 @@ export function ActivityLibraryImportExport({
     </div>
   );
 }
-

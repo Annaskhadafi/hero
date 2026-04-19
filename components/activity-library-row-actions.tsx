@@ -24,6 +24,8 @@ type ActivityLibraryRow = {
   activityCode: string;
   activityName: string;
   category: string;
+  siteId: number | null;
+  siteName: string | null;
   departmentId: number | null;
   sectionId: number | null;
   departmentName: string | null;
@@ -56,6 +58,12 @@ type SectionOption = {
   code: string;
   name: string;
   departmentId: number | null;
+};
+
+type SiteOption = {
+  id: number;
+  name: string;
+  location: string;
 };
 
 const CATEGORY_OPTIONS = ["Technical", "HSE", "Administrative", "Training", "Wellness", "Standby"];
@@ -97,11 +105,13 @@ export function ActivityLibraryRowActions({
   row,
   departments,
   sections,
+  sites,
   currentEmployeeId,
 }: {
   row: ActivityLibraryRow;
   departments: DepartmentOption[];
   sections: SectionOption[];
+  sites: SiteOption[];
   currentEmployeeId: number | null;
 }) {
   const router = useRouter();
@@ -213,6 +223,21 @@ export function ActivityLibraryRowActions({
               <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
                 Activity name
                 <Input name="activityName" defaultValue={row.activityName} required />
+              </Label>
+              <Label className="grid gap-2 text-sm font-semibold md:col-span-2">
+                Lokasi kerja / Site
+                <select
+                  name="siteId"
+                  defaultValue={row.siteId ?? ""}
+                  className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
+                >
+                  <option value="">Global - semua site</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </select>
               </Label>
               <Label className="grid gap-2 text-sm font-semibold">
                 Department
@@ -328,4 +353,3 @@ export function ActivityLibraryRowActions({
     </div>
   );
 }
-

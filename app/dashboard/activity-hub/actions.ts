@@ -18,6 +18,7 @@ import {
   penaltyEvents,
   pointDisputes,
   pointEvents,
+  sites,
   streakRecords,
 } from "@/db/schema/hero";
 import {
@@ -63,6 +64,7 @@ const manageLibrarySchema = z.object({
   activityCode: z.string().trim().min(2).max(24).optional().default(""),
   activityName: z.string().trim().min(3).max(160).optional().default(""),
   category: z.string().trim().min(3).max(50).optional().default("Technical"),
+  siteId: optionalPositiveInt,
   departmentId: optionalPositiveInt,
   sectionId: optionalPositiveInt,
   basePoints: z.coerce.number().int().min(0).max(500).optional().default(5),
@@ -196,6 +198,29 @@ function resolveMasterReference(
       (row) =>
         normalizeImportLookup(row.code) === normalized ||
         normalizeImportLookup(row.name) === normalized,
+    )?.id ?? null
+  );
+}
+
+function resolveSiteReference(
+  value: string,
+  rows: Array<{ id: number; contractNumber: string; name: string; location: string }>,
+) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const numericId = Number(trimmed);
+  if (Number.isInteger(numericId) && numericId > 0) {
+    return rows.find((row) => row.id === numericId)?.id ?? null;
+  }
+
+  const normalized = normalizeImportLookup(trimmed);
+  return (
+    rows.find(
+      (row) =>
+        normalizeImportLookup(row.name) === normalized ||
+        normalizeImportLookup(row.location) === normalized ||
+        normalizeImportLookup(row.contractNumber) === normalized,
     )?.id ?? null
   );
 }
@@ -411,6 +436,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
     category: payload.category,
     departmentId: payload.departmentId ?? null,
     sectionId: payload.sectionId ?? null,
+    siteId: payload.siteId ?? null,
     basePoints: payload.basePoints,
     complexityLevel: payload.complexityLevel,
     requiresPhoto: payload.requiresPhoto,
@@ -474,7 +500,7 @@ export async function importActivityLibraryAction(
       Number.isInteger(createdByEmployeeIdValue) && createdByEmployeeIdValue > 0
         ? createdByEmployeeIdValue
         : null;
-    const [departmentRows, sectionRows] = await Promise.all([
+    const [departmentRows, sectionRows, siteRows] = await Promise.all([
       db
         .select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name })
         .from(masterDepartments),
@@ -486,6 +512,14 @@ export async function importActivityLibraryAction(
           departmentId: masterSections.departmentId,
         })
         .from(masterSections),
+      db
+        .select({
+          id: sites.id,
+          contractNumber: sites.contractNumber,
+          name: sites.name,
+          location: sites.location,
+        })
+        .from(sites),
     ]);
 
     let importedCount = 0;
@@ -503,6 +537,7 @@ export async function importActivityLibraryAction(
 
       const sectionId = resolveMasterReference(getActivityLibraryImportValue(row, "section"), sectionRows);
       const section = sectionId ? sectionRows.find((item) => item.id === sectionId) : null;
+      const siteId = resolveSiteReference(getActivityLibraryImportValue(row, "site"), siteRows);
       const departmentId =
         resolveMasterReference(getActivityLibraryImportValue(row, "department"), departmentRows) ??
         section?.departmentId ??
@@ -511,6 +546,7 @@ export async function importActivityLibraryAction(
         activityCode,
         activityName,
         category: getActivityLibraryImportValue(row, "category") || "Technical",
+        siteId,
         departmentId,
         sectionId,
         basePoints: parseActivityLibraryInteger(getActivityLibraryImportValue(row, "basePoints"), 5, 0, 500),
@@ -601,6 +637,18 @@ export async function manageJobAssignmentAction(formData: FormData) {
 
   if (!payload.assignedByEmployeeId || !payload.assignedToEmployeeId || !payload.siteId) {
     throw new Error("Assignment harus memiliki assigner, assignee, dan site.");
+  }
+
+  if (payload.libraryActivityId) {
+    const [library] = await db
+      .select({ siteId: activityLibraries.siteId })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.id, payload.libraryActivityId))
+      .limit(1);
+
+    if (library?.siteId && library.siteId !== payload.siteId) {
+      throw new Error("Activity library tidak tersedia untuk site assignment ini.");
+    }
   }
 
   await db.insert(jobAssignments).values({
@@ -707,6 +755,10 @@ export async function submitDailyActivityAction(formData: FormData) {
 
   if (payload.sourceMode !== "custom" && !library) {
     throw new Error("Aktivitas library belum dipilih.");
+  }
+
+  if (library?.siteId && library.siteId !== employee.siteId) {
+    throw new Error("Aktivitas library tidak tersedia untuk site user ini.");
   }
 
   if (payload.sourceMode === "custom" && payload.customActivityDescription.trim().length < 80) {

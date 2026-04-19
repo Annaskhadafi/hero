@@ -287,6 +287,7 @@ async function ensureDailyActivityTables() {
   await db.execute(sql`
     create table if not exists hero_activity_libraries (
       id serial primary key,
+      site_id integer references hero_sites(id) on delete set null,
       activity_code text not null unique,
       activity_name text not null,
       category text not null default 'Technical',
@@ -311,6 +312,10 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
+  `);
+
+  await db.execute(sql`
+    alter table hero_activity_libraries add column if not exists site_id integer references hero_sites(id) on delete set null;
   `);
 
   await db.execute(sql`
@@ -522,6 +527,7 @@ async function seedDailyActivityReferenceData() {
     await db.insert(activityLibraries).values(
       DEFAULT_LIBRARY_SEEDS.map((item) => ({
         activityCode: item.activityCode,
+        siteId: defaultSite?.id ?? null,
         activityName: item.activityName,
         category: item.category,
         departmentId: departmentByName.get(item.departmentName.trim().toLowerCase())?.id ?? null,
@@ -969,6 +975,8 @@ export async function getDailyActivityEmployeeData(email?: string | null) {
           activityCode: activityLibraries.activityCode,
           activityName: activityLibraries.activityName,
           category: activityLibraries.category,
+          siteId: activityLibraries.siteId,
+          siteName: sites.name,
           basePoints: activityLibraries.basePoints,
           complexityLevel: activityLibraries.complexityLevel,
           requiresPhoto: activityLibraries.requiresPhoto,
@@ -977,10 +985,15 @@ export async function getDailyActivityEmployeeData(email?: string | null) {
           slaHours: activityLibraries.slaHours,
         })
         .from(activityLibraries)
+        .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
         .where(
           and(
             eq(activityLibraries.isActive, true),
             eq(activityLibraries.isSelfInput, true),
+            or(
+              eq(activityLibraries.siteId, employee.siteId),
+              isNull(activityLibraries.siteId),
+            ),
             or(
               eq(activityLibraries.departmentId, employee.departmentId ?? -1),
               isNull(activityLibraries.departmentId),
@@ -1249,9 +1262,15 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         activityCode: activityLibraries.activityCode,
         activityName: activityLibraries.activityName,
         category: activityLibraries.category,
+        siteId: activityLibraries.siteId,
       })
       .from(activityLibraries)
-      .where(eq(activityLibraries.isAssignable, true))
+      .where(
+        and(
+          eq(activityLibraries.isAssignable, true),
+          or(eq(activityLibraries.siteId, currentEmployee.siteId), isNull(activityLibraries.siteId)),
+        ),
+      )
       .orderBy(asc(activityLibraries.activityName)),
     team,
   };
@@ -1261,13 +1280,15 @@ export async function getDailyActivityLibraryData(email?: string | null) {
   await ensureDailyActivitySeedData();
 
   const currentEmployee = await getCurrentEmployeeByEmail(email);
-  const [rows, departmentsRows, sectionsRows, creators] = await Promise.all([
+  const [rows, departmentsRows, sectionsRows, siteRows, creators] = await Promise.all([
     db
       .select({
         id: activityLibraries.id,
         activityCode: activityLibraries.activityCode,
         activityName: activityLibraries.activityName,
         category: activityLibraries.category,
+        siteId: activityLibraries.siteId,
+        siteName: sites.name,
         departmentId: activityLibraries.departmentId,
         sectionId: activityLibraries.sectionId,
         departmentName: masterDepartments.name,
@@ -1291,12 +1312,14 @@ export async function getDailyActivityLibraryData(email?: string | null) {
         creatorName: employees.name,
       })
       .from(activityLibraries)
+      .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
       .leftJoin(masterDepartments, eq(activityLibraries.departmentId, masterDepartments.id))
       .leftJoin(masterSections, eq(activityLibraries.sectionId, masterSections.id))
       .leftJoin(employees, eq(activityLibraries.createdByEmployeeId, employees.id))
       .orderBy(desc(activityLibraries.isActive), asc(activityLibraries.category), asc(activityLibraries.activityName)),
     db.select().from(masterDepartments).orderBy(asc(masterDepartments.name)),
     db.select().from(masterSections).orderBy(asc(masterSections.name)),
+    db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
     db
       .select({
         id: employees.id,
@@ -1328,6 +1351,7 @@ export async function getDailyActivityLibraryData(email?: string | null) {
     rows,
     departments: departmentsRows,
     sections: sectionsRows,
+    sites: siteRows,
     creators,
   };
 }

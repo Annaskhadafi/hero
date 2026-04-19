@@ -4,6 +4,7 @@ export const ACTIVITY_LIBRARY_IMPORT_FIELDS = [
   { key: "activityCode", label: "activityCode", required: true, aliases: ["activity code", "activity_code", "kode", "kode aktivitas"] },
   { key: "activityName", label: "activityName", required: true, aliases: ["activity name", "activity_name", "nama aktivitas"] },
   { key: "category", label: "category", required: false, aliases: ["kategori"] },
+  { key: "site", label: "site", required: false, aliases: ["lokasi kerja", "work location", "siteName", "site_name", "lokasi"] },
   { key: "department", label: "department", required: false, aliases: ["departement", "dept", "departmentName", "department_name"] },
   { key: "section", label: "section", required: false, aliases: ["sectionName", "section_name", "seksi"] },
   { key: "basePoints", label: "basePoints", required: false, aliases: ["base points", "base_points", "points", "poin"] },
@@ -43,6 +44,7 @@ export const ACTIVITY_LIBRARY_EXAMPLE_CSV = buildActivityLibraryCsv([
     activityCode: "TS-003",
     activityName: "Inspect hydraulic hose condition",
     category: "Technical",
+    site: "Bengalon Pit North",
     department: "Plant",
     section: "Maintenance",
     basePoints: 12,
@@ -65,6 +67,7 @@ export const ACTIVITY_LIBRARY_EXAMPLE_CSV = buildActivityLibraryCsv([
     activityCode: "HSE-004",
     activityName: "Daily safety observation",
     category: "HSE",
+    site: "Bengalon Pit North",
     department: "HSE",
     section: "Safety",
     basePoints: 10,
@@ -151,4 +154,3 @@ export function parseActivityLibraryInteger(
   if (!Number.isFinite(numericValue)) return defaultValue;
   return Math.min(max, Math.max(min, Math.round(numericValue)));
 }
-
