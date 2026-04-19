@@ -49,7 +49,7 @@ function getPool() {
   const pool = new Pool({ 
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: 3000, // Very aggressive for development to prune stale sockets
+    idleTimeoutMillis: process.env.NODE_ENV === "production" ? 30000 : 10000,
     connectionTimeoutMillis: 5000,
     max: 10,
   });

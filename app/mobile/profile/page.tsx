@@ -12,10 +12,14 @@ export default async function MobileProfilePage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityEmployeeData(session.user.email);
+  const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
 
   if (!data) {
-    return null;
+    return (
+      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        Data employee belum tersedia untuk akun ini. Profile mobile belum bisa ditampilkan.
+      </div>
+    );
   }
 
   return (

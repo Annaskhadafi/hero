@@ -55,6 +55,7 @@ export default async function MobileMenuPage() {
 
           return (
             <Link
+              prefetch={false}
               key={item.label}
               href={item.href}
               className="flex min-h-16 items-center gap-3 rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] active:scale-[0.98]"

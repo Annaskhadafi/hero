@@ -6,6 +6,11 @@ export function PwaRegistration() {
   useEffect(() => {
     const cleanupPwa = async () => {
       try {
+        const sessionMarker = "hero:pwa-cleanup-session-v2";
+        if (window.sessionStorage.getItem(sessionMarker) === "done") {
+          return;
+        }
+
         if ("serviceWorker" in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           await Promise.all(registrations.map((registration) => registration.unregister()));
@@ -37,12 +42,29 @@ export function PwaRegistration() {
 
           window.localStorage.setItem(cleanupMarker, "done");
         }
+
+        window.sessionStorage.setItem(sessionMarker, "done");
       } catch (error) {
         console.error("Gagal membersihkan PWA/offline cache HERO.", error);
       }
     };
 
-    void cleanupPwa();
+    const runCleanup = () => {
+      void cleanupPwa();
+    };
+
+    const requestIdle =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback.bind(window)
+        : null;
+
+    if (requestIdle) {
+      const idleId = requestIdle(runCleanup, { timeout: 3000 });
+      return () => window.cancelIdleCallback?.(idleId);
+    }
+
+    const timeoutId = globalThis.setTimeout(runCleanup, 1000);
+    return () => globalThis.clearTimeout(timeoutId);
   }, []);
 
   return null;

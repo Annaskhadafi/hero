@@ -1100,8 +1100,17 @@ export async function getDailyActivityConfigMap() {
   );
 }
 
-export async function getDailyActivityEmployeeData(email?: string | null) {
-  await ensureDailyActivitySeedData();
+type DailyActivityReadOptions = {
+  ensureSeed?: boolean;
+};
+
+export async function getDailyActivityEmployeeData(
+  email?: string | null,
+  options: DailyActivityReadOptions = {},
+) {
+  if (options.ensureSeed !== false) {
+    await ensureDailyActivitySeedData();
+  }
 
   const employee = await getCurrentEmployeeByEmail(email);
   if (!employee) {

@@ -56,7 +56,7 @@ export default async function MobileDashboardPage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityEmployeeData(session.user.email);
+  const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
 
   if (!data) {
     return (
@@ -114,6 +114,7 @@ export default async function MobileDashboardPage() {
 
       <section className="grid grid-cols-2 gap-3">
         <Link
+          prefetch={false}
           href="/mobile/attendance"
           className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-[1.25rem] bg-white text-center text-[#003461] shadow-[0_14px_30px_rgba(8,32,51,0.08)] ring-1 ring-[#d8e8f3] active:scale-[0.98]"
         >
@@ -121,6 +122,7 @@ export default async function MobileDashboardPage() {
           <span className="text-[10px] font-black uppercase tracking-[0.16em]">Check-In Work</span>
         </Link>
         <Link
+          prefetch={false}
           href="/mobile/hse"
           className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-[1.25rem] bg-white text-center text-[#5a2200] shadow-[0_14px_30px_rgba(90,34,0,0.08)] ring-1 ring-[#ead8ce] active:scale-[0.98]"
         >

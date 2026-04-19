@@ -19,9 +19,13 @@ export default async function MobileActivityInputPage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityEmployeeData(session.user.email);
+  const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
   if (!data) {
-    return null;
+    return (
+      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        Data employee belum tersedia untuk akun ini. Activity input belum bisa dibuka.
+      </div>
+    );
   }
 
   const now = new Date();
@@ -31,6 +35,7 @@ export default async function MobileActivityInputPage() {
     <div className="space-y-5">
       <section className="space-y-3">
         <Link
+          prefetch={false}
           href="/mobile/activity"
           className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#486275]"
         >

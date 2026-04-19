@@ -30,8 +30,17 @@ function minutesToHours(minutes: number) {
   return Number((minutes / 60).toFixed(1));
 }
 
-export async function getMobileEmployeeContext(email?: string | null) {
-  await ensureHeroSeedData();
+type MobileReadOptions = {
+  ensureSeed?: boolean;
+};
+
+export async function getMobileEmployeeContext(
+  email?: string | null,
+  options: MobileReadOptions = {},
+) {
+  if (options.ensureSeed !== false) {
+    await ensureHeroSeedData();
+  }
 
   if (!email) {
     return null;
@@ -51,8 +60,6 @@ export async function getMobileEmployeeContext(email?: string | null) {
 }
 
 export async function getMobileNotifications(email?: string | null) {
-  await ensureHeroSeedData();
-
   if (!email) {
     return [];
   }
@@ -80,7 +87,7 @@ export async function getMobileNotifications(email?: string | null) {
 }
 
 export async function getMobileTimesheet(email?: string | null) {
-  const context = await getMobileEmployeeContext(email);
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
   if (!context) {
     return null;
   }
@@ -117,7 +124,7 @@ export async function getMobileTimesheet(email?: string | null) {
 }
 
 export async function getMobileReports(email?: string | null) {
-  const context = await getMobileEmployeeContext(email);
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
   if (!context) {
     return null;
   }
@@ -145,7 +152,7 @@ export async function getMobileReports(email?: string | null) {
 }
 
 export async function getMobileHse(email?: string | null) {
-  const context = await getMobileEmployeeContext(email);
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
   if (!context) {
     return null;
   }
@@ -174,7 +181,7 @@ export async function getMobileHse(email?: string | null) {
 }
 
 export async function getMobileHc(email?: string | null) {
-  const context = await getMobileEmployeeContext(email);
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
   if (!context) {
     return null;
   }
@@ -225,7 +232,7 @@ export async function getMobileHc(email?: string | null) {
 }
 
 export async function getMobileGamification(email?: string | null) {
-  const context = await getMobileEmployeeContext(email);
+  const context = await getMobileEmployeeContext(email, { ensureSeed: false });
   if (!context) {
     return null;
   }

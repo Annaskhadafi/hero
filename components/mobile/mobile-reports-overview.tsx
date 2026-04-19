@@ -147,7 +147,7 @@ export function MobileReportsOverview({
             </div>
             <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#5d7485]">{report.hseSummary}</p>
             <Button asChild className="mt-4 min-h-11 rounded-2xl bg-[#003f78] text-white">
-              <Link href={`/api/mobile/reports/${report.id}/pdf`}>
+              <Link prefetch={false} href={`/api/mobile/reports/${report.id}/pdf`}>
                 <Download className="size-4" />
                 Export PDF
               </Link>

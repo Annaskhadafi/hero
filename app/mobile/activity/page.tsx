@@ -45,10 +45,14 @@ export default async function MobileActivityPage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityEmployeeData(session.user.email);
+  const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
 
   if (!data) {
-    return null;
+    return (
+      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        Data employee belum tersedia untuk akun ini. Hubungkan email user dengan employee record dulu.
+      </div>
+    );
   }
 
   const productivityPercent =
@@ -70,6 +74,7 @@ export default async function MobileActivityPage() {
             </p>
           </div>
           <Link
+            prefetch={false}
             href="/mobile/activity/input"
             className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] active:scale-[0.98]"
             aria-label="Tambah activity"
@@ -91,6 +96,7 @@ export default async function MobileActivityPage() {
               </p>
             </div>
             <Link
+              prefetch={false}
               href="/mobile/activity/input"
               className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-[#003f78] active:scale-[0.98]"
             >
@@ -190,6 +196,7 @@ export default async function MobileActivityPage() {
         <div className="flex items-center justify-between">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Activity Log</p>
           <Link
+            prefetch={false}
             href="/mobile/activity/input"
             className="inline-flex items-center gap-1 text-xs font-black uppercase tracking-[0.12em] text-[#003f78]"
           >
