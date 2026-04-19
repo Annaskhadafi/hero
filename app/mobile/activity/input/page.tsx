@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Clock3, MapPinned, UserRound } from "lucide-react";
 
-import { submitDailyActivityAction } from "@/app/dashboard/activity-hub/actions";
+import { submitDailyActivityWithStateAction } from "@/app/dashboard/activity-hub/actions";
 import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
@@ -84,10 +84,16 @@ export default async function MobileActivityInputPage() {
             GPS validasi masih default `false`. Kalau nanti ada capture koordinat, workflow approval akan langsung ikut pakai.
           </div>
         </div>
+
+        <div className="mt-3 rounded-[1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8a5a00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.12)]">
+          Save bisa gagal kalau:
+          pilih activity library belum diisi, assignment belum dipilih saat mode `Assigned`, waktu selesai lebih kecil dari waktu mulai,
+          waktu bentrok dengan activity lain, atau deskripsi custom belum 80 karakter.
+        </div>
       </section>
 
       <DailyActivitySubmitForm
-        action={submitDailyActivityAction}
+        action={submitDailyActivityWithStateAction}
         employeeId={data.employee.id}
         assignments={data.assignments}
         availableLibrary={data.availableLibrary}

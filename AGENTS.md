@@ -27,6 +27,13 @@
 - Jangan mengklaim database sudah ter-push jika command belum dijalankan atau bukti status belum ada.
 - Jika database belum ter-push, gagal push, atau environment target tidak jelas, laporkan jelas di final response beserta command/status terakhir dan next step yang perlu dilakukan.
 
+### Next.js Root Layout Guard
+
+- Jika menyentuh `app/layout.tsx`, `RootLayout`, atau document shell Next.js, wajib pertahankan struktur root valid: `<html>` hanya membungkus `<body>` (dan metadata/head yang dikelola Next), jangan menaruh `<Script>` / `<script>` langsung sebagai child dari `<html>`.
+- Jangan membuat nested `<script>` atau inject script wrapper tambahan di dalam `<html>`.
+- Untuk script pre-hydration / anti-extension / DOM cleanup di root layout, gunakan root `<head>` atau inline `<script dangerouslySetInnerHTML>` di `<head>`; jangan pakai `next/script strategy="beforeInteractive"` sebagai sibling `<body>` di bawah `<html>`.
+- Setelah mengubah layout/root shell, wajib cek ulang agar tidak muncul error hydration/console seperti `<html> cannot contain a nested <script>` atau `Cannot render a sync or defer <script> outside the main document without knowing its order`.
+
 ## Recommended Task Management Workflow
 
 Gunakan workflow berikut sebagai panduan utama saat task tersedia di `task-manager`.

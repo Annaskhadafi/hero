@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Camera, SendHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,8 +27,21 @@ type LibraryOption = {
   basePoints: number;
 };
 
+type DailyActivitySubmitActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+const initialDailyActivitySubmitState: DailyActivitySubmitActionState = {
+  status: "idle",
+  message: "",
+};
+
 type DailyActivitySubmitFormProps = {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (
+    state: DailyActivitySubmitActionState,
+    formData: FormData,
+  ) => Promise<DailyActivitySubmitActionState>;
   employeeId: number;
   assignments: AssignmentOption[];
   availableLibrary: LibraryOption[];
@@ -74,9 +88,24 @@ export function DailyActivitySubmitForm({
   const [sourceMode, setSourceMode] = useState<SourceMode>(defaultSourceMode);
   const [assignmentId, setAssignmentId] = useState(defaultSourceMode === "assigned" ? firstAssignmentId : "");
   const [photoName, setPhotoName] = useState("");
+  const router = useRouter();
+  const [state, formAction] = useActionState(action, initialDailyActivitySubmitState);
   const showLibrary = sourceMode === "self_input";
   const showAssignment = sourceMode === "assigned";
   const isMobile = variant === "mobile";
+
+  useEffect(() => {
+    if (state.status !== "success") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      router.push(isMobile ? "/mobile/activity" : "/dashboard/activity-hub/my-day");
+      router.refresh();
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [isMobile, router, state.status]);
 
   const fieldClass = useMemo(
     () =>
@@ -122,6 +151,7 @@ export function DailyActivitySubmitForm({
       <select
         name="assignmentId"
         value={assignmentId}
+        required={showAssignment}
         onChange={(event) => setAssignmentId(event.target.value)}
         className={fieldClass}
       >
@@ -142,7 +172,7 @@ export function DailyActivitySubmitForm({
   const libraryField = showLibrary ? (
     <Label className={labelClass}>
       <span className={labelTextClass}>Library activity</span>
-      <select name="libraryActivityId" defaultValue={firstLibraryId} className={fieldClass}>
+      <select name="libraryActivityId" defaultValue={firstLibraryId} required={showLibrary} className={fieldClass}>
         <option value="">Pilih activity library</option>
         {availableLibrary.map((item) => (
           <option key={item.id} value={item.id}>
@@ -158,7 +188,13 @@ export function DailyActivitySubmitForm({
       <>
         <Label className={labelClass}>
           <span className={labelTextClass}>Custom activity name</span>
-          <Input name="customActivityName" placeholder="Nama aktivitas custom" className={fieldClass} />
+          <Input
+            name="customActivityName"
+            placeholder="Nama aktivitas custom"
+            className={fieldClass}
+            required
+            minLength={3}
+          />
         </Label>
 
         <Label className={labelClass}>
@@ -168,15 +204,30 @@ export function DailyActivitySubmitForm({
             rows={4}
             placeholder="Jelaskan aktivitas custom minimal 80 karakter bila pekerjaan belum ada di library."
             className={textareaClass}
+            required
+            minLength={80}
           />
         </Label>
       </>
     ) : null;
 
   return (
-    <form action={action} className={cn("space-y-4", className)}>
+    <form action={formAction} className={cn("space-y-4", className)}>
       <input type="hidden" name="employeeId" value={employeeId} />
       <input type="hidden" name="gpsValid" value="false" />
+
+      {state.status !== "idle" ? (
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-3 text-sm font-semibold",
+            state.status === "success"
+              ? "bg-emerald-50 text-emerald-900 shadow-[inset_0_0_0_1px_rgba(22,101,52,0.12)]"
+              : "bg-rose-50 text-rose-900 shadow-[inset_0_0_0_1px_rgba(190,24,93,0.12)]",
+          )}
+        >
+          {state.message}
+        </div>
+      ) : null}
 
       {isMobile ? (
         <div className="space-y-4">
@@ -197,12 +248,24 @@ export function DailyActivitySubmitForm({
               <div className="grid gap-4 sm:grid-cols-2">
                 <Label className={labelClass}>
                   <span className={labelTextClass}>Start time</span>
-                  <Input name="startTime" type="datetime-local" defaultValue={defaultStartTime} className={fieldClass} />
+                  <Input
+                    name="startTime"
+                    type="datetime-local"
+                    defaultValue={defaultStartTime}
+                    className={fieldClass}
+                    required
+                  />
                 </Label>
 
                 <Label className={labelClass}>
                   <span className={labelTextClass}>End time</span>
-                  <Input name="endTime" type="datetime-local" defaultValue={defaultEndTime} className={fieldClass} />
+                  <Input
+                    name="endTime"
+                    type="datetime-local"
+                    defaultValue={defaultEndTime}
+                    className={fieldClass}
+                    required
+                  />
                 </Label>
               </div>
 
@@ -225,6 +288,7 @@ export function DailyActivitySubmitForm({
                 rows={5}
                 placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
                 className={textareaClass}
+                minLength={3}
               />
             </Label>
           </section>
@@ -246,6 +310,11 @@ export function DailyActivitySubmitForm({
                 Upload progres kerja. Foto akan ikut masuk ke Daily Activity System.
               </span>
               {photoName ? <span className={mobileHintClass}>{photoName}</span> : null}
+              {state.status === "error" ? (
+                <span className="text-xs font-semibold leading-5 text-rose-700">
+                  Save gagal. Lihat pesan error di atas untuk tahu field mana yang kurang atau kenapa ditolak.
+                </span>
+              ) : null}
             </Label>
           </section>
         </div>
@@ -261,11 +330,23 @@ export function DailyActivitySubmitForm({
             </Label>
             <Label className={labelClass}>
               <span className={labelTextClass}>Start time</span>
-              <Input name="startTime" type="datetime-local" defaultValue={defaultStartTime} className={fieldClass} />
+              <Input
+                name="startTime"
+                type="datetime-local"
+                defaultValue={defaultStartTime}
+                className={fieldClass}
+                required
+              />
             </Label>
             <Label className={labelClass}>
               <span className={labelTextClass}>End time</span>
-              <Input name="endTime" type="datetime-local" defaultValue={defaultEndTime} className={fieldClass} />
+              <Input
+                name="endTime"
+                type="datetime-local"
+                defaultValue={defaultEndTime}
+                className={fieldClass}
+                required
+              />
             </Label>
           </div>
 
@@ -283,6 +364,7 @@ export function DailyActivitySubmitForm({
               rows={4}
               placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
               className={textareaClass}
+              minLength={3}
             />
           </Label>
 

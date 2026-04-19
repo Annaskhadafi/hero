@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
-import Script from "next/script";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -113,9 +112,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
-      <Script id="strip-extension-hydration-attrs" strategy="beforeInteractive">
-        {stripExtensionHydrationAttrs}
-      </Script>
+      <head>
+        <script
+          id="strip-extension-hydration-attrs"
+          dangerouslySetInnerHTML={{ __html: stripExtensionHydrationAttrs }}
+        />
+      </head>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning

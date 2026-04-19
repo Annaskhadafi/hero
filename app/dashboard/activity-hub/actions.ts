@@ -162,6 +162,11 @@ const resolveDisputeSchema = z.object({
   resolutionNotes: z.string().trim().min(5).max(1200),
 });
 
+type DailyActivitySubmitActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
 function revalidateDailyActivitySurfaces() {
   for (const path of DAILY_ACTIVITY_REVALIDATE_PATHS) {
     revalidatePath(path);
@@ -223,6 +228,21 @@ async function getAuthenticatedEmployeeContext() {
   }
 
   throw new Error("Profil karyawan login tidak ditemukan.");
+}
+
+function getReadableActionError(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  if (error instanceof z.ZodError) {
+    return error.issues[0]?.message ?? fallbackMessage;
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallbackMessage;
 }
 
 function normalizeEvidenceUrls(value: string) {
@@ -1087,6 +1107,28 @@ export async function submitDailyActivityAction(formData: FormData) {
 
   if (createdActivityId == null) {
     throw new Error("Aktivitas gagal dibuat.");
+  }
+}
+
+export async function submitDailyActivityWithStateAction(
+  _previousState: DailyActivitySubmitActionState,
+  formData: FormData,
+): Promise<DailyActivitySubmitActionState> {
+  try {
+    await submitDailyActivityAction(formData);
+
+    return {
+      status: "success",
+      message: "Activity berhasil disimpan ke Daily Activity System.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: getReadableActionError(
+        error,
+        "Activity gagal disimpan. Cek field wajib dan coba lagi.",
+      ),
+    };
   }
 }
 

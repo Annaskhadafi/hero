@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Clock3, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
-import { submitDailyActivityAction, submitPointDisputeAction } from "@/app/dashboard/activity-hub/actions";
+import {
+  submitDailyActivityWithStateAction,
+  submitPointDisputeAction,
+} from "@/app/dashboard/activity-hub/actions";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
 import { Badge } from "@/components/ui/badge";
@@ -127,7 +130,7 @@ export default async function MyDayPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <DailyActivitySubmitForm
-                  action={submitDailyActivityAction}
+                  action={submitDailyActivityWithStateAction}
                   employeeId={data.employee.id}
                   assignments={data.assignments}
                   availableLibrary={data.availableLibrary}
