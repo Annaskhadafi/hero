@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Clock3, Flame, ListTodo, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
 import { submitDailyActivityAction, submitPointDisputeAction } from "@/app/dashboard/activity-hub/actions";
+import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,120 +122,15 @@ export default async function MyDayPage() {
                     Form tetap lengkap, tapi sekarang dibuka sebagai modal supaya halaman utama tetap fokus ke data.
                   </DialogDescription>
                 </DialogHeader>
-                <form action={submitDailyActivityAction} className="space-y-4">
-                  <input type="hidden" name="employeeId" value={data.employee.id} />
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Label className="grid gap-2">
-                      Source mode
-                      <select
-                        name="sourceMode"
-                        defaultValue="assigned"
-                        className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="assigned">Assigned activity</option>
-                        <option value="self_input">Self-input activity</option>
-                        <option value="custom">Custom activity</option>
-                      </select>
-                    </Label>
-                    <Label className="grid gap-2">
-                      Assignment
-                      <select
-                        name="assignmentId"
-                        defaultValue={data.assignments[0]?.id ? `${data.assignments[0].id}` : ""}
-                        className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="">Pilih assignment</option>
-                        {data.assignments.map((assignment) => (
-                          <option key={assignment.id} value={assignment.id}>
-                            {assignment.activityName ?? assignment.customJobName}
-                          </option>
-                        ))}
-                      </select>
-                    </Label>
-                    <Label className="grid gap-2">
-                      Library activity
-                      <select
-                        name="libraryActivityId"
-                        defaultValue={data.availableLibrary[0]?.id ? `${data.availableLibrary[0].id}` : ""}
-                        className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                      >
-                        <option value="">Pilih activity library</option>
-                        {data.availableLibrary.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.activityCode} - {item.activityName}
-                          </option>
-                        ))}
-                      </select>
-                    </Label>
-                    <Label className="grid gap-2">
-                      Equipment / unit no.
-                      <Input name="equipmentNo" placeholder="Contoh: DT-451 / BAY-03" />
-                    </Label>
-                    <Label className="grid gap-2">
-                      Start time
-                      <Input name="startTime" type="datetime-local" defaultValue={dateTimeLocalValue(defaultStart)} />
-                    </Label>
-                    <Label className="grid gap-2">
-                      End time
-                      <Input name="endTime" type="datetime-local" defaultValue={dateTimeLocalValue(now)} />
-                    </Label>
-                    <Label className="grid gap-2">
-                      GPS lat
-                      <Input name="gpsLat" placeholder="-0.9123" />
-                    </Label>
-                    <Label className="grid gap-2">
-                      GPS lng
-                      <Input name="gpsLng" placeholder="119.8761" />
-                    </Label>
-                  </div>
-
-                  <Label className="grid gap-2">
-                    Material used
-                    <Input name="materialUsed" placeholder="Contoh: patch kit, grease, torque wrench" />
-                  </Label>
-
-                  <Label className="grid gap-2">
-                    Custom activity name
-                    <Input name="customActivityName" placeholder="Isi jika memilih custom activity" />
-                  </Label>
-
-                  <Label className="grid gap-2">
-                    Custom activity description
-                    <Textarea
-                      name="customActivityDescription"
-                      rows={4}
-                      placeholder="Jelaskan aktivitas custom minimal 80 karakter bila pekerjaan belum ada di library."
-                    />
-                  </Label>
-
-                  <Label className="grid gap-2">
-                    Notes / hasil kerja
-                    <Textarea
-                      name="notes"
-                      rows={4}
-                      placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
-                    />
-                  </Label>
-
-                  <Label className="grid gap-2">
-                    Photo URL
-                    <Input
-                      name="photoUrl"
-                      placeholder="https://... untuk simulasi upload dokumentasi"
-                      defaultValue="https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1200&q=80"
-                    />
-                  </Label>
-
-                  <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                    <input type="checkbox" name="gpsValid" defaultChecked />
-                    Tandai GPS valid di dalam radius site
-                  </Label>
-
-                  <Button type="submit" className="w-full rounded-2xl">
-                    Kirim aktivitas
-                  </Button>
-                </form>
+                <DailyActivitySubmitForm
+                  action={submitDailyActivityAction}
+                  employeeId={data.employee.id}
+                  assignments={data.assignments}
+                  availableLibrary={data.availableLibrary}
+                  defaultStartTime={dateTimeLocalValue(defaultStart)}
+                  defaultEndTime={dateTimeLocalValue(now)}
+                  defaultSourceMode="assigned"
+                />
               </DialogContent>
             </Dialog>
 

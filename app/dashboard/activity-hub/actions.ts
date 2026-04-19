@@ -33,6 +33,9 @@ import {
   ensureDailyActivitySeedData,
   getDailyActivityConfigMap,
 } from "@/lib/daily-activity";
+import { uploadAnyFileToS3 } from "@/lib/s3-storage";
+
+const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024;
 
 const optionalPositiveInt = z.preprocess(
   (value) => {
@@ -297,31 +300,6 @@ function getPenaltyPoints(category: string, configMap: Map<string, number>) {
 }
 
 async function resolveApprover(employeeId: number, assignmentId?: number) {
-  if (assignmentId) {
-    const [assignment] = await db
-      .select({
-        assignedByEmployeeId: jobAssignments.assignedByEmployeeId,
-      })
-      .from(jobAssignments)
-      .where(eq(jobAssignments.id, assignmentId))
-      .limit(1);
-
-    if (assignment?.assignedByEmployeeId) {
-      const [approver] = await db
-        .select({
-          id: employees.id,
-          name: employees.name,
-        })
-        .from(employees)
-        .where(eq(employees.id, assignment.assignedByEmployeeId))
-        .limit(1);
-
-      if (approver) {
-        return approver;
-      }
-    }
-  }
-
   const [employee] = await db
     .select({
       directManagerId: employees.directManagerId,
@@ -348,6 +326,31 @@ async function resolveApprover(employeeId: number, assignmentId?: number) {
 
     if (directManager) {
       return directManager;
+    }
+  }
+
+  if (assignmentId) {
+    const [assignment] = await db
+      .select({
+        assignedByEmployeeId: jobAssignments.assignedByEmployeeId,
+      })
+      .from(jobAssignments)
+      .where(eq(jobAssignments.id, assignmentId))
+      .limit(1);
+
+    if (assignment?.assignedByEmployeeId) {
+      const [approver] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+        })
+        .from(employees)
+        .where(eq(employees.id, assignment.assignedByEmployeeId))
+        .limit(1);
+
+      if (approver) {
+        return approver;
+      }
     }
   }
 
@@ -680,6 +683,7 @@ export async function submitDailyActivityAction(formData: FormData) {
   await ensureDailyActivitySeedData();
 
   const payload = submitActivitySchema.parse(Object.fromEntries(formData));
+  const photoFile = formData.get("photoFile");
   const [employee] = await db
     .select({
       id: employees.id,
@@ -739,30 +743,62 @@ export async function submitDailyActivityAction(formData: FormData) {
           .select({
             id: jobAssignments.id,
             priority: jobAssignments.priority,
+            assignedToEmployeeId: jobAssignments.assignedToEmployeeId,
+            libraryActivityId: jobAssignments.libraryActivityId,
+            customJobName: jobAssignments.customJobName,
           })
           .from(jobAssignments)
           .where(eq(jobAssignments.id, payload.assignmentId))
           .limit(1);
 
+  if (payload.sourceMode === "assigned" && !selectedAssignment) {
+    throw new Error("Assignment belum dipilih.");
+  }
+
+  if (selectedAssignment && selectedAssignment.assignedToEmployeeId !== payload.employeeId) {
+    throw new Error("Assignment tidak sesuai dengan karyawan login.");
+  }
+
+  const effectiveLibraryActivityId =
+    payload.sourceMode === "assigned"
+      ? selectedAssignment?.libraryActivityId ?? null
+      : payload.sourceMode === "custom"
+        ? null
+        : payload.libraryActivityId ?? null;
+
   const [library] =
-    payload.libraryActivityId == null
+    effectiveLibraryActivityId == null
       ? [null]
       : await db
           .select()
           .from(activityLibraries)
-          .where(eq(activityLibraries.id, payload.libraryActivityId))
+          .where(eq(activityLibraries.id, effectiveLibraryActivityId))
           .limit(1);
 
-  if (payload.sourceMode !== "custom" && !library) {
+  if (payload.sourceMode === "self_input" && !library) {
     throw new Error("Aktivitas library belum dipilih.");
+  }
+
+  if (payload.sourceMode === "assigned" && selectedAssignment?.libraryActivityId && !library) {
+    throw new Error("Library assignment tidak ditemukan.");
+  }
+
+  if (payload.sourceMode === "assigned" && !library && !selectedAssignment?.customJobName.trim()) {
+    throw new Error("Assignment belum punya activity library atau custom job.");
   }
 
   if (library?.siteId && library.siteId !== employee.siteId) {
     throw new Error("Aktivitas library tidak tersedia untuk site user ini.");
   }
 
-  if (payload.sourceMode === "custom" && payload.customActivityDescription.trim().length < 80) {
-    throw new Error("Deskripsi custom activity minimal 80 karakter.");
+  if (payload.sourceMode === "custom") {
+    if (payload.customActivityName.trim().length < 3) {
+      throw new Error("Nama custom activity wajib diisi.");
+    }
+
+    if (payload.customActivityDescription.trim().length < 80) {
+      throw new Error("Deskripsi custom activity minimal 80 karakter.");
+    }
   }
 
   const dayStart = startOfDay(startTime);
@@ -822,7 +858,32 @@ export async function submitDailyActivityAction(formData: FormData) {
   const activityStatus = autoApprove ? "Approved" : needsApproval ? "Pending L1" : "Approved";
   const pointsAwarded = Math.max(projectedReward, 0);
 
+  let uploadedPhotoUrl = payload.photoUrl;
+  if (photoFile instanceof File && photoFile.size > 0) {
+    if (!photoFile.type.startsWith("image/")) {
+      throw new Error("File dokumentasi harus berupa gambar.");
+    }
+
+    if (photoFile.size > MAX_ACTIVITY_PHOTO_SIZE) {
+      throw new Error("Foto dokumentasi terlalu besar. Maksimal 5MB.");
+    }
+
+    const uploaded = await uploadAnyFileToS3(photoFile, "activity-photos");
+    uploadedPhotoUrl = uploaded.url;
+  }
+
   let createdActivityId: number | null = null;
+  const activityTitle =
+    library?.activityName ||
+    selectedAssignment?.customJobName.trim() ||
+    payload.customActivityName.trim() ||
+    "Custom activity";
+  const activityCode =
+    library?.activityCode ??
+    (payload.sourceMode === "assigned" ? "ASN-001" : "CUS-001");
+  const activityType =
+    library?.category ??
+    (payload.sourceMode === "assigned" ? "Assigned" : "Custom");
 
   await db.transaction(async (tx) => {
     const [createdActivity] = await tx
@@ -830,11 +891,11 @@ export async function submitDailyActivityAction(formData: FormData) {
       .values({
         siteId: employee.siteId,
         employeeId: payload.employeeId,
-        activityCode: library?.activityCode ?? "CUS-001",
-        activityType: library?.category ?? "Custom",
-        title: library?.activityName ?? payload.customActivityName,
+        activityCode,
+        activityType,
+        title: activityTitle,
         unitNumber: payload.equipmentNo || "-",
-        libraryActivityId: payload.libraryActivityId ?? null,
+        libraryActivityId: effectiveLibraryActivityId,
         assignmentId: payload.assignmentId ?? null,
         sourceMode: payload.sourceMode,
         customActivityName: payload.customActivityName,
@@ -850,7 +911,7 @@ export async function submitDailyActivityAction(formData: FormData) {
         gpsLat: payload.gpsLat,
         gpsLng: payload.gpsLng,
         gpsValid: payload.gpsValid,
-        photoCount: payload.photoUrl ? 1 : 0,
+        photoCount: uploadedPhotoUrl ? 1 : 0,
         remarks: payload.notes,
         pointsAwarded,
         penaltyDeducted: penaltyPoints,
@@ -860,10 +921,10 @@ export async function submitDailyActivityAction(formData: FormData) {
 
     createdActivityId = createdActivity.id;
 
-    if (payload.photoUrl) {
+    if (uploadedPhotoUrl) {
       await tx.insert(activityPhotos).values({
         activityId: createdActivity.id,
-        fileUrl: payload.photoUrl,
+        fileUrl: uploadedPhotoUrl,
         caption: "Upload dokumentasi lapangan",
         uploadedAt: submissionTime,
       });
@@ -909,7 +970,7 @@ export async function submitDailyActivityAction(formData: FormData) {
         sourceType: "activity",
         sourceId: createdActivity.id,
         category: "Daily Activity",
-        label: `${library?.activityName ?? payload.customActivityName} • Auto approved`,
+        label: `${activityTitle} • Auto approved`,
         points: projectedNet,
         balanceAfter: updatedBalance,
         metadata: JSON.stringify({
