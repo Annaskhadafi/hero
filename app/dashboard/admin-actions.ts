@@ -176,6 +176,11 @@ const optionalFormString = z.preprocess(
   z.string().trim().optional(),
 );
 
+const optionalPositiveInt = z.preprocess(
+  (value) => (value === "" || value === null || value === undefined ? undefined : value),
+  z.coerce.number().int().positive().optional(),
+);
+
 const navbarThemeSchema = z.object({
   headerBackgroundColor: z
     .string()
@@ -196,6 +201,7 @@ const manageSecurityUserSchema = z.object({
     (value) => (value === "" || value === null || value === undefined ? undefined : value),
     z.coerce.number().int().positive().optional(),
   ),
+  siteId: optionalPositiveInt,
   fullName: optionalFormString,
   employeeSn: optionalFormString,
   profileImage: optionalFormString,
@@ -1600,6 +1606,7 @@ export async function manageSecurityUserAction(
     const payload = manageSecurityUserSchema.parse({
       intent: formData.get("intent"),
       employeeId: formData.get("employeeId"),
+      siteId: formData.get("siteId"),
       fullName: formData.get("fullName"),
       employeeSn: formData.get("employeeSn"),
       profileImage: formData.get("profileImage"),
@@ -1653,9 +1660,12 @@ export async function manageSecurityUserAction(
         };
       }
 
-      const [[currentDefaultSite], [existingEmployee], [existingAuthUser], [role]] =
+      const [[currentDefaultSite], [selectedSite], [existingEmployee], [existingAuthUser], [role]] =
         await Promise.all([
           db.select().from(sites).limit(1),
+          payload.siteId
+            ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+            : Promise.resolve([]),
           db
             .select({ id: employees.id })
             .from(employees)
@@ -1688,6 +1698,7 @@ export async function manageSecurityUserAction(
       }
 
       const defaultSite =
+        selectedSite ??
         currentDefaultSite ??
         (
           await db
@@ -1769,6 +1780,7 @@ export async function manageSecurityUserAction(
         authUserId: employees.authUserId,
         name: employees.name,
         email: employees.email,
+        siteId: employees.siteId,
       })
       .from(employees)
       .where(eq(employees.id, payload.employeeId))
@@ -1789,6 +1801,9 @@ export async function manageSecurityUserAction(
       const joinYear = parseJoinYear(payload.joinYear ?? "");
       const directManagerId = parseOptionalManagerId(payload.directManagerId);
       const profileImage = normalizeProfileImageValue(payload.profileImage);
+      const [selectedSite] = payload.siteId
+        ? await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+        : [];
       const governanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
@@ -1816,11 +1831,12 @@ export async function manageSecurityUserAction(
           sectionId: governanceIds.sectionId,
           positionId: governanceIds.positionId,
           orgNodeId,
+          siteId: selectedSite?.id ?? employee.siteId,
           section,
           department,
           role: jobTitle,
           jobTitle,
-          workLocation: payload.workLocation || "",
+          workLocation: selectedSite?.name || payload.workLocation || "",
           phoneNumber: payload.phoneNumber || "",
           email,
           employmentStatus: normalizedStatus.status,

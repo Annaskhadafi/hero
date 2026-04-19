@@ -4,15 +4,17 @@ import {
   getSectionOptions,
   getDepartmentOptions,
   getPositionOptions,
+  getSiteOptions,
 } from "@/lib/master-data";
 
 export default async function SecurityUsersPage() {
-  const [users, roleOptions, sections, departments, positions] = await Promise.all([
+  const [users, roleOptions, sections, departments, positions, sites] = await Promise.all([
     getSecurityUsersData(),
     getSecurityRoleOptions(),
     getSectionOptions(),
     getDepartmentOptions(),
     getPositionOptions(),
+    getSiteOptions(),
   ]);
 
   return (
@@ -22,6 +24,7 @@ export default async function SecurityUsersPage() {
       sections={sections}
       departments={departments}
       positions={positions}
+      sites={sites}
     />
   );
 }

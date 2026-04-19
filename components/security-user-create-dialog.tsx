@@ -51,12 +51,14 @@ export function SecurityUserCreateDialog({
   sections,
   departments,
   positions,
+  sites,
 }: {
   roleOptions: Array<{ id: number; name: string }>;
   managerOptions: Array<{ id: number; name: string }>;
   sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
   departments: Array<{ id: number; code: string; name: string }>;
   positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
+  sites: Array<{ id: number; name: string; location: string }>;
 }) {
   const router = useRouter();
   const [, startRefreshTransition] = useTransition();
@@ -71,9 +73,11 @@ export function SecurityUserCreateDialog({
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
   const [selectedSectionId, setSelectedSectionId] = useState<string>("");
   const [selectedJobTitle, setSelectedJobTitle] = useState<string>("");
+  const [selectedSiteId, setSelectedSiteId] = useState<string>("");
   const selectedPosition =
     positions.find((position) => position.name === selectedJobTitle) ?? null;
-  const resolvedWorkLocation = selectedPosition?.siteLocation || "";
+  const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null;
+  const resolvedWorkLocation = selectedSite?.name || selectedPosition?.siteLocation || "";
 
   const filteredSections = selectedDepartmentId
     ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
@@ -95,6 +99,7 @@ export function SecurityUserCreateDialog({
       setSelectedDepartmentId("");
       setSelectedSectionId("");
       setSelectedJobTitle("");
+      setSelectedSiteId("");
       startRefreshTransition(() => router.refresh());
     }
   }, [router, state.status, startRefreshTransition]);
@@ -247,6 +252,23 @@ export function SecurityUserCreateDialog({
               </Select>
               <input type="hidden" name="jobTitle" value={selectedJobTitle} />
             </div>
+
+            <label className="grid gap-2">
+              <Label>Lokasi Site</Label>
+              <Select value={selectedSiteId} onValueChange={setSelectedSiteId} disabled={sites.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={sites.length > 0 ? "Pilih lokasi site" : "Belum ada site aktif"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map((site) => (
+                    <SelectItem key={site.id} value={`${site.id}`}>
+                      {site.name} {site.location ? `- ${site.location}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <input type="hidden" name="siteId" value={selectedSiteId} />
+            </label>
 
             <label className="grid gap-2">
               <Label>Lokasi Kerja</Label>

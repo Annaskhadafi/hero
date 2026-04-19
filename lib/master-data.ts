@@ -342,7 +342,7 @@ export async function getMasterSites(): Promise<MasterSite[]> {
 export async function getSiteOptions(): Promise<Array<{ id: number; name: string; location: string }>> {
   await ensureHeroGovernanceSeedData();
 
-  return db
+  const siteOptions = await db
     .select({
       id: sites.id,
       name: sites.name,
@@ -351,6 +351,27 @@ export async function getSiteOptions(): Promise<Array<{ id: number; name: string
     .from(sites)
     .where(eq(sites.isActive, true))
     .orderBy(asc(sites.name));
+
+  if (siteOptions.length > 0) {
+    return siteOptions;
+  }
+
+  const [createdSite] = await db
+    .insert(sites)
+    .values({
+      name: "Default Site",
+      location: "Default Site",
+      customerName: "PT Chitra Paratama",
+      contractNumber: "MASTER-DEFAULT",
+      isActive: true,
+    })
+    .returning({
+      id: sites.id,
+      name: sites.name,
+      location: sites.location,
+    });
+
+  return createdSite ? [createdSite] : [];
 }
 
 export async function getMasterDepartments(): Promise<MasterDepartment[]> {

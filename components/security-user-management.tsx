@@ -228,12 +228,14 @@ export function SecurityUserManagement({
   sections,
   departments,
   positions,
+  sites,
 }: {
   users: SecurityUserRecord[];
   roleOptions: Array<{ id: number; name: string }>;
   sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
   departments: Array<{ id: number; code: string; name: string }>;
   positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
+  sites: Array<{ id: number; name: string; location: string }>;
 }) {
   const router = useRouter();
   const [isRefreshing, startRefreshTransition] = useTransition();
@@ -659,6 +661,7 @@ export function SecurityUserManagement({
               sections={sections}
               departments={departments}
               positions={positions}
+              sites={sites}
             />
           </div>
         </div>
@@ -1068,7 +1071,10 @@ export function SecurityUserManagement({
                           user={user}
                           managerOptions={managerOptions}
                           roleOptions={roleOptions}
+                          sections={sections}
+                          departments={departments}
                           positions={positions}
+                          sites={sites}
                         />
                       </TableCell>
                     </TableRow>

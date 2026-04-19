@@ -44,6 +44,7 @@ let governanceSeedPromise: Promise<void> | null = null;
 
 export type SecurityUserRecord = {
   id: number;
+  siteId: number;
   employeeSn: string;
   joinYear: number;
   name: string;
@@ -1895,6 +1896,7 @@ export async function getSecurityUsersData() {
     .select({
       id: employees.id,
       employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
       joinYear: employees.joinYear,
       name: employees.name,
       profileImage: authUser.image,
@@ -1926,6 +1928,7 @@ export async function getSecurityUsersData() {
 
   return rows.map<SecurityUserRecord>((row: any) => ({
     id: row.id,
+    siteId: row.siteId,
     employeeSn: row.employeeSn,
     joinYear: row.joinYear,
     name: row.name,

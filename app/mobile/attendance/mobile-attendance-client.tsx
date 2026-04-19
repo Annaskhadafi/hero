@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Camera,
   Clock3,
   History,
@@ -55,6 +56,8 @@ type GeoState = {
   longitude: string;
   altitude: string;
   accuracy: string;
+  locationName: string;
+  locationDetail: string;
   ready: boolean;
   message: string;
 };
@@ -64,8 +67,25 @@ const initialGeo: GeoState = {
   longitude: "",
   altitude: "",
   accuracy: "",
+  locationName: "",
+  locationDetail: "",
   ready: false,
   message: "GPS waiting",
+};
+
+type ReverseGeocodeResult = {
+  display_name?: string;
+  name?: string;
+  address?: {
+    road?: string;
+    neighbourhood?: string;
+    village?: string;
+    town?: string;
+    city?: string;
+    county?: string;
+    state?: string;
+    province?: string;
+  };
 };
 
 function formatClock(value: Date) {
@@ -131,15 +151,68 @@ function buildMapPinStyle(geo: GeoState) {
   };
 }
 
+function getGeoLookupKey(latitude: number, longitude: number) {
+  return `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+}
+
+function getReverseGeocodeLabel(data: ReverseGeocodeResult) {
+  const address = data.address;
+  const primary =
+    data.name ||
+    address?.road ||
+    address?.neighbourhood ||
+    address?.village ||
+    address?.town ||
+    address?.city ||
+    address?.county;
+  const secondary = address?.state || address?.province;
+
+  if (primary && secondary && primary !== secondary) {
+    return `${primary}, ${secondary}`;
+  }
+
+  return primary || data.display_name?.split(",").slice(0, 2).join(", ").trim() || "";
+}
+
+async function resolveLocationName(latitude: number, longitude: number) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const params = new URLSearchParams({
+      format: "jsonv2",
+      lat: String(latitude),
+      lon: String(longitude),
+      zoom: "18",
+      addressdetails: "1",
+    });
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
+      headers: { "Accept-Language": "id,en" },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return "";
+
+    const data = (await response.json()) as ReverseGeocodeResult;
+    return getReverseGeocodeLabel(data);
+  } catch {
+    return "";
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [now, setNow] = useState(() => new Date());
+  const lastGeoLookupRef = useRef("");
+  const [now, setNow] = useState<Date | null>(null);
   const [geo, setGeo] = useState<GeoState>(initialGeo);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [cameraPermissionOpen, setCameraPermissionOpen] = useState(false);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [capturePreview, setCapturePreview] = useState("");
   const [selectedShift, setSelectedShift] = useState(data.shiftOptions[0]?.value ?? "");
@@ -155,12 +228,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const selectedShiftOption =
     data.shiftOptions.find((shift) => shift.value === selectedShift) ?? data.shiftOptions[0];
   const siteName = data.employee?.siteName || data.employee?.workLocation || "Site belum tersedia";
+  const locationName = geo.locationName || (geo.ready ? siteName : "Menunggu GPS lock");
   const employeeLabel = data.employee
     ? `${data.employee.name} | ${data.employee.jobTitle || "Field Operator"}`
     : "Employee context missing";
   const miniMapPinStyle = useMemo(() => buildMapPinStyle(geo), [geo]);
 
   useEffect(() => {
+    setNow(new Date());
     const timer = window.setInterval(() => setNow(new Date()), 1000);
 
     return () => window.clearInterval(timer);
@@ -174,7 +249,11 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        setGeo({
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const lookupKey = getGeoLookupKey(latitude, longitude);
+
+        setGeo((current) => ({
           latitude: String(position.coords.latitude),
           longitude: String(position.coords.longitude),
           altitude:
@@ -182,9 +261,29 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
               ? `${Math.round(position.coords.altitude)}m ASL`
               : "",
           accuracy: `${Math.round(position.coords.accuracy)}m accuracy`,
+          locationName: current.locationName,
+          locationDetail: current.locationDetail,
           ready: true,
           message: "GPS secure",
-        });
+        }));
+
+        if (lastGeoLookupRef.current !== lookupKey) {
+          lastGeoLookupRef.current = lookupKey;
+          void resolveLocationName(latitude, longitude).then((name) => {
+            if (!name) return;
+            setGeo((current) => {
+              if (getGeoLookupKey(Number(current.latitude), Number(current.longitude)) !== lookupKey) {
+                return current;
+              }
+
+              return {
+                ...current,
+                locationName: name,
+                locationDetail: `${name} | ${current.accuracy}`,
+              };
+            });
+          });
+        }
       },
       (error) => {
         setGeo((current) => ({
@@ -199,43 +298,49 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraReady(false);
+      setCameraError("Camera not supported. Upload selfie instead.");
+      return;
+    }
+
+    try {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: "user",
+          width: { ideal: 720 },
+          height: { ideal: 960 },
+        },
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraReady(true);
+      setCameraError("");
+      setCameraPermissionOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Camera permission needed.";
+      setCameraReady(false);
+      setCameraError(message);
+      setCameraPermissionOpen(true);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
-    async function startCamera() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError("Camera not supported. Upload selfie instead.");
-        return;
+    void startCamera().then(() => {
+      if (cancelled) {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: "user",
-            width: { ideal: 720 },
-            height: { ideal: 960 },
-          },
-        });
-
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        setCameraReady(true);
-        setCameraError("");
-      } catch (error) {
-        setCameraError(error instanceof Error ? error.message : "Camera permission needed.");
-      }
-    }
-
-    startCamera();
+    });
 
     return () => {
       cancelled = true;
@@ -345,7 +450,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     formData.append("type", nextType);
     formData.append("latitude", geo.latitude);
     formData.append("longitude", geo.longitude);
-    formData.append("locationName", siteName);
+    formData.append("locationName", locationName);
     formData.append("shiftCode", selectedShiftOption.value);
     formData.append("workMode", workMode);
     formData.append("attendanceContext", "Regular mobile attendance");
@@ -430,6 +535,15 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             <p className="max-w-56 text-xs font-black uppercase leading-5">
               {cameraError || "Starting secure camera"}
             </p>
+            {cameraError ? (
+              <button
+                type="button"
+                onClick={() => setCameraPermissionOpen(true)}
+                className="rounded-full bg-[#e6f6ff] px-4 py-2 text-[10px] font-black uppercase text-[#003461]"
+              >
+                Atur izin camera
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -493,6 +607,12 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             <span className="text-right text-sm font-black text-[#071e27]">{siteName}</span>
           </div>
           <div className="flex items-end justify-between gap-3">
+            <span className="text-[10px] font-black uppercase text-[#6c7881]">Nama Lokasi</span>
+            <span className="max-w-[220px] text-right text-xs font-bold text-[#071e27]">
+              {locationName}
+            </span>
+          </div>
+          <div className="flex items-end justify-between gap-3">
             <span className="text-[10px] font-black uppercase text-[#6c7881]">Coordinates</span>
             <span className="text-right text-xs font-bold text-[#071e27]">{buildCoordinateLabel(geo)}</span>
           </div>
@@ -523,10 +643,12 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           <div>
             <p className="text-[10px] font-black uppercase text-[#6c7881]">Current Attempt</p>
             <p className="mt-1 font-display text-2xl font-black text-[#003461]">
-              {formatClock(now)}
+              {now ? formatClock(now) : "--.--.--"}
               <span className="ml-1 text-sm text-[#486275]">WITA</span>
             </p>
-            <p className="mt-1 text-[11px] font-bold text-[#486275]">{formatDate(now)}</p>
+            <p className="mt-1 text-[11px] font-bold text-[#486275]">
+              {now ? formatDate(now) : "Sinkronisasi waktu"}
+            </p>
           </div>
           <span className="flex size-12 items-center justify-center rounded-full bg-white text-[#003461] shadow-[0_8px_18px_rgba(8,32,51,0.08)]">
             <Clock3 className="size-5" />
@@ -615,6 +737,49 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           </div>
         )}
       </section>
+
+      {cameraPermissionOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-[#071e27]/55 px-4 pb-5 backdrop-blur-sm">
+          <div className="w-full rounded-[0.75rem] bg-white p-4 shadow-[0_20px_50px_rgba(8,32,51,0.25)]">
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#f4ddce] text-[#5a2200]">
+                <AlertTriangle className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-black uppercase text-[#003461]">Photo access denied</p>
+                <p className="mt-1 text-xs font-bold leading-5 text-[#486275]">
+                  Browser block camera. Tap icon gembok / Site settings, ubah Camera ke Allow, lalu coba lagi.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => void startCamera()}
+                className="min-h-12 rounded-[0.65rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-3 text-[11px] font-black uppercase text-white"
+              >
+                Coba allow lagi
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="min-h-12 rounded-[0.65rem] bg-[#e6f6ff] px-3 text-[11px] font-black uppercase text-[#003461]"
+              >
+                Upload selfie
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCameraPermissionOpen(false)}
+              className="mt-3 min-h-11 w-full rounded-[0.65rem] bg-[#f3faff] px-3 text-[11px] font-black uppercase text-[#486275]"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

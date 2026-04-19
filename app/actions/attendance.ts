@@ -7,8 +7,61 @@ import { auth } from "@/lib/auth";
 import { getActiveAttendanceShiftOptions } from "@/lib/master-data";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { headers } from "next/headers";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { endOfDay, startOfDay, subHours } from "date-fns";
+
+async function ensureEmployeeSite<
+  T extends {
+  id: number;
+  siteId: number;
+  siteName: string | null;
+  workLocation: string | null;
+  },
+>(employee: T): Promise<T & { siteId: number; siteName: string; workLocation: string }> {
+  if (employee.siteName) {
+    return {
+      ...employee,
+      siteName: employee.siteName,
+      workLocation: employee.workLocation?.trim() || employee.siteName,
+    };
+  }
+
+  const [existingSite] = await db
+    .select({ id: sites.id, name: sites.name })
+    .from(sites)
+    .where(eq(sites.id, employee.siteId))
+    .limit(1);
+
+  const site =
+    existingSite ??
+    (
+      await db
+        .insert(sites)
+        .values({
+          name: employee.workLocation?.trim() || "Default Site",
+          location: employee.workLocation?.trim() || "Default Site",
+          customerName: "PT Chitra Paratama",
+          contractNumber: "ATTENDANCE-DEFAULT",
+          isActive: true,
+        })
+        .returning({ id: sites.id, name: sites.name })
+    )[0];
+
+  await db
+    .update(employees)
+    .set({
+      siteId: site.id,
+      workLocation: employee.workLocation?.trim() || site.name,
+    })
+    .where(eq(employees.id, employee.id));
+
+  return {
+    ...employee,
+    siteId: site.id,
+    siteName: site.name,
+    workLocation: employee.workLocation?.trim() || site.name,
+  };
+}
 
 async function getCurrentEmployee() {
   const session = await auth.api.getSession({
@@ -31,7 +84,7 @@ async function getCurrentEmployee() {
       siteName: sites.name,
     })
     .from(employees)
-    .innerJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .where(
       session.user.id
         ? eq(employees.authUserId, session.user.id)
@@ -40,7 +93,7 @@ async function getCurrentEmployee() {
     .limit(1);
 
   if (employee) {
-    return employee;
+    return ensureEmployeeSite(employee);
   }
 
   const [employeeByEmail] = await db
@@ -55,8 +108,8 @@ async function getCurrentEmployee() {
       siteName: sites.name,
     })
     .from(employees)
-    .innerJoin(sites, eq(employees.siteId, sites.id))
-    .where(eq(employees.email, session.user.email))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(sql`lower(${employees.email}) = ${session.user.email.toLowerCase()}`)
     .limit(1);
 
   if (employeeByEmail) {
@@ -67,10 +120,10 @@ async function getCurrentEmployee() {
         .where(eq(employees.id, employeeByEmail.id));
     }
 
-    return employeeByEmail;
+    return ensureEmployeeSite(employeeByEmail);
   }
 
-  const [defaultSite] = await db
+  const [existingDefaultSite] = await db
     .select({
       id: sites.id,
       name: sites.name,
@@ -78,9 +131,20 @@ async function getCurrentEmployee() {
     .from(sites)
     .limit(1);
 
-  if (!defaultSite) {
-    return null;
-  }
+  const defaultSite =
+    existingDefaultSite ??
+    (
+      await db
+        .insert(sites)
+        .values({
+          name: "Default Site",
+          location: "Default Site",
+          customerName: "PT Chitra Paratama",
+          contractNumber: "ATTENDANCE-DEFAULT",
+          isActive: true,
+        })
+        .returning({ id: sites.id, name: sites.name })
+    )[0];
 
   const [createdEmployee] = await db
     .insert(employees)

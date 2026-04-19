@@ -74,22 +74,46 @@ export function SecurityUserRowActions({
   user,
   managerOptions,
   roleOptions,
+  sections,
+  departments,
   positions,
+  sites,
 }: {
   user: SecurityUserRecord;
   managerOptions: Array<{ id: number; name: string }>;
   roleOptions: Array<{ id: number; name: string }>;
+  sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
+  departments: Array<{ id: number; code: string; name: string }>;
   positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
+  sites: Array<{ id: number; name: string; location: string }>;
 }) {
   const router = useRouter();
   const [, startRefreshTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(manageSecurityUserAction, INITIAL_STATE);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState(
+    departments.find((department) => department.name === user.department)?.id.toString() ?? "",
+  );
+  const [selectedSectionId, setSelectedSectionId] = useState(
+    sections.find((section) => section.name === user.section)?.id.toString() ?? "",
+  );
   const [selectedJobTitle, setSelectedJobTitle] = useState(user.jobTitle);
+  const [selectedSiteId, setSelectedSiteId] = useState(user.siteId ? `${user.siteId}` : "");
 
   const selectedPosition =
     positions.find((position) => position.name === selectedJobTitle) ?? null;
-  const resolvedWorkLocation = selectedPosition?.siteLocation || user.workLocation || "";
+  const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null;
+  const filteredSections = selectedDepartmentId
+    ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
+    : sections;
+  const filteredPositions = selectedDepartmentId
+    ? positions.filter((position) => position.departmentId?.toString() === selectedDepartmentId)
+    : positions;
+  const selectedDepartmentName =
+    departments.find((department) => department.id.toString() === selectedDepartmentId)?.name || user.department;
+  const selectedSectionName =
+    sections.find((section) => section.id.toString() === selectedSectionId)?.name || user.section;
+  const resolvedWorkLocation = selectedSite?.name || selectedPosition?.siteLocation || user.workLocation || "";
 
   useEffect(() => {
     if (state.status === "success") {
@@ -102,9 +126,12 @@ export function SecurityUserRowActions({
 
   useEffect(() => {
     if (open) {
+      setSelectedDepartmentId(departments.find((department) => department.name === user.department)?.id.toString() ?? "");
+      setSelectedSectionId(sections.find((section) => section.name === user.section)?.id.toString() ?? "");
       setSelectedJobTitle(user.jobTitle);
+      setSelectedSiteId(user.siteId ? `${user.siteId}` : "");
     }
-  }, [open, user.jobTitle]);
+  }, [departments, open, sections, user.department, user.jobTitle, user.section, user.siteId]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -293,14 +320,49 @@ export function SecurityUserRowActions({
                 </SelectContent>
               </Select>
             </div>
-                <label className="grid gap-2">
-                  <Label>Section</Label>
-                  <Input name="section" defaultValue={user.section} />
-                </label>
-                <label className="grid gap-2">
+                <div className="grid gap-2">
                   <Label>Departement</Label>
-                  <Input name="department" defaultValue={user.department} />
-                </label>
+                  <Select
+                    value={selectedDepartmentId}
+                    onValueChange={(value) => {
+                      setSelectedDepartmentId(value);
+                      setSelectedSectionId("");
+                      setSelectedJobTitle("");
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Pilih department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map((department) => (
+                        <SelectItem key={department.id} value={`${department.id}`}>
+                          {department.name} ({department.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input type="hidden" name="department" value={selectedDepartmentName} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Section</Label>
+                  <Select
+                    value={selectedSectionId}
+                    onValueChange={setSelectedSectionId}
+                    disabled={!selectedDepartmentId}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={selectedDepartmentId ? "Pilih section" : "Pilih department dulu"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredSections.map((section) => (
+                        <SelectItem key={section.id} value={`${section.id}`}>
+                          {section.name} ({section.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input type="hidden" name="section" value={selectedSectionName} />
+                </div>
                 <div className="grid gap-2">
                   <Label>Jabatan</Label>
                   <Select
@@ -312,13 +374,29 @@ export function SecurityUserRowActions({
                       <SelectValue placeholder="Pilih jabatan" />
                     </SelectTrigger>
                     <SelectContent>
-                      {positions.map((position) => (
+                      {filteredPositions.map((position) => (
                         <SelectItem key={position.id} value={position.name}>
                           {position.name} ({position.code}) - {position.siteLocation || "Semua Site"} - Level {position.level}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Lokasi Site</Label>
+                  <Select value={selectedSiteId} onValueChange={setSelectedSiteId} disabled={sites.length === 0}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={sites.length > 0 ? "Pilih lokasi site" : "Belum ada site aktif"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={`${site.id}`}>
+                          {site.name} {site.location ? `- ${site.location}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <input type="hidden" name="siteId" value={selectedSiteId} />
                 </div>
                 <label className="grid gap-2">
                   <Label>Lokasi Kerja</Label>
