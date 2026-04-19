@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
-import { OfflineSyncProvider } from "@/components/offline-sync-provider";
-import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
@@ -88,7 +86,6 @@ export const metadata: Metadata = {
   description:
     "Hub for Employee Reporting & Operations",
   applicationName: "HERO",
-  manifest: "/manifest.webmanifest",
   icons: {
     apple: "/apple-touch-icon.png",
     icon: [
@@ -129,11 +126,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           enableSystem
           disableTransitionOnChange
         >
-          <OfflineSyncProvider>
-            <PwaRegistration />
-            <PwaInstallPrompt />
-            {children}
-          </OfflineSyncProvider>
+          <PwaRegistration />
+          {children}
         </ThemeProvider>
       </body>
     </html>

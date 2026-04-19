@@ -17,12 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useOfflineSync } from "@/components/offline-sync-provider";
 import {
   HSE_EMERGENCY_DRAFT_STORAGE_KEY,
-  HSE_FEED_CACHE_KEY,
   HSE_OBSERVATION_DRAFT_STORAGE_KEY,
-  makeOfflineQueueId,
   type EmergencyIncidentSyncPayload,
   type HseObservationSyncPayload,
   type QueuedFilePayload,
@@ -121,7 +118,6 @@ function formatDate(value: Date) {
 export function MobileHseClient({ data }: MobileHseClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { enqueueItem, isOnline } = useOfflineSync();
   const queuedDraftKey = searchParams.get("draft")?.trim() || "";
   const queuedMode = searchParams.get("mode") === "emergency" ? "emergency" : "observation";
 
@@ -211,42 +207,6 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(HSE_FEED_CACHE_KEY);
-      if (!raw) return;
-
-      const cached = JSON.parse(raw) as {
-        observations: HseObservationRecord[];
-        incidents: HseIncidentRecord[];
-      };
-
-      if (cached.observations?.length) {
-        setObservations((current) => {
-          const merged = [...current];
-          for (const item of cached.observations) {
-            if (merged.some((entry) => entry.id === item.id)) continue;
-            merged.unshift({ ...item, observedAt: new Date(item.observedAt) });
-          }
-          return merged;
-        });
-      }
-
-      if (cached.incidents?.length) {
-        setIncidents((current) => {
-          const merged = [...current];
-          for (const item of cached.incidents) {
-            if (merged.some((entry) => entry.id === item.id)) continue;
-            merged.unshift({ ...item, reportedAt: new Date(item.reportedAt) });
-          }
-          return merged;
-        });
-      }
-    } catch {
-      // Ignore invalid cache.
-    }
-  }, []);
-
-  useEffect(() => {
     writeDraft(HSE_OBSERVATION_DRAFT_STORAGE_KEY, {
       title: observationTitle,
       category: observationCategory,
@@ -293,16 +253,6 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
     geo.longitude,
   ]);
 
-  useEffect(() => {
-    window.localStorage.setItem(
-      HSE_FEED_CACHE_KEY,
-      JSON.stringify({
-        observations: observations.slice(0, 10),
-        incidents: incidents.slice(0, 10),
-      }),
-    );
-  }, [incidents, observations]);
-
   async function submitObservation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage({ kind: "idle", text: "" });
@@ -324,38 +274,6 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
 
     setIsSubmitting(true);
     try {
-      if (!isOnline) {
-        const id = makeOfflineQueueId("hse_observation");
-        const draftKey = `hero:draft:hse-observation:${id}`;
-        writeDraft(draftKey, payload);
-        enqueueItem({
-          id,
-          entityType: "hse_observation",
-          title: payload.title,
-          createdAt: new Date().toISOString(),
-          route: `/mobile/hse?draft=${encodeURIComponent(draftKey)}&mode=observation`,
-          draftKey,
-          status: "queued",
-          payload,
-        });
-        setObservations((current) => [
-          {
-            id: Date.now(),
-            title: payload.title,
-            location: payload.location,
-            severity: payload.severity,
-            category: payload.category,
-            status: "queued",
-            notes: payload.notes,
-            observedAt: new Date(),
-          },
-          ...current,
-        ]);
-        clearDraft(HSE_OBSERVATION_DRAFT_STORAGE_KEY);
-        setMessage({ kind: "success", text: "Observasi disimpan offline dan masuk queue sync." });
-        return;
-      }
-
       const response = await fetch("/api/mobile/sync/hse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -415,39 +333,6 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
 
     setIsSubmitting(true);
     try {
-      if (!isOnline) {
-        const id = makeOfflineQueueId("emergency_incident");
-        const draftKey = `hero:draft:hse-emergency:${id}`;
-        writeDraft(draftKey, payload);
-        enqueueItem({
-          id,
-          entityType: "emergency_incident",
-          title: payload.title,
-          createdAt: new Date().toISOString(),
-          route: `/mobile/hse?draft=${encodeURIComponent(draftKey)}&mode=emergency`,
-          draftKey,
-          status: "queued",
-          payload,
-        });
-        setIncidents((current) => [
-          {
-            id: Date.now(),
-            title: payload.title,
-            type: payload.type,
-            unitNumber: payload.unitNumber || "-",
-            impact: payload.impact,
-            status: "queued",
-            location: payload.location,
-            alertStatus: "queued",
-            reportedAt: new Date(),
-          },
-          ...current,
-        ]);
-        clearDraft(HSE_EMERGENCY_DRAFT_STORAGE_KEY);
-        setMessage({ kind: "success", text: "Emergency report disimpan offline dan masuk queue sync." });
-        return;
-      }
-
       const response = await fetch("/api/mobile/sync/emergency", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -616,7 +501,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               className="h-14 w-full rounded-2xl bg-[#003f78] text-white"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Saving..." : isOnline ? "Submit Observation" : "Queue Observation"}
+              {isSubmitting ? "Saving..." : "Submit Observation"}
             </Button>
           </form>
         ) : (
@@ -764,7 +649,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               className="h-14 w-full rounded-2xl bg-gradient-to-br from-[#5a2200] to-[#8a3d00] text-white"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Sending..." : isOnline ? "Send Emergency Alert" : "Queue Emergency Alert"}
+              {isSubmitting ? "Sending..." : "Send Emergency Alert"}
             </Button>
           </form>
         )}

@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   description: "Mobile workspace for HERO field operations.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function MobileLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession();
 

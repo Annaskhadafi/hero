@@ -16,11 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useOfflineSync } from "@/components/offline-sync-provider";
 import { validateSiteBoundary } from "@/lib/location";
 import {
   ACTIVITY_DRAFT_STORAGE_KEY,
-  makeOfflineQueueId,
   type ActivitySyncPayload,
   type QueuedFilePayload,
 } from "@/lib/offline-sync";
@@ -118,7 +116,6 @@ export function MobileDailyActivityForm({
 }: MobileDailyActivityFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { enqueueItem, isOnline } = useOfflineSync();
   const queuedDraftKey = searchParams.get("draft")?.trim() || "";
 
   const [sourceMode, setSourceMode] = useState<"assigned" | "self_input" | "custom">("self_input");
@@ -297,28 +294,6 @@ export function MobileDailyActivityForm({
         photo: photoFile ? await fileToPayload(photoFile) : restoredPhotoPayload,
       };
 
-      if (!isOnline) {
-        const id = makeOfflineQueueId("activity");
-        const draftKey = `hero:draft:activity:${id}`;
-        writeDraft(draftKey, submitPayload);
-        enqueueItem({
-          id,
-          entityType: "activity",
-          title: submitPayload.customActivityName || "Daily activity draft",
-          createdAt: new Date().toISOString(),
-          route: `/mobile/activity/input?draft=${encodeURIComponent(draftKey)}`,
-          draftKey,
-          status: "queued",
-          payload: submitPayload,
-        });
-        clearDraft(ACTIVITY_DRAFT_STORAGE_KEY);
-        setSubmitState({
-          kind: "success",
-          message: "Offline mode aktif. Activity masuk queue dan akan auto-sync saat online.",
-        });
-        return;
-      }
-
       await sendPayload(submitPayload);
       clearDraft(ACTIVITY_DRAFT_STORAGE_KEY);
       if (queuedDraftKey) {
@@ -336,33 +311,7 @@ export function MobileDailyActivityForm({
       }, 900);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Submit activity gagal.";
-
-      if (!navigator.onLine) {
-        const offlinePayload: ActivitySyncPayload = {
-          ...payload,
-          photo: photoFile ? await fileToPayload(photoFile) : restoredPhotoPayload,
-        };
-        const id = makeOfflineQueueId("activity");
-        const draftKey = `hero:draft:activity:${id}`;
-        writeDraft(draftKey, offlinePayload);
-        enqueueItem({
-          id,
-          entityType: "activity",
-          title: offlinePayload.customActivityName || "Daily activity draft",
-          createdAt: new Date().toISOString(),
-          route: `/mobile/activity/input?draft=${encodeURIComponent(draftKey)}`,
-          draftKey,
-          status: "queued",
-          payload: offlinePayload,
-        });
-        clearDraft(ACTIVITY_DRAFT_STORAGE_KEY);
-        setSubmitState({
-          kind: "success",
-          message: "Koneksi putus saat submit. Activity dipindah ke offline queue.",
-        });
-      } else {
-        setSubmitState({ kind: "error", message });
-      }
+      setSubmitState({ kind: "error", message });
     } finally {
       setIsSubmitting(false);
     }
@@ -635,7 +584,7 @@ export function MobileDailyActivityForm({
           disabled={isSubmitting}
         >
           <SendHorizontal className="size-4" />
-          {isSubmitting ? "Submitting..." : isOnline ? "Submit Activity" : "Queue Activity"}
+          {isSubmitting ? "Submitting..." : "Submit Activity"}
         </Button>
       </div>
 

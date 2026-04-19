@@ -13,6 +13,8 @@ import { getEmployeeDisplayDataByEmail, getNavbarSettingsData, getSidebarDataFor
 
 import "@/app/dashboard/theme.css"
 
+export const dynamic = "force-dynamic"
+
 export default async function DashboardLayout({
   children,
 }: {

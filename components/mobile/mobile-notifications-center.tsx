@@ -184,6 +184,11 @@ export function MobileNotificationsCenter({
       return;
     }
 
+    if (!("serviceWorker" in navigator)) {
+      setFeedback("Push notifications dimatikan karena offline/PWA mode dinonaktifkan untuk performa.");
+      return;
+    }
+
     if (!data.pushConfigured || !data.pushPublicKey) {
       setFeedback("VAPID push belum diisi admin. Lengkapi PWA Push Settings dulu.");
       return;
@@ -201,7 +206,13 @@ export function MobileNotificationsCenter({
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const registration = registrations[0];
+      if (!registration) {
+        setFeedback("Push notifications dimatikan karena offline/PWA mode dinonaktifkan untuk performa.");
+        return;
+      }
+
       const existingSubscription = await registration.pushManager.getSubscription();
       const subscription =
         existingSubscription ??
@@ -242,8 +253,11 @@ export function MobileNotificationsCenter({
     setFeedback("");
 
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
+      const registrations = "serviceWorker" in navigator
+        ? await navigator.serviceWorker.getRegistrations()
+        : [];
+      const registration = registrations[0];
+      const subscription = registration ? await registration.pushManager.getSubscription() : null;
 
       if (subscription) {
         await fetch("/api/push/subscription", {

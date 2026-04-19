@@ -13,13 +13,7 @@ import {
   Wifi,
 } from "lucide-react";
 
-import { useOfflineSync } from "@/components/offline-sync-provider";
-import {
-  ATTENDANCE_LOG_CACHE_KEY,
-  makeOfflineQueueId,
-  type AttendanceSyncPayload,
-  type QueuedFilePayload,
-} from "@/lib/offline-sync";
+import { type AttendanceSyncPayload, type QueuedFilePayload } from "@/lib/offline-sync";
 import { cn } from "@/lib/utils";
 
 type AttendanceEmployee = {
@@ -226,27 +220,8 @@ async function fileToPayload(file: File) {
   return payload;
 }
 
-function buildOptimisticLog(input: {
-  eventType: string;
-  locationNote: string;
-  latitude: string;
-  longitude: string;
-}) {
-  return {
-    id: Date.now(),
-    eventType: input.eventType,
-    eventTime: new Date(),
-    status: "queued",
-    locationNote: input.locationNote,
-    latitude: input.latitude,
-    longitude: input.longitude,
-    photoUrl: null,
-  };
-}
-
 export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const router = useRouter();
-  const { enqueueItem, isOnline } = useOfflineSync();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -288,34 +263,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   useEffect(() => {
     setAttendanceLogs(data.logs);
   }, [data.logs]);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(ATTENDANCE_LOG_CACHE_KEY);
-      if (!raw) return;
-
-      const cached = JSON.parse(raw) as AttendanceLog[];
-      if (!Array.isArray(cached) || cached.length === 0) return;
-
-      setAttendanceLogs((current) => {
-        const merged = [...current];
-        for (const log of cached) {
-          if (merged.some((entry) => entry.id === log.id)) continue;
-          merged.unshift({
-            ...log,
-            eventTime: new Date(log.eventTime),
-          });
-        }
-        return merged;
-      });
-    } catch {
-      // Ignore invalid local cache.
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(ATTENDANCE_LOG_CACHE_KEY, JSON.stringify(attendanceLogs.slice(0, 12)));
-  }, [attendanceLogs]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -532,31 +479,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       operationalNote: geo.ready ? `${geo.message}; ${geo.accuracy}` : `GPS fallback: ${geo.message}`,
       photo: await fileToPayload(file),
     };
-    const optimisticLog = buildOptimisticLog({
-      eventType: nextType,
-      locationNote: locationName,
-      latitude: geo.latitude,
-      longitude: geo.longitude,
-    });
-
     setIsSubmitting(true);
     try {
-      if (!isOnline) {
-        enqueueItem({
-          id: makeOfflineQueueId("attendance"),
-          entityType: "attendance",
-          title: `${getEventLabel(nextType)} attendance`,
-          createdAt: new Date().toISOString(),
-          route: "/mobile/attendance",
-          status: "queued",
-          payload,
-        });
-        setAttendanceLogs((current) => [optimisticLog, ...current]);
-        setCapturedFile(null);
-        setSubmitMessage("Offline mode aktif. Attendance masuk queue dan akan auto-sync saat online.");
-        return;
-      }
-
       const response = await fetch("/api/mobile/sync/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -597,22 +521,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       setSubmitMessage(`${getEventLabel(nextType)} recorded. Website attendance record akan refresh.`);
       startTransition(() => router.refresh());
     } catch (error) {
-      if (!navigator.onLine) {
-        enqueueItem({
-          id: makeOfflineQueueId("attendance"),
-          entityType: "attendance",
-          title: `${getEventLabel(nextType)} attendance`,
-          createdAt: new Date().toISOString(),
-          route: "/mobile/attendance",
-          status: "queued",
-          payload,
-        });
-        setAttendanceLogs((current) => [optimisticLog, ...current]);
-        setCapturedFile(null);
-        setSubmitMessage("Koneksi putus saat submit. Attendance dipindah ke offline queue.");
-      } else {
-        setSubmitError(error instanceof Error ? error.message : "Attendance gagal dicatat.");
-      }
+      setSubmitError(error instanceof Error ? error.message : "Attendance gagal dicatat.");
     } finally {
       setIsSubmitting(false);
     }
@@ -644,7 +553,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       <section className="flex items-center justify-between rounded-[0.65rem] bg-[#e6f6ff] px-4 py-2 text-[10px] font-black uppercase text-[#213f56] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
           <span className="flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-[#004b87]" />
-            {isOnline ? "System online" : "Offline queue"}
+            System online
           </span>
         <span className="flex items-center gap-1.5">
           <Wifi className="size-3" />

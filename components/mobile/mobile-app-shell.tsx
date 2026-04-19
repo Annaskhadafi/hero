@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 
-import { MobileOfflineIndicator } from "@/components/offline-sync-provider";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
@@ -119,15 +118,9 @@ export function MobileAppShell({
               </SheetContent>
             </Sheet>
 
-            <div className="flex min-w-0 items-center gap-2">
-              <Link
-                href="/mobile/dashboard"
-                className="truncate text-sm font-black uppercase tracking-[0.12em] text-[#003f78]"
-              >
-                HERO
-              </Link>
-              <MobileOfflineIndicator />
-            </div>
+            <Link href="/mobile/dashboard" className="text-sm font-black uppercase tracking-[0.12em] text-[#003f78]">
+              HERO
+            </Link>
 
             <Link
               href="/mobile/notifications"
