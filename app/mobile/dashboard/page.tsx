@@ -114,7 +114,7 @@ export default async function MobileDashboardPage() {
 
       <section className="grid grid-cols-2 gap-3">
         <Link
-          href="/mobile/activity/input"
+          href="/mobile/attendance"
           className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-[1.25rem] bg-white text-center text-[#003461] shadow-[0_14px_30px_rgba(8,32,51,0.08)] ring-1 ring-[#d8e8f3] active:scale-[0.98]"
         >
           <BriefcaseBusiness className="size-5" />

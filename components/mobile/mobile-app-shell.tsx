@@ -10,6 +10,7 @@ import {
   FileText,
   Grid3X3,
   Home,
+  MapPin,
   Menu,
   ShieldAlert,
   ShieldCheck,
@@ -24,13 +25,14 @@ import { cn } from "@/lib/utils";
 
 const bottomNavItems = [
   { label: "Dashboard", href: "/mobile/dashboard", icon: Home },
-  { label: "Activity", href: "/mobile/activity", icon: ClipboardList },
+  { label: "Check-In", href: "/mobile/attendance", icon: MapPin },
   { label: "Menu", href: "/mobile/menu", icon: Grid3X3 },
   { label: "Profile", href: "/mobile/profile", icon: UserRound },
 ];
 
 const drawerItems = [
   { label: "Mobile Dashboard", href: "/mobile/dashboard", icon: Home },
+  { label: "Attendance", href: "/mobile/attendance", icon: MapPin },
   { label: "Daily Activity", href: "/mobile/activity", icon: ClipboardList },
   { label: "Activity Input", href: "/mobile/activity/input", icon: Grid3X3 },
   { label: "HSE Report", href: "/mobile/hse", icon: ShieldCheck },

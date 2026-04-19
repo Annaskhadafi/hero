@@ -39,7 +39,7 @@ export default async function MobileActivityPage() {
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <Link href="/mobile/activity/input" className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[1.2rem] bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] active:scale-[0.98]">
+        <Link href="/mobile/attendance" className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[1.2rem] bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] active:scale-[0.98]">
           <ClipboardList className="size-5" />
           <span className="text-[10px] font-black uppercase tracking-[0.14em]">Check-In Work</span>
         </Link>
