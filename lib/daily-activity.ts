@@ -11,6 +11,8 @@ import {
   jobAssignments,
   masterDepartments,
   masterSections,
+  orgChartNodes,
+  orgNodeAssignments,
   penaltyEvents,
   pointDisputes,
   pointEvents,
@@ -258,6 +260,36 @@ function normalizeStatusLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function getCalendarDayKey(reference: Date) {
+  const year = reference.getFullYear();
+  const month = `${reference.getMonth() + 1}`.padStart(2, "0");
+  const day = `${reference.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isCurrentNodeAssignment(
+  assignment: {
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    isActive: boolean;
+  },
+  reference = new Date(),
+) {
+  if (!assignment.isActive) {
+    return false;
+  }
+
+  if (assignment.effectiveFrom > reference) {
+    return false;
+  }
+
+  if (assignment.effectiveTo && assignment.effectiveTo < reference) {
+    return false;
+  }
+
+  return true;
+}
+
 async function getCurrentEmployeeByEmail(email?: string | null) {
   const normalizedEmail = email?.trim().toLowerCase();
 
@@ -281,6 +313,220 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
     .limit(1);
 
   return fallbackEmployee ?? null;
+}
+
+async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inferSelect) {
+  const directReports = await db
+    .select()
+    .from(employees)
+    .where(
+      and(
+        eq(employees.directManagerId, currentEmployee.id),
+        eq(employees.isActive, true),
+      ),
+    )
+    .orderBy(asc(employees.name));
+
+  const managedById = new Map(directReports.map((employee) => [employee.id, employee]));
+  const managerNodeIds = new Set<number>();
+
+  if (currentEmployee.orgNodeId != null) {
+    managerNodeIds.add(currentEmployee.orgNodeId);
+  }
+
+  const [ownedNodes, assignedNodes] = await Promise.all([
+    db
+      .select({
+        id: orgChartNodes.id,
+      })
+      .from(orgChartNodes)
+      .where(
+        and(
+          eq(orgChartNodes.employeeId, currentEmployee.id),
+          eq(orgChartNodes.isActive, true),
+        ),
+      ),
+    db
+      .select({
+        nodeId: orgNodeAssignments.nodeId,
+        effectiveFrom: orgNodeAssignments.effectiveFrom,
+        effectiveTo: orgNodeAssignments.effectiveTo,
+        isActive: orgNodeAssignments.isActive,
+      })
+      .from(orgNodeAssignments)
+      .where(eq(orgNodeAssignments.employeeId, currentEmployee.id)),
+  ]);
+
+  for (const node of ownedNodes) {
+    managerNodeIds.add(node.id);
+  }
+
+  for (const assignment of assignedNodes) {
+    if (isCurrentNodeAssignment(assignment)) {
+      managerNodeIds.add(assignment.nodeId);
+    }
+  }
+
+  if (managerNodeIds.size === 0) {
+    return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  const nodeRows = await db
+    .select({
+      id: orgChartNodes.id,
+      structureId: orgChartNodes.structureId,
+      parentNodeId: orgChartNodes.parentNodeId,
+      employeeId: orgChartNodes.employeeId,
+    })
+    .from(orgChartNodes)
+    .where(eq(orgChartNodes.isActive, true));
+
+  const managerStructureIds = new Set(
+    nodeRows
+      .filter((node) => managerNodeIds.has(node.id))
+      .map((node) => node.structureId),
+  );
+  const scopedNodes = nodeRows.filter((node) => managerStructureIds.has(node.structureId));
+  const childrenByParent = new Map<number, number[]>();
+
+  for (const node of scopedNodes) {
+    if (node.parentNodeId == null) {
+      continue;
+    }
+
+    const children = childrenByParent.get(node.parentNodeId) ?? [];
+    children.push(node.id);
+    childrenByParent.set(node.parentNodeId, children);
+  }
+
+  const descendantNodeIds = new Set<number>();
+  const queue = Array.from(managerNodeIds);
+
+  while (queue.length > 0) {
+    const currentNodeId = queue.shift();
+    if (currentNodeId == null) {
+      continue;
+    }
+
+    for (const childNodeId of childrenByParent.get(currentNodeId) ?? []) {
+      if (managerNodeIds.has(childNodeId) || descendantNodeIds.has(childNodeId)) {
+        continue;
+      }
+
+      descendantNodeIds.add(childNodeId);
+      queue.push(childNodeId);
+    }
+  }
+
+  if (descendantNodeIds.size === 0) {
+    return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  const descendantNodeIdList = Array.from(descendantNodeIds);
+  const [nodeBoundEmployees, nodeAssignments] = await Promise.all([
+    db
+      .select()
+      .from(employees)
+      .where(
+        and(
+          eq(employees.isActive, true),
+          inArray(employees.orgNodeId, descendantNodeIdList),
+        ),
+      ),
+    db
+      .select({
+        employeeId: orgNodeAssignments.employeeId,
+        effectiveFrom: orgNodeAssignments.effectiveFrom,
+        effectiveTo: orgNodeAssignments.effectiveTo,
+        isActive: orgNodeAssignments.isActive,
+      })
+      .from(orgNodeAssignments)
+      .where(inArray(orgNodeAssignments.nodeId, descendantNodeIdList)),
+  ]);
+
+  const descendantEmployeeIds = Array.from(
+    new Set(
+      scopedNodes
+        .filter(
+          (node) =>
+            descendantNodeIds.has(node.id) &&
+            node.employeeId != null &&
+            node.employeeId !== currentEmployee.id,
+        )
+        .map((node) => node.employeeId as number),
+    ),
+  );
+
+  if (descendantEmployeeIds.length > 0) {
+    const descendantEmployees = await db
+      .select()
+      .from(employees)
+      .where(
+        and(
+          eq(employees.isActive, true),
+          inArray(employees.id, descendantEmployeeIds),
+        ),
+      );
+
+    for (const employee of descendantEmployees) {
+      managedById.set(employee.id, employee);
+    }
+  }
+
+  for (const employee of nodeBoundEmployees) {
+    if (employee.id !== currentEmployee.id) {
+      managedById.set(employee.id, employee);
+    }
+  }
+
+  const assignedEmployeeIds = Array.from(
+    new Set(
+      nodeAssignments
+        .filter(
+          (assignment) =>
+            assignment.employeeId != null &&
+            isCurrentNodeAssignment(assignment),
+        )
+        .map((assignment) => assignment.employeeId as number),
+    ),
+  );
+
+  if (assignedEmployeeIds.length > 0) {
+    const assignedEmployees = await db
+      .select()
+      .from(employees)
+      .where(
+        and(
+          eq(employees.isActive, true),
+          inArray(employees.id, assignedEmployeeIds),
+        ),
+      );
+
+    for (const employee of assignedEmployees) {
+      if (employee.id !== currentEmployee.id) {
+        managedById.set(employee.id, employee);
+      }
+    }
+  }
+
+  return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function getManagedEmployeeIdsForLead(leadEmployeeId: number) {
+  await ensureDailyActivitySeedData();
+
+  const [lead] = await db
+    .select()
+    .from(employees)
+    .where(eq(employees.id, leadEmployeeId))
+    .limit(1);
+
+  if (!lead) {
+    return [];
+  }
+
+  const team = await getManagedEmployeesForLead(lead);
+  return team.map((employee) => employee.id);
 }
 
 async function ensureDailyActivityTables() {
@@ -1073,25 +1319,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     return null;
   }
 
-  let team = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.directManagerId, currentEmployee.id))
-    .orderBy(asc(employees.name));
-
-  if (team.length === 0) {
-    team = await db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.siteId, currentEmployee.siteId),
-          eq(employees.isActive, true),
-        ),
-      )
-      .orderBy(asc(employees.name))
-      .limit(6);
-  }
+  const team = await getManagedEmployeesForLead(currentEmployee);
 
   const teamIds = Array.from(new Set(team.map((member) => member.id)));
   const dayStart = startOfDay();
@@ -1126,12 +1354,19 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
           .select({
             id: activities.id,
             employeeId: activities.employeeId,
+            activityCode: activities.activityCode,
             title: activities.title,
             status: activities.status,
             priority: activities.priority,
+            sourceMode: activities.sourceMode,
+            unitNumber: activities.unitNumber,
             startTime: activities.startTime,
             endTime: activities.endTime,
             submissionTime: activities.submissionTime,
+            pointsAwarded: activities.pointsAwarded,
+            penaltyDeducted: activities.penaltyDeducted,
+            photoCount: activities.photoCount,
+            remarks: activities.remarks,
           })
           .from(activities)
           .where(
@@ -1235,8 +1470,97 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     (row) => row.deadline != null && row.deadline.getTime() < Date.now() && row.status !== "APPROVED",
   ).length;
 
+  const activityGroups = team.map((member) => {
+    const memberActivities = activityRows
+      .filter((row) => row.employeeId === member.id)
+      .sort((left, right) => right.startTime.getTime() - left.startTime.getTime());
+    const dayMap = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        activityCount: number;
+        pointsNet: number;
+        items: Array<{
+          id: number;
+          activityCode: string;
+          title: string;
+          status: string;
+          statusLabel: string;
+          priority: string;
+          sourceMode: string;
+          unitNumber: string;
+          startTime: Date;
+          endTime: Date;
+          submissionTime: Date | null;
+          photoCount: number;
+          remarks: string;
+          pointsAwarded: number;
+          penaltyDeducted: number;
+          pointsNet: number;
+          durationLabel: string;
+        }>;
+      }
+    >();
+
+    for (const activity of memberActivities) {
+      const dayKey = getCalendarDayKey(activity.startTime);
+      const existingDay =
+        dayMap.get(dayKey) ??
+        {
+          key: dayKey,
+          label: activity.startTime.toLocaleDateString("id-ID", {
+            weekday: "long",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }),
+          activityCount: 0,
+          pointsNet: 0,
+          items: [],
+        };
+      const pointsNet = activity.pointsAwarded - activity.penaltyDeducted;
+
+      existingDay.activityCount += 1;
+      existingDay.pointsNet += pointsNet;
+      existingDay.items.push({
+        id: activity.id,
+        activityCode: activity.activityCode,
+        title: activity.title,
+        status: activity.status,
+        statusLabel: normalizeStatusLabel(activity.status),
+        priority: activity.priority,
+        sourceMode: activity.sourceMode,
+        unitNumber: activity.unitNumber,
+        startTime: activity.startTime,
+        endTime: activity.endTime,
+        submissionTime: activity.submissionTime,
+        photoCount: activity.photoCount,
+        remarks: activity.remarks,
+        pointsAwarded: activity.pointsAwarded,
+        penaltyDeducted: activity.penaltyDeducted,
+        pointsNet,
+        durationLabel: formatDurationLabel(minutesBetween(activity.startTime, activity.endTime)),
+      });
+      dayMap.set(dayKey, existingDay);
+    }
+
+    return {
+      employeeId: member.id,
+      employeeName: member.name,
+      employeeRole: member.jobTitle || member.role,
+      totalActivities: memberActivities.length,
+      totalPointsNet: memberActivities.reduce(
+        (total, activity) => total + activity.pointsAwarded - activity.penaltyDeducted,
+        0,
+      ),
+      days: Array.from(dayMap.values()).sort((left, right) => right.key.localeCompare(left.key)),
+    };
+  });
+
   return {
     lead: currentEmployee,
+    hasSubordinates: team.length > 0,
     summary: {
       activeWorkers: team.length,
       checkedIn: activityRows.length > 0 ? new Set(activityRows.map((row) => row.employeeId)).size : 0,
@@ -1256,6 +1580,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
             : "Routine",
     })),
     disputes: disputeRows,
+    activityGroups,
     assignmentOptions: await db
       .select({
         id: activityLibraries.id,

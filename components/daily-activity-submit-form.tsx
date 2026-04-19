@@ -75,147 +75,233 @@ export function DailyActivitySubmitForm({
   const [assignmentId, setAssignmentId] = useState(defaultSourceMode === "assigned" ? firstAssignmentId : "");
   const [photoName, setPhotoName] = useState("");
   const showLibrary = sourceMode === "self_input";
+  const showAssignment = sourceMode === "assigned";
+  const isMobile = variant === "mobile";
 
   const fieldClass = useMemo(
     () =>
-      variant === "mobile"
-        ? "h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-bold text-[#082033]"
+      isMobile
+        ? "h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.03)]"
         : "h-11 rounded-xl border border-input bg-background px-3 text-sm",
-    [variant],
+    [isMobile],
   );
-  const labelClass = variant === "mobile" ? "block space-y-2" : "grid gap-2";
+  const textareaClass = isMobile
+    ? "w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.03)]"
+    : undefined;
+  const labelClass = isMobile ? "block space-y-2" : "grid gap-2";
   const labelTextClass =
-    variant === "mobile"
+    isMobile
       ? "text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]"
       : "text-sm font-medium";
+  const mobileSectionClass = "space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]";
+  const mobileHintClass = "text-xs font-semibold leading-5 text-[#486275]";
+
+  const modeField = (
+    <Label className={labelClass}>
+      <span className={labelTextClass}>Source mode</span>
+      <select
+        name="sourceMode"
+        value={sourceMode}
+        onChange={(event) => {
+          const nextMode = event.target.value as SourceMode;
+          setSourceMode(nextMode);
+          setAssignmentId(nextMode === "assigned" ? firstAssignmentId : "");
+        }}
+        className={fieldClass}
+      >
+        <option value="assigned">Assigned activity</option>
+        <option value="self_input">Self-input activity</option>
+        <option value="custom">Custom activity</option>
+      </select>
+    </Label>
+  );
+
+  const assignmentField = showAssignment ? (
+    <Label className={labelClass}>
+      <span className={labelTextClass}>Assignment</span>
+      <select
+        name="assignmentId"
+        value={assignmentId}
+        onChange={(event) => setAssignmentId(event.target.value)}
+        className={fieldClass}
+      >
+        <option value="">Pilih assignment</option>
+        {assignments.map((assignment) => (
+          <option key={assignment.id} value={assignment.id}>
+            {(assignment.activityName ?? assignment.customJobName) || `Assignment #${assignment.id}`}
+            {assignment.assignedByName ? ` - ${assignment.assignedByName}` : ""}
+          </option>
+        ))}
+      </select>
+      <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
+        Approval otomatis ke atasan langsung.
+      </span>
+    </Label>
+  ) : null;
+
+  const libraryField = showLibrary ? (
+    <Label className={labelClass}>
+      <span className={labelTextClass}>Library activity</span>
+      <select name="libraryActivityId" defaultValue={firstLibraryId} className={fieldClass}>
+        <option value="">Pilih activity library</option>
+        {availableLibrary.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.activityCode} - {item.activityName} ({item.basePoints} pts)
+          </option>
+        ))}
+      </select>
+    </Label>
+  ) : null;
+
+  const customFields =
+    sourceMode === "custom" ? (
+      <>
+        <Label className={labelClass}>
+          <span className={labelTextClass}>Custom activity name</span>
+          <Input name="customActivityName" placeholder="Nama aktivitas custom" className={fieldClass} />
+        </Label>
+
+        <Label className={labelClass}>
+          <span className={labelTextClass}>Custom activity description</span>
+          <Textarea
+            name="customActivityDescription"
+            rows={4}
+            placeholder="Jelaskan aktivitas custom minimal 80 karakter bila pekerjaan belum ada di library."
+            className={textareaClass}
+          />
+        </Label>
+      </>
+    ) : null;
 
   return (
     <form action={action} className={cn("space-y-4", className)}>
       <input type="hidden" name="employeeId" value={employeeId} />
       <input type="hidden" name="gpsValid" value="false" />
 
-      <div className={variant === "mobile" ? "space-y-4" : "grid gap-4 sm:grid-cols-2"}>
-        <Label className={labelClass}>
-          <span className={labelTextClass}>Source mode</span>
-          <select
-            name="sourceMode"
-            value={sourceMode}
-            onChange={(event) => {
-              const nextMode = event.target.value as SourceMode;
-              setSourceMode(nextMode);
-              setAssignmentId(nextMode === "assigned" ? firstAssignmentId : "");
-            }}
-            className={fieldClass}
-          >
-            <option value="assigned">Assigned activity</option>
-            <option value="self_input">Self-input activity</option>
-            <option value="custom">Custom activity</option>
-          </select>
-        </Label>
+      {isMobile ? (
+        <div className="space-y-4">
+          <section className={mobileSectionClass}>
+            {modeField}
+            {assignmentField}
+            {libraryField}
+            {customFields}
+          </section>
 
-        <Label className={labelClass}>
-          <span className={labelTextClass}>Assignment</span>
-          <select
-            name="assignmentId"
-            value={assignmentId}
-            onChange={(event) => setAssignmentId(event.target.value)}
-            className={fieldClass}
-          >
-            <option value="">Pilih assignment</option>
-            {assignments.map((assignment) => (
-              <option key={assignment.id} value={assignment.id}>
-                {(assignment.activityName ?? assignment.customJobName) || `Assignment #${assignment.id}`}
-                {assignment.assignedByName ? ` - ${assignment.assignedByName}` : ""}
-              </option>
-            ))}
-          </select>
-          <span className={variant === "mobile" ? "text-xs font-bold text-[#486275]" : "text-xs text-muted-foreground"}>
-            Approval otomatis ke atasan langsung.
-          </span>
-        </Label>
+          <section className={mobileSectionClass}>
+            <div className="grid gap-4">
+              <Label className={labelClass}>
+                <span className={labelTextClass}>Equipment / unit no.</span>
+                <Input name="equipmentNo" placeholder="Contoh: DT-451 / BAY-03" className={fieldClass} />
+              </Label>
 
-        {showLibrary ? (
-          <Label className={labelClass}>
-            <span className={labelTextClass}>Library activity</span>
-            <select name="libraryActivityId" defaultValue={firstLibraryId} className={fieldClass}>
-              <option value="">Pilih activity library</option>
-              {availableLibrary.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.activityCode} - {item.activityName} ({item.basePoints} pts)
-                </option>
-              ))}
-            </select>
-          </Label>
-        ) : null}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Label className={labelClass}>
+                  <span className={labelTextClass}>Start time</span>
+                  <Input name="startTime" type="datetime-local" defaultValue={defaultStartTime} className={fieldClass} />
+                </Label>
 
-        <Label className={labelClass}>
-          <span className={labelTextClass}>Equipment / unit no.</span>
-          <Input name="equipmentNo" placeholder="Contoh: DT-451 / BAY-03" className={fieldClass} />
-        </Label>
+                <Label className={labelClass}>
+                  <span className={labelTextClass}>End time</span>
+                  <Input name="endTime" type="datetime-local" defaultValue={defaultEndTime} className={fieldClass} />
+                </Label>
+              </div>
 
-        <Label className={labelClass}>
-          <span className={labelTextClass}>Start time</span>
-          <Input name="startTime" type="datetime-local" defaultValue={defaultStartTime} className={fieldClass} />
-        </Label>
+              <Label className={labelClass}>
+                <span className={labelTextClass}>Material used</span>
+                <Input
+                  name="materialUsed"
+                  placeholder="Contoh: patch kit, grease, torque wrench"
+                  className={fieldClass}
+                />
+              </Label>
+            </div>
+          </section>
 
-        <Label className={labelClass}>
-          <span className={labelTextClass}>End time</span>
-          <Input name="endTime" type="datetime-local" defaultValue={defaultEndTime} className={fieldClass} />
-        </Label>
-      </div>
+          <section className={mobileSectionClass}>
+            <Label className={labelClass}>
+              <span className={labelTextClass}>Notes / hasil kerja</span>
+              <Textarea
+                name="notes"
+                rows={5}
+                placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
+                className={textareaClass}
+              />
+            </Label>
+          </section>
 
-      <Label className={labelClass}>
-        <span className={labelTextClass}>Material used</span>
-        <Input name="materialUsed" placeholder="Contoh: patch kit, grease, torque wrench" className={fieldClass} />
-      </Label>
-
-      {sourceMode === "custom" ? (
+          <section className={mobileSectionClass}>
+            <Label className={labelClass}>
+              <span className={cn(labelTextClass, "flex items-center gap-1")}>
+                <Camera className="size-3.5" />
+                Photo camera / galeri
+              </span>
+              <Input
+                name="photoFile"
+                type="file"
+                accept="image/*"
+                className={fieldClass}
+                onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
+              />
+              <span className={mobileHintClass}>
+                Upload progres kerja. Foto akan ikut masuk ke Daily Activity System.
+              </span>
+              {photoName ? <span className={mobileHintClass}>{photoName}</span> : null}
+            </Label>
+          </section>
+        </div>
+      ) : (
         <>
-          <Label className={labelClass}>
-            <span className={labelTextClass}>Custom activity name</span>
-            <Input name="customActivityName" placeholder="Nama aktivitas custom" className={fieldClass} />
-          </Label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {modeField}
+            {assignmentField}
+            {libraryField}
+            <Label className={labelClass}>
+              <span className={labelTextClass}>Equipment / unit no.</span>
+              <Input name="equipmentNo" placeholder="Contoh: DT-451 / BAY-03" className={fieldClass} />
+            </Label>
+            <Label className={labelClass}>
+              <span className={labelTextClass}>Start time</span>
+              <Input name="startTime" type="datetime-local" defaultValue={defaultStartTime} className={fieldClass} />
+            </Label>
+            <Label className={labelClass}>
+              <span className={labelTextClass}>End time</span>
+              <Input name="endTime" type="datetime-local" defaultValue={defaultEndTime} className={fieldClass} />
+            </Label>
+          </div>
 
           <Label className={labelClass}>
-            <span className={labelTextClass}>Custom activity description</span>
+            <span className={labelTextClass}>Material used</span>
+            <Input name="materialUsed" placeholder="Contoh: patch kit, grease, torque wrench" className={fieldClass} />
+          </Label>
+
+          {customFields}
+
+          <Label className={labelClass}>
+            <span className={labelTextClass}>Notes / hasil kerja</span>
             <Textarea
-              name="customActivityDescription"
+              name="notes"
               rows={4}
-              placeholder="Jelaskan aktivitas custom minimal 80 karakter bila pekerjaan belum ada di library."
-              className={variant === "mobile" ? "w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-bold text-[#082033]" : undefined}
+              placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
+              className={textareaClass}
             />
           </Label>
+
+          <Label className={labelClass}>
+            <span className={cn(labelTextClass, "flex items-center gap-1")}>
+              <Camera className="size-3.5" />
+              Photo camera / galeri
+            </span>
+            <Input
+              name="photoFile"
+              type="file"
+              accept="image/*"
+              className={fieldClass}
+              onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
+            />
+            {photoName ? <span className="text-xs text-muted-foreground">{photoName}</span> : null}
+          </Label>
         </>
-      ) : null}
-
-      <Label className={labelClass}>
-        <span className={labelTextClass}>Notes / hasil kerja</span>
-        <Textarea
-          name="notes"
-          rows={4}
-          placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
-          className={variant === "mobile" ? "w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-bold text-[#082033]" : undefined}
-        />
-      </Label>
-
-      <Label className={labelClass}>
-        <span className={cn(labelTextClass, "flex items-center gap-1")}>
-          <Camera className="size-3.5" />
-          Photo camera / galeri
-        </span>
-        <Input
-          name="photoFile"
-          type="file"
-          accept="image/*"
-          className={fieldClass}
-          onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
-        />
-        {photoName ? (
-          <span className={variant === "mobile" ? "text-xs font-bold text-[#486275]" : "text-xs text-muted-foreground"}>
-            {photoName}
-          </span>
-        ) : null}
-      </Label>
+      )}
 
       <SubmitButton variant={variant} />
     </form>

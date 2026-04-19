@@ -2,6 +2,7 @@
 
 import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -32,7 +33,9 @@ import {
   DAILY_ACTIVITY_REVALIDATE_PATHS,
   ensureDailyActivitySeedData,
   getDailyActivityConfigMap,
+  getManagedEmployeeIdsForLead,
 } from "@/lib/daily-activity";
+import { auth } from "@/lib/auth";
 import { uploadAnyFileToS3 } from "@/lib/s3-storage";
 
 const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024;
@@ -163,6 +166,63 @@ function revalidateDailyActivitySurfaces() {
   for (const path of DAILY_ACTIVITY_REVALIDATE_PATHS) {
     revalidatePath(path);
   }
+}
+
+async function getAuthenticatedEmployeeContext() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session?.user?.email) {
+    throw new Error("Sesi login tidak ditemukan.");
+  }
+
+  const [employeeByAuthUserId] =
+    session.user.id
+      ? await db
+          .select({
+            id: employees.id,
+            authUserId: employees.authUserId,
+            email: employees.email,
+            siteId: employees.siteId,
+            totalPoints: employees.totalPoints,
+            directManagerId: employees.directManagerId,
+          })
+          .from(employees)
+          .where(eq(employees.authUserId, session.user.id))
+          .limit(1)
+      : [];
+  const [employee] =
+    employeeByAuthUserId != null
+      ? [employeeByAuthUserId]
+      : await db
+          .select({
+            id: employees.id,
+            authUserId: employees.authUserId,
+            email: employees.email,
+            siteId: employees.siteId,
+            totalPoints: employees.totalPoints,
+            directManagerId: employees.directManagerId,
+          })
+          .from(employees)
+          .where(sql`lower(${employees.email}) = ${session.user.email.trim().toLowerCase()}`)
+          .limit(1);
+
+  if (employee) {
+    if (!employee.authUserId && session.user.id) {
+      await db
+        .update(employees)
+        .set({ authUserId: session.user.id })
+        .where(eq(employees.id, employee.id));
+    }
+
+    return {
+      ...employee,
+      authUserId: employee.authUserId ?? session.user.id ?? null,
+    };
+  }
+
+  throw new Error("Profil karyawan login tidak ditemukan.");
 }
 
 function normalizeEvidenceUrls(value: string) {
@@ -610,6 +670,7 @@ export async function manageJobAssignmentAction(formData: FormData) {
   await ensureDailyActivitySeedData();
 
   const payload = manageAssignmentSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
 
   if (payload.intent === "delete") {
     if (!payload.id) {
@@ -642,6 +703,25 @@ export async function manageJobAssignmentAction(formData: FormData) {
     throw new Error("Assignment harus memiliki assigner, assignee, dan site.");
   }
 
+  const managedEmployeeIds = await getManagedEmployeeIdsForLead(currentEmployee.id);
+  if (!managedEmployeeIds.includes(payload.assignedToEmployeeId)) {
+    throw new Error("Anda hanya bisa membuat assignment untuk bawahan yang ada di struktur organisasi.");
+  }
+
+  const [assignee] = await db
+    .select({
+      id: employees.id,
+      siteId: employees.siteId,
+      isActive: employees.isActive,
+    })
+    .from(employees)
+    .where(eq(employees.id, payload.assignedToEmployeeId))
+    .limit(1);
+
+  if (!assignee?.isActive) {
+    throw new Error("Bawahan tujuan assignment tidak aktif atau tidak ditemukan.");
+  }
+
   if (payload.libraryActivityId) {
     const [library] = await db
       .select({ siteId: activityLibraries.siteId })
@@ -649,15 +729,15 @@ export async function manageJobAssignmentAction(formData: FormData) {
       .where(eq(activityLibraries.id, payload.libraryActivityId))
       .limit(1);
 
-    if (library?.siteId && library.siteId !== payload.siteId) {
+    if (library?.siteId && library.siteId !== assignee.siteId) {
       throw new Error("Activity library tidak tersedia untuk site assignment ini.");
     }
   }
 
   await db.insert(jobAssignments).values({
-    assignedByEmployeeId: payload.assignedByEmployeeId,
-    assignedToEmployeeId: payload.assignedToEmployeeId,
-    siteId: payload.siteId,
+    assignedByEmployeeId: currentEmployee.id,
+    assignedToEmployeeId: assignee.id,
+    siteId: assignee.siteId,
     libraryActivityId: payload.libraryActivityId ?? null,
     customJobName: payload.customJobName,
     priority: payload.priority,
@@ -684,19 +764,11 @@ export async function submitDailyActivityAction(formData: FormData) {
 
   const payload = submitActivitySchema.parse(Object.fromEntries(formData));
   const photoFile = formData.get("photoFile");
-  const [employee] = await db
-    .select({
-      id: employees.id,
-      siteId: employees.siteId,
-      totalPoints: employees.totalPoints,
-      directManagerId: employees.directManagerId,
-    })
-    .from(employees)
-    .where(eq(employees.id, payload.employeeId))
-    .limit(1);
+  const employee = await getAuthenticatedEmployeeContext();
+  const employeeId = employee.id;
 
-  if (!employee) {
-    throw new Error("Karyawan tidak ditemukan.");
+  if (payload.employeeId !== employeeId) {
+    throw new Error("Activity hanya bisa disubmit untuk akun Anda sendiri.");
   }
 
   const startTime = parseDateTime(payload.startTime, "Waktu mulai");
@@ -713,7 +785,7 @@ export async function submitDailyActivityAction(formData: FormData) {
     .from(activities)
     .where(
       and(
-        eq(activities.employeeId, payload.employeeId),
+        eq(activities.employeeId, employeeId),
         sql`${activities.startTime} < ${endTime} and ${activities.endTime} > ${startTime}`,
       ),
     )
@@ -755,7 +827,7 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error("Assignment belum dipilih.");
   }
 
-  if (selectedAssignment && selectedAssignment.assignedToEmployeeId !== payload.employeeId) {
+  if (selectedAssignment && selectedAssignment.assignedToEmployeeId !== employeeId) {
     throw new Error("Assignment tidak sesuai dengan karyawan login.");
   }
 
@@ -811,7 +883,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       .from(activities)
       .where(
         and(
-          eq(activities.employeeId, payload.employeeId),
+          eq(activities.employeeId, employeeId),
           eq(activities.sourceMode, "custom"),
           gte(activities.startTime, dayStart),
           lte(activities.startTime, dayEnd),
@@ -890,7 +962,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       .insert(activities)
       .values({
         siteId: employee.siteId,
-        employeeId: payload.employeeId,
+        employeeId,
         activityCode,
         activityType,
         title: activityTitle,
@@ -942,7 +1014,7 @@ export async function submitDailyActivityAction(formData: FormData) {
 
     if (penaltyPoints > 0) {
       await tx.insert(penaltyEvents).values({
-        employeeId: payload.employeeId,
+        employeeId,
         siteId: employee.siteId,
         activityId: createdActivity.id,
         penaltyCode:
@@ -965,7 +1037,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       const updatedBalance = Math.max(0, employee.totalPoints + projectedNet);
 
       await tx.insert(pointEvents).values({
-        employeeId: payload.employeeId,
+        employeeId,
         transactionType: projectedNet >= 0 ? "reward" : "penalty",
         sourceType: "activity",
         sourceId: createdActivity.id,
@@ -987,9 +1059,9 @@ export async function submitDailyActivityAction(formData: FormData) {
         .set({
           totalPoints: updatedBalance,
         })
-        .where(eq(employees.id, payload.employeeId));
+        .where(eq(employees.id, employeeId));
     } else {
-      const approver = await resolveApprover(payload.employeeId, payload.assignmentId);
+      const approver = await resolveApprover(employeeId, payload.assignmentId);
 
       if (approver) {
         await tx.insert(approvals).values({
@@ -1010,7 +1082,7 @@ export async function submitDailyActivityAction(formData: FormData) {
     }
   });
 
-  await updateStreakForEmployee(payload.employeeId, endTime);
+  await updateStreakForEmployee(employeeId, endTime);
   revalidateDailyActivitySurfaces();
 
   if (createdActivityId == null) {
@@ -1081,6 +1153,7 @@ export async function submitPointDisputeAction(formData: FormData) {
   await ensureDailyActivitySeedData();
 
   const payload = submitDisputeSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
 
   const [penalty] = await db
     .select({
@@ -1092,7 +1165,7 @@ export async function submitPointDisputeAction(formData: FormData) {
     .where(eq(penaltyEvents.id, payload.penaltyEventId))
     .limit(1);
 
-  if (!penalty || penalty.employeeId !== payload.employeeId) {
+  if (!penalty || penalty.employeeId !== currentEmployee.id) {
     throw new Error("Penalty event tidak ditemukan.");
   }
 
@@ -1113,7 +1186,7 @@ export async function submitPointDisputeAction(formData: FormData) {
   await db.transaction(async (tx) => {
     await tx.insert(pointDisputes).values({
       penaltyEventId: payload.penaltyEventId,
-      employeeId: payload.employeeId,
+      employeeId: currentEmployee.id,
       reason: payload.reason,
       evidenceUrls: normalizeEvidenceUrls(payload.evidenceUrls),
       status: "pending",

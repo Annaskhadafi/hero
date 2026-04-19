@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock3, Flame, ListTodo, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
+import { Clock3, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
 import { submitDailyActivityAction, submitPointDisputeAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
-import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
+import { getDailyActivityEmployeeData, getDailyActivityTeamBoardData } from "@/lib/daily-activity";
 
 function statusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
@@ -68,7 +69,10 @@ export default async function MyDayPage() {
     redirect("/sign-in");
   }
 
-  const data = await getDailyActivityEmployeeData(session.user.email);
+  const [data, teamData] = await Promise.all([
+    getDailyActivityEmployeeData(session.user.email),
+    getDailyActivityTeamBoardData(session.user.email),
+  ]);
 
   if (!data) {
     return null;
@@ -148,6 +152,7 @@ export default async function MyDayPage() {
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           <TabsTrigger value="jobs">Job Queue</TabsTrigger>
           <TabsTrigger value="activity-log">Activity Log</TabsTrigger>
+          {teamData?.hasSubordinates ? <TabsTrigger value="team-activity">Aktivitas Tim</TabsTrigger> : null}
           <TabsTrigger value="points">Point Feed</TabsTrigger>
           <TabsTrigger value="penalties">Penalty Audit</TabsTrigger>
         </TabsList>
@@ -380,6 +385,32 @@ export default async function MyDayPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {teamData?.hasSubordinates ? (
+          <TabsContent value="team-activity">
+            <Card className="rounded-[1.4rem]">
+              <CardContent className="space-y-4 pt-6">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">Aktivitas Bawahan</h3>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      Hanya bawahan yang terhubung ke atasan ini lewat struktur organisasi atau atasan langsung yang
+                      tampil di sini. Group per nama, lalu per hari, dan bisa collapse.
+                    </p>
+                  </div>
+                  <Button asChild variant="outline" className="rounded-full">
+                    <Link href="/dashboard/activity-hub/team-board">Buka Team Board</Link>
+                  </Button>
+                </div>
+
+                <ActivityTeamLogPanel
+                  groups={teamData.activityGroups}
+                  emptyMessage="Belum ada activity dari bawahan Anda hari ini."
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ) : null}
 
         <TabsContent value="points">
           <Card className="rounded-[1.4rem]">

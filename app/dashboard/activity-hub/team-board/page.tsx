@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CheckCheck, ClipboardList, Users2 } from "lucide-react";
+import { CheckCheck, ClipboardList } from "lucide-react";
 import { manageJobAssignmentAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,97 +112,99 @@ export default async function TeamBoardPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="rounded-full">
-                  <ClipboardList className="size-4" />
-                  Buat assignment
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>Buat Job Assignment</DialogTitle>
-                  <DialogDescription>
-                    Form assignment dipindah ke modal agar team board tetap bersih dan fokus ke monitoring.
-                  </DialogDescription>
-                </DialogHeader>
-                <form action={manageJobAssignmentAction} className="space-y-4">
-                  <input type="hidden" name="intent" value="create" />
-                  <input type="hidden" name="assignedByEmployeeId" value={data.lead.id} />
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Label className="grid gap-2">
-                      Assign to
-                      <select name="assignedToEmployeeId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
-                        {data.team.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.name} - {member.jobTitle || member.role}
-                          </option>
-                        ))}
-                      </select>
-                    </Label>
-                    <Label className="grid gap-2">
-                      Site
-                      <Input name="siteId" defaultValue={data.lead.siteId} />
-                    </Label>
-                    <Label className="grid gap-2">
-                      Activity library
-                      <select name="libraryActivityId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
-                        {data.assignmentOptions.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.activityCode} - {item.activityName}
-                          </option>
-                        ))}
-                      </select>
-                    </Label>
-                    <Label className="grid gap-2">
-                      Priority
-                      <select name="priority" defaultValue="Normal" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
-                        <option value="Normal">Normal</option>
-                        <option value="High">High</option>
-                        <option value="Emergency">Emergency</option>
-                      </select>
-                    </Label>
-                    <Label className="grid gap-2">
-                      Estimasi durasi (menit)
-                      <Input name="estimatedDuration" type="number" defaultValue={90} />
-                    </Label>
-                    <Label className="grid gap-2">
-                      Deadline
-                      <Input
-                        name="deadline"
-                        type="datetime-local"
-                        defaultValue={dateTimeLocalValue(new Date(Date.now() + 4 * 60 * 60 * 1000))}
-                      />
-                    </Label>
-                  </div>
-
-                  <Label className="grid gap-2">
-                    Catatan job
-                    <Textarea
-                      name="notes"
-                      rows={4}
-                      placeholder="Instruksi singkat, area kerja, material, atau perhatian keselamatan."
-                    />
-                  </Label>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                      <input type="checkbox" name="isMandatory" />
-                      Jadikan mandatory activity
-                    </Label>
-                    <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                      <input type="checkbox" name="isRecurring" />
-                      Tandai recurring assignment
-                    </Label>
-                  </div>
-
-                  <Button type="submit" className="w-full rounded-2xl">
+            {data.hasSubordinates ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="rounded-full">
+                    <ClipboardList className="size-4" />
                     Buat assignment
                   </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Buat Job Assignment</DialogTitle>
+                    <DialogDescription>
+                      Assignment hanya bisa dibuat untuk bawahan yang tersambung di struktur organisasi.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form action={manageJobAssignmentAction} className="space-y-4">
+                    <input type="hidden" name="intent" value="create" />
+                    <input type="hidden" name="assignedByEmployeeId" value={data.lead.id} />
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Label className="grid gap-2">
+                        Assign to
+                        <select name="assignedToEmployeeId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+                          {data.team.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name} - {member.jobTitle || member.role}
+                            </option>
+                          ))}
+                        </select>
+                      </Label>
+                      <Label className="grid gap-2">
+                        Site
+                        <Input name="siteId" defaultValue={data.lead.siteId} readOnly />
+                      </Label>
+                      <Label className="grid gap-2">
+                        Activity library
+                        <select name="libraryActivityId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+                          {data.assignmentOptions.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.activityCode} - {item.activityName}
+                            </option>
+                          ))}
+                        </select>
+                      </Label>
+                      <Label className="grid gap-2">
+                        Priority
+                        <select name="priority" defaultValue="Normal" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
+                          <option value="Normal">Normal</option>
+                          <option value="High">High</option>
+                          <option value="Emergency">Emergency</option>
+                        </select>
+                      </Label>
+                      <Label className="grid gap-2">
+                        Estimasi durasi (menit)
+                        <Input name="estimatedDuration" type="number" defaultValue={90} />
+                      </Label>
+                      <Label className="grid gap-2">
+                        Deadline
+                        <Input
+                          name="deadline"
+                          type="datetime-local"
+                          defaultValue={dateTimeLocalValue(new Date(Date.now() + 4 * 60 * 60 * 1000))}
+                        />
+                      </Label>
+                    </div>
+
+                    <Label className="grid gap-2">
+                      Catatan job
+                      <Textarea
+                        name="notes"
+                        rows={4}
+                        placeholder="Instruksi singkat, area kerja, material, atau perhatian keselamatan."
+                      />
+                    </Label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                        <input type="checkbox" name="isMandatory" />
+                        Jadikan mandatory activity
+                      </Label>
+                      <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                        <input type="checkbox" name="isRecurring" />
+                        Tandai recurring assignment
+                      </Label>
+                    </div>
+
+                    <Button type="submit" className="w-full rounded-2xl">
+                      Buat assignment
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            ) : null}
 
             <Button asChild variant="outline" className="rounded-full">
               <Link href="/dashboard/approval">
@@ -216,6 +219,7 @@ export default async function TeamBoardPage() {
       <Tabs defaultValue="team" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           <TabsTrigger value="team">Team Status</TabsTrigger>
+          <TabsTrigger value="activity-log">Activity Log Tim</TabsTrigger>
           <TabsTrigger value="approvals">Pending Approval</TabsTrigger>
           <TabsTrigger value="disputes">Disputes</TabsTrigger>
         </TabsList>
@@ -270,6 +274,24 @@ export default async function TeamBoardPage() {
                   </TableBody>
                 </Table>
               </MinimalTableShell>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="activity-log">
+          <Card className="rounded-[1.4rem]">
+            <CardContent className="space-y-4 pt-6">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Log Aktivitas Bawahan</h3>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Group berdasarkan nama lalu hari, dan tiap nama bisa collapse supaya monitoring lebih rapi.
+                </p>
+              </div>
+
+              <ActivityTeamLogPanel
+                groups={data.activityGroups}
+                emptyMessage="Belum ada aktivitas dari bawahan Anda."
+              />
             </CardContent>
           </Card>
         </TabsContent>
