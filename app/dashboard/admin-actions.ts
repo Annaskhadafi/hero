@@ -3270,7 +3270,7 @@ export async function manageLevelAction(
   } catch (error) {
     if (error instanceof z.ZodError) {
       const e = error as z.ZodError<any>;
-      return { status: "error", message: e.errors[0]?.message || "Input tidak valid." };
+      return { status: "error", message: e.issues[0]?.message || "Input tidak valid." };
     }
     return { status: "error", message: "Gagal menyimpan level." };
   }
@@ -3345,7 +3345,7 @@ export async function manageBadgeAction(
   } catch (error) {
     if (error instanceof z.ZodError) {
       const e = error as z.ZodError<any>;
-      return { status: "error", message: e.errors[0]?.message || "Input tidak valid." };
+      return { status: "error", message: e.issues[0]?.message || "Input tidak valid." };
     }
     return { status: "error", message: "Gagal menyimpan badge." };
   }
