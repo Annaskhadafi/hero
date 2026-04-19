@@ -64,6 +64,13 @@
       "when": 1776609134525,
       "tag": "0008_simple_vargas",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776639433240,
+      "tag": "0009_clear_omega_red",
+      "breakpoints": true
     }
   ]
 }

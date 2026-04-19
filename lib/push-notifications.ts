@@ -57,6 +57,8 @@ type EmployeeNotificationTarget = {
   email: string;
 };
 
+type PushChannelConfig = typeof notificationChannelSettings.$inferSelect;
+
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferenceSnapshot = {
   pushEnabled: true,
   inAppEnabled: true,
@@ -93,6 +95,39 @@ function buildPushPayload(input: PushDispatchInput) {
       employeeId: input.employeeId,
       ...input.metadata,
     },
+  };
+}
+
+function getEnvValue(...names: string[]) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function resolvePushChannelConfig(settings: PushChannelConfig | null) {
+  if (!settings) {
+    return null;
+  }
+
+  const vapidPublicKey =
+    settings.vapidPublicKey ||
+    getEnvValue("WEB_PUSH_VAPID_PUBLIC_KEY", "VAPID_PUBLIC_KEY", "NEXT_PUBLIC_VAPID_PUBLIC_KEY");
+  const vapidPrivateKey =
+    settings.vapidPrivateKey ||
+    getEnvValue("WEB_PUSH_VAPID_PRIVATE_KEY", "VAPID_PRIVATE_KEY");
+  const pushSubject =
+    settings.pushSubject ||
+    getEnvValue("WEB_PUSH_SUBJECT", "VAPID_SUBJECT") ||
+    "mailto:noreply@chitraparatama.co.id";
+
+  return {
+    ...settings,
+    vapidPublicKey,
+    vapidPrivateKey,
+    pushSubject,
   };
 }
 
@@ -190,7 +225,7 @@ export async function getPushChannelConfig() {
     .where(eq(notificationChannelSettings.channel, "pwa_push"))
     .limit(1);
 
-  return settings ?? null;
+  return resolvePushChannelConfig(settings ?? null);
 }
 
 export async function upsertPushSubscription(input: {

@@ -236,6 +236,15 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+async function getPushServiceWorkerRegistration() {
+  if (!("serviceWorker" in navigator)) {
+    return null;
+  }
+
+  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  return navigator.serviceWorker.ready;
+}
+
 export function MobileNotificationsCenter({
   initialData,
 }: {
@@ -312,7 +321,7 @@ export function MobileNotificationsCenter({
     }
 
     if (!("serviceWorker" in navigator)) {
-      setFeedback("Push notifications dimatikan karena offline/PWA mode dinonaktifkan untuk performa.");
+      setFeedback("Browser ini belum mendukung service worker untuk web push.");
       return;
     }
 
@@ -333,10 +342,9 @@ export function MobileNotificationsCenter({
         return;
       }
 
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      const registration = registrations[0];
+      const registration = await getPushServiceWorkerRegistration();
       if (!registration) {
-        setFeedback("Push notifications dimatikan karena offline/PWA mode dinonaktifkan untuk performa.");
+        setFeedback("Service worker push belum siap. Refresh halaman lalu coba lagi.");
         return;
       }
 

@@ -184,7 +184,7 @@ export function MasterDataManagement({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 bg-surface-container-low p-2 lg:grid-cols-9">
+        <TabsList className="grid h-auto w-full grid-cols-2 bg-surface-container-low p-2 md:grid-cols-3 lg:grid-cols-5">
           <TabsTrigger value="sections" className="flex items-center gap-2">
             <Layers className="size-4" />
             <span>Section</span>

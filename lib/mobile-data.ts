@@ -9,7 +9,6 @@ import {
   employees,
   hseIncidents,
   hseObservations,
-  notificationChannelSettings,
   notificationDeliveries,
   notificationEvents,
   notificationPushSubscriptions,
@@ -22,6 +21,7 @@ import {
 } from "@/db/schema/hero";
 import { ensureHeroSeedData } from "@/lib/hero-admin";
 import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
+import { getPushChannelConfig } from "@/lib/push-notifications";
 
 function startOfMonth(reference = new Date()) {
   return new Date(reference.getFullYear(), reference.getMonth(), 1);
@@ -190,12 +190,8 @@ export async function getMobileNotificationSettings(email?: string | null) {
     )[0] ??
     null;
 
-  const [pushConfig, subscriptionCount] = await Promise.all([
-    db
-      .select()
-      .from(notificationChannelSettings)
-      .where(eq(notificationChannelSettings.channel, "pwa_push"))
-      .limit(1),
+  const [pushSettings, subscriptionCount] = await Promise.all([
+    getPushChannelConfig(),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(notificationPushSubscriptions)
@@ -206,8 +202,6 @@ export async function getMobileNotificationSettings(email?: string | null) {
         ),
       ),
   ]);
-
-  const pushSettings = pushConfig[0] ?? null;
 
   return {
     preferences,

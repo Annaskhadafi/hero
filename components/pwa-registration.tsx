@@ -4,16 +4,11 @@ import { useEffect } from "react";
 
 export function PwaRegistration() {
   useEffect(() => {
-    const cleanupPwa = async () => {
+    const setupPwa = async () => {
       try {
-        const sessionMarker = "hero:pwa-cleanup-session-v2";
+        const sessionMarker = "hero:pwa-setup-session-v3";
         if (window.sessionStorage.getItem(sessionMarker) === "done") {
           return;
-        }
-
-        if ("serviceWorker" in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map((registration) => registration.unregister()));
         }
 
         if ("caches" in window) {
@@ -43,14 +38,18 @@ export function PwaRegistration() {
           window.localStorage.setItem(cleanupMarker, "done");
         }
 
+        if ("serviceWorker" in navigator) {
+          await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        }
+
         window.sessionStorage.setItem(sessionMarker, "done");
       } catch (error) {
-        console.error("Gagal membersihkan PWA/offline cache HERO.", error);
+        console.error("Gagal menyiapkan PWA push HERO.", error);
       }
     };
 
-    const runCleanup = () => {
-      void cleanupPwa();
+    const runSetup = () => {
+      void setupPwa();
     };
 
     const requestIdle =
@@ -59,11 +58,11 @@ export function PwaRegistration() {
         : null;
 
     if (requestIdle) {
-      const idleId = requestIdle(runCleanup, { timeout: 3000 });
+      const idleId = requestIdle(runSetup, { timeout: 3000 });
       return () => window.cancelIdleCallback?.(idleId);
     }
 
-    const timeoutId = globalThis.setTimeout(runCleanup, 1000);
+    const timeoutId = globalThis.setTimeout(runSetup, 1000);
     return () => globalThis.clearTimeout(timeoutId);
   }, []);
 
