@@ -68,6 +68,13 @@ export function MobileAppShell({
     const previousColorScheme = root.style.colorScheme;
 
     const forceLightMode = () => {
+      const needsClassUpdate = root.classList.contains("dark") || !root.classList.contains("light");
+      const needsSchemeUpdate = root.style.colorScheme !== "light";
+
+      if (!needsClassUpdate && !needsSchemeUpdate) {
+        return;
+      }
+
       root.classList.remove("dark");
       root.classList.add("light");
       root.style.colorScheme = "light";
