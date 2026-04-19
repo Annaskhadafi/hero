@@ -105,12 +105,12 @@ export function MobileReportsOverview({
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
           <HardHat className="size-5 text-[#003f78]" />
           <p className="mt-3 text-2xl font-black text-[#082033]">{latest?.jobsCompleted ?? 0}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Jobs Done</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Jobs Done</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
           <UsersRound className="size-5 text-[#5a2200]" />
           <p className="mt-3 text-2xl font-black text-[#082033]">{latest?.manpowerPresent ?? 0}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Manpower</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Manpower</p>
         </div>
       </section>
 
@@ -145,7 +145,7 @@ export function MobileReportsOverview({
               </div>
               <FileCheck2 className="size-5 text-[#003f78]" />
             </div>
-            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#5d7485]">{report.hseSummary}</p>
+            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{report.hseSummary}</p>
             <Button asChild className="mt-4 min-h-11 rounded-2xl bg-[#003f78] text-white">
               <Link prefetch={false} href={`/api/mobile/reports/${report.id}/pdf`}>
                 <Download className="size-4" />

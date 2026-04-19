@@ -1,0 +1,18 @@
+{
+  "id": "TASK-009",
+  "title": "Add mobile recent activity feed and stronger empty states",
+  "description": "Add a short recent activity feed to Mobile Dashboard and improve empty assignment state with practical next actions.",
+  "status": "completed",
+  "priority": "medium",
+  "area": "mobile",
+  "createdAt": "2026-04-19T00:00:00+08:00",
+  "notes": [
+    "Feed should combine today's activity submissions, point events, and penalties when available.",
+    "Limit to a few items so the dashboard remains quick to scan.",
+    "Empty assignment state should point users toward activity input or mobile menu."
+  ],
+  "startedAt": "2026-04-19T15:55:34.514Z",
+  "updatedAt": "2026-04-19T15:56:13.454Z",
+  "completedAt": "2026-04-19T15:56:13.454Z",
+  "completionDetails": "Added recent activity feed combining activities, points, and penalties, plus stronger no-assignment empty state with input/menu actions."
+}

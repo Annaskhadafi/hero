@@ -65,7 +65,7 @@ export default async function MobileMenuPage() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-black text-[#082033]">{item.label}</span>
-                <span className="mt-1 block truncate text-xs font-semibold text-[#5d7485]">{item.detail}</span>
+                <span className="mt-1 block truncate text-xs font-semibold text-[#486275]">{item.detail}</span>
               </span>
             </Link>
           );

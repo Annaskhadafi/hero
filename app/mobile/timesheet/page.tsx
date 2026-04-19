@@ -69,7 +69,7 @@ export default async function MobileTimesheetPage() {
           </article>
         ))}
         {data.rows.length === 0 ? (
-          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada timesheet untuk akun ini.
           </div>
         ) : null}

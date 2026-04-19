@@ -380,7 +380,7 @@ export function MobileNotificationsCenter({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-black text-[#082033]">Push notifications</p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-[#5d7485]">
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
                     Kirim alert ke browser/mobile yang sudah subscribe.
                   </p>
                 </div>
@@ -406,7 +406,7 @@ export function MobileNotificationsCenter({
                       </span>
                       <div>
                         <p className="text-sm font-black text-[#082033]">{item.label}</p>
-                        <p className="mt-1 text-xs font-semibold leading-5 text-[#5d7485]">{item.description}</p>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{item.description}</p>
                         <button
                           type="button"
                           disabled={isBusy}
@@ -433,7 +433,7 @@ export function MobileNotificationsCenter({
             })}
           </>
         ) : (
-          <div className="rounded-[1.2rem] bg-white p-5 text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.2rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Employee profile belum tersedia. Preference belum bisa dipakai.
           </div>
         )}
@@ -453,17 +453,17 @@ export function MobileNotificationsCenter({
               <p className="text-sm font-black text-[#082033]">
                 {(item.eventType ?? item.channel).replaceAll("_", " ")}
               </p>
-              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#5d7485]">
+              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">
                 {parsePayloadPreview(item.payloadSnapshot) || item.errorMessage || `${item.channel} ${item.status}`}
               </p>
-              <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#5d7485]">
+              <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
                 {formatDate(item.sentAt ?? item.createdAt)}
               </p>
             </div>
           </article>
         ))}
         {data.notifications.length === 0 ? (
-          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada notifikasi untuk akun ini.
           </div>
         ) : null}

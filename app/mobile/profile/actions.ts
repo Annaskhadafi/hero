@@ -1,0 +1,89 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { eq, or, sql } from "drizzle-orm";
+
+import { db } from "@/db";
+import { user } from "@/db/schema/auth";
+import { employees } from "@/db/schema/hero";
+import { auth } from "@/lib/auth";
+
+export type MobileProfileActionState = {
+  ok: boolean;
+  message: string;
+};
+
+const emptyState: MobileProfileActionState = {
+  ok: false,
+  message: "",
+};
+
+function formValue(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export async function updateMobileProfileAction(
+  _previousState: MobileProfileActionState = emptyState,
+  formData: FormData,
+): Promise<MobileProfileActionState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session?.user?.email) {
+    return {
+      ok: false,
+      message: "Session tidak valid. Login ulang.",
+    };
+  }
+
+  const name = formValue(formData, "name");
+  const phoneNumber = formValue(formData, "phoneNumber");
+  const domicile = formValue(formData, "domicile");
+  const birthPlaceDate = formValue(formData, "birthPlaceDate");
+  const profileImage = formValue(formData, "profileImage");
+
+  if (name.length < 2) {
+    return {
+      ok: false,
+      message: "Nama minimal 2 karakter.",
+    };
+  }
+
+  const normalizedEmail = session.user.email.trim().toLowerCase();
+  const employeeFilters = [sql`lower(${employees.email}) = ${normalizedEmail}`];
+
+  if (session.user.id) {
+    employeeFilters.push(eq(employees.authUserId, session.user.id));
+  }
+
+  await Promise.all([
+    db
+      .update(user)
+      .set({
+        name,
+        image: profileImage || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, session.user.id)),
+    db
+      .update(employees)
+      .set({
+        name,
+        phoneNumber,
+        domicile: domicile || "Belum diisi",
+        birthPlaceDate,
+      })
+      .where(or(...employeeFilters)),
+  ]);
+
+  revalidatePath("/mobile/profile");
+  revalidatePath("/mobile/dashboard");
+
+  return {
+    ok: true,
+    message: "Profile tersimpan.",
+  };
+}

@@ -484,13 +484,13 @@ export function MobileDailyActivityForm({
 
         <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
           <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7b92a3]">Coordinates</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Coordinates</p>
             <p className="mt-1 text-sm text-[#082033]">
               {geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : "Waiting GPS"}
             </p>
           </div>
           <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7b92a3]">Accuracy</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Accuracy</p>
             <p className="mt-1 text-sm text-[#082033]">{geo.accuracy || geo.message}</p>
           </div>
         </div>

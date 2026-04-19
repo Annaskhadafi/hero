@@ -22,7 +22,7 @@ export default async function MobileActivityInputPage() {
   const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
   if (!data) {
     return (
-      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Data employee belum tersedia untuk akun ini. Activity input belum bisa dibuka.
       </div>
     );
@@ -57,12 +57,12 @@ export default async function MobileActivityInputPage() {
         <div className="rounded-[1.2rem] bg-[#e9f6fd] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
           <Clock3 className="size-5 text-[#003f78]" />
           <p className="mt-3 text-lg font-black text-[#082033]">{data.summary.shift}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">Shift aktif</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Shift aktif</p>
         </div>
         <div className="rounded-[1.2rem] bg-[#e9f6fd] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
           <UserRound className="size-5 text-[#003f78]" />
           <p className="mt-3 text-lg font-black text-[#082033]">{data.employee.id}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">Employee ID</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Employee ID</p>
         </div>
       </section>
 

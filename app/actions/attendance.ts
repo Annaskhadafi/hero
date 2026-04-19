@@ -1,14 +1,14 @@
 "use server";
 
 import { db } from "@/db";
-import { attendanceRecords, employees, sites } from "@/db/schema/hero";
+import { attendanceRecords, employees, masterAttendanceShifts, sites } from "@/db/schema/hero";
 import { uploadFile } from "@/app/actions/upload";
 import { auth } from "@/lib/auth";
 import { getActiveAttendanceShiftOptions } from "@/lib/master-data";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, asc } from "drizzle-orm";
 import { endOfDay, startOfDay, subHours } from "date-fns";
 
 async function ensureEmployeeSite<
@@ -256,10 +256,45 @@ function getAttendanceQueryWindow() {
   };
 }
 
+async function getMobileAttendanceShiftOptions() {
+  const shifts = await db
+    .select({
+      code: masterAttendanceShifts.code,
+      label: masterAttendanceShifts.label,
+      startTime: masterAttendanceShifts.startTime,
+      endTime: masterAttendanceShifts.endTime,
+      windowLabel: masterAttendanceShifts.windowLabel,
+      helper: masterAttendanceShifts.helper,
+    })
+    .from(masterAttendanceShifts)
+    .where(eq(masterAttendanceShifts.isActive, true))
+    .orderBy(asc(masterAttendanceShifts.sortOrder), asc(masterAttendanceShifts.label));
+
+  if (shifts.length === 0) {
+    return [
+      {
+        value: "day",
+        label: "Shift Pagi",
+        window: "07:00 - 15:00",
+        helper: "Operasional reguler site pagi.",
+      },
+    ];
+  }
+
+  return shifts.map((shift) => ({
+    value: shift.code,
+    label: shift.label,
+    window:
+      shift.windowLabel.trim() ||
+      (shift.startTime && shift.endTime ? `${shift.startTime} - ${shift.endTime}` : "Sesuai assignment"),
+    helper: shift.helper,
+  }));
+}
+
 export async function getAttendancePageData() {
   const [employee, shiftOptions] = await Promise.all([
     getCurrentEmployee(),
-    getActiveAttendanceShiftOptions(),
+    getMobileAttendanceShiftOptions(),
   ]);
 
   if (!employee) {

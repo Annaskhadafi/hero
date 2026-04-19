@@ -49,7 +49,7 @@ export default async function MobileActivityPage() {
 
   if (!data) {
     return (
-      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Data employee belum tersedia untuk akun ini. Hubungkan email user dengan employee record dulu.
       </div>
     );
@@ -126,17 +126,17 @@ export default async function MobileActivityPage() {
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
           <ClipboardList className="size-5 text-[#003f78]" />
           <p className="mt-3 text-2xl font-black text-[#082033]">{data.summary.jobsAssigned}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">Queue</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Queue</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
           <CheckCircle2 className="size-5 text-[#1f7a4f]" />
           <p className="mt-3 text-2xl font-black text-[#082033]">{data.summary.jobsCompleted}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">Done</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Done</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
           <Target className="size-5 text-[#5a2200]" />
           <p className="mt-3 text-2xl font-black text-[#082033]">{data.activities.length}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">Log</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Log</p>
         </div>
       </section>
 
@@ -171,22 +171,22 @@ export default async function MobileActivityPage() {
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
                 <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7b92a3]">Deadline</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Deadline</p>
                   <p className="mt-1 text-sm text-[#082033]">{formatTime(assignment.deadline)}</p>
                 </div>
                 <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7b92a3]">Priority</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Priority</p>
                   <p className="mt-1 text-sm text-[#082033]">{assignment.priority}</p>
                 </div>
               </div>
 
               {assignment.notes ? (
-                <p className="mt-3 text-xs leading-5 text-[#5d7485]">{assignment.notes}</p>
+                <p className="mt-3 text-xs leading-5 text-[#486275]">{assignment.notes}</p>
               ) : null}
             </article>
           ))
         ) : (
-          <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada assignment hari ini.
           </div>
         )}
@@ -225,13 +225,13 @@ export default async function MobileActivityPage() {
 
                   <div className="mt-3 grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
                     <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7b92a3]">Waktu</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Waktu</p>
                       <p className="mt-1 text-sm text-[#082033]">
                         {formatTime(activity.startTime)} - {formatTime(activity.endTime)}
                       </p>
                     </div>
                     <div className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7b92a3]">Net Point</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">Net Point</p>
                       <p className="mt-1 text-sm text-[#082033]">
                         {activity.pointsNet >= 0 ? "+" : ""}
                         {activity.pointsNet}
@@ -256,7 +256,7 @@ export default async function MobileActivityPage() {
             </article>
           ))
         ) : (
-          <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada activity yang disubmit hari ini.
           </div>
         )}

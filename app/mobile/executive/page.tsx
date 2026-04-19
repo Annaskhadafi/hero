@@ -33,7 +33,7 @@ export default async function MobileExecutivePage() {
             >
               <Icon className="size-5" />
               <p className="mt-3 text-2xl font-black">{metric.value}</p>
-              <p className={dark ? "text-[10px] font-black uppercase tracking-[0.16em] text-[#b9dff6]" : "text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]"}>
+              <p className={dark ? "text-[10px] font-black uppercase tracking-[0.16em] text-[#b9dff6]" : "text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]"}>
                 {metric.label}
               </p>
             </article>

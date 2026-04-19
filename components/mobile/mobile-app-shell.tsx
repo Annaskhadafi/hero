@@ -48,9 +48,11 @@ const drawerItems = [
 export function MobileAppShell({
   children,
   userName,
+  notificationCount = 0,
 }: {
   children: ReactNode;
   userName: string;
+  notificationCount?: number;
 }) {
   const pathname = usePathname();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
@@ -58,6 +60,35 @@ export function MobileAppShell({
   useEffect(() => {
     setPendingHref(null);
   }, [pathname]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const hadLight = root.classList.contains("light");
+    const hadDark = root.classList.contains("dark");
+    const previousColorScheme = root.style.colorScheme;
+
+    const forceLightMode = () => {
+      root.classList.remove("dark");
+      root.classList.add("light");
+      root.style.colorScheme = "light";
+    };
+
+    forceLightMode();
+
+    const observer = new MutationObserver(forceLightMode);
+    observer.observe(root, {
+      attributeFilter: ["class", "style"],
+      attributes: true,
+    });
+
+    return () => {
+      observer.disconnect();
+      root.classList.remove("light", "dark");
+      if (hadLight) root.classList.add("light");
+      if (hadDark) root.classList.add("dark");
+      root.style.colorScheme = previousColorScheme;
+    };
+  }, []);
 
   useEffect(() => {
     if (!pendingHref) {
@@ -78,7 +109,7 @@ export function MobileAppShell({
   }
 
   return (
-    <div className="min-h-dvh bg-[#dfe8ef] text-[#082033]">
+    <div className="mobile-light-scope min-h-dvh bg-[#dfe8ef] text-[#082033]">
       <div className="mx-auto min-h-dvh max-w-[430px] bg-[#f6fbff] shadow-[0_24px_80px_rgba(8,32,51,0.18)]">
         <header className="sticky top-0 z-40 border-b border-[#d8e8f3]/80 bg-[#f6fbff]/92 px-4 py-3 backdrop-blur-xl">
           {pendingHref ? (
@@ -101,7 +132,7 @@ export function MobileAppShell({
                 <SheetHeader className="border-b border-[#d8e8f3] px-5 py-5 text-left">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.26em] text-[#5d7485]">
+                      <p className="text-[10px] font-black uppercase tracking-[0.26em] text-[#486275]">
                         HERO Mobile
                       </p>
                       <SheetTitle className="mt-1 text-xl font-black tracking-tight text-[#082033]">
@@ -162,9 +193,14 @@ export function MobileAppShell({
               href="/mobile/notifications"
               aria-label="Open notifications"
               onClick={() => beginNavigation("/mobile/notifications")}
-              className="flex size-10 items-center justify-center rounded-lg text-[#004b87] transition active:scale-95 active:bg-[#e6f2fb]"
+              className="relative flex size-10 items-center justify-center rounded-lg text-[#004b87] transition active:scale-95 active:bg-[#e6f2fb]"
             >
               <Bell className="size-5" />
+              {notificationCount > 0 ? (
+                <span className="absolute right-1 top-1 flex min-w-4 items-center justify-center rounded-full bg-[#5a2200] px-1 text-[9px] font-black leading-4 text-white shadow-[0_6px_14px_rgba(90,34,0,0.24)]">
+                  {notificationCount > 9 ? "9+" : notificationCount}
+                </span>
+              ) : null}
             </Link>
           </div>
         </header>
@@ -197,7 +233,7 @@ export function MobileAppShell({
                       ? "bg-[#003f78] text-white shadow-[0_12px_26px_rgba(0,63,120,0.22)]"
                       : pendingHref === item.href
                         ? "bg-[#e9f6fd] text-[#003f78]"
-                        : "text-[#5d7485] active:bg-[#eaf4fb]",
+                        : "text-[#486275] active:bg-[#eaf4fb]",
                   )}
                 >
                   <Icon className="size-4" />

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   activities,
@@ -385,6 +385,63 @@ async function fetchApprovalRows() {
     .orderBy(desc(approvals.submittedAt), desc(approvals.id));
 }
 
+async function fetchApprovalRowsForUser(
+  email: string,
+  currentEmployee: { id: number; name: string } | null,
+) {
+  const normalizedEmail = normalizeMatchValue(email);
+  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name);
+  const filters = [sql`lower(${employees.email}) = ${normalizedEmail}`];
+
+  if (currentEmployee?.id != null) {
+    filters.push(eq(approvals.approverEmployeeId, currentEmployee.id));
+  }
+
+  if (normalizedEmployeeName) {
+    filters.push(sql`lower(${approvals.approverName}) = ${normalizedEmployeeName}`);
+  }
+
+  return db
+    .select({
+      approvalId: approvals.id,
+      activityId: activities.id,
+      approvalStepId: approvals.approvalStepId,
+      level: approvals.level,
+      status: approvals.status,
+      approverName: approvals.approverName,
+      approverEmployeeId: approvals.approverEmployeeId,
+      submittedAt: approvals.submittedAt,
+      reviewedAt: approvals.reviewedAt,
+      overtimeMinutes: approvals.overtimeMinutes,
+      resolutionSource: approvals.resolutionSource,
+      routeSnapshot: approvals.routeSnapshot,
+      decisionNote: approvals.decisionNote,
+      activityCode: activities.activityCode,
+      activityType: activities.activityType,
+      activityTitle: activities.title,
+      unitNumber: activities.unitNumber,
+      activityStatus: activities.status,
+      priority: activities.priority,
+      remarks: activities.remarks,
+      startTime: activities.startTime,
+      endTime: activities.endTime,
+      createdAt: activities.createdAt,
+      requesterName: employees.name,
+      requesterEmail: employees.email,
+      requesterDepartment: employees.department,
+      requesterSection: employees.section,
+      requesterJobTitle: employees.jobTitle,
+      siteName: sites.name,
+    })
+    .from(approvals)
+    .innerJoin(activities, eq(approvals.activityId, activities.id))
+    .innerJoin(employees, eq(activities.employeeId, employees.id))
+    .innerJoin(sites, eq(activities.siteId, sites.id))
+    .where(or(...filters))
+    .orderBy(desc(approvals.submittedAt), desc(approvals.id))
+    .limit(240);
+}
+
 export async function getApprovalWorkbenchData() {
   await ensureHeroSeedData();
 
@@ -562,20 +619,16 @@ async function getEmployeeByEmail(email: string) {
       jobTitle: employees.jobTitle,
     })
     .from(employees)
-    .where(eq(employees.email, email))
+    .where(sql`lower(${employees.email}) = ${email.trim().toLowerCase()}`)
     .limit(1);
 
   return employee ?? null;
 }
 
 export async function getApprovalCenterData(email: string) {
-  await ensureHeroSeedData();
-
   const now = new Date();
-  const [currentEmployee, approvalRows] = await Promise.all([
-    getEmployeeByEmail(email),
-    fetchApprovalRows(),
-  ]);
+  const currentEmployee = await getEmployeeByEmail(email);
+  const approvalRows = await fetchApprovalRowsForUser(email, currentEmployee);
   const queue = approvalRows
     .map((row) => enrichApprovalRow(row, now))
     .sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime());

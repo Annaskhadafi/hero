@@ -10,7 +10,7 @@ type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>;
 function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
   if (groups.length === 0) {
     return (
-      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Tidak ada activity yang menunggu approval Anda.
       </div>
     );
@@ -26,7 +26,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
         >
           <summary className="list-none cursor-pointer px-4 py-4">
             <p className="text-base font-black tracking-tight text-[#082033]">{group.requesterName}</p>
-            <p className="mt-1 text-xs font-semibold text-[#5d7485]">
+            <p className="mt-1 text-xs font-semibold text-[#486275]">
               {group.requesterJobTitle || "-"} • {group.workDateLabel}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -38,7 +38,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
 
           <div className="space-y-3 border-t border-[#e6f0f7] bg-[#f6fbff] px-4 py-4">
             <div className="rounded-[1.05rem] bg-white px-4 py-4">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#5d7485]">Approve Group</p>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#486275]">Approve Group</p>
               <p className="mt-2 text-sm text-[#082033]">
                 {group.activityCount} activity • overtime {group.totalOvertimeLabel}
               </p>
@@ -62,7 +62,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
                   <p className="text-sm font-black text-[#082033]">
                     {item.title} • {item.unitNumber}
                   </p>
-                  <p className="mt-1 text-xs font-semibold text-[#5d7485]">
+                  <p className="mt-1 text-xs font-semibold text-[#486275]">
                     {item.activityType} • {item.timeRange}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -73,11 +73,11 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
 
                 <div className="space-y-3 border-t border-[#eef4f8] px-4 py-4">
                   <div className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5d7485]">Ringkasan</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#486275]">Ringkasan</p>
                     <p className="mt-2 text-sm text-[#082033]">
                       Step {item.currentStepLabel} • due {item.dueAt.toLocaleString("id-ID")}
                     </p>
-                    <p className="mt-2 text-sm text-[#5d7485]">{item.remarks || "Tanpa remark tambahan."}</p>
+                    <p className="mt-2 text-sm text-[#486275]">{item.remarks || "Tanpa remark tambahan."}</p>
                   </div>
 
                   <form action={reviewApprovalAction} className="space-y-3 rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
@@ -139,7 +139,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
 function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"] }) {
   if (groups.length === 0) {
     return (
-      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+      <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Belum ada history approval dari activity Anda.
       </div>
     );
@@ -155,7 +155,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
         >
           <summary className="list-none cursor-pointer px-4 py-4">
             <p className="text-base font-black tracking-tight text-[#082033]">{group.workDateLabel}</p>
-            <p className="mt-1 text-xs font-semibold text-[#5d7485]">{group.activityCount} activity diajukan</p>
+            <p className="mt-1 text-xs font-semibold text-[#486275]">{group.activityCount} activity diajukan</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {group.pendingCount > 0 ? <AdminStatusBadge value="in_review" /> : null}
               {group.approvedCount > 0 ? <AdminStatusBadge value="approved" /> : null}
@@ -175,7 +175,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
                   <p className="text-sm font-black text-[#082033]">
                     {item.title} • {item.unitNumber}
                   </p>
-                  <p className="mt-1 text-xs font-semibold text-[#5d7485]">
+                  <p className="mt-1 text-xs font-semibold text-[#486275]">
                     {item.activityType} • {item.siteName} • {item.timeRange}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -186,9 +186,9 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
 
                 <div className="space-y-3 border-t border-[#eef4f8] px-4 py-4">
                   <div className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#5d7485]">Hasil</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#486275]">Hasil</p>
                     <p className="mt-2 text-sm text-[#082033]">{item.lastDecision}</p>
-                    <p className="mt-2 text-xs font-semibold text-[#5d7485]">
+                    <p className="mt-2 text-xs font-semibold text-[#486275]">
                       Menunggu {item.pendingWith} • {item.currentStepLabel}
                     </p>
                   </div>
@@ -200,7 +200,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
                         <AdminStatusBadge value={note.kind} />
                       </div>
                       <p className="mt-2 text-sm text-[#082033]">{note.message}</p>
-                      <p className="mt-2 text-xs text-[#5d7485]">{note.at.toLocaleString("id-ID")}</p>
+                      <p className="mt-2 text-xs text-[#486275]">{note.at.toLocaleString("id-ID")}</p>
                     </div>
                   ))}
                 </div>
@@ -219,18 +219,18 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
       <section className="space-y-1">
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Approval Center</p>
         <h1 className="text-2xl font-black tracking-tight text-[#003461]">Approval</h1>
-        <p className="text-sm font-semibold text-[#5d7485]">
+        <p className="text-sm font-semibold text-[#486275]">
           Inbox grouped per user dan history hasil approval activity Anda.
         </p>
       </section>
 
       <section className="grid grid-cols-2 gap-3">
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Inbox Group</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Inbox Group</p>
           <p className="mt-3 text-2xl font-black text-[#082033]">{data.inboxMetrics.pendingGroups}</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Pending Item</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Pending Item</p>
           <p className="mt-3 text-2xl font-black text-[#082033]">{data.inboxMetrics.pendingActivities}</p>
         </div>
       </section>

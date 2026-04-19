@@ -1,10 +1,19 @@
 
 > hero@0.1.0 dev
-> next dev --webpack
+> next dev --turbopack
 
-▲ Next.js 16.2.4 (webpack)
+▲ Next.js 16.2.4 (Turbopack)
 - Local:         http://localhost:3000
 - Network:       http://10.51.240.35:3000
 - Environments: .env.local, .env
-✓ Ready in 414ms
+✓ Ready in 681ms
 
+ GET /mobile 307 in 8.5s (next.js: 2.6s, application-code: 5.9s)
+ GET /mobile/approval 307 in 8.5s (next.js: 1576ms, application-code: 7.0s)
+ GET /mobile/profile 307 in 8.6s (next.js: 2.7s, application-code: 5.8s)
+ GET /mobile/executive 307 in 8.6s (next.js: 2.9s, application-code: 5.7s)
+ GET /mobile/attendance 307 in 9.0s (next.js: 2.8s, application-code: 6.2s)
+ GET /mobile/approval 307 in 658ms (next.js: 10ms, application-code: 649ms)
+ GET /mobile/attendance 307 in 818ms (next.js: 17ms, application-code: 800ms)
+ GET /mobile/profile 307 in 831ms (next.js: 128ms, application-code: 702ms)
+ GET /mobile/executive 307 in 854ms (next.js: 249ms, application-code: 605ms)

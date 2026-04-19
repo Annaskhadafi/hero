@@ -671,8 +671,8 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
                 {item.severity}
               </span>
             </div>
-            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#5d7485]">{item.notes}</p>
-            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">
+            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{item.notes}</p>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
               {item.category} · {item.status} · {formatDate(item.observedAt)}
             </p>
           </article>

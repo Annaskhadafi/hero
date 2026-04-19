@@ -53,14 +53,14 @@ export default async function MobileTrainingPage() {
               </div>
               <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">{item.status}</Badge>
             </div>
-            <p className="mt-3 flex items-center gap-2 text-xs font-bold text-[#5d7485]">
+            <p className="mt-3 flex items-center gap-2 text-xs font-bold text-[#486275]">
               <CalendarClock className="size-4" />
               Expired {formatDate(item.expiresAt)} · {daysUntil(item.expiresAt)} days
             </p>
           </article>
         ))}
         {data.trainings.length === 0 ? (
-          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada data training untuk akun ini.
           </div>
         ) : null}

@@ -1,9 +1,15 @@
 import { redirect } from "next/navigation";
 import { BriefcaseBusiness, MapPin, ShieldCheck, Trophy, UserRound } from "lucide-react";
 
+import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settings";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
+
+function getDateInputValue(value: string | null | undefined) {
+  const match = value?.match(/^\d{4}-\d{2}-\d{2}/);
+  return match?.[0] ?? "";
+}
 
 export default async function MobileProfilePage() {
   const session = await getServerSession();
@@ -16,7 +22,7 @@ export default async function MobileProfilePage() {
 
   if (!data) {
     return (
-      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#5d7485] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Data employee belum tersedia untuk akun ini. Profile mobile belum bisa ditampilkan.
       </div>
     );
@@ -37,16 +43,27 @@ export default async function MobileProfilePage() {
         </div>
       </section>
 
+      <MobileProfileSettings
+        profile={{
+          name: data.employee.name,
+          email: data.employee.email,
+          phoneNumber: data.employee.phoneNumber ?? "",
+          domicile: data.employee.domicile ?? "",
+          birthPlaceDate: getDateInputValue(data.employee.birthPlaceDate),
+          profileImage: session.user.image ?? "",
+        }}
+      />
+
       <section className="grid grid-cols-2 gap-3">
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
           <Trophy className="size-5 text-[#003f78]" />
           <p className="mt-3 text-xl font-black text-[#082033]">{data.employee.totalPoints.toLocaleString("id-ID")}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Total Points</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Total Points</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
           <ShieldCheck className="size-5 text-[#5a2200]" />
           <p className="mt-3 text-xl font-black text-[#082033]">{data.employee.levelName}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Level</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Level</p>
         </div>
       </section>
 
@@ -56,14 +73,14 @@ export default async function MobileProfilePage() {
           <div className="flex items-center gap-3">
             <BriefcaseBusiness className="size-4 text-[#003f78]" />
             <div>
-              <p className="text-xs font-bold text-[#5d7485]">Role</p>
+              <p className="text-xs font-bold text-[#486275]">Role</p>
               <p className="text-sm font-black text-[#082033]">{data.employee.role}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <MapPin className="size-4 text-[#003f78]" />
             <div>
-              <p className="text-xs font-bold text-[#5d7485]">Site</p>
+              <p className="text-xs font-bold text-[#486275]">Site</p>
               <p className="text-sm font-black text-[#082033]">{data.site?.name ?? data.employee.workLocation}</p>
             </div>
           </div>

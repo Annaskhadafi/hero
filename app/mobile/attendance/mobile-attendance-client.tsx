@@ -651,21 +651,21 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
         <div className="space-y-3">
           <div className="flex items-end justify-between gap-3">
-            <span className="text-[10px] font-black uppercase text-[#6c7881]">Site</span>
+            <span className="text-[10px] font-black uppercase text-[#486275]">Site</span>
             <span className="text-right text-sm font-black text-[#071e27]">{siteName}</span>
           </div>
           <div className="flex items-end justify-between gap-3">
-            <span className="text-[10px] font-black uppercase text-[#6c7881]">Nama Lokasi</span>
+            <span className="text-[10px] font-black uppercase text-[#486275]">Nama Lokasi</span>
             <span className="max-w-[220px] text-right text-xs font-bold text-[#071e27]">
               {locationName}
             </span>
           </div>
           <div className="flex items-end justify-between gap-3">
-            <span className="text-[10px] font-black uppercase text-[#6c7881]">Coordinates</span>
+            <span className="text-[10px] font-black uppercase text-[#486275]">Coordinates</span>
             <span className="text-right text-xs font-bold text-[#071e27]">{buildCoordinateLabel(geo)}</span>
           </div>
           <div className="flex items-end justify-between gap-3">
-            <span className="text-[10px] font-black uppercase text-[#6c7881]">Shift / Roster</span>
+            <span className="text-[10px] font-black uppercase text-[#486275]">Shift / Roster</span>
             <span className="text-right text-xs font-bold text-[#071e27]">
               {selectedShiftOption ? `${selectedShiftOption.label} · ${selectedShiftOption.window}` : "No active shift"}
             </span>
@@ -689,7 +689,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       <section className="rounded-[0.75rem] bg-[#e6f6ff] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black uppercase text-[#6c7881]">Current Attempt</p>
+            <p className="text-[10px] font-black uppercase text-[#486275]">Current Attempt</p>
             <p className="mt-1 font-display text-2xl font-black text-[#003461]">
               {now ? formatClock(now) : "--.--.--"}
               <span className="ml-1 text-sm text-[#486275]">WITA</span>
@@ -755,7 +755,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         {isSubmitting || isPending ? "Recording..." : actionLabel}
       </button>
 
-      <p className="text-center text-[10px] font-semibold text-[#6c7881]">
+      <p className="text-center text-[10px] font-semibold text-[#486275]">
         Biometric data encrypted and stored securely per protocol.
       </p>
 

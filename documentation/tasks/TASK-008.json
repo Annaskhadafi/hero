@@ -1,0 +1,18 @@
+{
+  "id": "TASK-008",
+  "title": "Add mobile approval snapshot",
+  "description": "Add a compact approval snapshot to Mobile Dashboard so supervisors can see pending groups, pending items, due soon, and overdue counts without opening Approval Center.",
+  "status": "completed",
+  "priority": "high",
+  "area": "mobile",
+  "createdAt": "2026-04-19T00:00:00+08:00",
+  "notes": [
+    "Use existing Approval Center data for the logged-in user.",
+    "Link snapshot to /mobile/approval.",
+    "Keep summary card short and operational."
+  ],
+  "startedAt": "2026-04-19T15:55:07.940Z",
+  "updatedAt": "2026-04-19T15:55:34.425Z",
+  "completedAt": "2026-04-19T15:55:34.425Z",
+  "completionDetails": "Added Approval Snapshot to Mobile Dashboard with pending group, item, due soon, and overdue counts linked to Approval Center."
+}

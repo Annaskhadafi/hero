@@ -42,12 +42,12 @@ export default async function MobileWellnessPage() {
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
           <Activity className="size-5 text-[#003f78]" />
           <p className="mt-3 text-3xl font-black text-[#082033]">{data.reliability}%</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Reliability</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Reliability</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
           <ShieldCheck className="size-5 text-[#5a2200]" />
           <p className="mt-3 text-3xl font-black text-[#082033]">{data.wellness.length}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5d7485]">Checks</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Checks</p>
         </div>
       </section>
 
@@ -62,14 +62,14 @@ export default async function MobileWellnessPage() {
               </div>
               <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">{item.status}</Badge>
             </div>
-            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#5d7485]">{item.notes}</p>
-            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#5d7485]">
+            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{item.notes}</p>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
               {formatDate(item.recordedAt)}
             </p>
           </article>
         ))}
         {data.wellness.length === 0 ? (
-          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#5d7485] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             Belum ada data wellness untuk akun ini.
           </div>
         ) : null}
