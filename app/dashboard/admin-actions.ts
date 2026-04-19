@@ -39,6 +39,7 @@ import {
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
+  evaluatePointThresholdBadges,
 } from "@/lib/hero-admin";
 import {
   createNotificationEventForEmployee,
@@ -823,6 +824,8 @@ async function applyApprovalDecision(params: {
               totalPoints: updatedBalance,
             })
             .where(eq(employees.id, approval.employeeId));
+          
+          await evaluatePointThresholdBadges(tx, approval.employeeId, updatedBalance);
         }
       }
     }
@@ -2948,10 +2951,13 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
           points: payload.points,
           createdAt: new Date(),
         });
-        await tx
+        const [updatedEmployee] = await tx
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} + ${payload.points}` })
-          .where(eq(employees.id, payload.employeeId!));
+          .where(eq(employees.id, payload.employeeId!))
+          .returning({ totalPoints: employees.totalPoints });
+        
+        await evaluatePointThresholdBadges(tx, payload.employeeId!, updatedEmployee.totalPoints);
       });
 
       await notifyEmployeeForPointUpdate({
@@ -3177,10 +3183,13 @@ export async function resolveDisputeAction(
 
       if (payload.status === "accepted") {
         // Refund points if accepted
-        await tx
+        const [updatedEmployee] = await tx
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} + ${dispute.hero_penalty_events.pointsDeducted}` })
-          .where(eq(employees.id, dispute.hero_penalty_events.employeeId));
+          .where(eq(employees.id, dispute.hero_penalty_events.employeeId))
+          .returning({ totalPoints: employees.totalPoints });
+          
+        await evaluatePointThresholdBadges(tx, dispute.hero_penalty_events.employeeId, updatedEmployee.totalPoints);
       }
 
       await tx.update(penaltyEvents).set({ isDisputed: false })
@@ -3260,7 +3269,8 @@ export async function manageLevelAction(
     return { status: "error", message: "Intent tidak valid." };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { status: "error", message: error.errors[0]?.message || "Input tidak valid." };
+      const e = error as z.ZodError<any>;
+      return { status: "error", message: e.errors[0]?.message || "Input tidak valid." };
     }
     return { status: "error", message: "Gagal menyimpan level." };
   }
@@ -3334,7 +3344,8 @@ export async function manageBadgeAction(
     return { status: "error", message: "Intent tidak valid." };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { status: "error", message: error.errors[0]?.message || "Input tidak valid." };
+      const e = error as z.ZodError<any>;
+      return { status: "error", message: e.errors[0]?.message || "Input tidak valid." };
     }
     return { status: "error", message: "Gagal menyimpan badge." };
   }
