@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Layers3, Settings2 } from "lucide-react";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
 import { ActivityLibraryImportExport } from "@/components/activity-library-import-export";
+import { ActivityLibraryRowActions } from "@/components/activity-library-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,9 +16,9 @@ import { getDailyActivityLibraryData } from "@/lib/daily-activity";
 
 function SummaryChip({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg bg-surface-container-low px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="ml-2 font-semibold text-foreground">{value}</span>
+    <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-[0_12px_28px_rgba(8,32,51,0.06)] ring-1 ring-[rgba(66,71,80,0.08)]">
+      <span className="text-xs font-black uppercase text-muted-foreground">{label}</span>
+      <span className="ml-3 font-display text-xl font-black text-foreground">{value}</span>
     </div>
   );
 }
@@ -33,11 +34,13 @@ export default async function DailyActivityLibraryPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+      <div className="rounded-[1.25rem] bg-surface-container-low p-4">
+        <div className="flex flex-wrap gap-3">
         <SummaryChip label="Total library" value={data.metrics.total} />
         <SummaryChip label="Aktif" value={data.metrics.active} />
         <SummaryChip label="Self-input" value={data.metrics.selfInput} />
         <SummaryChip label="Auto-approve" value={data.metrics.autoApproveReady} />
+        </div>
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
@@ -47,9 +50,9 @@ export default async function DailyActivityLibraryPage() {
         </TabsList>
 
         <TabsContent value="overview">
-          <Card className="rounded-[1.4rem]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+            <CardHeader className="gap-3">
+              <CardTitle className="flex items-center gap-2 text-2xl">
                 <Settings2 className="size-5 text-primary" />
                 Activity Library Overview
               </CardTitle>
@@ -79,20 +82,20 @@ export default async function DailyActivityLibraryPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Activity</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Points</TableHead>
-                      <TableHead>Attributes</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Aksi</TableHead>
+                      <TableHead className="min-w-[280px]">Activity</TableHead>
+                      <TableHead className="min-w-[160px]">Scope</TableHead>
+                      <TableHead className="min-w-[150px]">Scoring</TableHead>
+                      <TableHead className="min-w-[220px]">Validation</TableHead>
+                      <TableHead className="min-w-[190px]">Status</TableHead>
+                      <TableHead className="min-w-[170px] text-right">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.rows.map((row) => (
-                      <TableRow key={row.id}>
+                      <TableRow key={row.id} className="hover:bg-surface-container-low/70">
                         <TableCell className="align-top">
                           <div className="space-y-1">
-                            <p className="font-medium">{row.activityName}</p>
+                            <p className="font-semibold text-foreground">{row.activityName}</p>
                             <p className="text-xs text-muted-foreground">
                               {row.activityCode} • {row.category} • creator {row.creatorName ?? "-"}
                             </p>
@@ -131,49 +134,12 @@ export default async function DailyActivityLibraryPage() {
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
-                          <div className="flex flex-wrap gap-2">
-                            <details className="min-w-[220px] rounded-lg border border-border/70 bg-muted/20 p-3">
-                              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                Edit
-                              </summary>
-                              <form action={manageActivityLibraryAction} className="mt-3 grid gap-3">
-                                <input type="hidden" name="intent" value="update" />
-                                <input type="hidden" name="id" value={row.id} />
-                                <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
-                                <input type="hidden" name="category" value={row.category} />
-                                <input type="hidden" name="departmentId" value={row.departmentId ?? ""} />
-                                <input type="hidden" name="sectionId" value={row.sectionId ?? ""} />
-                                <input type="hidden" name="requiresPhoto" value={`${row.requiresPhoto}`} />
-                                <input type="hidden" name="requiresEquipmentNo" value={`${row.requiresEquipmentNo}`} />
-                                <input type="hidden" name="requiresDuration" value={`${row.requiresDuration}`} />
-                                <input type="hidden" name="requiresLocationGps" value={`${row.requiresLocationGps}`} />
-                                <input type="hidden" name="requiresMaterialUsed" value={`${row.requiresMaterialUsed}`} />
-                                <input type="hidden" name="isAssignable" value={`${row.isAssignable}`} />
-                                <input type="hidden" name="isSelfInput" value={`${row.isSelfInput}`} />
-                                <input type="hidden" name="approvalRequired" value={`${row.approvalRequired}`} />
-                                <input type="hidden" name="autoApproveIfGpsValid" value={`${row.autoApproveIfGpsValid}`} />
-                                <Input name="activityCode" defaultValue={row.activityCode} />
-                                <Input name="activityName" defaultValue={row.activityName} />
-                                <Input name="basePoints" type="number" defaultValue={row.basePoints} />
-                                <Input name="complexityLevel" type="number" min={1} max={5} defaultValue={row.complexityLevel} />
-                                <Input name="maxDailyCount" type="number" defaultValue={row.maxDailyCount} />
-                                <Input name="maxPointsPerDay" type="number" defaultValue={row.maxPointsPerDay} />
-                                <Input name="slaHours" type="number" defaultValue={row.slaHours} />
-                                <Label className="flex items-center gap-2 text-sm">
-                                  <input type="checkbox" name="isActive" defaultChecked={row.isActive} />
-                                  Aktif
-                                </Label>
-                                <Button type="submit" size="sm">Simpan</Button>
-                              </form>
-                            </details>
-                            <form action={manageActivityLibraryAction}>
-                              <input type="hidden" name="intent" value="delete" />
-                              <input type="hidden" name="id" value={row.id} />
-                              <Button type="submit" size="sm" variant="outline" className="text-rose-700">
-                                Hapus
-                              </Button>
-                            </form>
-                          </div>
+                          <ActivityLibraryRowActions
+                            row={row}
+                            departments={data.departments}
+                            sections={data.sections}
+                            currentEmployeeId={data.currentEmployee?.id ?? null}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
