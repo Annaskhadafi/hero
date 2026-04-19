@@ -220,9 +220,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitMessage, setSubmitMessage] = useState("");
+  const [attendanceLogs, setAttendanceLogs] = useState(data.logs);
   const [isPending, startTransition] = useTransition();
 
-  const latestLog = data.logs[0];
+  const latestLog = attendanceLogs[0];
   const nextType = latestLog?.eventType === "checked-in" ? "checked-out" : "checked-in";
   const actionLabel = nextType === "checked-in" ? "Confirm Check-In" : "Confirm Check-Out";
   const selectedShiftOption =
@@ -240,6 +241,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setAttendanceLogs(data.logs);
+  }, [data.logs]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -470,6 +475,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       }
 
       setCapturedFile(null);
+      if (result.record) {
+        setAttendanceLogs((current) => [result.record, ...current.filter((log) => log.id !== result.record.id)]);
+      }
       setSubmitMessage(`${getEventLabel(nextType)} recorded. Website attendance record akan refresh.`);
       startTransition(() => router.refresh());
     } catch (error) {
@@ -716,8 +724,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           <History className="size-3.5" />
           Today Attendance Record
         </p>
-        {data.logs.length > 0 ? (
-          data.logs.slice(0, 4).map((log) => (
+        {attendanceLogs.length > 0 ? (
+          attendanceLogs.slice(0, 4).map((log) => (
             <article key={log.id} className="rounded-[0.75rem] bg-white p-3 shadow-[0_10px_24px_rgba(8,32,51,0.07)]">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">

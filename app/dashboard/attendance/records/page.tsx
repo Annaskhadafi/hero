@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ExternalLink, ImageOff, MapPin } from "lucide-react";
 import { getTodayAttendanceLogs } from "@/app/actions/attendance";
@@ -164,14 +164,38 @@ export default function AttendanceRecordsPage() {
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
   const [photoErrorId, setPhotoErrorId] = useState<number | null>(null);
 
-  useEffect(() => {
-    getTodayAttendanceLogs().then((res) => {
+  const refreshLogs = useCallback(async () => {
+    const res = await getTodayAttendanceLogs();
       if (res.success && res.employee) {
         setEmployee(res.employee);
         setLogs(res.logs);
       }
-    });
   }, []);
+
+  useEffect(() => {
+    void refreshLogs();
+  }, [refreshLogs]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void refreshLogs();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshLogs();
+      }
+    };
+    const intervalId = window.setInterval(() => void refreshLogs(), 15000);
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshLogs]);
 
   const coordinatesToResolve = useMemo(
     () =>

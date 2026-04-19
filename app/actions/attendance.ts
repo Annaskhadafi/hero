@@ -6,6 +6,7 @@ import { uploadFile } from "@/app/actions/upload";
 import { auth } from "@/lib/auth";
 import { getActiveAttendanceShiftOptions } from "@/lib/master-data";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { endOfDay, startOfDay, subHours } from "date-fns";
@@ -337,7 +338,7 @@ export async function submitAttendance(formData: FormData) {
       operationalNote: getTrimmedFormValue(formData, "operationalNote").slice(0, 160),
     });
 
-    await db.insert(attendanceRecords).values({
+    const [record] = await db.insert(attendanceRecords).values({
       employeeId: employee.id,
       siteId: employee.siteId,
       eventType,
@@ -347,9 +348,13 @@ export async function submitAttendance(formData: FormData) {
       photoUrl,
       latitude,
       longitude,
-    });
+    }).returning();
 
-    return { success: true };
+    revalidatePath("/mobile/attendance");
+    revalidatePath("/dashboard/attendance");
+    revalidatePath("/dashboard/attendance/records");
+
+    return { success: true, record };
   } catch (err) {
     console.error("Attendance submission error:", err);
     return {
