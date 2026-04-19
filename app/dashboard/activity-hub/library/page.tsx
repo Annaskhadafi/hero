@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Layers3, Settings2 } from "lucide-react";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityLibraryFilters } from "@/components/activity-library-filters";
 import { ActivityLibraryImportExport } from "@/components/activity-library-import-export";
 import { ActivityLibraryRowActions } from "@/components/activity-library-row-actions";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,19 @@ function SummaryChip({ label, value }: { label: string; value: string | number }
   );
 }
 
-export default async function DailyActivityLibraryPage() {
+function getSearchParamValue(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string,
+) {
+  const value = searchParams?.[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+export default async function DailyActivityLibraryPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const session = await getServerSession();
 
   if (!session?.user?.email) {
@@ -31,6 +44,15 @@ export default async function DailyActivityLibraryPage() {
   }
 
   const data = await getDailyActivityLibraryData(session.user.email);
+  const resolvedSearchParams = await searchParams;
+  const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
+  const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
+  const filteredRows = data.rows.filter((row) => {
+    const matchesDepartment = !selectedDepartment || `${row.departmentId ?? ""}` === selectedDepartment;
+    const matchesSection = !selectedSection || `${row.sectionId ?? ""}` === selectedSection;
+
+    return matchesDepartment && matchesSection;
+  });
 
   return (
     <div className="space-y-5">
@@ -69,7 +91,7 @@ export default async function DailyActivityLibraryPage() {
                     </Badge>
                   ))}
                 </div>
-                <ActivityLibraryImportExport rows={data.rows} currentEmployeeId={data.currentEmployee?.id ?? null} />
+                <ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} />
               </div>
 
               <MinimalTableShell
@@ -78,6 +100,7 @@ export default async function DailyActivityLibraryPage() {
                 searchPlaceholder="Cari activity, department, atribut, atau status..."
                 summaryClassName="bg-transparent px-1 py-0 shadow-none"
                 dateFilter={false}
+                filters={<ActivityLibraryFilters departments={data.departments} sections={data.sections} />}
               >
                 <Table>
                   <TableHeader>
@@ -91,7 +114,8 @@ export default async function DailyActivityLibraryPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.rows.map((row) => (
+                    {filteredRows.length > 0 ? (
+                    filteredRows.map((row) => (
                       <TableRow key={row.id} className="hover:bg-surface-container-low/70">
                         <TableCell className="align-top">
                           <div className="space-y-1">
@@ -146,7 +170,14 @@ export default async function DailyActivityLibraryPage() {
                           />
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                          Tidak ada activity library sesuai filter department/section.
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </MinimalTableShell>
