@@ -563,9 +563,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         <div className="absolute bottom-10 left-7 size-9 border-b-2 border-l-2 border-[#004b87]" />
         <div className="absolute bottom-10 right-7 size-9 border-b-2 border-r-2 border-[#004b87]" />
 
-        <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#cfe6f2]/90 px-4 py-3 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.16)] backdrop-blur-xl">
-          <UserCheck className="size-4" />
-          <span className="w-36 text-center text-[11px] font-black leading-4">
+        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl">
+          <UserCheck className="size-3.5" />
+          <span className="w-28 text-center text-[9px] font-black leading-3">
             Position your face within the frame
           </span>
         </div>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Camera, SendHorizontal } from "lucide-react";
+import { Camera, ImagePlus, SendHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,6 +88,8 @@ export function DailyActivitySubmitForm({
   const [sourceMode, setSourceMode] = useState<SourceMode>(defaultSourceMode);
   const [assignmentId, setAssignmentId] = useState(defaultSourceMode === "assigned" ? firstAssignmentId : "");
   const [photoName, setPhotoName] = useState("");
+  const [photoCaptureMode, setPhotoCaptureMode] = useState<"camera" | "gallery">("gallery");
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
   const [state, formAction] = useActionState(action, initialDailyActivitySubmitState);
   const showLibrary = sourceMode === "self_input";
@@ -124,6 +126,13 @@ export function DailyActivitySubmitForm({
       : "text-sm font-medium";
   const mobileSectionClass = "space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]";
   const mobileHintClass = "text-xs font-semibold leading-5 text-[#486275]";
+
+  function openPhotoPicker(mode: "camera" | "gallery") {
+    setPhotoCaptureMode(mode);
+    window.setTimeout(() => {
+      photoInputRef.current?.click();
+    }, 0);
+  }
 
   const modeField = (
     <Label className={labelClass}>
@@ -193,7 +202,6 @@ export function DailyActivitySubmitForm({
             placeholder="Nama aktivitas custom"
             className={fieldClass}
             required
-            minLength={3}
           />
         </Label>
 
@@ -202,10 +210,8 @@ export function DailyActivitySubmitForm({
           <Textarea
             name="customActivityDescription"
             rows={4}
-            placeholder="Jelaskan aktivitas custom minimal 80 karakter bila pekerjaan belum ada di library."
+            placeholder="Jelaskan aktivitas custom bila pekerjaan belum ada di library."
             className={textareaClass}
-            required
-            minLength={80}
           />
         </Label>
       </>
@@ -288,7 +294,6 @@ export function DailyActivitySubmitForm({
                 rows={5}
                 placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
                 className={textareaClass}
-                minLength={3}
               />
             </Label>
           </section>
@@ -299,15 +304,37 @@ export function DailyActivitySubmitForm({
                 <Camera className="size-3.5" />
                 Photo camera / galeri
               </span>
-              <Input
+              <input
+                ref={photoInputRef}
                 name="photoFile"
                 type="file"
                 accept="image/*"
-                className={fieldClass}
+                capture={photoCaptureMode === "camera" ? "environment" : undefined}
+                className="hidden"
                 onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
               />
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
+                  onClick={() => openPhotoPicker("camera")}
+                >
+                  <Camera className="size-4" />
+                  Kamera
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
+                  onClick={() => openPhotoPicker("gallery")}
+                >
+                  <ImagePlus className="size-4" />
+                  Galeri
+                </Button>
+              </div>
               <span className={mobileHintClass}>
-                Upload progres kerja. Foto akan ikut masuk ke Daily Activity System.
+                Di mobile, tombol ini buka kamera atau galeri native. Di web, upload dari file picker browser.
               </span>
               {photoName ? <span className={mobileHintClass}>{photoName}</span> : null}
               {state.status === "error" ? (
@@ -364,7 +391,6 @@ export function DailyActivitySubmitForm({
               rows={4}
               placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
               className={textareaClass}
-              minLength={3}
             />
           </Label>
 

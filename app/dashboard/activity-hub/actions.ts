@@ -884,12 +884,8 @@ export async function submitDailyActivityAction(formData: FormData) {
   }
 
   if (payload.sourceMode === "custom") {
-    if (payload.customActivityName.trim().length < 3) {
+    if (payload.customActivityName.trim().length === 0) {
       throw new Error("Nama custom activity wajib diisi.");
-    }
-
-    if (payload.customActivityDescription.trim().length < 80) {
-      throw new Error("Deskripsi custom activity minimal 80 karakter.");
     }
   }
 

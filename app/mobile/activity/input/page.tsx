@@ -88,7 +88,7 @@ export default async function MobileActivityInputPage() {
         <div className="mt-3 rounded-[1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8a5a00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.12)]">
           Save bisa gagal kalau:
           pilih activity library belum diisi, assignment belum dipilih saat mode `Assigned`, waktu selesai lebih kecil dari waktu mulai,
-          waktu bentrok dengan activity lain, atau deskripsi custom belum 80 karakter.
+          atau waktu bentrok dengan activity lain.
         </div>
       </section>
 
