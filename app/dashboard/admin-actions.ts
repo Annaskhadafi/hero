@@ -50,6 +50,13 @@ import {
   parseCsv,
   type UserImportMapping,
 } from "@/lib/security-user-import";
+import {
+  autoMapTrainingRecordHeaders,
+  getTrainingRecordImportValue,
+  INITIAL_TRAINING_RECORD_IMPORT_STATE,
+  parseTrainingRecordCsv,
+  type TrainingRecordImportState,
+} from "@/lib/training-record-import";
 import { normalizeBirthDateValue } from "@/lib/birth-date";
 import {
   type ApprovalRouteResolution,
@@ -293,7 +300,8 @@ const manageTrainingRecordSchema = z.object({
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
   trainingName: z.string().trim().max(200).optional().default(""),
-  provider: z.string().trim().max(160).optional().default(""),
+  provider: z.string().trim().max(160).optional().default("-"),
+  completedYear: z.coerce.number().int().min(1900).max(2100).optional().default(new Date().getFullYear()),
   expiresAt: z.string().trim().optional().default(""),
   status: z.string().trim().max(50).optional().default("active"),
 });
@@ -2322,6 +2330,14 @@ function parseOperationalDate(value: string, fallback = new Date()) {
   return parsed;
 }
 
+function parseOptionalOperationalDate(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  return parseOperationalDate(value);
+}
+
 function getRequiredId(id: number | undefined, label = "Data") {
   if (!id) {
     throw new Error(`${label} tidak valid.`);
@@ -2607,19 +2623,20 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
     await ensureHeroSeedData();
 
     if (payload.intent === "create") {
-      if (!payload.employeeId || !payload.trainingName || !payload.provider || !payload.expiresAt) {
-        return { status: "error", message: "Karyawan, training, provider, dan expiry wajib diisi." };
+      if (!payload.employeeId || !payload.trainingName) {
+        return { status: "error", message: "Karyawan dan training wajib diisi." };
       }
 
       await db.insert(trainingRecords).values({
         employeeId: payload.employeeId,
         trainingName: payload.trainingName,
         provider: payload.provider,
-        expiresAt: parseOperationalDate(payload.expiresAt),
+        completedYear: payload.completedYear,
+        expiresAt: parseOptionalOperationalDate(payload.expiresAt),
         status: payload.status,
       });
 
-      revalidateOperationalPages("/dashboard/hc");
+      revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
       return { status: "success", message: "Training record berhasil ditambahkan." };
     }
 
@@ -2627,13 +2644,13 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
 
     if (payload.intent === "update-status") {
       await db.update(trainingRecords).set({ status: payload.status }).where(eq(trainingRecords.id, id));
-      revalidateOperationalPages("/dashboard/hc");
+      revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
       return { status: "success", message: "Status training diperbarui." };
     }
 
     if (payload.intent === "update") {
-      if (!payload.employeeId || !payload.trainingName || !payload.provider || !payload.expiresAt) {
-        return { status: "error", message: "Karyawan, training, provider, dan expiry wajib diisi." };
+      if (!payload.employeeId || !payload.trainingName) {
+        return { status: "error", message: "Karyawan dan training wajib diisi." };
       }
 
       await db
@@ -2642,22 +2659,217 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
           employeeId: payload.employeeId,
           trainingName: payload.trainingName,
           provider: payload.provider,
-          expiresAt: parseOperationalDate(payload.expiresAt),
+          completedYear: payload.completedYear,
+          expiresAt: parseOptionalOperationalDate(payload.expiresAt),
           status: payload.status,
         })
         .where(eq(trainingRecords.id, id));
 
-      revalidateOperationalPages("/dashboard/hc");
+      revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
       return { status: "success", message: "Detail training diperbarui." };
     }
 
     await db.delete(trainingRecords).where(eq(trainingRecords.id, id));
-    revalidateOperationalPages("/dashboard/hc");
+    revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
     return { status: "success", message: "Training record dihapus." };
   } catch (error) {
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Gagal memproses training record.",
+    };
+  }
+}
+
+function normalizeTrainingRecordKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function inferTrainingStatus(expiresAt: Date | null) {
+  if (!expiresAt) {
+    return "active";
+  }
+
+  const daysUntilExpiry = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+  if (daysUntilExpiry <= 7) {
+    return "urgent";
+  }
+
+  if (daysUntilExpiry <= 30) {
+    return "expiring_soon";
+  }
+
+  return "active";
+}
+
+export async function importTrainingRecordsAction(
+  _previousState: TrainingRecordImportState = INITIAL_TRAINING_RECORD_IMPORT_STATE,
+  formData: FormData,
+): Promise<TrainingRecordImportState> {
+  try {
+    await ensureHeroSeedData();
+
+    const rawCsv = `${formData.get("rawCsv") ?? ""}`.trim();
+    if (!rawCsv) {
+      return {
+        status: "error",
+        message: "CSV training belum diisi.",
+      };
+    }
+
+    const parsed = parseTrainingRecordCsv(rawCsv);
+    if (parsed.records.length === 0) {
+      return {
+        status: "error",
+        message: "CSV training kosong atau header tidak terbaca.",
+      };
+    }
+
+    const mapping = autoMapTrainingRecordHeaders(parsed.headers);
+    if (!mapping.trainingName || !mapping.completedYear) {
+      return {
+        status: "error",
+        message: "Header minimal wajib ada: Training dan Tahun.",
+      };
+    }
+
+    const employeeRows = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        department: employees.department,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true));
+
+    const existingRows = await db
+      .select({
+        id: trainingRecords.id,
+        employeeId: trainingRecords.employeeId,
+        trainingName: trainingRecords.trainingName,
+        completedYear: trainingRecords.completedYear,
+      })
+      .from(trainingRecords);
+
+    const employeeBySn = new Map(
+      employeeRows
+        .filter((employee) => employee.employeeSn.trim())
+        .map((employee) => [normalizeTrainingRecordKey(employee.employeeSn), employee]),
+    );
+    const employeeByEmail = new Map(
+      employeeRows
+        .filter((employee) => employee.email.trim())
+        .map((employee) => [normalizeTrainingRecordKey(employee.email), employee]),
+    );
+    const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>((map, employee) => {
+      const key = normalizeTrainingRecordKey(employee.name);
+      const current = map.get(key) ?? [];
+      current.push(employee);
+      map.set(key, current);
+      return map;
+    }, new Map());
+    const existingByCompositeKey = new Map(
+      existingRows.map((row) => [
+        `${row.employeeId}:${normalizeTrainingRecordKey(row.trainingName)}:${row.completedYear}`,
+        row,
+      ]),
+    );
+
+    let importedCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+
+    for (const row of parsed.records) {
+      const employeeSn = getTrainingRecordImportValue(row, mapping, "employeeSn");
+      const employeeName = getTrainingRecordImportValue(row, mapping, "employeeName");
+      const email = getTrainingRecordImportValue(row, mapping, "email");
+      const department = normalizeTrainingRecordKey(getTrainingRecordImportValue(row, mapping, "department"));
+      const trainingName = getTrainingRecordImportValue(row, mapping, "trainingName");
+      const provider = getTrainingRecordImportValue(row, mapping, "provider") || "-";
+      const completedYearValue = getTrainingRecordImportValue(row, mapping, "completedYear");
+      const expiresAtValue = getTrainingRecordImportValue(row, mapping, "expiresAt");
+      const rawStatus = getTrainingRecordImportValue(row, mapping, "status");
+
+      if (!trainingName || !completedYearValue) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const completedYear = Number.parseInt(completedYearValue, 10);
+      if (!Number.isInteger(completedYear) || completedYear < 1900 || completedYear > 2100) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const expiresAt = parseOptionalOperationalDate(expiresAtValue);
+      const status = rawStatus || inferTrainingStatus(expiresAt);
+
+      const employeeCandidatesFromName = employeeName
+        ? [...(employeesByName.get(normalizeTrainingRecordKey(employeeName)) ?? [])]
+        : [];
+
+      let employee =
+        (employeeSn ? employeeBySn.get(normalizeTrainingRecordKey(employeeSn)) : undefined) ??
+        (email ? employeeByEmail.get(normalizeTrainingRecordKey(email)) : undefined) ??
+        (employeeCandidatesFromName.length === 1
+          ? employeeCandidatesFromName[0]
+          : department
+            ? employeeCandidatesFromName.find(
+                (candidate) => normalizeTrainingRecordKey(candidate.department) === department,
+              )
+            : undefined);
+
+      if (!employee) {
+        skippedCount += 1;
+        continue;
+      }
+
+      if (department && normalizeTrainingRecordKey(employee.department) !== department) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const compositeKey = `${employee.id}:${normalizeTrainingRecordKey(trainingName)}:${completedYear}`;
+      const existing = existingByCompositeKey.get(compositeKey);
+
+      if (existing) {
+        await db
+          .update(trainingRecords)
+          .set({
+            provider,
+            expiresAt,
+            status,
+          })
+          .where(eq(trainingRecords.id, existing.id));
+        updatedCount += 1;
+        continue;
+      }
+
+      await db.insert(trainingRecords).values({
+        employeeId: employee.id,
+        trainingName,
+        provider,
+        completedYear,
+        expiresAt,
+        status,
+      });
+      importedCount += 1;
+    }
+
+    revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
+
+    return {
+      status: "success",
+      message: "Import training selesai diproses.",
+      importedCount,
+      updatedCount,
+      skippedCount,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal import training records.",
     };
   }
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -336,8 +336,8 @@ export async function getMobileHc(email?: string | null) {
       .select()
       .from(trainingRecords)
       .where(eq(trainingRecords.employeeId, context.employee.id))
-      .orderBy(trainingRecords.expiresAt)
-      .limit(12),
+      .orderBy(desc(trainingRecords.completedYear), desc(trainingRecords.expiresAt), asc(trainingRecords.trainingName))
+      .limit(20),
     db
       .select()
       .from(wellnessRecords)

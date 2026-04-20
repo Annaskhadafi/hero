@@ -241,6 +241,30 @@ async function ensureEmergencyIncidentColumns() {
   `);
 }
 
+async function ensureTrainingRecordHistoryColumns() {
+  await db.execute(sql`
+    alter table hero_training_records add column if not exists completed_year integer;
+  `);
+
+  await db.execute(sql`
+    update hero_training_records
+    set completed_year = coalesce(completed_year, extract(year from coalesce(expires_at, now()))::int)
+    where completed_year is null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_training_records alter column completed_year set default extract(year from current_date)::int;
+  `);
+
+  await db.execute(sql`
+    alter table hero_training_records alter column completed_year set not null;
+  `);
+
+  await db.execute(sql`
+    alter table hero_training_records alter column expires_at drop not null;
+  `);
+}
+
 const GOVERNANCE_ROLE_SEEDS = [
   {
     name: "Super Admin",
@@ -410,11 +434,22 @@ const SIDEBAR_MENU_SEEDS = [
   {
     menuArea: "main",
     section: "Performance",
+    title: "Training Records",
+    url: "/dashboard/training-records",
+    iconName: "list-details",
+    resource: "training_records",
+    sortOrder: 10,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Performance",
     title: "Attendance",
     url: "/dashboard/attendance",
     iconName: "clock",
     resource: "attendance",
-    sortOrder: 10,
+    sortOrder: 11,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1319,6 +1354,7 @@ export async function ensureHeroSeedData() {
     await ensureHeroEmployeeProfileColumns();
     await ensureHeroSiteLocationColumns();
     await ensureEmergencyIncidentColumns();
+    await ensureTrainingRecordHistoryColumns();
     await ensureApprovalBlueprintSeedData();
   })().catch((error) => {
     seedPromise = null;
@@ -1976,14 +2012,16 @@ export async function getHcPageData() {
       id: trainingRecords.id,
       employeeId: trainingRecords.employeeId,
       employeeName: employees.name,
+      department: employees.department,
       trainingName: trainingRecords.trainingName,
       provider: trainingRecords.provider,
+      completedYear: trainingRecords.completedYear,
       expiresAt: trainingRecords.expiresAt,
       status: trainingRecords.status,
     })
     .from(trainingRecords)
     .innerJoin(employees, eq(trainingRecords.employeeId, employees.id))
-    .orderBy(trainingRecords.expiresAt);
+    .orderBy(desc(trainingRecords.completedYear), asc(employees.name), asc(trainingRecords.trainingName));
 
   const wellness = await db
     .select({
@@ -2001,6 +2039,52 @@ export async function getHcPageData() {
     .orderBy(desc(wellnessRecords.recordedAt));
 
   return { attendance, trainings, wellness };
+}
+
+export async function getTrainingRecordPageData() {
+  await ensureHeroSeedData();
+
+  const [rows, employeeOptions] = await Promise.all([
+    db
+      .select({
+        id: trainingRecords.id,
+        employeeId: trainingRecords.employeeId,
+        employeeName: employees.name,
+        employeeSn: employees.employeeSn,
+        role: employees.role,
+        department: employees.department,
+        trainingName: trainingRecords.trainingName,
+        provider: trainingRecords.provider,
+        completedYear: trainingRecords.completedYear,
+        expiresAt: trainingRecords.expiresAt,
+        status: trainingRecords.status,
+      })
+      .from(trainingRecords)
+      .innerJoin(employees, eq(trainingRecords.employeeId, employees.id))
+      .orderBy(desc(trainingRecords.completedYear), asc(employees.name), asc(trainingRecords.trainingName)),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        department: employees.department,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
+  ]);
+
+  const yearOptions = Array.from(new Set(rows.map((row) => row.completedYear))).sort((left, right) => right - left);
+  const departmentOptions = Array.from(
+    new Set(employeeOptions.map((employee) => employee.department).filter(Boolean)),
+  ).sort((left, right) => left.localeCompare(right, "id-ID"));
+
+  return {
+    rows,
+    employeeOptions,
+    departmentOptions,
+    yearOptions,
+  };
 }
 
 export async function getOperationalCrudOptions() {

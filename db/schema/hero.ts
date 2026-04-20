@@ -391,7 +391,8 @@ export const trainingRecords = pgTable("hero_training_records", {
     .references(() => employees.id, { onDelete: "cascade" }),
   trainingName: text("training_name").notNull(),
   provider: text("provider").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
+  completedYear: integer("completed_year").notNull().default(new Date().getFullYear()),
+  expiresAt: timestamp("expires_at"),
   status: text("status").notNull(),
 });
 

@@ -68,13 +68,14 @@ export default async function HcPage() {
           <AdminTableCard
             title="Training Status"
             description="Sertifikasi yang aktif atau mendekati expiry."
-            columns={["Employee", "Training", "Provider", "Expiry", "Status", "Action"]}
+            columns={["Employee", "Training", "Provider", "Year", "Expiry", "Status", "Action"]}
             dateFilter
             rows={trainings.map((row, index) => [
               row.employeeName,
               row.trainingName,
               row.provider,
-              row.expiresAt.toLocaleDateString("id-ID"),
+              row.completedYear,
+              row.expiresAt ? row.expiresAt.toLocaleDateString("id-ID") : "No expiry",
               <AdminStatusBadge key={`${index}-status`} value={row.status} />,
               <TrainingRowActions
                 key={`${row.id}-actions`}

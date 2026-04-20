@@ -80,6 +80,7 @@ type TrainingRow = {
   employeeId: number;
   trainingName: string;
   provider: string;
+  completedYear: number;
   expiresAt: TimestampValue;
   status: string;
 };
@@ -625,6 +626,7 @@ export function TrainingRowActions({
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField name="trainingName" label="Training" defaultValue={row.trainingName} />
           <TextField name="provider" label="Provider" defaultValue={row.provider} />
+          <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={row.completedYear} />
           <TextField name="expiresAt" label="Tanggal expiry" type="date" defaultValue={formatDateInput(row.expiresAt)} />
           <SelectField name="status" label="Status" defaultValue={row.status}>
             {getCategoryOptions(
@@ -998,8 +1000,9 @@ export function HcCrudForms({
           <EmployeeOptions employees={employees} />
         </SelectField>
         <TextField name="trainingName" label="Training" placeholder="Nama training / sertifikasi" />
-        <TextField name="provider" label="Provider" placeholder="Provider training" />
-        <TextField name="expiresAt" label="Tanggal expiry" type="date" />
+        <TextField name="provider" label="Provider" placeholder="Provider training" defaultValue="-" />
+        <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={new Date().getFullYear()} />
+        <TextField name="expiresAt" label="Tanggal expiry" type="date" placeholder="Opsional" />
         <SelectField name="status" label="Status" defaultValue="active">
           {getCategoryOptions(
             categoryOptions,
