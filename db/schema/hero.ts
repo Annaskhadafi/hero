@@ -7,6 +7,7 @@ import {
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { user } from "@/db/schema/auth";
 
 export const sites = pgTable("hero_sites", {
@@ -391,7 +392,7 @@ export const trainingRecords = pgTable("hero_training_records", {
     .references(() => employees.id, { onDelete: "cascade" }),
   trainingName: text("training_name").notNull(),
   provider: text("provider").notNull(),
-  completedYear: integer("completed_year").notNull().default(new Date().getFullYear()),
+  completedYear: integer("completed_year").notNull().default(sql`extract(year from current_date)::integer`),
   expiresAt: timestamp("expires_at"),
   status: text("status").notNull(),
 });
