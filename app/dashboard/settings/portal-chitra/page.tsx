@@ -5,7 +5,7 @@ import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { getPortalChitraSettingsData } from "@/lib/portal-chitra";
 
 export default async function PortalChitraSettingsPage() {
-  const permission = await getCurrentMenuPermission("portal_chitra");
+  const permission = await getCurrentMenuPermission("settings_portal_chitra");
 
   if (!permission.canEdit) {
     redirect("/dashboard/portal-chitra");

@@ -514,11 +514,22 @@ const SIDEBAR_MENU_SEEDS = [
   {
     menuArea: "secondary",
     section: "Administrator",
+    title: "Portal Chitra Settings",
+    url: "/dashboard/settings/portal-chitra",
+    iconName: "settings",
+    resource: "settings_portal_chitra",
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "secondary",
+    section: "Administrator",
     title: "Email delivery log",
     url: "/dashboard/settings/email",
     iconName: "mail",
     resource: "settings_email",
-    sortOrder: 2,
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -529,7 +540,7 @@ const SIDEBAR_MENU_SEEDS = [
     url: "/dashboard/attendance/records",
     iconName: "clock",
     resource: "attendance_records",
-    sortOrder: 3,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -540,7 +551,7 @@ const SIDEBAR_MENU_SEEDS = [
     url: "/dashboard/master-data",
     iconName: "database",
     resource: "master_data",
-    sortOrder: 4,
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -551,7 +562,7 @@ const SIDEBAR_MENU_SEEDS = [
     url: "/dashboard/form-studio",
     iconName: "file-word",
     resource: "form_studio",
-    sortOrder: 5,
+    sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
@@ -997,14 +1008,14 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     return {
       canView: true,
       canEdit: true,
-      canDelete: ["security", "settings_navbar", "settings_email", "portal_chitra"].includes(resource),
+      canDelete: ["security", "settings_navbar", "settings_email", "portal_chitra", "settings_portal_chitra"].includes(resource),
       canSelectAll: false,
     };
   }
 
   return {
     canView: true,
-    canEdit: !["settings_email", "portal_chitra"].includes(resource),
+    canEdit: !["settings_email", "portal_chitra", "settings_portal_chitra"].includes(resource),
     canDelete: false,
     canSelectAll: false,
   };

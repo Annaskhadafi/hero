@@ -59,7 +59,7 @@ const deleteSchema = z.object({
 async function ensureCanEditPortalChitra() {
   await ensureHeroGovernanceSeedData();
 
-  const permission = await getCurrentMenuPermission("portal_chitra");
+  const permission = await getCurrentMenuPermission("settings_portal_chitra");
   return permission.canEdit;
 }
 
