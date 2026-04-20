@@ -14,6 +14,23 @@ import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOperationalCrudOptions, getTrainingRecordPageData } from "@/lib/hero-admin";
 
+const APP_TIME_ZONE = "Asia/Makassar";
+
+function startOfDayInAppTimeZone(reference: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(reference);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return new Date(`${year}-${month}-${day}T00:00:00+08:00`);
+}
+
 function formatOptionalDate(value: Date | null) {
   if (!value) {
     return "No expiry";
@@ -23,15 +40,16 @@ function formatOptionalDate(value: Date | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: APP_TIME_ZONE,
   });
 }
 
-function daysUntilExpiry(value: Date | null) {
+function daysUntilExpiry(value: Date | null, referenceDate: Date) {
   if (!value) {
     return null;
   }
 
-  return Math.ceil((value.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+  return Math.ceil((value.getTime() - referenceDate.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 function getSearchParamValue(
@@ -56,6 +74,7 @@ export default async function TrainingRecordsPage({
   const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
   const selectedYear = getSearchParamValue(resolvedSearchParams, "year");
+  const referenceDate = startOfDayInAppTimeZone(new Date());
 
   const filteredRows = data.rows.filter((row) => {
     const matchesEmployee = !selectedEmployeeId || `${row.employeeId}` === selectedEmployeeId;
@@ -67,7 +86,7 @@ export default async function TrainingRecordsPage({
 
   const employeeCoverage = new Set(filteredRows.map((row) => row.employeeId)).size;
   const expiringSoon = filteredRows.filter((row) => {
-    const days = daysUntilExpiry(row.expiresAt);
+    const days = daysUntilExpiry(row.expiresAt, referenceDate);
     return days != null && days <= 30;
   }).length;
   const noExpiry = filteredRows.filter((row) => !row.expiresAt).length;
@@ -148,7 +167,7 @@ export default async function TrainingRecordsPage({
               <TableBody>
                 {filteredRows.length > 0 ? (
                   filteredRows.map((row) => {
-                    const expiryDays = daysUntilExpiry(row.expiresAt);
+                    const expiryDays = daysUntilExpiry(row.expiresAt, referenceDate);
 
                     return (
                       <TableRow key={row.id} className="hover:bg-surface-container-low/70">

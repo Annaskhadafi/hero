@@ -5,12 +5,34 @@ import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { getMobileHc } from "@/lib/mobile-data";
 
-function daysUntil(value: Date) {
-  return Math.ceil((value.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+const APP_TIME_ZONE = "Asia/Makassar";
+
+function startOfDayInAppTimeZone(reference: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(reference);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return new Date(`${year}-${month}-${day}T00:00:00+08:00`);
+}
+
+function daysUntil(value: Date, referenceDate: Date) {
+  return Math.ceil((value.getTime() - referenceDate.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 function formatDate(value: Date) {
-  return value.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+  return value.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: APP_TIME_ZONE,
+  });
 }
 
 export default async function MobileTrainingPage() {
@@ -20,7 +42,10 @@ export default async function MobileTrainingPage() {
   const data = await getMobileHc(session.user.email);
   if (!data) return null;
 
-  const expiringSoon = data.trainings.filter((item) => item.expiresAt && daysUntil(item.expiresAt) <= 30).length;
+  const referenceDate = startOfDayInAppTimeZone(new Date());
+  const expiringSoon = data.trainings.filter(
+    (item) => item.expiresAt && daysUntil(item.expiresAt, referenceDate) <= 30,
+  ).length;
   const coveredYears = new Set(data.trainings.map((item) => item.completedYear)).size;
   const groupedTrainings = data.trainings.reduce<Map<number, typeof data.trainings>>((map, item) => {
     const current = map.get(item.completedYear) ?? [];
@@ -68,7 +93,7 @@ export default async function MobileTrainingPage() {
 
             <div className="mt-4 space-y-3">
               {items.map((item) => {
-                const expiryDays = item.expiresAt ? daysUntil(item.expiresAt) : null;
+                const expiryDays = item.expiresAt ? daysUntil(item.expiresAt, referenceDate) : null;
 
                 return (
                   <div

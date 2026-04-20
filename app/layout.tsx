@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Manrope } from "next/font/google";
-import Script from "next/script";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
@@ -131,9 +130,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
-        <Script
+        <script
           id="strip-extension-hydration-attrs"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: stripExtensionHydrationAttrs }}
         />
       </head>
