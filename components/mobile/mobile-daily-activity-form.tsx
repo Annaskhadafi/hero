@@ -227,23 +227,33 @@ export function MobileDailyActivityForm({
       return;
     }
 
-    setSourceMode(draft.sourceMode);
-    setAssignmentId(draft.assignmentId);
-    setLibraryActivityId(draft.libraryActivityId);
-    setCustomActivityName(draft.customActivityName);
-    setCustomActivityDescription(draft.customActivityDescription);
-    setEquipmentNo(draft.equipmentNo);
+    const restoredSourceMode =
+      draft.sourceMode === "assigned" || draft.sourceMode === "self_input" || draft.sourceMode === "custom"
+        ? draft.sourceMode
+        : "self_input";
+    const restoredRouteSessionItems: RouteSessionSyncItem[] = Array.isArray(
+      (draft as Partial<ActivitySyncPayload>).routeSessionItems,
+    )
+      ? ((draft as Partial<ActivitySyncPayload>).routeSessionItems as RouteSessionSyncItem[])
+      : [];
+
+    setSourceMode(restoredSourceMode);
+    setAssignmentId(draft.assignmentId ?? "");
+    setLibraryActivityId(draft.libraryActivityId ?? "");
+    setCustomActivityName(draft.customActivityName ?? "");
+    setCustomActivityDescription(draft.customActivityDescription ?? "");
+    setEquipmentNo(draft.equipmentNo ?? "");
     setStartTime(draft.startTime || defaultStartTime);
     setEndTime(draft.endTime || defaultEndTime);
-    setMaterialUsed(draft.materialUsed);
-    setNotes(draft.notes);
-    setManualLocation(draft.manualLocation);
+    setMaterialUsed(draft.materialUsed ?? "");
+    setNotes(draft.notes ?? "");
+    setManualLocation(draft.manualLocation ?? "");
     setPhotoName(draft.photo?.name ?? "");
     setRestoredPhotoPayload(draft.photo ?? null);
-    if (draft.routeSessionItems.length > 0) {
+    if (restoredRouteSessionItems.length > 0) {
       setRouteItemState(
         Object.fromEntries(
-          draft.routeSessionItems.map((item) => [
+          restoredRouteSessionItems.map((item) => [
             item.routeItemId,
             {
               isChecked: item.isChecked,
