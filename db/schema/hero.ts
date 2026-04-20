@@ -610,6 +610,33 @@ export const roleMenuPermissions = pgTable("hero_role_menu_permissions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const portalChitraApps = pgTable("hero_portal_chitra_apps", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("General"),
+  description: text("description").notNull().default(""),
+  url: text("url").notNull(),
+  color: text("color").notNull().default("#003461"),
+  iconName: text("icon_name").notNull().default("globe"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  showOnMobile: boolean("show_on_mobile").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const portalChitraRoleAccess = pgTable("hero_portal_chitra_role_access", {
+  id: serial("id").primaryKey(),
+  portalAppId: integer("portal_app_id")
+    .notNull()
+    .references(() => portalChitraApps.id, { onDelete: "cascade" }),
+  roleId: integer("role_id")
+    .notNull()
+    .references(() => securityRoles.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Master Data Tables
 // Department is the parent entity
 export const masterDepartments = pgTable("hero_master_departments", {

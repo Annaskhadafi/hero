@@ -34,6 +34,7 @@ import {
   notificationUserPreferences,
   approvalMatrices,
   approvalMatrixSteps,
+  portalChitraApps,
   roleMenuPermissions,
   securityPermissions,
   securityRolePermissions,
@@ -453,6 +454,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: "main",
+    section: "Workspace",
+    title: "Portal Chitra",
+    url: "/dashboard/portal-chitra",
+    iconName: "dashboard",
+    resource: "portal_chitra",
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Security Section
   {
     menuArea: "main",
@@ -542,6 +554,201 @@ const SIDEBAR_MENU_SEEDS = [
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
+  },
+] as const;
+
+const PORTAL_CHITRA_APP_SEEDS = [
+  {
+    slug: "hcms",
+    name: "HCMS",
+    category: "Human Capital",
+    description: "Human Capital Management System terintegrasi.",
+    url: "https://hcms.chitraparatama.co.id/",
+    color: "#003461",
+    iconName: "users",
+    sortOrder: 1,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "chitra-tire-system",
+    name: "Chitra Tire System",
+    category: "Central Services",
+    description: "Manajemen siklus hidup ban dan pemantauan performa.",
+    url: "https://cts-chitraparatama.co.id/ChitraTireMngr/product/login.php",
+    color: "#004b87",
+    iconName: "car",
+    sortOrder: 2,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "integrated-chitra-system",
+    name: "Integrated Chitra System",
+    category: "General",
+    description: "Portal utama integrasi seluruh sistem operasional.",
+    url: "http://ics.chitraparatama.co.id/product/login.php",
+    color: "#0f6ba8",
+    iconName: "layers",
+    sortOrder: 3,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "chitra-paratama-website",
+    name: "Chitra Paratama Website",
+    category: "General",
+    description: "Profil perusahaan dan informasi publik.",
+    url: "https://chitraparatama.co.id",
+    color: "#2d7c67",
+    iconName: "globe",
+    sortOrder: 4,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "go-hse",
+    name: "GO HSE",
+    category: "Human Capital",
+    description: "Sistem pelaporan kesehatan dan keselamatan kerja.",
+    url: "https://gohse.id",
+    color: "#9f4b18",
+    iconName: "shield",
+    sortOrder: 5,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "e-purchase-request",
+    name: "E - Purchase Request",
+    category: "Supply Chain",
+    description: "Digitalisasi proses pengadaan dan approval.",
+    url: "https://proc-share.com",
+    color: "#005f73",
+    iconName: "shopping-bag",
+    sortOrder: 6,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "go-bpi",
+    name: "GO BPI",
+    category: "Continuous Improvement",
+    description: "Inovasi dan perbaikan proses bisnis berkelanjutan.",
+    url: "https://gobpi.id",
+    color: "#7a3c12",
+    iconName: "bolt",
+    sortOrder: 7,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "crm",
+    name: "CRM",
+    category: "Sales & Marketing",
+    description: "Manajemen relasi pelanggan dan pipeline penjualan.",
+    url: "https://gohse.id/crm/admin",
+    color: "#005e7a",
+    iconName: "briefcase",
+    sortOrder: 8,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "camos",
+    name: "CAMOS",
+    category: "Central Services",
+    description: "Aplikasi mobile untuk monitoring aset operasional.",
+    url: "https://play.google.com/store/apps/details?id=com.chitraparatama.camos",
+    color: "#3c566b",
+    iconName: "smartphone",
+    sortOrder: 9,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "ar-dashboard",
+    name: "AR Dashboard",
+    category: "Finance",
+    description: "Visualisasi piutang dan performa keuangan.",
+    url: "#",
+    color: "#0f766e",
+    iconName: "chart",
+    sortOrder: 10,
+    isActive: true,
+    showOnMobile: false,
+  },
+  {
+    slug: "warehouse-repair",
+    name: "Warehouse Repair",
+    category: "Central Services",
+    description: "Pelacakan pemeliharaan dan perbaikan gudang.",
+    url: "https://rrschitra.gohse.id/login.php",
+    color: "#7c3f00",
+    iconName: "warehouse",
+    sortOrder: 11,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "marketing-tools",
+    name: "Marketing Tools",
+    category: "Sales & Marketing",
+    description: "Peralatan bantu analisis pasar dan kampanye.",
+    url: "https://one.chitraparatama.com",
+    color: "#8b2f4d",
+    iconName: "megaphone",
+    sortOrder: 12,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "lms-v2",
+    name: "LMS V2",
+    category: "Human Capital",
+    description: "Platform pelatihan dan pengembangan karyawan.",
+    url: "https://tc.chitraparatama.com",
+    color: "#003f78",
+    iconName: "book-open",
+    sortOrder: 13,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "supply-chain-management",
+    name: "Supply Chain Management",
+    category: "Supply Chain",
+    description: "Pemantauan rantai pasok dari hulu ke hilir.",
+    url: "https://one.chitraparatama.com",
+    color: "#005f8f",
+    iconName: "truck",
+    sortOrder: 14,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "chris",
+    name: "CHRIS",
+    category: "Human Capital",
+    description: "Chitra Human Resources Information System.",
+    url: "https://chris.chitraparatama.com",
+    color: "#a04d16",
+    iconName: "user-cog",
+    sortOrder: 15,
+    isActive: true,
+    showOnMobile: true,
+  },
+  {
+    slug: "competitor-dashboard",
+    name: "Competitor Dashboard",
+    category: "Sales & Marketing",
+    description: "Analisis perbandingan performa kompetitor.",
+    url: "https://lookerstudio.google.com/reporting/7d2e0f57-a983-42d0-977d-878b3bfeb662",
+    color: "#6c1f37",
+    iconName: "radar",
+    sortOrder: 16,
+    isActive: true,
+    showOnMobile: true,
   },
 ] as const;
 
@@ -790,14 +997,14 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     return {
       canView: true,
       canEdit: true,
-      canDelete: ["security", "settings_navbar", "settings_email"].includes(resource),
+      canDelete: ["security", "settings_navbar", "settings_email", "portal_chitra"].includes(resource),
       canSelectAll: false,
     };
   }
 
   return {
     canView: true,
-    canEdit: !["settings_email"].includes(resource),
+    canEdit: !["settings_email", "portal_chitra"].includes(resource),
     canDelete: false,
     canSelectAll: false,
   };
@@ -1057,6 +1264,33 @@ async function ensureHeroGovernanceTables() {
       can_edit boolean not null default false,
       can_delete boolean not null default false,
       can_select_all boolean not null default false,
+      created_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_portal_chitra_apps (
+      id serial primary key,
+      slug text not null unique,
+      name text not null,
+      category text not null default 'General',
+      description text not null default '',
+      url text not null,
+      color text not null default '#003461',
+      icon_name text not null default 'globe',
+      sort_order integer not null default 0,
+      is_active boolean not null default true,
+      show_on_mobile boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_portal_chitra_role_access (
+      id serial primary key,
+      portal_app_id integer not null references hero_portal_chitra_apps(id) on delete cascade,
+      role_id integer not null references hero_security_roles(id) on delete cascade,
       created_at timestamp not null default now()
     );
   `);
@@ -1567,6 +1801,54 @@ export async function ensureHeroGovernanceSeedData() {
 
     if (missingMenuItems.length > 0) {
       await db.insert(navbarMenuItems).values(missingMenuItems);
+    }
+
+    const existingPortalApps = await db
+      .select()
+      .from(portalChitraApps)
+      .orderBy(portalChitraApps.sortOrder, portalChitraApps.id);
+
+    const portalAppBySlug = new Map(existingPortalApps.map((item) => [item.slug, item]));
+
+    for (const portalSeed of PORTAL_CHITRA_APP_SEEDS) {
+      const existingPortalApp = portalAppBySlug.get(portalSeed.slug);
+
+      if (!existingPortalApp) {
+        continue;
+      }
+
+      if (
+        existingPortalApp.name !== portalSeed.name ||
+        existingPortalApp.category !== portalSeed.category ||
+        existingPortalApp.description !== portalSeed.description ||
+        existingPortalApp.url !== portalSeed.url ||
+        existingPortalApp.color !== portalSeed.color ||
+        existingPortalApp.iconName !== portalSeed.iconName ||
+        existingPortalApp.sortOrder !== portalSeed.sortOrder ||
+        existingPortalApp.isActive !== portalSeed.isActive ||
+        existingPortalApp.showOnMobile !== portalSeed.showOnMobile
+      ) {
+        await db
+          .update(portalChitraApps)
+          .set({
+            ...portalSeed,
+            updatedAt: new Date(),
+          })
+          .where(eq(portalChitraApps.id, existingPortalApp.id));
+      }
+    }
+
+    const missingPortalApps = PORTAL_CHITRA_APP_SEEDS.filter(
+      (item) => !portalAppBySlug.has(item.slug),
+    );
+
+    if (missingPortalApps.length > 0) {
+      await db.insert(portalChitraApps).values(
+        missingPortalApps.map((item) => ({
+          ...item,
+          updatedAt: new Date(),
+        })),
+      );
     }
 
     if ((themeCount[0]?.count ?? 0) === 0) {

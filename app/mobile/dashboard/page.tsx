@@ -14,9 +14,11 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { MobilePortalChitraSlider } from "@/components/mobile/mobile-portal-chitra-slider";
 import { getApprovalCenterData } from "@/lib/approval-workspace";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
+import { getVisiblePortalChitraAppsForEmail } from "@/lib/portal-chitra";
 import { cn } from "@/lib/utils";
 
 function getGreeting() {
@@ -123,9 +125,10 @@ export default async function MobileDashboardPage() {
     redirect("/sign-in");
   }
 
-  const [data, approvalData] = await Promise.all([
+  const [data, approvalData, portalApps] = await Promise.all([
     getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }),
     getApprovalCenterData(session.user.email),
+    getVisiblePortalChitraAppsForEmail(session.user.email, { mobileOnly: true }),
   ]);
 
   if (!data) {
@@ -202,6 +205,8 @@ export default async function MobileDashboardPage() {
           <span className="text-[10px] font-black uppercase tracking-[0.16em]">HSE Report</span>
         </Link>
       </section>
+
+      <MobilePortalChitraSlider apps={portalApps} />
 
       <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
         <div className="flex items-start justify-between gap-3">

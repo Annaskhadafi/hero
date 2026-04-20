@@ -3,6 +3,7 @@ import { Settings2 } from "lucide-react";
 
 const tabs = [
   { label: "Navbar Setting", href: "/dashboard/settings/navbar" },
+  { label: "Portal Chitra", href: "/dashboard/settings/portal-chitra" },
   { label: "Email Delivery Log", href: "/dashboard/settings/email" },
 ];
 
