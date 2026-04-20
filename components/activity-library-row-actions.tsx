@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
+import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -239,36 +240,15 @@ export function ActivityLibraryRowActions({
                   ))}
                 </select>
               </Label>
-              <Label className="grid gap-2 text-sm font-semibold">
-                Department
-                <select
-                  name="departmentId"
-                  defaultValue={row.departmentId ?? ""}
-                  className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                >
-                  <option value="">Global</option>
-                  {departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-              </Label>
-              <Label className="grid gap-2 text-sm font-semibold">
-                Section
-                <select
-                  name="sectionId"
-                  defaultValue={row.sectionId ?? ""}
-                  className="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
-                >
-                  <option value="">Tanpa section</option>
-                  {sections.map((section) => (
-                    <option key={section.id} value={section.id}>
-                      {section.name}
-                    </option>
-                  ))}
-                </select>
-              </Label>
+              <ActivityRouteDepartmentSectionFields
+                departments={departments}
+                sections={sections}
+                defaultDepartmentId={row.departmentId}
+                defaultSectionId={row.sectionId}
+                selectClassName="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
+                departmentPlaceholder="Global"
+                sectionPlaceholder="Tanpa section"
+              />
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">

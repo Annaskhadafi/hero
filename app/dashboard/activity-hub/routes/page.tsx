@@ -1,14 +1,24 @@
 import { redirect } from "next/navigation";
-import { GitBranch, Layers3, ListChecks, Plus, Route, Trash2 } from "lucide-react";
+import { GitBranch, Layers3, ListChecks, Pencil, Plus, Route, Trash2 } from "lucide-react";
 import {
   manageActivityRouteGroupAction,
   manageActivityRouteItemAction,
   manageActivityRouteTemplateAction,
   manageActivitySectionOverrideAction,
 } from "@/app/dashboard/activity-hub/actions";
+import { ActivityRouteItemForm } from "@/components/activity-route-item-form";
+import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
@@ -130,26 +140,13 @@ function RouteTemplateForm({
             ))}
           </select>
         </FieldLabel>
-        <FieldLabel label="Department">
-          <select name="departmentId" className={selectClass} defaultValue={template?.departmentId ?? ""}>
-            <option value="">Semua department</option>
-            {data.departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-        </FieldLabel>
-        <FieldLabel label="Section">
-          <select name="sectionId" className={selectClass} defaultValue={template?.sectionId ?? ""}>
-            <option value="">Semua section</option>
-            {data.sections.map((section) => (
-              <option key={section.id} value={section.id}>
-                {section.name}
-              </option>
-            ))}
-          </select>
-        </FieldLabel>
+        <ActivityRouteDepartmentSectionFields
+          departments={data.departments}
+          sections={data.sections}
+          defaultDepartmentId={template?.departmentId}
+          defaultSectionId={template?.sectionId}
+          selectClassName={selectClass}
+        />
         <FieldLabel label="Jabatan">
           <select name="positionId" className={selectClass} defaultValue={template?.positionId ?? ""}>
             <option value="">Semua jabatan</option>
@@ -183,6 +180,98 @@ function RouteTemplateForm({
         {isUpdate ? "Simpan route" : "Tambah route"}
       </Button>
     </form>
+  );
+}
+
+function AddRouteDialog({ data }: { data: RouteBuilderData }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button className="h-11 rounded-xl px-4">
+          <Plus className="size-4" />
+          Tambah route baru
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl overflow-hidden bg-surface-container-lowest p-0">
+        <DialogHeader className="bg-surface-container-low px-6 py-5 pr-12">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Route className="size-5 text-primary" />
+            Tambah Route Baru
+          </DialogTitle>
+          <DialogDescription>
+            Buat route per section, jabatan, dan shift. Setelah tersimpan, buka row route untuk tambah group dan item.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-6 py-5">
+          <RouteTemplateForm data={data} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddGroupDialog({
+  templateId,
+  defaultSortOrder,
+}: {
+  templateId: number;
+  defaultSortOrder: number;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="icon" className="size-11 rounded-xl" title="Tambah group">
+          <GitBranch className="size-4" />
+          <span className="sr-only">Tambah group</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl overflow-hidden bg-surface-container-lowest p-0">
+        <DialogHeader className="bg-surface-container-low px-6 py-5 pr-12">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <GitBranch className="size-5 text-primary" />
+            Tambah Group
+          </DialogTitle>
+          <DialogDescription>
+            Group jadi level nested pertama di bawah route. Item checklist ditambahkan setelah group ada.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-6 py-5">
+          <RouteGroupForm templateId={templateId} defaultSortOrder={defaultSortOrder} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditRouteDialog({ data, template }: { data: RouteBuilderData; template: RouteTemplate }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          size="icon"
+          variant="outline"
+          className="size-11 rounded-xl border-0 bg-surface-container-low text-primary shadow-[inset_0_0_0_1px_rgba(0,52,97,0.14)]"
+          title="Edit route"
+        >
+          <Pencil className="size-4" />
+          <span className="sr-only">Edit route</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl overflow-hidden bg-surface-container-lowest p-0">
+        <DialogHeader className="bg-surface-container-low px-6 py-5 pr-12">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Route className="size-5 text-primary" />
+            Edit Route
+          </DialogTitle>
+          <DialogDescription>
+            Ubah scope route, status mobile, approval, dan metadata utama.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-6 py-5">
+          <RouteTemplateForm data={data} template={template} />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -220,85 +309,6 @@ function RouteGroupForm({
       <CheckField name="isRequired" label="Required group" defaultChecked={group?.isRequired ?? true} />
       <Button type="submit" size="sm" className="rounded-xl">
         {isUpdate ? "Simpan group" : "Tambah group"}
-      </Button>
-    </form>
-  );
-}
-
-function RouteItemForm({
-  groupId,
-  item,
-  defaultSortOrder,
-  library,
-}: {
-  groupId: number;
-  item?: RouteItem;
-  defaultSortOrder: number;
-  library: RouteBuilderData["library"];
-}) {
-  const isUpdate = Boolean(item);
-
-  return (
-    <form action={manageActivityRouteItemAction} className="grid gap-3">
-      <input type="hidden" name="intent" value={isUpdate ? "update" : "create"} />
-      {item ? <input type="hidden" name="id" value={item.id} /> : null}
-      <input type="hidden" name="routeGroupId" value={groupId} />
-
-      <FieldLabel label="Library activity">
-        <select name="libraryActivityId" className={selectClass} defaultValue={item?.libraryActivityId ?? ""}>
-          <option value="">Custom item tanpa library</option>
-          {library.map((libraryItem) => (
-            <option key={libraryItem.id} value={libraryItem.id}>
-              {libraryItem.activityCode} - {libraryItem.activityName}
-            </option>
-          ))}
-        </select>
-      </FieldLabel>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FieldLabel label="Item code">
-          <Input name="itemCode" defaultValue={item?.itemCode ?? ""} placeholder="RT-NEW" />
-        </FieldLabel>
-        <FieldLabel label="Sort">
-          <Input name="sortOrder" type="number" defaultValue={item?.sortOrder ?? defaultSortOrder} />
-        </FieldLabel>
-      </div>
-      <FieldLabel label="Item label">
-        <Input name="itemLabel" defaultValue={item?.itemLabel ?? ""} placeholder="Nama checklist" required />
-      </FieldLabel>
-      <FieldLabel label="Description">
-        <Textarea
-          name="itemDescription"
-          defaultValue={item?.itemDescription ?? ""}
-          rows={3}
-          placeholder="Keterangan pekerjaan."
-        />
-      </FieldLabel>
-      <FieldLabel label="Point override">
-        <Input
-          name="pointOverride"
-          type="number"
-          defaultValue={item?.pointOverride ?? ""}
-          placeholder={item?.libraryPoints != null ? `Default ${item.libraryPoints} pts` : "Kosong = pakai default"}
-        />
-      </FieldLabel>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <CheckField name="requiresUnit" label="Butuh unit" defaultChecked={item?.requiresUnit ?? false} />
-        <CheckField name="requiresTime" label="Butuh jam" defaultChecked={item?.requiresTime ?? true} />
-        <CheckField name="requiresRemark" label="Butuh remark" defaultChecked={item?.requiresRemark ?? false} />
-        <CheckField name="requiresPhoto" label="Butuh photo" defaultChecked={item?.requiresPhoto ?? false} />
-        <CheckField
-          name="requiresChecklistEvidence"
-          label="Butuh evidence"
-          defaultChecked={item?.requiresChecklistEvidence ?? false}
-        />
-        <CheckField name="isOptional" label="Optional" defaultChecked={item?.isOptional ?? false} />
-        <CheckField name="allowCustomUnit" label="Custom unit" defaultChecked={item?.allowCustomUnit ?? true} />
-      </div>
-
-      <Button type="submit" size="sm" className="rounded-xl">
-        {isUpdate ? "Simpan item" : "Tambah item"}
       </Button>
     </form>
   );
@@ -382,11 +392,12 @@ function GroupBuilder({
                       </Badge>
                     ))}
                   </div>
-                  <RouteItemForm
+                  <ActivityRouteItemForm
                     groupId={group.id}
                     item={item}
                     defaultSortOrder={item.sortOrder}
                     library={data.library}
+                    selectClassName={selectClass}
                   />
                   <DeleteForm action={manageActivityRouteItemAction} id={item.id} label="Hapus item" />
                 </div>
@@ -404,7 +415,12 @@ function GroupBuilder({
             + Tambah item ke group ini
           </summary>
           <div className="mt-4">
-            <RouteItemForm groupId={group.id} defaultSortOrder={group.items.length + 1} library={data.library} />
+            <ActivityRouteItemForm
+              groupId={group.id}
+              defaultSortOrder={group.items.length + 1}
+              library={data.library}
+              selectClassName={selectClass}
+            />
           </div>
         </details>
 
@@ -475,28 +491,17 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
               </div>
 
               <div className="space-y-3">
-                <details className="rounded-[1.1rem] bg-white p-4 shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
-                    <GitBranch className="size-4" />
-                    Tambah group
-                  </summary>
-                  <div className="mt-4">
-                    <RouteGroupForm
-                      templateId={template.id}
-                      defaultSortOrder={template.groups.length + 1}
-                    />
-                  </div>
-                </details>
-
-                <details className="rounded-[1.1rem] bg-white p-4 shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
-                    <Route className="size-4" />
-                    Edit route
-                  </summary>
-                  <div className="mt-4">
-                    <RouteTemplateForm data={data} template={template} />
-                  </div>
-                </details>
+                <Card className="border-0 bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+                  <CardContent className="space-y-3 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">
+                      Route actions
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <AddGroupDialog templateId={template.id} defaultSortOrder={template.groups.length + 1} />
+                      <EditRouteDialog data={data} template={template} />
+                    </div>
+                  </CardContent>
+                </Card>
 
                 <Card className="border-0 bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
                   <CardContent className="space-y-3 p-4">
@@ -546,26 +551,11 @@ function OverrideForm({ data }: { data: RouteBuilderData }) {
             ))}
           </select>
         </FieldLabel>
-        <FieldLabel label="Department">
-          <select name="departmentId" className={selectClass}>
-            <option value="">Semua department</option>
-            {data.departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-        </FieldLabel>
-        <FieldLabel label="Section">
-          <select name="sectionId" className={selectClass}>
-            <option value="">Semua section</option>
-            {data.sections.map((section) => (
-              <option key={section.id} value={section.id}>
-                {section.name}
-              </option>
-            ))}
-          </select>
-        </FieldLabel>
+        <ActivityRouteDepartmentSectionFields
+          departments={data.departments}
+          sections={data.sections}
+          selectClassName={selectClass}
+        />
         <FieldLabel label="Jabatan">
           <select name="positionId" className={selectClass}>
             <option value="">Semua jabatan</option>
@@ -634,15 +624,7 @@ export default async function DailyActivityRoutesPage() {
                     List route dulu. Klik route untuk buka group. Klik group untuk buka item.
                   </CardDescription>
                 </div>
-                <details className="w-full rounded-2xl bg-surface-container-low p-4 lg:w-[420px]">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
-                    <Plus className="size-4" />
-                    Tambah route baru
-                  </summary>
-                  <div className="mt-4">
-                    <RouteTemplateForm data={data} />
-                  </div>
-                </details>
+                <AddRouteDialog data={data} />
               </div>
             </CardHeader>
             <CardContent>

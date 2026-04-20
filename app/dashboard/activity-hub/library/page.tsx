@@ -4,6 +4,7 @@ import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/action
 import { ActivityLibraryFilters } from "@/components/activity-library-filters";
 import { ActivityLibraryImportExport } from "@/components/activity-library-import-export";
 import { ActivityLibraryRowActions } from "@/components/activity-library-row-actions";
+import { ActivityRouteDepartmentSectionFields } from "@/components/activity-route-scope-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -232,28 +233,13 @@ export default async function DailyActivityLibraryPage({
                       ))}
                     </select>
                   </Label>
-                  <Label className="grid gap-2">
-                    Department
-                    <select name="departmentId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      <option value="">Tanpa department spesifik</option>
-                      {data.departments.map((department) => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
-                  <Label className="grid gap-2">
-                    Section
-                    <select name="sectionId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                      <option value="">Tanpa section spesifik</option>
-                      {data.sections.map((section) => (
-                        <option key={section.id} value={section.id}>
-                          {section.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Label>
+                  <ActivityRouteDepartmentSectionFields
+                    departments={data.departments}
+                    sections={data.sections}
+                    selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                    departmentPlaceholder="Tanpa department spesifik"
+                    sectionPlaceholder="Tanpa section spesifik"
+                  />
                   <Label className="grid gap-2">
                     Base points
                     <Input name="basePoints" type="number" defaultValue={10} />
