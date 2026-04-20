@@ -107,12 +107,18 @@ const saveActivityDraftSchema = z.object({
 const reviewApprovalSchema = z.object({
   approvalId: z.coerce.number().int().positive(),
   decision: z.enum(["approved", "rejected", "needs_correction"]),
-  note: z.string().trim().max(1000).optional().default(""),
+  note: z.preprocess(
+    (value) => (value === null || value === undefined ? undefined : value),
+    z.string().trim().max(1000).optional().default(""),
+  ),
 });
 
 const bulkApproveApprovalSchema = z.object({
   approvalIds: z.array(z.coerce.number().int().positive()).min(1),
-  note: z.string().trim().max(1000).optional().default(""),
+  note: z.preprocess(
+    (value) => (value === null || value === undefined ? undefined : value),
+    z.string().trim().max(1000).optional().default(""),
+  ),
 });
 
 const approvalCommentSchema = z.object({
