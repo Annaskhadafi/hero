@@ -12,6 +12,11 @@ export async function POST(request: Request) {
     formData.append("sourceMode", payload.sourceMode);
     formData.append("assignmentId", payload.assignmentId);
     formData.append("libraryActivityId", payload.libraryActivityId);
+    formData.append("routeTemplateId", payload.routeTemplateId);
+    formData.append("overtimeCommandLetterId", payload.overtimeCommandLetterId);
+    formData.append("routeShiftCode", payload.routeShiftCode);
+    formData.append("routeSummaryRemark", payload.routeSummaryRemark);
+    formData.append("routeSessionItemsJson", JSON.stringify(payload.routeSessionItems));
     formData.append("customActivityName", payload.customActivityName);
     formData.append("customActivityDescription", payload.customActivityDescription);
     formData.append("equipmentNo", payload.equipmentNo);

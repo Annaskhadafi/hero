@@ -79,7 +79,8 @@ export default async function DailyActivityLibraryPage({
                 Activity Library Overview
               </CardTitle>
               <CardDescription>
-                Daftar aktivitas resmi per departemen beserta atribut validasi, SLA, dan perilaku approval.
+                Daftar aktivitas resmi per departemen beserta atribut validasi, SLA, default point, dan pondasi override
+                per section.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -193,7 +194,7 @@ export default async function DailyActivityLibraryPage({
                 Tambah Activity Library
               </CardTitle>
               <CardDescription>
-                Panel untuk Section Head atau admin mengelola master activity library departemen.
+                Panel untuk Section Head atau admin mengelola master activity library yang nanti dipakai Route Builder.
               </CardDescription>
             </CardHeader>
             <CardContent>

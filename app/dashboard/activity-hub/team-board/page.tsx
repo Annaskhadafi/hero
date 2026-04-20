@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CheckCheck, ClipboardList } from "lucide-react";
-import { manageJobAssignmentAction } from "@/app/dashboard/activity-hub/actions";
+import { manageOvertimeCommandLetterAction } from "@/app/dashboard/activity-hub/actions";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
+import { OvertimeCommandLetterComposer } from "@/components/overtime-command-letter-composer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,18 +15,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityTeamBoardData } from "@/lib/daily-activity";
 
 function statusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
 
+  if (["draft", "submitted"].includes(normalized)) {
+    return "bg-amber-100 text-amber-900";
+  }
+  if (["approved", "closed"].includes(normalized)) {
+    return "bg-emerald-100 text-emerald-900";
+  }
   if (normalized.includes("working")) {
     return "bg-emerald-100 text-emerald-900";
   }
@@ -50,12 +54,6 @@ function riskBadgeClass(risk: string) {
 
   return "bg-slate-100 text-slate-800";
 }
-
-function dateTimeLocalValue(reference: Date) {
-  const local = new Date(reference.getTime() - reference.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
 function MetricPill({
   label,
   value,
@@ -90,15 +88,16 @@ export default async function TeamBoardPage() {
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Team Board Workspace</Badge>
+              <Badge variant="secondary">SPL Workspace</Badge>
               <Badge variant="outline">{data.lead.department}</Badge>
               <Badge variant="outline">{data.lead.name}</Badge>
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">Lead Board Berbasis Table dan Tab</CardTitle>
+              <CardTitle className="text-2xl sm:text-3xl">SPL, Team Monitoring, dan Approval Queue</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Halaman foreman diringkas menjadi command surface yang fokus ke team status, approval queue, dan dispute
-                audit. Pembuatan assignment dipindah ke modal agar area kerja utama tidak lagi dipenuhi grid card.
+                Halaman lead diringkas jadi command surface untuk Surat Perintah Lembur, monitoring tim, approval
+                queue, dan dispute audit. Penugasan tetap satu pintu, tapi istilah kerja lapangan sekarang diselaraskan
+                ke SPL.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -106,6 +105,7 @@ export default async function TeamBoardPage() {
               <MetricPill label="Checked-in" value={data.summary.checkedIn} />
               <MetricPill label="Pending approval" value={data.summary.pendingApproval} />
               <MetricPill label="Overdue" value={data.summary.overdueAssignments} />
+              <MetricPill label="Open SPL" value={data.summary.splOpen} />
               <MetricPill label="Overtime candidates" value={data.summary.overtimeCandidates} />
               <MetricPill label="Emergency jobs" value={data.summary.emergencyJobs} />
             </div>
@@ -117,91 +117,23 @@ export default async function TeamBoardPage() {
                 <DialogTrigger asChild>
                   <Button className="rounded-full">
                     <ClipboardList className="size-4" />
-                    Buat assignment
+                    Buat SPL
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-3xl">
                   <DialogHeader>
-                    <DialogTitle>Buat Job Assignment</DialogTitle>
+                    <DialogTitle>Buat Surat Perintah Lembur (SPL)</DialogTitle>
                     <DialogDescription>
-                      Assignment hanya bisa dibuat untuk bawahan yang tersambung di struktur organisasi.
+                      Dokumen lembur native. Isi header SPL lalu susun line pekerjaan per route, library, atau custom.
                     </DialogDescription>
                   </DialogHeader>
-                  <form action={manageJobAssignmentAction} className="space-y-4">
-                    <input type="hidden" name="intent" value="create" />
-                    <input type="hidden" name="assignedByEmployeeId" value={data.lead.id} />
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Label className="grid gap-2">
-                        Assign to
-                        <select name="assignedToEmployeeId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
-                          {data.team.map((member) => (
-                            <option key={member.id} value={member.id}>
-                              {member.name} - {member.jobTitle || member.role}
-                            </option>
-                          ))}
-                        </select>
-                      </Label>
-                      <Label className="grid gap-2">
-                        Site
-                        <Input name="siteId" defaultValue={data.lead.siteId} readOnly />
-                      </Label>
-                      <Label className="grid gap-2">
-                        Activity library
-                        <select name="libraryActivityId" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
-                          {data.assignmentOptions.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.activityCode} - {item.activityName}
-                            </option>
-                          ))}
-                        </select>
-                      </Label>
-                      <Label className="grid gap-2">
-                        Priority
-                        <select name="priority" defaultValue="Normal" className="h-11 rounded-xl border border-input bg-background px-3 text-sm">
-                          <option value="Normal">Normal</option>
-                          <option value="High">High</option>
-                          <option value="Emergency">Emergency</option>
-                        </select>
-                      </Label>
-                      <Label className="grid gap-2">
-                        Estimasi durasi (menit)
-                        <Input name="estimatedDuration" type="number" defaultValue={90} />
-                      </Label>
-                      <Label className="grid gap-2">
-                        Deadline
-                        <Input
-                          name="deadline"
-                          type="datetime-local"
-                          defaultValue={dateTimeLocalValue(new Date(Date.now() + 4 * 60 * 60 * 1000))}
-                        />
-                      </Label>
-                    </div>
-
-                    <Label className="grid gap-2">
-                      Catatan job
-                      <Textarea
-                        name="notes"
-                        rows={4}
-                        placeholder="Instruksi singkat, area kerja, material, atau perhatian keselamatan."
-                      />
-                    </Label>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                        <input type="checkbox" name="isMandatory" />
-                        Jadikan mandatory activity
-                      </Label>
-                      <Label className="flex items-center gap-3 rounded-xl bg-surface-container-low px-3 py-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                        <input type="checkbox" name="isRecurring" />
-                        Tandai recurring assignment
-                      </Label>
-                    </div>
-
-                    <Button type="submit" className="w-full rounded-2xl">
-                      Buat assignment
-                    </Button>
-                  </form>
+                  <OvertimeCommandLetterComposer
+                    action={manageOvertimeCommandLetterAction}
+                    intent="create"
+                    submitLabel="Simpan SPL"
+                    routeTemplates={data.splOptions.routeTemplates}
+                    libraryActivities={data.splOptions.libraryActivities}
+                  />
                 </DialogContent>
               </Dialog>
             ) : null}
@@ -216,13 +148,143 @@ export default async function TeamBoardPage() {
         </CardHeader>
       </Card>
 
-      <Tabs defaultValue="team" className="space-y-4">
+      <Tabs defaultValue="spl" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="spl">SPL Docs</TabsTrigger>
           <TabsTrigger value="team">Team Status</TabsTrigger>
           <TabsTrigger value="activity-log">Activity Log Tim</TabsTrigger>
           <TabsTrigger value="approvals">Pending Approval</TabsTrigger>
           <TabsTrigger value="disputes">Disputes</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="spl">
+          <Card className="rounded-[1.4rem]">
+            <CardContent className="space-y-4 pt-6">
+              <MinimalTableShell
+                title="Dokumen SPL"
+                description="Monitor dokumen Surat Perintah Lembur lengkap dengan line kerja, estimasi menit, dan planned point."
+                label="spl documents"
+                fileName="team-board-spl-docs"
+                searchPlaceholder="Cari nomor SPL, judul, status, section, atau line..."
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dokumen</TableHead>
+                      <TableHead>Window</TableHead>
+                      <TableHead>Scope</TableHead>
+                      <TableHead>Lines</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.splDocuments.length > 0 ? (
+                      data.splDocuments.map((document) => (
+                        <TableRow key={document.id}>
+                          <TableCell className="align-top">
+                            <div className="space-y-1">
+                              <p className="font-medium">{document.title}</p>
+                              <p className="text-xs text-muted-foreground">{document.splNumber}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Dibuat {document.createdAt.toLocaleString("id-ID")}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1 text-sm">
+                              <p>
+                                {document.workDate.toLocaleDateString("id-ID", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {document.plannedStartAt
+                                  ? document.plannedStartAt.toLocaleTimeString("id-ID", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : "--:--"}{" "}
+                                -{" "}
+                                {document.plannedEndAt
+                                  ? document.plannedEndAt.toLocaleTimeString("id-ID", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : "--:--"}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1 text-sm">
+                              <p>{document.sectionName ?? "Semua section"}</p>
+                              <p className="text-xs text-muted-foreground">{document.positionName ?? "Semua jabatan"}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1 text-sm">
+                              <p>{document.lineCount} line</p>
+                              <p className="text-xs text-muted-foreground">
+                                {document.estimatedMinutesTotal} menit • {document.plannedPointsTotal} pts
+                              </p>
+                              <details className="rounded-xl bg-surface-container-low p-3">
+                                <summary className="cursor-pointer text-xs font-semibold text-foreground">
+                                  Lihat line
+                                </summary>
+                                <div className="mt-3 space-y-2">
+                                  {document.items.map((item) => (
+                                    <div key={item.id} className="rounded-lg bg-white px-3 py-2 text-xs">
+                                      <p className="font-semibold text-foreground">{item.lineLabel}</p>
+                                      <p className="text-muted-foreground">
+                                        {item.targetUnit || "-"} • {item.estimatedMinutes} menit • {item.plannedPoints} pts
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                              <details className="rounded-xl bg-surface-container-low p-3">
+                                <summary className="cursor-pointer text-xs font-semibold text-foreground">
+                                  Edit SPL
+                                </summary>
+                                <div className="mt-3">
+                                  <OvertimeCommandLetterComposer
+                                    action={manageOvertimeCommandLetterAction}
+                                    intent="update"
+                                    submitLabel="Update SPL"
+                                    routeTemplates={data.splOptions.routeTemplates}
+                                    libraryActivities={data.splOptions.libraryActivities}
+                                    defaults={document}
+                                  />
+                                  <form action={manageOvertimeCommandLetterAction} className="mt-3">
+                                    <input type="hidden" name="intent" value="delete" />
+                                    <input type="hidden" name="id" value={document.id} />
+                                    <Button type="submit" variant="outline" className="w-full rounded-xl text-rose-700">
+                                      Hapus SPL
+                                    </Button>
+                                  </form>
+                                </div>
+                              </details>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                          Belum ada dokumen SPL di site ini.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="team">
           <Card className="rounded-[1.4rem]">

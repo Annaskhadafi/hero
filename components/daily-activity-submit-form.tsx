@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { RouteSessionSyncItem } from "@/lib/offline-sync";
 import { cn } from "@/lib/utils";
 
 type SourceMode = "assigned" | "self_input" | "custom";
@@ -32,6 +33,65 @@ type DailyActivitySubmitActionState = {
   message: string;
 };
 
+type RouteChecklistItem = {
+  id: number;
+  libraryActivityId: number | null;
+  itemCode: string | null;
+  itemLabel: string;
+  itemDescription: string | null;
+  sortOrder: number;
+  requiresUnit: boolean;
+  requiresTime: boolean;
+  requiresRemark: boolean;
+  requiresPhoto: boolean;
+  requiresChecklistEvidence: boolean;
+  isOptional: boolean;
+  allowCustomUnit: boolean;
+  pointOverride: number | null;
+  libraryCode: string | null;
+  libraryName: string | null;
+  libraryPoints: number | null;
+  isChecked: boolean;
+  unitNumber: string;
+  remark: string;
+  startedAt: string | Date | null;
+  endedAt: string | Date | null;
+  actualPoints: number;
+};
+
+type RouteChecklistGroup = {
+  id: number;
+  groupKey: string;
+  groupName: string;
+  description: string | null;
+  sortOrder: number;
+  isRequired: boolean;
+  items: RouteChecklistItem[];
+};
+
+type RouteChecklist = {
+  id: number;
+  routeCode: string;
+  routeName: string;
+  shiftCode: string;
+  activeSpl: {
+    id: number;
+    splNumber: string;
+    title: string;
+    status: string;
+    lineCount: number;
+    plannedPointsTotal: number;
+    requestNotes: string;
+    items: Array<{
+      id: number;
+      lineLabel: string;
+      targetUnit: string;
+      plannedPoints: number;
+    }>;
+  } | null;
+  groups: RouteChecklistGroup[];
+};
+
 const initialDailyActivitySubmitState: DailyActivitySubmitActionState = {
   status: "idle",
   message: "",
@@ -48,8 +108,27 @@ type DailyActivitySubmitFormProps = {
   defaultStartTime: string;
   defaultEndTime: string;
   defaultSourceMode?: SourceMode;
+  routeChecklist?: RouteChecklist | null;
   className?: string;
   variant?: "desktop" | "mobile";
+};
+
+type RouteItemState = {
+  isChecked: boolean;
+  unitNumber: string;
+  remark: string;
+  startedAt: string;
+  endedAt: string;
+  actualPoints: string;
+};
+
+const emptyRouteItemState: RouteItemState = {
+  isChecked: false,
+  unitNumber: "",
+  remark: "",
+  startedAt: "",
+  endedAt: "",
+  actualPoints: "0",
 };
 
 function SubmitButton({ variant }: { variant: "desktop" | "mobile" }) {
@@ -80,6 +159,7 @@ export function DailyActivitySubmitForm({
   defaultStartTime,
   defaultEndTime,
   defaultSourceMode = "self_input",
+  routeChecklist = null,
   className,
   variant = "desktop",
 }: DailyActivitySubmitFormProps) {
@@ -95,6 +175,40 @@ export function DailyActivitySubmitForm({
   const showLibrary = sourceMode === "self_input";
   const showAssignment = sourceMode === "assigned";
   const isMobile = variant === "mobile";
+  const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({});
+
+  function toDateTimeLocalValue(value?: string | Date | null) {
+    if (!value) return "";
+    const dateValue = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(dateValue.getTime())) return "";
+    const local = new Date(dateValue.getTime() - dateValue.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  useEffect(() => {
+    if (!routeChecklist) {
+      setRouteItemState({});
+      return;
+    }
+
+    const nextState = Object.fromEntries(
+      routeChecklist.groups.flatMap((group) =>
+        group.items.map((item) => [
+          item.id,
+          {
+            isChecked: item.isChecked,
+            unitNumber: item.unitNumber,
+            remark: item.remark,
+            startedAt: toDateTimeLocalValue(item.startedAt),
+            endedAt: toDateTimeLocalValue(item.endedAt),
+            actualPoints: `${item.actualPoints || item.pointOverride || item.libraryPoints || 0}`,
+          },
+        ]),
+      ),
+    ) as Record<number, RouteItemState>;
+
+    setRouteItemState(nextState);
+  }, [routeChecklist]);
 
   useEffect(() => {
     if (state.status !== "success") {
@@ -126,6 +240,213 @@ export function DailyActivitySubmitForm({
       : "text-sm font-medium";
   const mobileSectionClass = "space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]";
   const mobileHintClass = "text-xs font-semibold leading-5 text-[#486275]";
+
+  function updateRouteItemState(itemId: number, nextValue: Partial<RouteItemState>) {
+    setRouteItemState((current) => ({
+      ...current,
+      [itemId]: {
+        ...emptyRouteItemState,
+        ...current[itemId],
+        ...nextValue,
+      },
+    }));
+  }
+
+  const routeSessionItems = useMemo<RouteSessionSyncItem[]>(
+    () =>
+      routeChecklist?.groups.flatMap((group) =>
+        group.items.map((item) => {
+          const stateForItem = routeItemState[item.id];
+          const fallbackPoints = item.pointOverride ?? item.libraryPoints ?? 0;
+
+          return {
+            routeItemId: item.id,
+            libraryActivityId: item.libraryActivityId,
+            snapshotLabel: item.itemLabel,
+            snapshotGroupName: group.groupName,
+            snapshotPayload: {
+              itemCode: item.itemCode,
+              libraryCode: item.libraryCode,
+              libraryName: item.libraryName,
+              requiresUnit: item.requiresUnit,
+              requiresTime: item.requiresTime,
+              requiresRemark: item.requiresRemark,
+              requiresPhoto: item.requiresPhoto,
+              requiresChecklistEvidence: item.requiresChecklistEvidence,
+              isOptional: item.isOptional,
+            },
+            unitNumber:
+              (stateForItem?.unitNumber || "").trim() ||
+              (stateForItem?.isChecked && item.requiresUnit ? "" : ""),
+            remark: (stateForItem?.remark || "").trim(),
+            startedAt:
+              stateForItem?.isChecked && item.requiresTime
+                ? stateForItem.startedAt || defaultStartTime
+                : "",
+            endedAt:
+              stateForItem?.isChecked && item.requiresTime
+                ? stateForItem.endedAt || defaultEndTime
+                : "",
+            isChecked: stateForItem?.isChecked ?? false,
+            actualPoints:
+              stateForItem?.isChecked
+                ? Number(stateForItem.actualPoints || fallbackPoints || 0)
+                : 0,
+            sortOrder: item.sortOrder,
+          };
+        }),
+      ) ?? [],
+    [defaultEndTime, defaultStartTime, routeChecklist, routeItemState],
+  );
+
+  const routeChecklistSection =
+    routeChecklist != null ? (
+      <section className={isMobile ? mobileSectionClass : "space-y-4 rounded-[1.25rem] bg-surface-container-low p-4"}>
+        <div className="space-y-1">
+          <p className={labelTextClass}>Route checklist</p>
+          <p className={isMobile ? mobileHintClass : "text-sm text-muted-foreground"}>
+            {routeChecklist.routeCode} • {routeChecklist.routeName} • {routeChecklist.shiftCode}
+          </p>
+          {routeChecklist.activeSpl ? (
+            <div className={isMobile ? mobileHintClass : "text-sm text-muted-foreground"}>
+              <p>SPL aktif: {routeChecklist.activeSpl.splNumber} • {routeChecklist.activeSpl.title}</p>
+              <p>{routeChecklist.activeSpl.lineCount} line • {routeChecklist.activeSpl.plannedPointsTotal} pts</p>
+            </div>
+          ) : null}
+        </div>
+
+        {routeChecklist.activeSpl ? (
+          <div className="space-y-2 rounded-xl bg-white px-3 py-3 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
+            {routeChecklist.activeSpl.items.map((item) => (
+              <div key={item.id} className="text-sm">
+                <p className="font-semibold text-foreground">{item.lineLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  {item.targetUnit || "-"} • {item.plannedPoints} pts
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="space-y-3">
+          {routeChecklist.groups.map((group) => (
+            <div
+              key={group.id}
+              className={cn(
+                "space-y-3 rounded-[1rem] p-3",
+                isMobile ? "bg-[#f6fbff]" : "bg-white shadow-[0_10px_22px_rgba(8,32,51,0.05)]",
+              )}
+            >
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">{group.groupKey}</p>
+                <p className="mt-1 font-semibold text-[#082033]">{group.groupName}</p>
+                {group.description ? (
+                  <p className={isMobile ? mobileHintClass : "text-sm text-muted-foreground"}>{group.description}</p>
+                ) : null}
+              </div>
+
+              <div className="space-y-3">
+                {group.items.map((item) => {
+                  const itemState = routeItemState[item.id] ?? {
+                    isChecked: false,
+                    unitNumber: "",
+                    remark: "",
+                    startedAt: "",
+                    endedAt: "",
+                    actualPoints: `${item.pointOverride ?? item.libraryPoints ?? 0}`,
+                  };
+
+                  return (
+                    <div key={item.id} className="rounded-xl border border-border/60 bg-background px-3 py-3">
+                      <Label className="flex items-start gap-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={itemState.isChecked}
+                          onChange={(event) =>
+                            updateRouteItemState(item.id, {
+                              isChecked: event.target.checked,
+                            })
+                          }
+                        />
+                        <span className="space-y-1">
+                          <span className="block font-semibold text-foreground">{item.itemLabel}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {item.itemDescription || item.libraryName || "Checklist item"}
+                          </span>
+                          <span className="block text-[11px] font-semibold text-primary">
+                            {item.pointOverride ?? item.libraryPoints ?? 0} pts
+                          </span>
+                        </span>
+                      </Label>
+
+                      {itemState.isChecked ? (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {item.requiresUnit ? (
+                            <Label className={labelClass}>
+                              <span className={labelTextClass}>Unit</span>
+                              <Input
+                                value={itemState.unitNumber}
+                                onChange={(event) =>
+                                  updateRouteItemState(item.id, { unitNumber: event.target.value })
+                                }
+                                placeholder="Nomor unit"
+                                className={fieldClass}
+                              />
+                            </Label>
+                          ) : null}
+
+                          {item.requiresTime ? (
+                            <>
+                              <Label className={labelClass}>
+                                <span className={labelTextClass}>Mulai</span>
+                                <Input
+                                  type="datetime-local"
+                                  value={itemState.startedAt || defaultStartTime}
+                                  onChange={(event) =>
+                                    updateRouteItemState(item.id, { startedAt: event.target.value })
+                                  }
+                                  className={fieldClass}
+                                />
+                              </Label>
+                              <Label className={labelClass}>
+                                <span className={labelTextClass}>Selesai</span>
+                                <Input
+                                  type="datetime-local"
+                                  value={itemState.endedAt || defaultEndTime}
+                                  onChange={(event) =>
+                                    updateRouteItemState(item.id, { endedAt: event.target.value })
+                                  }
+                                  className={fieldClass}
+                                />
+                              </Label>
+                            </>
+                          ) : null}
+
+                          {item.requiresRemark ? (
+                            <Label className={cn(labelClass, item.requiresTime || item.requiresUnit ? "sm:col-span-2" : "")}>
+                              <span className={labelTextClass}>Keterangan</span>
+                              <Textarea
+                                rows={3}
+                                value={itemState.remark}
+                                onChange={(event) =>
+                                  updateRouteItemState(item.id, { remark: event.target.value })
+                                }
+                                className={textareaClass}
+                                placeholder="Catatan checklist"
+                              />
+                            </Label>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    ) : null;
 
   function openPhotoPicker(mode: "camera" | "gallery") {
     setPhotoCaptureMode(mode);
@@ -221,6 +542,11 @@ export function DailyActivitySubmitForm({
     <form action={formAction} className={cn("space-y-4", className)}>
       <input type="hidden" name="employeeId" value={employeeId} />
       <input type="hidden" name="gpsValid" value="false" />
+      <input type="hidden" name="routeTemplateId" value={routeChecklist?.id ?? ""} />
+      <input type="hidden" name="overtimeCommandLetterId" value={routeChecklist?.activeSpl?.id ?? ""} />
+      <input type="hidden" name="routeShiftCode" value={routeChecklist?.shiftCode ?? ""} />
+      <input type="hidden" name="routeSummaryRemark" value="" />
+      <input type="hidden" name="routeSessionItemsJson" value={JSON.stringify(routeSessionItems)} />
 
       {state.status !== "idle" ? (
         <div
@@ -243,6 +569,8 @@ export function DailyActivitySubmitForm({
             {libraryField}
             {customFields}
           </section>
+
+          {routeChecklistSection}
 
           <section className={mobileSectionClass}>
             <div className="grid gap-4">
@@ -383,6 +711,7 @@ export function DailyActivitySubmitForm({
           </Label>
 
           {customFields}
+          {routeChecklistSection}
 
           <Label className={labelClass}>
             <span className={labelTextClass}>Notes / hasil kerja</span>

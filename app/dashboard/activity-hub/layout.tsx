@@ -3,16 +3,24 @@ import { Activity } from "lucide-react";
 
 const tabs = [
   {
-    label: "My Day",
+    label: "Daily Checklist",
     href: "/dashboard/activity-hub/my-day",
   },
   {
-    label: "Team Board",
+    label: "SPL",
     href: "/dashboard/activity-hub/team-board",
   },
   {
     label: "Library",
     href: "/dashboard/activity-hub/library",
+  },
+  {
+    label: "Route Builder",
+    href: "/dashboard/activity-hub/routes",
+  },
+  {
+    label: "Blueprint",
+    href: "/dashboard/activity-hub/blueprint",
   },
   {
     label: "Configuration",

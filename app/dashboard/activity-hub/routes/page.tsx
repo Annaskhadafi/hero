@@ -1,0 +1,780 @@
+import { redirect } from "next/navigation";
+import { GitBranch, Layers3, ListChecks, Plus, Route, Trash2 } from "lucide-react";
+import {
+  manageActivityRouteGroupAction,
+  manageActivityRouteItemAction,
+  manageActivityRouteTemplateAction,
+  manageActivitySectionOverrideAction,
+} from "@/app/dashboard/activity-hub/actions";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { getServerSession } from "@/lib/auth-session";
+import { getDailyActivityRouteBuilderData } from "@/lib/daily-activity";
+
+type RouteBuilderData = Awaited<ReturnType<typeof getDailyActivityRouteBuilderData>>;
+type RouteTemplate = RouteBuilderData["templates"][number];
+type RouteGroup = RouteTemplate["groups"][number];
+type RouteItem = RouteGroup["items"][number];
+
+const selectClass =
+  "h-11 rounded-xl border-0 bg-surface-container-low px-3 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)] outline-none focus:shadow-[inset_0_-2px_0_#003461]";
+
+function SummaryChip({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-[0_12px_28px_rgba(8,32,51,0.06)] ring-1 ring-[rgba(66,71,80,0.08)]">
+      <span className="text-xs font-black uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
+      <span className="ml-3 font-display text-xl font-black text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function CheckField({
+  name,
+  label,
+  defaultChecked = false,
+}: {
+  name: string;
+  label: string;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <Label className="flex min-h-11 items-center gap-3 rounded-xl bg-white px-3 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10)]">
+      <input type="hidden" name={name} value="false" />
+      <input type="checkbox" name={name} value="true" defaultChecked={defaultChecked} />
+      {label}
+    </Label>
+  );
+}
+
+function FieldLabel({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Label className={`grid gap-2 text-sm font-semibold text-foreground ${className}`}>
+      <span>{label}</span>
+      {children}
+    </Label>
+  );
+}
+
+function scopeText(template: RouteTemplate) {
+  return [
+    template.siteName ?? "Semua site",
+    template.departmentName ?? "Semua department",
+    template.sectionName ?? "Semua section",
+    template.positionName ?? "Semua jabatan",
+  ].join(" / ");
+}
+
+function itemBadges(item: RouteItem) {
+  return [
+    item.requiresUnit ? "Unit" : null,
+    item.requiresTime ? "Time" : null,
+    item.requiresRemark ? "Remark" : null,
+    item.requiresPhoto ? "Photo" : null,
+    item.requiresChecklistEvidence ? "Evidence" : null,
+    item.allowCustomUnit ? "Custom unit" : null,
+    item.isOptional ? "Optional" : "Mandatory",
+  ].filter(Boolean) as string[];
+}
+
+function RouteTemplateForm({
+  data,
+  template,
+}: {
+  data: RouteBuilderData;
+  template?: RouteTemplate;
+}) {
+  const isUpdate = Boolean(template);
+
+  return (
+    <form action={manageActivityRouteTemplateAction} className="grid gap-4">
+      <input type="hidden" name="intent" value={isUpdate ? "update" : "create"} />
+      {template ? <input type="hidden" name="id" value={template.id} /> : null}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <FieldLabel label="Route code">
+          <Input name="routeCode" defaultValue={template?.routeCode ?? ""} placeholder="ROUTE-TS-002" required />
+        </FieldLabel>
+        <FieldLabel label="Version">
+          <Input name="versionLabel" defaultValue={template?.versionLabel ?? "v1"} placeholder="v1" />
+        </FieldLabel>
+        <FieldLabel label="Route name" className="lg:col-span-2">
+          <Input
+            name="routeName"
+            defaultValue={template?.routeName ?? ""}
+            placeholder="Tire Service Daily Route - Night Shift"
+            required
+          />
+        </FieldLabel>
+        <FieldLabel label="Site">
+          <select name="siteId" className={selectClass} defaultValue={template?.siteId ?? ""}>
+            <option value="">Semua site</option>
+            {data.sites.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Department">
+          <select name="departmentId" className={selectClass} defaultValue={template?.departmentId ?? ""}>
+            <option value="">Semua department</option>
+            {data.departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Section">
+          <select name="sectionId" className={selectClass} defaultValue={template?.sectionId ?? ""}>
+            <option value="">Semua section</option>
+            {data.sections.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Jabatan">
+          <select name="positionId" className={selectClass} defaultValue={template?.positionId ?? ""}>
+            <option value="">Semua jabatan</option>
+            {data.positions.map((position) => (
+              <option key={position.id} value={position.id}>
+                {position.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Shift">
+          <Input name="shiftCode" defaultValue={template?.shiftCode ?? "ALL"} placeholder="DAY / NIGHT / ALL" />
+        </FieldLabel>
+        <FieldLabel label="Description" className="lg:col-span-2">
+          <Textarea
+            name="description"
+            defaultValue={template?.description ?? ""}
+            rows={3}
+            placeholder="Deskripsi singkat route dan kapan dipakai."
+          />
+        </FieldLabel>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <CheckField name="mobileEnabled" label="Mobile enabled" defaultChecked={template?.mobileEnabled ?? true} />
+        <CheckField name="approvalRequired" label="Need approval" defaultChecked={template?.approvalRequired ?? false} />
+        <CheckField name="isActive" label="Aktif" defaultChecked={template?.isActive ?? true} />
+      </div>
+
+      <Button type="submit" className="rounded-xl">
+        {isUpdate ? "Simpan route" : "Tambah route"}
+      </Button>
+    </form>
+  );
+}
+
+function RouteGroupForm({
+  templateId,
+  group,
+  defaultSortOrder,
+}: {
+  templateId: number;
+  group?: RouteGroup;
+  defaultSortOrder: number;
+}) {
+  const isUpdate = Boolean(group);
+
+  return (
+    <form action={manageActivityRouteGroupAction} className="grid gap-3">
+      <input type="hidden" name="intent" value={isUpdate ? "update" : "create"} />
+      {group ? <input type="hidden" name="id" value={group.id} /> : null}
+      <input type="hidden" name="routeTemplateId" value={templateId} />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FieldLabel label="Group key">
+          <Input name="groupKey" defaultValue={group?.groupKey ?? ""} placeholder="inspection-night" required />
+        </FieldLabel>
+        <FieldLabel label="Sort">
+          <Input name="sortOrder" type="number" defaultValue={group?.sortOrder ?? defaultSortOrder} />
+        </FieldLabel>
+      </div>
+      <FieldLabel label="Group name">
+        <Input name="groupName" defaultValue={group?.groupName ?? ""} placeholder="Inspection / Night Shift" required />
+      </FieldLabel>
+      <FieldLabel label="Description">
+        <Textarea name="description" defaultValue={group?.description ?? ""} rows={3} placeholder="Deskripsi group." />
+      </FieldLabel>
+      <CheckField name="isRequired" label="Required group" defaultChecked={group?.isRequired ?? true} />
+      <Button type="submit" size="sm" className="rounded-xl">
+        {isUpdate ? "Simpan group" : "Tambah group"}
+      </Button>
+    </form>
+  );
+}
+
+function RouteItemForm({
+  groupId,
+  item,
+  defaultSortOrder,
+  library,
+}: {
+  groupId: number;
+  item?: RouteItem;
+  defaultSortOrder: number;
+  library: RouteBuilderData["library"];
+}) {
+  const isUpdate = Boolean(item);
+
+  return (
+    <form action={manageActivityRouteItemAction} className="grid gap-3">
+      <input type="hidden" name="intent" value={isUpdate ? "update" : "create"} />
+      {item ? <input type="hidden" name="id" value={item.id} /> : null}
+      <input type="hidden" name="routeGroupId" value={groupId} />
+
+      <FieldLabel label="Library activity">
+        <select name="libraryActivityId" className={selectClass} defaultValue={item?.libraryActivityId ?? ""}>
+          <option value="">Custom item tanpa library</option>
+          {library.map((libraryItem) => (
+            <option key={libraryItem.id} value={libraryItem.id}>
+              {libraryItem.activityCode} - {libraryItem.activityName}
+            </option>
+          ))}
+        </select>
+      </FieldLabel>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FieldLabel label="Item code">
+          <Input name="itemCode" defaultValue={item?.itemCode ?? ""} placeholder="RT-NEW" />
+        </FieldLabel>
+        <FieldLabel label="Sort">
+          <Input name="sortOrder" type="number" defaultValue={item?.sortOrder ?? defaultSortOrder} />
+        </FieldLabel>
+      </div>
+      <FieldLabel label="Item label">
+        <Input name="itemLabel" defaultValue={item?.itemLabel ?? ""} placeholder="Nama checklist" required />
+      </FieldLabel>
+      <FieldLabel label="Description">
+        <Textarea
+          name="itemDescription"
+          defaultValue={item?.itemDescription ?? ""}
+          rows={3}
+          placeholder="Keterangan pekerjaan."
+        />
+      </FieldLabel>
+      <FieldLabel label="Point override">
+        <Input
+          name="pointOverride"
+          type="number"
+          defaultValue={item?.pointOverride ?? ""}
+          placeholder={item?.libraryPoints != null ? `Default ${item.libraryPoints} pts` : "Kosong = pakai default"}
+        />
+      </FieldLabel>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <CheckField name="requiresUnit" label="Butuh unit" defaultChecked={item?.requiresUnit ?? false} />
+        <CheckField name="requiresTime" label="Butuh jam" defaultChecked={item?.requiresTime ?? true} />
+        <CheckField name="requiresRemark" label="Butuh remark" defaultChecked={item?.requiresRemark ?? false} />
+        <CheckField name="requiresPhoto" label="Butuh photo" defaultChecked={item?.requiresPhoto ?? false} />
+        <CheckField
+          name="requiresChecklistEvidence"
+          label="Butuh evidence"
+          defaultChecked={item?.requiresChecklistEvidence ?? false}
+        />
+        <CheckField name="isOptional" label="Optional" defaultChecked={item?.isOptional ?? false} />
+        <CheckField name="allowCustomUnit" label="Custom unit" defaultChecked={item?.allowCustomUnit ?? true} />
+      </div>
+
+      <Button type="submit" size="sm" className="rounded-xl">
+        {isUpdate ? "Simpan item" : "Tambah item"}
+      </Button>
+    </form>
+  );
+}
+
+function DeleteForm({
+  action,
+  id,
+  label,
+}: {
+  action: (formData: FormData) => Promise<void>;
+  id: number;
+  label: string;
+}) {
+  return (
+    <form action={action}>
+      <input type="hidden" name="intent" value="delete" />
+      <input type="hidden" name="id" value={id} />
+      <Button type="submit" size="sm" variant="outline" className="rounded-xl border-0 bg-white text-rose-700">
+        <Trash2 className="size-4" />
+        {label}
+      </Button>
+    </form>
+  );
+}
+
+function GroupBuilder({
+  template,
+  group,
+  data,
+}: {
+  template: RouteTemplate;
+  group: RouteGroup;
+  data: RouteBuilderData;
+}) {
+  return (
+    <details className="group rounded-[1.1rem] bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+      <summary className="grid cursor-pointer list-none gap-3 px-4 py-4 md:grid-cols-[minmax(220px,1fr)_130px_130px_130px] md:items-center [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+            {group.groupKey}
+          </span>
+          <span className="mt-1 block font-display text-base font-black text-foreground">{group.groupName}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{group.description || "Tanpa deskripsi."}</span>
+        </span>
+        <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low">
+          Sort {group.sortOrder}
+        </Badge>
+        <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low">
+          {group.items.length} item
+        </Badge>
+        <span className="text-sm font-semibold text-primary">Buka group</span>
+      </summary>
+
+      <div className="space-y-4 bg-surface-container-low px-4 pb-4 pt-1">
+        <div className="space-y-2">
+          {group.items.length > 0 ? (
+            group.items.map((item) => (
+              <details key={item.id} className="rounded-xl bg-white p-3 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+                <summary className="grid cursor-pointer list-none gap-3 md:grid-cols-[minmax(220px,1fr)_140px_120px_100px] md:items-center [&::-webkit-details-marker]:hidden">
+                  <span>
+                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">
+                      {item.itemCode || item.libraryCode || "CUSTOM"}
+                    </span>
+                    <span className="mt-1 block font-semibold text-foreground">{item.itemLabel}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {item.itemDescription || item.libraryName || "Tanpa deskripsi item."}
+                    </span>
+                  </span>
+                  <span className="text-sm text-muted-foreground">{item.libraryCode ?? "Custom"}</span>
+                  <Badge className="w-fit border-0 bg-[#eaf4fb] text-[#003f78]">
+                    {item.pointOverride ?? item.libraryPoints ?? 0} pts
+                  </Badge>
+                  <span className="text-sm font-semibold text-primary">Edit</span>
+                </summary>
+                <div className="mt-3 space-y-3 rounded-xl bg-surface-container-low p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {itemBadges(item).map((badge) => (
+                      <Badge key={badge} variant="outline" className="rounded-full border-0 bg-white">
+                        {badge}
+                      </Badge>
+                    ))}
+                  </div>
+                  <RouteItemForm
+                    groupId={group.id}
+                    item={item}
+                    defaultSortOrder={item.sortOrder}
+                    library={data.library}
+                  />
+                  <DeleteForm action={manageActivityRouteItemAction} id={item.id} label="Hapus item" />
+                </div>
+              </details>
+            ))
+          ) : (
+            <div className="rounded-xl bg-white px-4 py-5 text-sm text-muted-foreground">
+              Group ini belum punya item.
+            </div>
+          )}
+        </div>
+
+        <details className="rounded-xl bg-white p-4 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
+            + Tambah item ke group ini
+          </summary>
+          <div className="mt-4">
+            <RouteItemForm groupId={group.id} defaultSortOrder={group.items.length + 1} library={data.library} />
+          </div>
+        </details>
+
+        <details className="rounded-xl bg-white p-4 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
+            Edit / hapus group
+          </summary>
+          <div className="mt-4 space-y-3">
+            <RouteGroupForm templateId={template.id} group={group} defaultSortOrder={group.sortOrder} />
+            <DeleteForm action={manageActivityRouteGroupAction} id={group.id} label="Hapus group" />
+          </div>
+        </details>
+      </div>
+    </details>
+  );
+}
+
+function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: RouteBuilderData }) {
+  const itemCount = template.groups.reduce((total, group) => total + group.items.length, 0);
+
+  return (
+    <TableRow>
+      <TableCell className="p-0">
+        <details className="group">
+          <summary className="grid cursor-pointer list-none gap-3 px-4 py-4 hover:bg-surface-container-low/60 md:grid-cols-[minmax(260px,1.35fr)_minmax(240px,1fr)_130px_120px_120px] md:items-center [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                {template.routeCode} • {template.versionLabel}
+              </span>
+              <span className="mt-1 block font-display text-lg font-black text-foreground">{template.routeName}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {template.description || "Tanpa deskripsi route."}
+              </span>
+            </span>
+            <span className="text-sm text-muted-foreground">{scopeText(template)}</span>
+            <span className="text-sm font-semibold text-foreground">{template.shiftCode}</span>
+            <span className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="rounded-full border-0 bg-surface-container-low">
+                {template.groups.length} group
+              </Badge>
+              <Badge variant="outline" className="rounded-full border-0 bg-surface-container-low">
+                {itemCount} item
+              </Badge>
+            </span>
+            <span className="flex items-center gap-2">
+              <Badge className={template.isActive ? "border-0 bg-emerald-100 text-emerald-900" : "border-0 bg-slate-100 text-slate-800"}>
+                {template.isActive ? "Aktif" : "Nonaktif"}
+              </Badge>
+              <span className="text-sm font-semibold text-primary">Buka</span>
+            </span>
+          </summary>
+
+          <div className="space-y-4 bg-surface-container-low px-4 py-4">
+            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+              <div className="space-y-3">
+                <div className="rounded-xl bg-white px-4 py-3 text-sm text-muted-foreground shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+                  Nested route: buka group, lalu buka item untuk edit poin, unit, jam, remark, photo, evidence.
+                </div>
+                {template.groups.length > 0 ? (
+                  template.groups.map((group) => (
+                    <GroupBuilder key={group.id} template={template} group={group} data={data} />
+                  ))
+                ) : (
+                  <div className="rounded-xl bg-white px-4 py-6 text-sm text-muted-foreground">
+                    Route ini belum punya group.
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <details className="rounded-[1.1rem] bg-white p-4 shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
+                    <GitBranch className="size-4" />
+                    Tambah group
+                  </summary>
+                  <div className="mt-4">
+                    <RouteGroupForm
+                      templateId={template.id}
+                      defaultSortOrder={template.groups.length + 1}
+                    />
+                  </div>
+                </details>
+
+                <details className="rounded-[1.1rem] bg-white p-4 shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
+                    <Route className="size-4" />
+                    Edit route
+                  </summary>
+                  <div className="mt-4">
+                    <RouteTemplateForm data={data} template={template} />
+                  </div>
+                </details>
+
+                <Card className="border-0 bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+                  <CardContent className="space-y-3 p-4">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="rounded-xl bg-surface-container-low px-3 py-2">
+                        <span className="block text-xs text-muted-foreground">Mobile</span>
+                        <span className="font-semibold">{template.mobileEnabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                      <div className="rounded-xl bg-surface-container-low px-3 py-2">
+                        <span className="block text-xs text-muted-foreground">Approval</span>
+                        <span className="font-semibold">{template.approvalRequired ? "Required" : "No"}</span>
+                      </div>
+                    </div>
+                    <DeleteForm action={manageActivityRouteTemplateAction} id={template.id} label="Hapus route" />
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </details>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function OverrideForm({ data }: { data: RouteBuilderData }) {
+  return (
+    <form action={manageActivitySectionOverrideAction} className="grid gap-4">
+      <input type="hidden" name="intent" value="create" />
+      <FieldLabel label="Library activity">
+        <select name="libraryActivityId" className={selectClass}>
+          {data.library.map((library) => (
+            <option key={library.id} value={library.id}>
+              {library.activityCode} - {library.activityName}
+            </option>
+          ))}
+        </select>
+      </FieldLabel>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <FieldLabel label="Site">
+          <select name="siteId" className={selectClass}>
+            <option value="">Semua site</option>
+            {data.sites.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Department">
+          <select name="departmentId" className={selectClass}>
+            <option value="">Semua department</option>
+            {data.departments.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Section">
+          <select name="sectionId" className={selectClass}>
+            <option value="">Semua section</option>
+            {data.sections.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Jabatan">
+          <select name="positionId" className={selectClass}>
+            <option value="">Semua jabatan</option>
+            {data.positions.map((position) => (
+              <option key={position.id} value={position.id}>
+                {position.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Override label">
+          <Input name="overrideLabel" placeholder="Opsional - nama item versi section" />
+        </FieldLabel>
+        <FieldLabel label="Override points">
+          <Input name="overridePoints" type="number" placeholder="Kosong = pakai point default" />
+        </FieldLabel>
+        <FieldLabel label="Reason" className="lg:col-span-2">
+          <Textarea name="reason" rows={3} placeholder="Alasan perubahan label / point." />
+        </FieldLabel>
+      </div>
+      <CheckField name="isActive" label="Aktif" defaultChecked />
+      <Button type="submit" className="rounded-xl">
+        Simpan override
+      </Button>
+    </form>
+  );
+}
+
+export default async function DailyActivityRoutesPage() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    redirect("/sign-in");
+  }
+
+  const data = await getDailyActivityRouteBuilderData(session.user.email);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[1.25rem] bg-surface-container-low p-4">
+        <div className="flex flex-wrap gap-3">
+          <SummaryChip label="Routes" value={data.metrics.templates} />
+          <SummaryChip label="Active" value={data.metrics.activeTemplates} />
+          <SummaryChip label="Groups" value={data.metrics.groups} />
+          <SummaryChip label="Items" value={data.metrics.items} />
+          <SummaryChip label="Overrides" value={data.metrics.overrides} />
+        </div>
+      </div>
+
+      <Tabs defaultValue="routes" className="space-y-4">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+          <TabsTrigger value="routes">Route Builder</TabsTrigger>
+          <TabsTrigger value="overrides">Point Overrides</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="routes" className="space-y-4">
+          <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+            <CardHeader className="gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-2xl">
+                    <ListChecks className="size-5 text-primary" />
+                    Simple Nested Routes
+                  </CardTitle>
+                  <CardDescription>
+                    List route dulu. Klik route untuk buka group. Klik group untuk buka item.
+                  </CardDescription>
+                </div>
+                <details className="w-full rounded-2xl bg-surface-container-low p-4 lg:w-[420px]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
+                    <Plus className="size-4" />
+                    Tambah route baru
+                  </summary>
+                  <div className="mt-4">
+                    <RouteTemplateForm data={data} />
+                  </div>
+                </details>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <MinimalTableShell
+                label="routes"
+                fileName="activity-routes"
+                searchPlaceholder="Cari route, section, jabatan, site, atau shift..."
+                dateFilter={false}
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>
+                        <div className="grid gap-3 md:grid-cols-[minmax(260px,1.35fr)_minmax(240px,1fr)_130px_120px_120px]">
+                          <span>Route</span>
+                          <span>Scope</span>
+                          <span>Shift</span>
+                          <span>Nested</span>
+                          <span>Status / Aksi</span>
+                        </div>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.templates.length > 0 ? (
+                      data.templates.map((template) => (
+                        <RouteBuilderRow key={template.id} template={template} data={data} />
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell className="h-24 text-center text-muted-foreground">
+                          Belum ada route template.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="overrides" className="space-y-4">
+          <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+            <CardHeader className="gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-2xl">
+                    <Layers3 className="size-5 text-primary" />
+                    Section Point Overrides
+                  </CardTitle>
+                  <CardDescription>
+                    Section Head bisa override label dan poin default tanpa merusak library global.
+                  </CardDescription>
+                </div>
+                <details className="w-full rounded-2xl bg-surface-container-low p-4 lg:w-[420px]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-black text-primary [&::-webkit-details-marker]:hidden">
+                    <Plus className="size-4" />
+                    Tambah override
+                  </summary>
+                  <div className="mt-4">
+                    <OverrideForm data={data} />
+                  </div>
+                </details>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <MinimalTableShell
+                label="point overrides"
+                fileName="activity-point-overrides"
+                searchPlaceholder="Cari section, jabatan, library code, atau override..."
+                dateFilter={false}
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[220px]">Library</TableHead>
+                      <TableHead className="min-w-[240px]">Scope</TableHead>
+                      <TableHead className="min-w-[220px]">Override</TableHead>
+                      <TableHead className="min-w-[180px]">Reason</TableHead>
+                      <TableHead className="min-w-[120px]">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.overrides.length > 0 ? (
+                      data.overrides.map((override) => (
+                        <TableRow key={override.id}>
+                          <TableCell className="align-top">
+                            <div className="space-y-1">
+                              <p className="font-semibold text-foreground">{override.libraryName}</p>
+                              <p className="text-xs text-muted-foreground">{override.libraryCode}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="text-sm">
+                              <p>{override.sectionName ?? "Semua section"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {override.positionName ?? "Semua jabatan"} / {override.departmentName ?? "Semua department"}
+                              </p>
+                              <p className="text-xs font-semibold text-primary">{override.siteName ?? "Semua site"}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1 text-sm">
+                              <p>{override.overrideLabel || "(pakai label default)"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {override.overridePoints != null ? `${override.overridePoints} pts` : "Pakai point default"}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-top">{override.reason || "-"}</TableCell>
+                          <TableCell className="align-top">
+                            <Badge className={override.isActive ? "border-0 bg-emerald-100 text-emerald-900" : "border-0 bg-slate-100 text-slate-800"}>
+                              {override.isActive ? "Aktif" : "Nonaktif"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                          Belum ada override poin.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

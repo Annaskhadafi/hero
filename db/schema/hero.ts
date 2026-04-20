@@ -6,6 +6,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { user } from "@/db/schema/auth";
@@ -96,6 +97,228 @@ export const activityLibraries = pgTable("hero_activity_libraries", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+export const activityRouteTemplates = pgTable("hero_activity_route_templates", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  departmentId: integer("department_id"),
+  sectionId: integer("section_id"),
+  positionId: integer("position_id"),
+  routeCode: text("route_code").notNull().unique(),
+  routeName: text("route_name").notNull(),
+  shiftCode: text("shift_code").notNull().default("ALL"),
+  description: text("description").notNull().default(""),
+  mobileEnabled: boolean("mobile_enabled").notNull().default(true),
+  approvalRequired: boolean("approval_required").notNull().default(false),
+  versionLabel: text("version_label").notNull().default("v1"),
+  effectiveFrom: timestamp("effective_from").notNull().defaultNow(),
+  effectiveTo: timestamp("effective_to"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const activityRouteGroups = pgTable("hero_activity_route_groups", {
+  id: serial("id").primaryKey(),
+  routeTemplateId: integer("route_template_id")
+    .notNull()
+    .references(() => activityRouteTemplates.id, { onDelete: "cascade" }),
+  groupKey: text("group_key").notNull(),
+  groupName: text("group_name").notNull(),
+  description: text("description").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(1),
+  isRequired: boolean("is_required").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const activityRouteItems = pgTable("hero_activity_route_items", {
+  id: serial("id").primaryKey(),
+  routeGroupId: integer("route_group_id")
+    .notNull()
+    .references(() => activityRouteGroups.id, { onDelete: "cascade" }),
+  libraryActivityId: integer("library_activity_id").references(() => activityLibraries.id, {
+    onDelete: "set null",
+  }),
+  itemCode: text("item_code").notNull().default(""),
+  itemLabel: text("item_label").notNull(),
+  itemDescription: text("item_description").notNull().default(""),
+  pointOverride: integer("point_override"),
+  requiresUnit: boolean("requires_unit").notNull().default(false),
+  requiresTime: boolean("requires_time").notNull().default(true),
+  requiresRemark: boolean("requires_remark").notNull().default(false),
+  requiresPhoto: boolean("requires_photo").notNull().default(false),
+  requiresChecklistEvidence: boolean("requires_checklist_evidence").notNull().default(false),
+  isOptional: boolean("is_optional").notNull().default(false),
+  allowCustomUnit: boolean("allow_custom_unit").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const activitySectionPointOverrides = pgTable("hero_activity_section_point_overrides", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
+  departmentId: integer("department_id"),
+  sectionId: integer("section_id"),
+  positionId: integer("position_id"),
+  libraryActivityId: integer("library_activity_id")
+    .notNull()
+    .references(() => activityLibraries.id, { onDelete: "cascade" }),
+  overrideLabel: text("override_label").notNull().default(""),
+  overridePoints: integer("override_points"),
+  reason: text("reason").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const overtimeCommandLetters = pgTable("hero_overtime_command_letters", {
+  id: serial("id").primaryKey(),
+  requestSubmissionId: integer("request_submission_id"),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  departmentId: integer("department_id"),
+  sectionId: integer("section_id"),
+  positionId: integer("position_id"),
+  requestedByEmployeeId: integer("requested_by_employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  approvedByEmployeeId: integer("approved_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  splNumber: text("spl_number").notNull().unique(),
+  title: text("title").notNull(),
+  workDate: timestamp("work_date").notNull(),
+  plannedStartAt: timestamp("planned_start_at"),
+  plannedEndAt: timestamp("planned_end_at"),
+  status: text("status").notNull().default("draft"),
+  requestNotes: text("request_notes").notNull().default(""),
+  executionNotes: text("execution_notes").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const overtimeCommandLetterItems = pgTable("hero_overtime_command_letter_items", {
+  id: serial("id").primaryKey(),
+  overtimeCommandLetterId: integer("overtime_command_letter_id")
+    .notNull()
+    .references(() => overtimeCommandLetters.id, { onDelete: "cascade" }),
+  routeTemplateId: integer("route_template_id").references(() => activityRouteTemplates.id, {
+    onDelete: "set null",
+  }),
+  routeItemId: integer("route_item_id").references(() => activityRouteItems.id, {
+    onDelete: "set null",
+  }),
+  libraryActivityId: integer("library_activity_id").references(() => activityLibraries.id, {
+    onDelete: "set null",
+  }),
+  lineLabel: text("line_label").notNull(),
+  lineDescription: text("line_description").notNull().default(""),
+  targetUnit: text("target_unit").notNull().default(""),
+  estimatedMinutes: integer("estimated_minutes").notNull().default(60),
+  plannedPoints: integer("planned_points").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(1),
+  isCustomLine: boolean("is_custom_line").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const dailyActivitySessions = pgTable("hero_daily_activity_sessions", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  departmentId: integer("department_id"),
+  sectionId: integer("section_id"),
+  positionId: integer("position_id"),
+  routeTemplateId: integer("route_template_id").references(() => activityRouteTemplates.id, {
+    onDelete: "set null",
+  }),
+  overtimeCommandLetterId: integer("overtime_command_letter_id").references(() => overtimeCommandLetters.id, {
+    onDelete: "set null",
+  }),
+  legacyAssignmentId: integer("legacy_assignment_id"),
+  sessionCode: text("session_code").notNull().unique(),
+  shiftCode: text("shift_code").notNull().default("ALL"),
+  workDate: timestamp("work_date").notNull(),
+  status: text("status").notNull().default("draft"),
+  submissionSource: text("submission_source").notNull().default("route"),
+  startedAt: timestamp("started_at"),
+  submittedAt: timestamp("submitted_at"),
+  approvedAt: timestamp("approved_at"),
+  summaryRemark: text("summary_remark").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const dailyActivitySessionItems = pgTable("hero_daily_activity_session_items", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id")
+    .notNull()
+    .references(() => dailyActivitySessions.id, { onDelete: "cascade" }),
+  routeItemId: integer("route_item_id").references(() => activityRouteItems.id, {
+    onDelete: "set null",
+  }),
+  libraryActivityId: integer("library_activity_id").references(() => activityLibraries.id, {
+    onDelete: "set null",
+  }),
+  overtimeCommandLetterItemId: integer("overtime_command_letter_item_id").references(
+    () => overtimeCommandLetterItems.id,
+    { onDelete: "set null" },
+  ),
+  snapshotLabel: text("snapshot_label").notNull(),
+  snapshotGroupName: text("snapshot_group_name").notNull().default(""),
+  snapshotPayload: text("snapshot_payload").notNull().default("{}"),
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
+  checkedAt: timestamp("checked_at"),
+  unitNumber: text("unit_number").notNull().default(""),
+  remark: text("remark").notNull().default(""),
+  actualPoints: integer("actual_points").notNull().default(0),
+  isChecked: boolean("is_checked").notNull().default(false),
+  isCustomItem: boolean("is_custom_item").notNull().default(false),
+  photoCount: integer("photo_count").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const dailyActivitySessionSignoffs = pgTable(
+  "hero_daily_activity_session_signoffs",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: integer("session_id")
+      .notNull()
+      .references(() => dailyActivitySessions.id, { onDelete: "cascade" }),
+    employeeSignerName: text("employee_signer_name").notNull().default(""),
+    employeeSignatureUrl: text("employee_signature_url").notNull().default(""),
+    employeeSignedAt: timestamp("employee_signed_at"),
+    customerSignerName: text("customer_signer_name").notNull().default(""),
+    customerSignatureUrl: text("customer_signature_url").notNull().default(""),
+    customerSignedAt: timestamp("customer_signed_at"),
+    hrCheckerName: text("hr_checker_name").notNull().default(""),
+    hrChecklistStatus: text("hr_checklist_status").notNull().default("pending"),
+    hrChecklistNote: text("hr_checklist_note").notNull().default(""),
+    hrSignatureUrl: text("hr_signature_url").notNull().default(""),
+    hrCheckedAt: timestamp("hr_checked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionUnique: uniqueIndex("hero_daily_activity_session_signoffs_session_id_uq").on(table.sessionId),
+  }),
+);
 
 export const jobAssignments = pgTable("hero_job_assignments", {
   id: serial("id").primaryKey(),

@@ -9,11 +9,31 @@ export type QueuedFilePayload = {
   dataUrl: string;
 };
 
+export type RouteSessionSyncItem = {
+  routeItemId: number;
+  libraryActivityId: number | null;
+  snapshotLabel: string;
+  snapshotGroupName: string;
+  snapshotPayload: Record<string, unknown>;
+  unitNumber: string;
+  remark: string;
+  startedAt: string;
+  endedAt: string;
+  isChecked: boolean;
+  actualPoints: number;
+  sortOrder: number;
+};
+
 export type ActivitySyncPayload = {
   employeeId: number;
   sourceMode: "assigned" | "self_input" | "custom";
   assignmentId: string;
   libraryActivityId: string;
+  routeTemplateId: string;
+  overtimeCommandLetterId: string;
+  routeShiftCode: string;
+  routeSummaryRemark: string;
+  routeSessionItems: RouteSessionSyncItem[];
   customActivityName: string;
   customActivityDescription: string;
   equipmentNo: string;

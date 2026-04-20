@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  FileSignature,
+  ListChecks,
   Plus,
   Sparkles,
   Target,
@@ -67,10 +69,10 @@ export default async function MobileActivityPage() {
       <section className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Daily Activity</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Activity List</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Daily Checklist</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Checklist & Activity</h1>
             <p className="mt-2 text-sm font-medium leading-6 text-[#486275]">
-              Input activity pribadi, lihat log hari ini, lalu pantau produktivitas langsung dari HP.
+              Lihat route checklist section, queue kerja, lalu kirim aktivitas harian langsung dari HP.
             </p>
           </div>
           <Link
@@ -191,6 +193,81 @@ export default async function MobileActivityPage() {
           </div>
         )}
       </section>
+
+      {data.routeChecklist ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Daily Route</p>
+            <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
+              {data.routeChecklist.itemCount} item
+            </Badge>
+          </div>
+
+          <article className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
+                  {data.routeChecklist.routeCode}
+                </p>
+                <h2 className="mt-1 flex items-center gap-2 text-base font-black leading-tight text-[#082033]">
+                  <ListChecks className="size-4 text-[#003f78]" />
+                  {data.routeChecklist.routeName}
+                </h2>
+                <p className="mt-2 text-xs font-semibold text-[#486275]">
+                  {data.routeChecklist.sectionName ?? "Semua section"} • {data.routeChecklist.positionName ?? "Semua jabatan"}
+                </p>
+              </div>
+              <Badge className="border-0 bg-[#fff1cf] text-[#8a5a00]">{data.routeChecklist.shiftCode}</Badge>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {data.routeChecklist.activeSpl ? (
+                <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                    {data.routeChecklist.activeSpl.splNumber}
+                  </p>
+                  <p className="mt-1 text-sm font-black text-[#5a2200]">{data.routeChecklist.activeSpl.title}</p>
+                </div>
+              ) : null}
+              {data.routeChecklist.sessionId ? (
+                <Link
+                  prefetch={false}
+                  href={`/mobile/activity/document/${data.routeChecklist.sessionId}`}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#003f78] px-4 text-xs font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_30px_rgba(0,63,120,0.16)] active:scale-[0.98]"
+                >
+                  <FileSignature className="size-4" />
+                  Dokumen User
+                </Link>
+              ) : null}
+              {data.routeChecklist.groups.map((group) => (
+                <div key={group.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
+                    {group.groupKey}
+                  </p>
+                  <p className="mt-1 text-sm font-black text-[#082033]">{group.groupName}</p>
+                  <div className="mt-3 space-y-2">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="rounded-[0.9rem] bg-white px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#082033]">{item.itemLabel}</p>
+                            <p className="mt-1 text-xs leading-5 text-[#486275]">
+                              {item.itemDescription || item.libraryName || "Checklist item"}
+                            </p>
+                          </div>
+                          <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">
+                            {item.pointOverride ?? item.libraryPoints ?? 0} pts
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">

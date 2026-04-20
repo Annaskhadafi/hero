@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
@@ -10,12 +10,22 @@ import {
   activityLibraries,
   activityModifiers,
   activityPhotos,
+  activityRouteGroups,
+  activityRouteItems,
+  activityRouteTemplates,
+  activitySectionPointOverrides,
   approvals,
   dailyActivityConfigs,
+  dailyActivitySessionItems,
+  dailyActivitySessionSignoffs,
+  dailyActivitySessions,
   employees,
   jobAssignments,
   masterDepartments,
+  masterPositions,
   masterSections,
+  overtimeCommandLetterItems,
+  overtimeCommandLetters,
   penaltyEvents,
   pointDisputes,
   pointEvents,
@@ -39,6 +49,7 @@ import { auth } from "@/lib/auth";
 import { uploadAnyFileToS3 } from "@/lib/s3-storage";
 
 const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024;
+const MAX_SIGNATURE_FILE_SIZE = 2 * 1024 * 1024;
 
 const optionalPositiveInt = z.preprocess(
   (value) => {
@@ -111,13 +122,124 @@ const manageAssignmentSchema = z.object({
   recurrenceRule: z.string().trim().max(160).optional().default(""),
 });
 
+const manageRouteTemplateSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveInt,
+  routeCode: z.string().trim().min(2).max(40).optional().default(""),
+  routeName: z.string().trim().min(3).max(160).optional().default(""),
+  description: z.string().trim().max(600).optional().default(""),
+  siteId: optionalPositiveInt,
+  departmentId: optionalPositiveInt,
+  sectionId: optionalPositiveInt,
+  positionId: optionalPositiveInt,
+  shiftCode: z.string().trim().min(2).max(24).optional().default("ALL"),
+  versionLabel: z.string().trim().min(1).max(24).optional().default("v1"),
+  mobileEnabled: formBoolean(true),
+  approvalRequired: formBoolean(false),
+  isActive: formBoolean(true),
+});
+
+const manageRouteGroupSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveInt,
+  routeTemplateId: optionalPositiveInt,
+  groupKey: z.string().trim().min(2).max(40).optional().default(""),
+  groupName: z.string().trim().min(2).max(120).optional().default(""),
+  description: z.string().trim().max(400).optional().default(""),
+  sortOrder: z.coerce.number().int().min(1).max(999).optional().default(1),
+  isRequired: formBoolean(true),
+});
+
+const manageRouteItemSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveInt,
+  routeGroupId: optionalPositiveInt,
+  libraryActivityId: optionalPositiveInt,
+  itemCode: z.string().trim().max(40).optional().default(""),
+  itemLabel: z.string().trim().min(2).max(160).optional().default(""),
+  itemDescription: z.string().trim().max(600).optional().default(""),
+  pointOverride: z.preprocess(
+    (value) => {
+      if (value === "" || value == null) return undefined;
+      return value;
+    },
+    z.coerce.number().int().min(0).max(1000).optional(),
+  ),
+  sortOrder: z.coerce.number().int().min(1).max(999).optional().default(1),
+  requiresUnit: formBoolean(false),
+  requiresTime: formBoolean(true),
+  requiresRemark: formBoolean(false),
+  requiresPhoto: formBoolean(false),
+  requiresChecklistEvidence: formBoolean(false),
+  isOptional: formBoolean(false),
+  allowCustomUnit: formBoolean(true),
+});
+
+const manageSectionOverrideSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveInt,
+  siteId: optionalPositiveInt,
+  departmentId: optionalPositiveInt,
+  sectionId: optionalPositiveInt,
+  positionId: optionalPositiveInt,
+  libraryActivityId: optionalPositiveInt,
+  overrideLabel: z.string().trim().max(160).optional().default(""),
+  overridePoints: z.preprocess(
+    (value) => {
+      if (value === "" || value == null) return undefined;
+      return value;
+    },
+    z.coerce.number().int().min(0).max(1000).optional(),
+  ),
+  reason: z.string().trim().max(600).optional().default(""),
+  isActive: formBoolean(true),
+});
+
+const overtimeCommandLetterLineSchema = z.object({
+  routeTemplateId: optionalPositiveInt,
+  routeItemId: optionalPositiveInt,
+  libraryActivityId: optionalPositiveInt,
+  lineLabel: z.string().trim().min(2).max(160),
+  lineDescription: z.string().trim().max(600).optional().default(""),
+  targetUnit: z.string().trim().max(120).optional().default(""),
+  estimatedMinutes: z.coerce.number().int().min(1).max(1440).optional().default(60),
+  plannedPoints: z.coerce.number().int().min(0).max(2000).optional().default(0),
+  sortOrder: z.coerce.number().int().min(1).max(999).optional().default(1),
+  isCustomLine: z.boolean().optional().default(false),
+});
+
+const manageOvertimeCommandLetterSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveInt,
+  title: z.string().trim().min(3).max(180).optional().default(""),
+  workDate: z.string().trim().optional().default(""),
+  plannedStartAt: z.string().trim().optional().default(""),
+  plannedEndAt: z.string().trim().optional().default(""),
+  status: z.string().trim().min(3).max(40).optional().default("draft"),
+  requestNotes: z.string().trim().max(1200).optional().default(""),
+  executionNotes: z.string().trim().max(1200).optional().default(""),
+  sectionId: optionalPositiveInt,
+  positionId: optionalPositiveInt,
+  lineItemsJson: z.string().trim().max(120000).optional().default("[]"),
+});
+
+const transitionOvertimeCommandLetterStatusSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  targetStatus: z.enum(["draft", "submitted", "approved", "closed"]),
+});
+
 const submitActivitySchema = z.object({
   employeeId: z.coerce.number().int().positive(),
   assignmentId: optionalPositiveInt,
   libraryActivityId: optionalPositiveInt,
+  routeTemplateId: optionalPositiveInt,
+  overtimeCommandLetterId: optionalPositiveInt,
   sourceMode: z.enum(["assigned", "self_input", "custom"]).optional().default("self_input"),
   customActivityName: z.string().trim().max(160).optional().default(""),
   customActivityDescription: z.string().trim().max(1200).optional().default(""),
+  routeShiftCode: z.string().trim().max(24).optional().default(""),
+  routeSummaryRemark: z.string().trim().max(1200).optional().default(""),
+  routeSessionItemsJson: z.string().trim().max(120000).optional().default(""),
   startTime: z.string().trim().min(1),
   endTime: z.string().trim().min(1),
   equipmentNo: z.string().trim().max(80).optional().default(""),
@@ -167,6 +289,35 @@ type DailyActivitySubmitActionState = {
   message: string;
 };
 
+type DailyActivityDocumentSignoffActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+const routeSessionItemSchema = z.object({
+  routeItemId: z.coerce.number().int().positive(),
+  libraryActivityId: optionalPositiveInt,
+  snapshotLabel: z.string().trim().min(1).max(160),
+  snapshotGroupName: z.string().trim().max(160).optional().default(""),
+  snapshotPayload: z.record(z.string(), z.unknown()).optional().default({}),
+  unitNumber: z.string().trim().max(80).optional().default(""),
+  remark: z.string().trim().max(600).optional().default(""),
+  startedAt: z.string().trim().optional().default(""),
+  endedAt: z.string().trim().optional().default(""),
+  isChecked: z.boolean(),
+  actualPoints: z.coerce.number().int().min(0).max(1000).optional(),
+  sortOrder: z.coerce.number().int().min(1).max(999).optional().default(1),
+});
+
+const updateDailyActivitySessionDocumentSignoffSchema = z.object({
+  sessionId: z.coerce.number().int().positive(),
+  employeeSignerName: z.string().trim().max(120).optional().default(""),
+  customerSignerName: z.string().trim().max(120).optional().default(""),
+  hrCheckerName: z.string().trim().max(120).optional().default(""),
+  hrChecklistStatus: z.enum(["pending", "checked", "revision"]).optional().default("pending"),
+  hrChecklistNote: z.string().trim().max(1200).optional().default(""),
+});
+
 function revalidateDailyActivitySurfaces() {
   for (const path of DAILY_ACTIVITY_REVALIDATE_PATHS) {
     revalidatePath(path);
@@ -185,14 +336,17 @@ async function getAuthenticatedEmployeeContext() {
   const [employeeByAuthUserId] =
     session.user.id
       ? await db
-          .select({
-            id: employees.id,
-            authUserId: employees.authUserId,
-            email: employees.email,
-            siteId: employees.siteId,
-            totalPoints: employees.totalPoints,
-            directManagerId: employees.directManagerId,
-          })
+        .select({
+          id: employees.id,
+          authUserId: employees.authUserId,
+          email: employees.email,
+          siteId: employees.siteId,
+          departmentId: employees.departmentId,
+          sectionId: employees.sectionId,
+          positionId: employees.positionId,
+          totalPoints: employees.totalPoints,
+          directManagerId: employees.directManagerId,
+        })
           .from(employees)
           .where(eq(employees.authUserId, session.user.id))
           .limit(1)
@@ -206,6 +360,9 @@ async function getAuthenticatedEmployeeContext() {
             authUserId: employees.authUserId,
             email: employees.email,
             siteId: employees.siteId,
+            departmentId: employees.departmentId,
+            sectionId: employees.sectionId,
+            positionId: employees.positionId,
             totalPoints: employees.totalPoints,
             directManagerId: employees.directManagerId,
           })
@@ -257,6 +414,221 @@ function normalizeEvidenceUrls(value: string) {
     .slice(0, 5);
 
   return JSON.stringify(urls);
+}
+
+function buildDailySessionCode(employeeId: number, routeTemplateId: number | null, workDate: Date) {
+  const dateCode = workDate.toISOString().slice(0, 10).replaceAll("-", "");
+  return `DAS-${dateCode}-${employeeId}-${routeTemplateId ?? 0}`;
+}
+
+function buildSplNumber(siteId: number, employeeId: number, workDate: Date) {
+  const dateCode = workDate.toISOString().slice(0, 10).replaceAll("-", "");
+  const entropy = `${Date.now()}`.slice(-4);
+  return `SPL-${siteId}-${employeeId}-${dateCode}-${entropy}`;
+}
+
+function parseRouteSessionItems(value: string) {
+  if (value.trim().length === 0) {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("Payload checklist route tidak valid.");
+  }
+
+  return z.array(routeSessionItemSchema).parse(parsed);
+}
+
+function parseOvertimeCommandLetterLines(value: string) {
+  let parsed: unknown = [];
+
+  try {
+    parsed = value.trim().length === 0 ? [] : JSON.parse(value);
+  } catch {
+    throw new Error("Payload line SPL tidak valid.");
+  }
+
+  return z.array(overtimeCommandLetterLineSchema).parse(parsed);
+}
+
+async function uploadSignatureFile(file: FormDataEntryValue | null, prefix: string) {
+  if (!(file instanceof File) || file.size === 0) {
+    return null;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    throw new Error("File tanda tangan harus berupa gambar.");
+  }
+
+  if (file.size > MAX_SIGNATURE_FILE_SIZE) {
+    throw new Error("File tanda tangan terlalu besar. Maksimal 2MB.");
+  }
+
+  const uploaded = await uploadAnyFileToS3(file, prefix);
+  return uploaded.url;
+}
+
+const overtimeCommandLetterStatusTransitions: Record<string, readonly string[]> = {
+  draft: ["submitted"],
+  submitted: ["draft", "approved"],
+  approved: ["submitted", "closed"],
+  closed: ["approved"],
+} as const;
+
+async function syncDailyRouteSessionForActivity(params: {
+  employee: Awaited<ReturnType<typeof getAuthenticatedEmployeeContext>>;
+  payload: z.infer<typeof submitActivitySchema>;
+  submissionTime: Date;
+  startTime: Date;
+}) {
+  const routeItems = parseRouteSessionItems(params.payload.routeSessionItemsJson);
+  const hasRoutePayload = Boolean(params.payload.routeTemplateId) || routeItems.length > 0;
+
+  if (!hasRoutePayload) {
+    return null;
+  }
+
+  const workDate = startOfDay(params.startTime);
+  const workDateEnd = endOfDay(params.startTime);
+  const [existingSession] = await db
+    .select({
+      id: dailyActivitySessions.id,
+      sessionCode: dailyActivitySessions.sessionCode,
+    })
+    .from(dailyActivitySessions)
+    .where(
+      and(
+        eq(dailyActivitySessions.employeeId, params.employee.id),
+        gte(dailyActivitySessions.workDate, workDate),
+        lte(dailyActivitySessions.workDate, workDateEnd),
+        params.payload.routeTemplateId
+          ? eq(dailyActivitySessions.routeTemplateId, params.payload.routeTemplateId)
+          : sql`${dailyActivitySessions.routeTemplateId} is null`,
+        params.payload.overtimeCommandLetterId
+          ? eq(dailyActivitySessions.overtimeCommandLetterId, params.payload.overtimeCommandLetterId)
+          : sql`${dailyActivitySessions.overtimeCommandLetterId} is null`,
+      ),
+    )
+    .orderBy(desc(dailyActivitySessions.updatedAt))
+    .limit(1);
+
+  const sessionValues = {
+    siteId: params.employee.siteId,
+    employeeId: params.employee.id,
+    departmentId: params.employee.departmentId ?? null,
+    sectionId: params.employee.sectionId ?? null,
+    positionId: params.employee.positionId ?? null,
+    routeTemplateId: params.payload.routeTemplateId ?? null,
+    overtimeCommandLetterId: params.payload.overtimeCommandLetterId ?? null,
+    legacyAssignmentId: params.payload.assignmentId ?? null,
+    shiftCode: params.payload.routeShiftCode || "ALL",
+    workDate,
+    status: routeItems.some((item) => item.isChecked) ? "submitted" : "draft",
+    submissionSource:
+      params.payload.overtimeCommandLetterId != null
+        ? "spl_route"
+        : params.payload.routeTemplateId
+          ? "route"
+          : params.payload.sourceMode,
+    startedAt: params.startTime,
+    submittedAt: params.submissionTime,
+    approvedAt: null,
+    summaryRemark: params.payload.routeSummaryRemark,
+    updatedAt: new Date(),
+  };
+
+  const sessionId =
+    existingSession?.id ??
+    (
+      await db
+        .insert(dailyActivitySessions)
+        .values({
+          ...sessionValues,
+          sessionCode: buildDailySessionCode(
+            params.employee.id,
+            params.payload.routeTemplateId ?? null,
+            workDate,
+          ),
+          createdAt: new Date(),
+        })
+        .returning({ id: dailyActivitySessions.id })
+    )[0].id;
+
+  if (existingSession) {
+    await db
+      .update(dailyActivitySessions)
+      .set(sessionValues)
+      .where(eq(dailyActivitySessions.id, existingSession.id));
+  }
+
+  await db.delete(dailyActivitySessionItems).where(eq(dailyActivitySessionItems.sessionId, sessionId));
+
+  if (routeItems.length > 0) {
+    const splLineRows =
+      params.payload.overtimeCommandLetterId == null
+        ? []
+        : await db
+            .select({
+              id: overtimeCommandLetterItems.id,
+              routeItemId: overtimeCommandLetterItems.routeItemId,
+              libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
+            })
+            .from(overtimeCommandLetterItems)
+            .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, params.payload.overtimeCommandLetterId))
+            .orderBy(asc(overtimeCommandLetterItems.sortOrder), asc(overtimeCommandLetterItems.id));
+
+    const unusedLineIds = new Set(splLineRows.map((row) => row.id));
+
+    function matchSplLine(item: (typeof routeItems)[number]) {
+      const matched =
+        splLineRows.find(
+          (row) => unusedLineIds.has(row.id) && row.routeItemId != null && row.routeItemId === item.routeItemId,
+        ) ??
+        splLineRows.find(
+          (row) =>
+            unusedLineIds.has(row.id) &&
+            row.libraryActivityId != null &&
+            item.libraryActivityId != null &&
+            row.libraryActivityId === item.libraryActivityId,
+        ) ??
+        null;
+
+      if (matched) {
+        unusedLineIds.delete(matched.id);
+      }
+
+      return matched?.id ?? null;
+    }
+
+    await db.insert(dailyActivitySessionItems).values(
+      routeItems.map((item) => ({
+        sessionId,
+        routeItemId: item.routeItemId,
+        libraryActivityId: item.libraryActivityId ?? null,
+        overtimeCommandLetterItemId: matchSplLine(item),
+        snapshotLabel: item.snapshotLabel,
+        snapshotGroupName: item.snapshotGroupName,
+        snapshotPayload: JSON.stringify(item.snapshotPayload ?? {}),
+        startedAt: item.startedAt ? parseDateTime(item.startedAt, "Checklist start time") : null,
+        endedAt: item.endedAt ? parseDateTime(item.endedAt, "Checklist end time") : null,
+        checkedAt: item.isChecked ? params.submissionTime : null,
+        unitNumber: item.unitNumber,
+        remark: item.remark,
+        actualPoints: item.isChecked ? item.actualPoints ?? 0 : 0,
+        isChecked: item.isChecked,
+        isCustomItem: false,
+        photoCount: 0,
+        sortOrder: item.sortOrder,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    );
+  }
+
+  return sessionId;
 }
 
 function normalizeImportLookup(value: string | number | null | undefined) {
@@ -555,6 +927,228 @@ export async function manageActivityLibraryAction(formData: FormData) {
   revalidateDailyActivitySurfaces();
 }
 
+export async function manageActivityRouteTemplateAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = manageRouteTemplateSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
+
+  if (payload.intent === "delete") {
+    if (!payload.id) {
+      throw new Error("Route template tidak valid.");
+    }
+
+    await db.delete(activityRouteTemplates).where(eq(activityRouteTemplates.id, payload.id));
+    revalidateDailyActivitySurfaces();
+    return;
+  }
+
+  const values = {
+    siteId: payload.siteId ?? null,
+    departmentId: payload.departmentId ?? null,
+    sectionId: payload.sectionId ?? null,
+    positionId: payload.positionId ?? null,
+    routeCode: payload.routeCode,
+    routeName: payload.routeName,
+    shiftCode: payload.shiftCode,
+    description: payload.description,
+    mobileEnabled: payload.mobileEnabled,
+    approvalRequired: payload.approvalRequired,
+    versionLabel: payload.versionLabel,
+    effectiveTo: null,
+    isActive: payload.isActive,
+    createdByEmployeeId: currentEmployee.id,
+    updatedAt: new Date(),
+  };
+
+  if (payload.intent === "create") {
+    await db.insert(activityRouteTemplates).values({
+      ...values,
+      effectiveFrom: new Date(),
+      createdAt: new Date(),
+    });
+  } else {
+    if (!payload.id) {
+      throw new Error("Route template tidak valid.");
+    }
+
+    await db.update(activityRouteTemplates).set(values).where(eq(activityRouteTemplates.id, payload.id));
+  }
+
+  revalidateDailyActivitySurfaces();
+}
+
+export async function manageActivityRouteGroupAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = manageRouteGroupSchema.parse(Object.fromEntries(formData));
+
+  if (payload.intent === "delete") {
+    if (!payload.id) {
+      throw new Error("Route group tidak valid.");
+    }
+
+    await db.delete(activityRouteGroups).where(eq(activityRouteGroups.id, payload.id));
+    revalidateDailyActivitySurfaces();
+    return;
+  }
+
+  if (!payload.routeTemplateId && payload.intent === "create") {
+    throw new Error("Route template wajib dipilih.");
+  }
+
+  const values = {
+    routeTemplateId: payload.routeTemplateId ?? undefined,
+    groupKey: payload.groupKey,
+    groupName: payload.groupName,
+    description: payload.description,
+    sortOrder: payload.sortOrder,
+    isRequired: payload.isRequired,
+    updatedAt: new Date(),
+  };
+
+  if (payload.intent === "create") {
+    await db.insert(activityRouteGroups).values({
+      routeTemplateId: payload.routeTemplateId!,
+      groupKey: payload.groupKey,
+      groupName: payload.groupName,
+      description: payload.description,
+      sortOrder: payload.sortOrder,
+      isRequired: payload.isRequired,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  } else {
+    if (!payload.id) {
+      throw new Error("Route group tidak valid.");
+    }
+
+    await db.update(activityRouteGroups).set(values).where(eq(activityRouteGroups.id, payload.id));
+  }
+
+  revalidateDailyActivitySurfaces();
+}
+
+export async function manageActivityRouteItemAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = manageRouteItemSchema.parse(Object.fromEntries(formData));
+
+  if (payload.intent === "delete") {
+    if (!payload.id) {
+      throw new Error("Route item tidak valid.");
+    }
+
+    await db.delete(activityRouteItems).where(eq(activityRouteItems.id, payload.id));
+    revalidateDailyActivitySurfaces();
+    return;
+  }
+
+  if (!payload.routeGroupId && payload.intent === "create") {
+    throw new Error("Route group wajib dipilih.");
+  }
+
+  const values = {
+    routeGroupId: payload.routeGroupId ?? undefined,
+    libraryActivityId: payload.libraryActivityId ?? null,
+    itemCode: payload.itemCode,
+    itemLabel: payload.itemLabel,
+    itemDescription: payload.itemDescription,
+    pointOverride: payload.pointOverride ?? null,
+    sortOrder: payload.sortOrder,
+    requiresUnit: payload.requiresUnit,
+    requiresTime: payload.requiresTime,
+    requiresRemark: payload.requiresRemark,
+    requiresPhoto: payload.requiresPhoto,
+    requiresChecklistEvidence: payload.requiresChecklistEvidence,
+    isOptional: payload.isOptional,
+    allowCustomUnit: payload.allowCustomUnit,
+    updatedAt: new Date(),
+  };
+
+  if (payload.intent === "create") {
+    await db.insert(activityRouteItems).values({
+      routeGroupId: payload.routeGroupId!,
+      libraryActivityId: payload.libraryActivityId ?? null,
+      itemCode: payload.itemCode,
+      itemLabel: payload.itemLabel,
+      itemDescription: payload.itemDescription,
+      pointOverride: payload.pointOverride ?? null,
+      sortOrder: payload.sortOrder,
+      requiresUnit: payload.requiresUnit,
+      requiresTime: payload.requiresTime,
+      requiresRemark: payload.requiresRemark,
+      requiresPhoto: payload.requiresPhoto,
+      requiresChecklistEvidence: payload.requiresChecklistEvidence,
+      isOptional: payload.isOptional,
+      allowCustomUnit: payload.allowCustomUnit,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  } else {
+    if (!payload.id) {
+      throw new Error("Route item tidak valid.");
+    }
+
+    await db.update(activityRouteItems).set(values).where(eq(activityRouteItems.id, payload.id));
+  }
+
+  revalidateDailyActivitySurfaces();
+}
+
+export async function manageActivitySectionOverrideAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = manageSectionOverrideSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
+
+  if (payload.intent === "delete") {
+    if (!payload.id) {
+      throw new Error("Override section tidak valid.");
+    }
+
+    await db.delete(activitySectionPointOverrides).where(eq(activitySectionPointOverrides.id, payload.id));
+    revalidateDailyActivitySurfaces();
+    return;
+  }
+
+  if (!payload.libraryActivityId) {
+    throw new Error("Library activity wajib dipilih.");
+  }
+
+  const values = {
+    siteId: payload.siteId ?? null,
+    departmentId: payload.departmentId ?? null,
+    sectionId: payload.sectionId ?? null,
+    positionId: payload.positionId ?? null,
+    libraryActivityId: payload.libraryActivityId,
+    overrideLabel: payload.overrideLabel,
+    overridePoints: payload.overridePoints ?? null,
+    reason: payload.reason,
+    isActive: payload.isActive,
+    createdByEmployeeId: currentEmployee.id,
+    updatedAt: new Date(),
+  };
+
+  if (payload.intent === "create") {
+    await db.insert(activitySectionPointOverrides).values({
+      ...values,
+      createdAt: new Date(),
+    });
+  } else {
+    if (!payload.id) {
+      throw new Error("Override section tidak valid.");
+    }
+
+    await db
+      .update(activitySectionPointOverrides)
+      .set(values)
+      .where(eq(activitySectionPointOverrides.id, payload.id));
+  }
+
+  revalidateDailyActivitySurfaces();
+}
+
 export async function importActivityLibraryAction(
   _state: ActivityLibraryImportState,
   formData: FormData,
@@ -779,6 +1373,197 @@ export async function manageJobAssignmentAction(formData: FormData) {
   revalidateDailyActivitySurfaces();
 }
 
+export async function manageOvertimeCommandLetterAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = manageOvertimeCommandLetterSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
+
+  const existingDocument =
+    payload.id == null
+      ? null
+      : (
+          await db
+            .select({
+              id: overtimeCommandLetters.id,
+              siteId: overtimeCommandLetters.siteId,
+              requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
+              approvedByEmployeeId: overtimeCommandLetters.approvedByEmployeeId,
+            })
+            .from(overtimeCommandLetters)
+            .where(eq(overtimeCommandLetters.id, payload.id))
+            .limit(1)
+        )[0] ?? null;
+
+  if (payload.intent === "delete") {
+    if (!payload.id) {
+      throw new Error("SPL tidak valid.");
+    }
+
+    if (!existingDocument || existingDocument.siteId !== currentEmployee.siteId) {
+      throw new Error("Dokumen SPL tidak ditemukan di site Anda.");
+    }
+
+    await db.delete(overtimeCommandLetters).where(eq(overtimeCommandLetters.id, payload.id));
+    revalidateDailyActivitySurfaces();
+    return;
+  }
+
+  const lineItems = parseOvertimeCommandLetterLines(payload.lineItemsJson);
+  if (lineItems.length === 0) {
+    throw new Error("SPL minimal punya satu line pekerjaan.");
+  }
+
+  if (!payload.workDate) {
+    throw new Error("Tanggal kerja SPL wajib diisi.");
+  }
+
+  const workDate = parseDateTime(payload.workDate, "Tanggal kerja SPL");
+  const plannedStartAt = payload.plannedStartAt
+    ? parseDateTime(payload.plannedStartAt, "Jam mulai SPL")
+    : null;
+  const plannedEndAt = payload.plannedEndAt
+    ? parseDateTime(payload.plannedEndAt, "Jam selesai SPL")
+    : null;
+
+  if (plannedStartAt && plannedEndAt && plannedEndAt <= plannedStartAt) {
+    throw new Error("Jam selesai SPL harus setelah jam mulai.");
+  }
+
+  const values = {
+    requestSubmissionId: null,
+    siteId: currentEmployee.siteId,
+    departmentId: currentEmployee.departmentId ?? null,
+    sectionId: payload.sectionId ?? currentEmployee.sectionId ?? null,
+    positionId: payload.positionId ?? currentEmployee.positionId ?? null,
+    requestedByEmployeeId: currentEmployee.id,
+    approvedByEmployeeId:
+      payload.status === "approved" || payload.status === "closed"
+        ? existingDocument?.approvedByEmployeeId ?? currentEmployee.id
+        : null,
+    title: payload.title,
+    workDate,
+    plannedStartAt,
+    plannedEndAt,
+    status: payload.status,
+    requestNotes: payload.requestNotes,
+    executionNotes: payload.executionNotes,
+    updatedAt: new Date(),
+  };
+
+  let overtimeCommandLetterId = payload.id ?? null;
+
+  if (payload.intent === "create") {
+    const [created] = await db
+      .insert(overtimeCommandLetters)
+      .values({
+        ...values,
+        splNumber: buildSplNumber(currentEmployee.siteId, currentEmployee.id, workDate),
+        createdAt: new Date(),
+      })
+      .returning({ id: overtimeCommandLetters.id });
+
+    overtimeCommandLetterId = created.id;
+  } else {
+    if (!payload.id) {
+      throw new Error("SPL tidak valid.");
+    }
+
+    if (!existingDocument || existingDocument.siteId !== currentEmployee.siteId) {
+      throw new Error("Dokumen SPL tidak ditemukan di site Anda.");
+    }
+
+    await db
+      .update(overtimeCommandLetters)
+      .set(values)
+      .where(eq(overtimeCommandLetters.id, payload.id));
+
+    await db
+      .delete(overtimeCommandLetterItems)
+      .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, payload.id));
+
+    overtimeCommandLetterId = payload.id;
+  }
+
+  await db.insert(overtimeCommandLetterItems).values(
+    lineItems.map((item, index) => ({
+      overtimeCommandLetterId: overtimeCommandLetterId!,
+      routeTemplateId: item.routeTemplateId ?? null,
+      routeItemId: item.routeItemId ?? null,
+      libraryActivityId: item.libraryActivityId ?? null,
+      lineLabel: item.lineLabel,
+      lineDescription: item.lineDescription,
+      targetUnit: item.targetUnit,
+      estimatedMinutes: item.estimatedMinutes,
+      plannedPoints: item.plannedPoints,
+      sortOrder: item.sortOrder || index + 1,
+      isCustomLine: item.isCustomLine,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+  );
+
+  revalidateDailyActivitySurfaces();
+}
+
+export async function transitionOvertimeCommandLetterStatusAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = transitionOvertimeCommandLetterStatusSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
+  const managedEmployeeIds = await getManagedEmployeeIdsForLead(currentEmployee.id);
+  const isLead = managedEmployeeIds.length > 0;
+
+  const [document] = await db
+    .select({
+      id: overtimeCommandLetters.id,
+      siteId: overtimeCommandLetters.siteId,
+      status: overtimeCommandLetters.status,
+      requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
+      approvedByEmployeeId: overtimeCommandLetters.approvedByEmployeeId,
+    })
+    .from(overtimeCommandLetters)
+    .where(eq(overtimeCommandLetters.id, payload.id))
+    .limit(1);
+
+  if (!document || document.siteId !== currentEmployee.siteId) {
+    throw new Error("Dokumen SPL tidak ditemukan di site Anda.");
+  }
+
+  if (["approved", "closed"].includes(payload.targetStatus) && !isLead) {
+    throw new Error("Hanya lead atau atasan yang bisa approve atau close SPL.");
+  }
+
+  if (
+    ["draft", "submitted"].includes(payload.targetStatus) &&
+    document.requestedByEmployeeId !== currentEmployee.id &&
+    !isLead
+  ) {
+    throw new Error("Anda tidak punya akses untuk mengubah status SPL ini.");
+  }
+
+  const currentStatus = document.status.trim().toLowerCase() as keyof typeof overtimeCommandLetterStatusTransitions;
+  const allowedTransitions = overtimeCommandLetterStatusTransitions[currentStatus];
+
+  if (!allowedTransitions?.includes(payload.targetStatus)) {
+    throw new Error(`Transisi status dari ${document.status} ke ${payload.targetStatus} tidak diizinkan.`);
+  }
+
+  await db
+    .update(overtimeCommandLetters)
+    .set({
+      status: payload.targetStatus,
+      approvedByEmployeeId:
+        payload.targetStatus === "approved" || payload.targetStatus === "closed"
+          ? document.approvedByEmployeeId ?? currentEmployee.id
+          : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(overtimeCommandLetters.id, payload.id));
+
+  revalidateDailyActivitySurfaces();
+}
+
 export async function submitDailyActivityAction(formData: FormData) {
   await ensureDailyActivitySeedData();
 
@@ -960,6 +1745,16 @@ export async function submitDailyActivityAction(formData: FormData) {
     uploadedPhotoUrl = uploaded.url;
   }
 
+  await syncDailyRouteSessionForActivity({
+    employee,
+    payload: {
+      ...payload,
+      routeSummaryRemark: payload.routeSummaryRemark || payload.notes,
+    },
+    submissionTime,
+    startTime,
+  });
+
   let createdActivityId: number | null = null;
   const activityTitle =
     library?.activityName ||
@@ -1124,6 +1919,104 @@ export async function submitDailyActivityWithStateAction(
         error,
         "Activity gagal disimpan. Cek field wajib dan coba lagi.",
       ),
+    };
+  }
+}
+
+export async function updateDailyActivitySessionDocumentSignoffAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = updateDailyActivitySessionDocumentSignoffSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
+
+  const [sessionRow] = await db
+    .select({
+      id: dailyActivitySessions.id,
+      employeeId: dailyActivitySessions.employeeId,
+      siteId: dailyActivitySessions.siteId,
+    })
+    .from(dailyActivitySessions)
+    .where(eq(dailyActivitySessions.id, payload.sessionId))
+    .limit(1);
+
+  if (!sessionRow) {
+    throw new Error("Session dokumen tidak ditemukan.");
+  }
+
+  if (sessionRow.employeeId !== currentEmployee.id || sessionRow.siteId !== currentEmployee.siteId) {
+    throw new Error("Anda tidak punya akses untuk dokumen session ini.");
+  }
+
+  const [existingSignoff] = await db
+    .select()
+    .from(dailyActivitySessionSignoffs)
+    .where(eq(dailyActivitySessionSignoffs.sessionId, payload.sessionId))
+    .limit(1);
+
+  const [employeeSignatureUrl, hrSignatureUrl] = await Promise.all([
+    uploadSignatureFile(formData.get("employeeSignatureFile"), "daily-activity-signatures/employee"),
+    uploadSignatureFile(formData.get("hrSignatureFile"), "daily-activity-signatures/hr"),
+  ]);
+
+  const now = new Date();
+  const nextEmployeeSignatureUrl = employeeSignatureUrl ?? existingSignoff?.employeeSignatureUrl ?? "";
+  const nextHrSignatureUrl = hrSignatureUrl ?? existingSignoff?.hrSignatureUrl ?? "";
+  const hasEmployeeSignoff = Boolean(payload.employeeSignerName.trim() || nextEmployeeSignatureUrl);
+  const hasHrSignoff = Boolean(
+    payload.hrCheckerName.trim() ||
+      nextHrSignatureUrl ||
+      payload.hrChecklistStatus !== "pending" ||
+      payload.hrChecklistNote.trim(),
+  );
+
+  const values = {
+    employeeSignerName: payload.employeeSignerName,
+    employeeSignatureUrl: nextEmployeeSignatureUrl,
+    employeeSignedAt: hasEmployeeSignoff ? existingSignoff?.employeeSignedAt ?? now : null,
+    customerSignerName: payload.customerSignerName,
+    customerSignatureUrl: "",
+    customerSignedAt: null,
+    hrCheckerName: payload.hrCheckerName,
+    hrChecklistStatus: payload.hrChecklistStatus,
+    hrChecklistNote: payload.hrChecklistNote,
+    hrSignatureUrl: nextHrSignatureUrl,
+    hrCheckedAt: hasHrSignoff ? existingSignoff?.hrCheckedAt ?? now : null,
+    updatedAt: now,
+  };
+
+  if (existingSignoff) {
+    await db
+      .update(dailyActivitySessionSignoffs)
+      .set(values)
+      .where(eq(dailyActivitySessionSignoffs.id, existingSignoff.id));
+  } else {
+    await db.insert(dailyActivitySessionSignoffs).values({
+      sessionId: payload.sessionId,
+      ...values,
+      createdAt: now,
+    });
+  }
+
+  revalidateDailyActivitySurfaces();
+  revalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`);
+  revalidatePath(`/mobile/activity/document/${payload.sessionId}`);
+}
+
+export async function updateDailyActivitySessionDocumentSignoffWithStateAction(
+  _previousState: DailyActivityDocumentSignoffActionState,
+  formData: FormData,
+): Promise<DailyActivityDocumentSignoffActionState> {
+  try {
+    await updateDailyActivitySessionDocumentSignoffAction(formData);
+
+    return {
+      status: "success",
+      message: "Signoff dokumen berhasil diperbarui.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: getReadableActionError(error, "Signoff dokumen gagal disimpan."),
     };
   }
 }

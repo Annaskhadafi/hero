@@ -5,12 +5,21 @@ import {
   activityLibraries,
   activityModifiers,
   activityPhotos,
+  activityRouteGroups,
+  activityRouteItems,
+  activityRouteTemplates,
+  activitySectionPointOverrides,
   approvals,
   dailyActivityConfigs,
+  dailyActivitySessionItems,
+  dailyActivitySessions,
   employees,
   jobAssignments,
   masterDepartments,
+  masterPositions,
   masterSections,
+  overtimeCommandLetterItems,
+  overtimeCommandLetters,
   orgChartNodes,
   orgNodeAssignments,
   penaltyEvents,
@@ -27,6 +36,8 @@ const DAILY_ACTIVITY_REVALIDATE_PATHS = [
   "/dashboard/activity-hub/my-day",
   "/dashboard/activity-hub/team-board",
   "/dashboard/activity-hub/library",
+  "/dashboard/activity-hub/routes",
+  "/dashboard/activity-hub/blueprint",
   "/dashboard/activity-hub/configuration",
   "/dashboard/approval",
   "/dashboard/leaderboard",
@@ -258,6 +269,444 @@ function formatDurationLabel(totalMinutes: number) {
 
 function normalizeStatusLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function normalizeRouteShiftToken(value?: string | null) {
+  return value?.trim().toUpperCase().replace(/\s+/g, " ") ?? "";
+}
+
+function getShiftAliases(reference = new Date()) {
+  const hour = reference.getHours();
+
+  if (hour < 15) {
+    return new Set(["ALL", "DAY", "SHIFT PAGI", "PAGI", "MORNING"]);
+  }
+
+  if (hour < 23) {
+    return new Set(["ALL", "SHIFT SORE", "SORE", "SWING", "AFTERNOON"]);
+  }
+
+  return new Set(["ALL", "NIGHT", "SHIFT MALAM", "MALAM"]);
+}
+
+function getRouteTemplateScore(
+  template: {
+    siteId: number | null;
+    departmentId: number | null;
+    sectionId: number | null;
+    positionId: number | null;
+    shiftCode: string;
+  },
+  employee: typeof employees.$inferSelect,
+  shiftAliases: Set<string>,
+) {
+  if (template.siteId != null && template.siteId !== employee.siteId) {
+    return -1;
+  }
+
+  if (template.departmentId != null && template.departmentId !== employee.departmentId) {
+    return -1;
+  }
+
+  if (template.sectionId != null && template.sectionId !== employee.sectionId) {
+    return -1;
+  }
+
+  if (template.positionId != null && template.positionId !== employee.positionId) {
+    return -1;
+  }
+
+  let score = 0;
+  score += template.siteId != null ? 32 : 4;
+  score += template.departmentId != null ? 16 : 2;
+  score += template.sectionId != null ? 8 : 1;
+  score += template.positionId != null ? 4 : 0;
+
+  const normalizedShift = normalizeRouteShiftToken(template.shiftCode);
+  if (normalizedShift && normalizedShift !== "ALL") {
+    if (!shiftAliases.has(normalizedShift)) {
+      return -1;
+    }
+
+    score += 6;
+  } else {
+    score += 1;
+  }
+
+  return score;
+}
+
+type MatchedRouteChecklist = {
+  id: number;
+  routeCode: string;
+  routeName: string;
+  shiftCode: string;
+  versionLabel: string;
+  description: string | null;
+  mobileEnabled: boolean;
+  approvalRequired: boolean;
+  siteName: string | null;
+  departmentName: string | null;
+  sectionName: string | null;
+  positionName: string | null;
+  activeSpl: {
+    id: number;
+    splNumber: string;
+    title: string;
+    status: string;
+    workDate: Date;
+    plannedStartAt: Date | null;
+    plannedEndAt: Date | null;
+    requestNotes: string;
+    executionNotes: string;
+    lineCount: number;
+    plannedPointsTotal: number;
+    items: Array<{
+      id: number;
+      routeTemplateId: number | null;
+      routeItemId: number | null;
+      libraryActivityId: number | null;
+      lineLabel: string;
+      lineDescription: string;
+      targetUnit: string;
+      estimatedMinutes: number;
+      plannedPoints: number;
+      sortOrder: number;
+      isCustomLine: boolean;
+    }>;
+  } | null;
+  sessionId: number | null;
+  sessionStatus: string | null;
+  checkedCount: number;
+  groupCount: number;
+  itemCount: number;
+  groups: Array<{
+    id: number;
+    groupKey: string;
+    groupName: string;
+    description: string | null;
+    sortOrder: number;
+    isRequired: boolean;
+    items: Array<{
+      id: number;
+      sessionItemId: number | null;
+      itemCode: string | null;
+      itemLabel: string;
+      itemDescription: string | null;
+      pointOverride: number | null;
+      sortOrder: number;
+      requiresUnit: boolean;
+      requiresTime: boolean;
+      requiresRemark: boolean;
+      requiresPhoto: boolean;
+      requiresChecklistEvidence: boolean;
+      isOptional: boolean;
+      allowCustomUnit: boolean;
+      libraryActivityId: number | null;
+      libraryCode: string | null;
+      libraryName: string | null;
+      libraryPoints: number | null;
+      isChecked: boolean;
+      unitNumber: string;
+      remark: string;
+      startedAt: Date | null;
+      endedAt: Date | null;
+      checkedAt: Date | null;
+      actualPoints: number;
+      snapshotPayload: string;
+    }>;
+  }>;
+};
+
+async function getActiveOvertimeCommandLetterForEmployee(
+  employee: typeof employees.$inferSelect,
+  referenceDate = new Date(),
+) {
+  const dayStart = startOfDay(referenceDate);
+  const dayEnd = endOfDay(referenceDate);
+
+  const splRows = await db
+    .select({
+      id: overtimeCommandLetters.id,
+      splNumber: overtimeCommandLetters.splNumber,
+      title: overtimeCommandLetters.title,
+      status: overtimeCommandLetters.status,
+      workDate: overtimeCommandLetters.workDate,
+      plannedStartAt: overtimeCommandLetters.plannedStartAt,
+      plannedEndAt: overtimeCommandLetters.plannedEndAt,
+      requestNotes: overtimeCommandLetters.requestNotes,
+      executionNotes: overtimeCommandLetters.executionNotes,
+      sectionId: overtimeCommandLetters.sectionId,
+      positionId: overtimeCommandLetters.positionId,
+      updatedAt: overtimeCommandLetters.updatedAt,
+    })
+    .from(overtimeCommandLetters)
+    .where(
+      and(
+        eq(overtimeCommandLetters.siteId, employee.siteId),
+        gte(overtimeCommandLetters.workDate, dayStart),
+        lte(overtimeCommandLetters.workDate, dayEnd),
+        or(
+          eq(overtimeCommandLetters.sectionId, employee.sectionId ?? -1),
+          isNull(overtimeCommandLetters.sectionId),
+        ),
+        or(
+          eq(overtimeCommandLetters.positionId, employee.positionId ?? -1),
+          isNull(overtimeCommandLetters.positionId),
+        ),
+        or(
+          eq(overtimeCommandLetters.status, "draft"),
+          eq(overtimeCommandLetters.status, "submitted"),
+          eq(overtimeCommandLetters.status, "approved"),
+        ),
+      ),
+    )
+    .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.updatedAt), desc(overtimeCommandLetters.id));
+
+  if (splRows.length === 0) {
+    return null;
+  }
+
+  const selected = splRows
+    .map((row) => ({
+      ...row,
+      score:
+        (row.sectionId != null ? 10 : 1) +
+        (row.positionId != null ? 6 : 1) +
+        (row.status === "approved" ? 4 : row.status === "submitted" ? 3 : 1),
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return right.updatedAt.getTime() - left.updatedAt.getTime();
+    })[0];
+
+  const items = await db
+    .select({
+      id: overtimeCommandLetterItems.id,
+      routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
+      routeItemId: overtimeCommandLetterItems.routeItemId,
+      libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
+      lineLabel: overtimeCommandLetterItems.lineLabel,
+      lineDescription: overtimeCommandLetterItems.lineDescription,
+      targetUnit: overtimeCommandLetterItems.targetUnit,
+      estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+      plannedPoints: overtimeCommandLetterItems.plannedPoints,
+      sortOrder: overtimeCommandLetterItems.sortOrder,
+      isCustomLine: overtimeCommandLetterItems.isCustomLine,
+    })
+    .from(overtimeCommandLetterItems)
+    .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, selected.id))
+    .orderBy(asc(overtimeCommandLetterItems.sortOrder), asc(overtimeCommandLetterItems.id));
+
+  return {
+    id: selected.id,
+    splNumber: selected.splNumber,
+    title: selected.title,
+    status: selected.status,
+    workDate: selected.workDate,
+    plannedStartAt: selected.plannedStartAt,
+    plannedEndAt: selected.plannedEndAt,
+    requestNotes: selected.requestNotes,
+    executionNotes: selected.executionNotes,
+    lineCount: items.length,
+    plannedPointsTotal: items.reduce((total, item) => total + item.plannedPoints, 0),
+    items,
+  };
+}
+
+async function getMatchedRouteChecklistForEmployee(
+  employee: typeof employees.$inferSelect,
+  referenceDate = new Date(),
+): Promise<MatchedRouteChecklist | null> {
+  const routeTemplateRows = await db
+    .select({
+      id: activityRouteTemplates.id,
+      routeCode: activityRouteTemplates.routeCode,
+      routeName: activityRouteTemplates.routeName,
+      shiftCode: activityRouteTemplates.shiftCode,
+      description: activityRouteTemplates.description,
+      versionLabel: activityRouteTemplates.versionLabel,
+      mobileEnabled: activityRouteTemplates.mobileEnabled,
+      approvalRequired: activityRouteTemplates.approvalRequired,
+      siteId: activityRouteTemplates.siteId,
+      siteName: sites.name,
+      departmentId: activityRouteTemplates.departmentId,
+      departmentName: masterDepartments.name,
+      sectionId: activityRouteTemplates.sectionId,
+      sectionName: masterSections.name,
+      positionId: activityRouteTemplates.positionId,
+      positionName: masterPositions.name,
+      effectiveFrom: activityRouteTemplates.effectiveFrom,
+      createdAt: activityRouteTemplates.createdAt,
+    })
+    .from(activityRouteTemplates)
+    .leftJoin(sites, eq(activityRouteTemplates.siteId, sites.id))
+    .leftJoin(masterDepartments, eq(activityRouteTemplates.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(activityRouteTemplates.sectionId, masterSections.id))
+    .leftJoin(masterPositions, eq(activityRouteTemplates.positionId, masterPositions.id))
+    .where(eq(activityRouteTemplates.isActive, true))
+    .orderBy(desc(activityRouteTemplates.mobileEnabled), desc(activityRouteTemplates.createdAt));
+
+  const shiftAliases = getShiftAliases(referenceDate);
+  const matchedRouteTemplate =
+    routeTemplateRows
+      .map((template) => ({
+        ...template,
+        score: getRouteTemplateScore(template, employee, shiftAliases),
+      }))
+      .filter((template) => template.score >= 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return right.createdAt.getTime() - left.createdAt.getTime();
+      })[0] ?? null;
+
+  if (!matchedRouteTemplate) {
+    return null;
+  }
+
+  const dayStart = startOfDay(referenceDate);
+  const dayEnd = endOfDay(referenceDate);
+
+  const [groupRows, itemRows, existingSession, activeSpl] = await Promise.all([
+    db
+      .select({
+        id: activityRouteGroups.id,
+        groupKey: activityRouteGroups.groupKey,
+        groupName: activityRouteGroups.groupName,
+        description: activityRouteGroups.description,
+        sortOrder: activityRouteGroups.sortOrder,
+        isRequired: activityRouteGroups.isRequired,
+      })
+      .from(activityRouteGroups)
+      .where(eq(activityRouteGroups.routeTemplateId, matchedRouteTemplate.id))
+      .orderBy(asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+    db
+      .select({
+        id: activityRouteItems.id,
+        routeGroupId: activityRouteItems.routeGroupId,
+        libraryActivityId: activityRouteItems.libraryActivityId,
+        itemCode: activityRouteItems.itemCode,
+        itemLabel: activityRouteItems.itemLabel,
+        itemDescription: activityRouteItems.itemDescription,
+        pointOverride: activityRouteItems.pointOverride,
+        sortOrder: activityRouteItems.sortOrder,
+        requiresUnit: activityRouteItems.requiresUnit,
+        requiresTime: activityRouteItems.requiresTime,
+        requiresRemark: activityRouteItems.requiresRemark,
+        requiresPhoto: activityRouteItems.requiresPhoto,
+        requiresChecklistEvidence: activityRouteItems.requiresChecklistEvidence,
+        isOptional: activityRouteItems.isOptional,
+        allowCustomUnit: activityRouteItems.allowCustomUnit,
+        libraryCode: activityLibraries.activityCode,
+        libraryName: activityLibraries.activityName,
+        libraryPoints: activityLibraries.basePoints,
+      })
+      .from(activityRouteItems)
+      .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
+      .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
+      .where(eq(activityRouteGroups.routeTemplateId, matchedRouteTemplate.id))
+      .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
+    db
+      .select({
+        id: dailyActivitySessions.id,
+        status: dailyActivitySessions.status,
+      })
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          eq(dailyActivitySessions.employeeId, employee.id),
+          eq(dailyActivitySessions.routeTemplateId, matchedRouteTemplate.id),
+          gte(dailyActivitySessions.workDate, dayStart),
+          lte(dailyActivitySessions.workDate, dayEnd),
+        ),
+      )
+      .orderBy(desc(dailyActivitySessions.updatedAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    getActiveOvertimeCommandLetterForEmployee(employee, referenceDate),
+  ]);
+
+  const sessionItemRows =
+    existingSession == null
+      ? []
+      : await db
+          .select({
+            id: dailyActivitySessionItems.id,
+            routeItemId: dailyActivitySessionItems.routeItemId,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+            startedAt: dailyActivitySessionItems.startedAt,
+            endedAt: dailyActivitySessionItems.endedAt,
+            checkedAt: dailyActivitySessionItems.checkedAt,
+            unitNumber: dailyActivitySessionItems.unitNumber,
+            remark: dailyActivitySessionItems.remark,
+            actualPoints: dailyActivitySessionItems.actualPoints,
+            isChecked: dailyActivitySessionItems.isChecked,
+          })
+          .from(dailyActivitySessionItems)
+          .where(eq(dailyActivitySessionItems.sessionId, existingSession.id))
+          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id));
+
+  const sessionItemsByRouteItemId = new Map<
+    number,
+    (typeof sessionItemRows)[number]
+  >();
+  for (const item of sessionItemRows) {
+    if (item.routeItemId != null) {
+      sessionItemsByRouteItemId.set(item.routeItemId, item);
+    }
+  }
+
+  const itemsByGroupId = new Map<number, MatchedRouteChecklist["groups"][number]["items"]>();
+  for (const item of itemRows) {
+    const sessionState = sessionItemsByRouteItemId.get(item.id);
+    const list = itemsByGroupId.get(item.routeGroupId) ?? [];
+    list.push({
+      ...item,
+      sessionItemId: sessionState?.id ?? null,
+      isChecked: sessionState?.isChecked ?? false,
+      unitNumber: sessionState?.unitNumber ?? "",
+      remark: sessionState?.remark ?? "",
+      startedAt: sessionState?.startedAt ?? null,
+      endedAt: sessionState?.endedAt ?? null,
+      checkedAt: sessionState?.checkedAt ?? null,
+      actualPoints: sessionState?.actualPoints ?? item.pointOverride ?? item.libraryPoints ?? 0,
+      snapshotPayload: sessionState?.snapshotPayload ?? "",
+    });
+    itemsByGroupId.set(item.routeGroupId, list);
+  }
+
+  const groups = groupRows.map((group) => ({
+    ...group,
+    items: itemsByGroupId.get(group.id) ?? [],
+  }));
+
+  return {
+    id: matchedRouteTemplate.id,
+    routeCode: matchedRouteTemplate.routeCode,
+    routeName: matchedRouteTemplate.routeName,
+    shiftCode: matchedRouteTemplate.shiftCode,
+    versionLabel: matchedRouteTemplate.versionLabel,
+    description: matchedRouteTemplate.description,
+    mobileEnabled: matchedRouteTemplate.mobileEnabled,
+    approvalRequired: matchedRouteTemplate.approvalRequired,
+    siteName: matchedRouteTemplate.siteName,
+    departmentName: matchedRouteTemplate.departmentName,
+    sectionName: matchedRouteTemplate.sectionName,
+    positionName: matchedRouteTemplate.positionName,
+    activeSpl,
+    sessionId: existingSession?.id ?? null,
+    sessionStatus: existingSession?.status ?? null,
+    checkedCount: sessionItemRows.filter((item) => item.isChecked).length,
+    groupCount: groups.length,
+    itemCount: itemRows.length,
+    groups,
+  };
 }
 
 function getCalendarDayKey(reference: Date) {
@@ -676,6 +1125,175 @@ async function ensureDailyActivityTables() {
   `);
 
   await db.execute(sql`
+    create table if not exists hero_activity_route_templates (
+      id serial primary key,
+      site_id integer references hero_sites(id) on delete set null,
+      department_id integer references hero_master_departments(id) on delete set null,
+      section_id integer references hero_master_sections(id) on delete set null,
+      position_id integer references hero_master_positions(id) on delete set null,
+      route_code text not null unique,
+      route_name text not null,
+      shift_code text not null default 'ALL',
+      description text not null default '',
+      mobile_enabled boolean not null default true,
+      approval_required boolean not null default false,
+      version_label text not null default 'v1',
+      effective_from timestamp not null default now(),
+      effective_to timestamp,
+      is_active boolean not null default true,
+      created_by_employee_id integer references hero_employees(id) on delete set null,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_activity_route_groups (
+      id serial primary key,
+      route_template_id integer not null references hero_activity_route_templates(id) on delete cascade,
+      group_key text not null,
+      group_name text not null,
+      description text not null default '',
+      sort_order integer not null default 1,
+      is_required boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_activity_route_items (
+      id serial primary key,
+      route_group_id integer not null references hero_activity_route_groups(id) on delete cascade,
+      library_activity_id integer references hero_activity_libraries(id) on delete set null,
+      item_code text not null default '',
+      item_label text not null,
+      item_description text not null default '',
+      point_override integer,
+      requires_unit boolean not null default false,
+      requires_time boolean not null default true,
+      requires_remark boolean not null default false,
+      requires_photo boolean not null default false,
+      requires_checklist_evidence boolean not null default false,
+      is_optional boolean not null default false,
+      allow_custom_unit boolean not null default true,
+      sort_order integer not null default 1,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_activity_section_point_overrides (
+      id serial primary key,
+      site_id integer references hero_sites(id) on delete set null,
+      department_id integer references hero_master_departments(id) on delete set null,
+      section_id integer references hero_master_sections(id) on delete set null,
+      position_id integer references hero_master_positions(id) on delete set null,
+      library_activity_id integer not null references hero_activity_libraries(id) on delete cascade,
+      override_label text not null default '',
+      override_points integer,
+      reason text not null default '',
+      is_active boolean not null default true,
+      created_by_employee_id integer references hero_employees(id) on delete set null,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_overtime_command_letters (
+      id serial primary key,
+      request_submission_id integer references hero_form_submissions(id) on delete set null,
+      site_id integer not null references hero_sites(id) on delete cascade,
+      department_id integer references hero_master_departments(id) on delete set null,
+      section_id integer references hero_master_sections(id) on delete set null,
+      position_id integer references hero_master_positions(id) on delete set null,
+      requested_by_employee_id integer not null references hero_employees(id) on delete cascade,
+      approved_by_employee_id integer references hero_employees(id) on delete set null,
+      spl_number text not null unique,
+      title text not null,
+      work_date timestamp not null,
+      planned_start_at timestamp,
+      planned_end_at timestamp,
+      status text not null default 'draft',
+      request_notes text not null default '',
+      execution_notes text not null default '',
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_overtime_command_letter_items (
+      id serial primary key,
+      overtime_command_letter_id integer not null references hero_overtime_command_letters(id) on delete cascade,
+      route_template_id integer references hero_activity_route_templates(id) on delete set null,
+      route_item_id integer references hero_activity_route_items(id) on delete set null,
+      library_activity_id integer references hero_activity_libraries(id) on delete set null,
+      line_label text not null,
+      line_description text not null default '',
+      target_unit text not null default '',
+      estimated_minutes integer not null default 60,
+      planned_points integer not null default 0,
+      sort_order integer not null default 1,
+      is_custom_line boolean not null default false,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_daily_activity_sessions (
+      id serial primary key,
+      site_id integer not null references hero_sites(id) on delete cascade,
+      employee_id integer not null references hero_employees(id) on delete cascade,
+      department_id integer references hero_master_departments(id) on delete set null,
+      section_id integer references hero_master_sections(id) on delete set null,
+      position_id integer references hero_master_positions(id) on delete set null,
+      route_template_id integer references hero_activity_route_templates(id) on delete set null,
+      overtime_command_letter_id integer references hero_overtime_command_letters(id) on delete set null,
+      legacy_assignment_id integer references hero_job_assignments(id) on delete set null,
+      session_code text not null unique,
+      shift_code text not null default 'ALL',
+      work_date timestamp not null,
+      status text not null default 'draft',
+      submission_source text not null default 'route',
+      started_at timestamp,
+      submitted_at timestamp,
+      approved_at timestamp,
+      summary_remark text not null default '',
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
+    create table if not exists hero_daily_activity_session_items (
+      id serial primary key,
+      session_id integer not null references hero_daily_activity_sessions(id) on delete cascade,
+      route_item_id integer references hero_activity_route_items(id) on delete set null,
+      library_activity_id integer references hero_activity_libraries(id) on delete set null,
+      overtime_command_letter_item_id integer references hero_overtime_command_letter_items(id) on delete set null,
+      snapshot_label text not null,
+      snapshot_group_name text not null default '',
+      snapshot_payload text not null default '{}',
+      started_at timestamp,
+      ended_at timestamp,
+      checked_at timestamp,
+      unit_number text not null default '',
+      remark text not null default '',
+      actual_points integer not null default 0,
+      is_checked boolean not null default false,
+      is_custom_item boolean not null default false,
+      photo_count integer not null default 0,
+      sort_order integer not null default 1,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    );
+  `);
+
+  await db.execute(sql`
     alter table hero_activities add column if not exists library_activity_id integer;
   `);
   await db.execute(sql`
@@ -749,12 +1367,15 @@ async function ensureDailyActivityTables() {
 }
 
 async function seedDailyActivityReferenceData() {
-  const [employeeRows, departmentRows, siteRows, libraryCount, configCount, streakCount, modifierCount] =
+  const [employeeRows, departmentRows, sectionRows, positionRows, siteRows, libraryCount, routeTemplateCount, configCount, streakCount, modifierCount] =
     await Promise.all([
       db.select().from(employees).where(eq(employees.isActive, true)).orderBy(asc(employees.id)),
       db.select().from(masterDepartments).orderBy(asc(masterDepartments.id)),
+      db.select().from(masterSections).orderBy(asc(masterSections.id)),
+      db.select().from(masterPositions).orderBy(asc(masterPositions.id)),
       db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.id)),
       db.select({ count: sql<number>`count(*)::int` }).from(activityLibraries),
+      db.select({ count: sql<number>`count(*)::int` }).from(activityRouteTemplates),
       db.select({ count: sql<number>`count(*)::int` }).from(dailyActivityConfigs),
       db.select({ count: sql<number>`count(*)::int` }).from(streakRecords),
       db.select({ count: sql<number>`count(*)::int` }).from(activityModifiers),
@@ -768,6 +1389,17 @@ async function seedDailyActivityReferenceData() {
     departmentRows.map((department) => [department.name.trim().toLowerCase(), department]),
   );
   const defaultSite = siteRows[0] ?? null;
+  const defaultSection =
+    sectionRows.find((section) => section.name.toLowerCase().includes("tire")) ??
+    sectionRows.find((section) => section.name.toLowerCase().includes("service")) ??
+    sectionRows[0] ??
+    null;
+  const defaultPosition =
+    positionRows.find((position) => position.name.toLowerCase().includes("tire")) ??
+    positionRows.find((position) => position.name.toLowerCase().includes("technician")) ??
+    positionRows.find((position) => position.name.toLowerCase().includes("staff")) ??
+    positionRows[0] ??
+    null;
 
   if ((libraryCount[0]?.count ?? 0) === 0 && creatorEmployee) {
     await db.insert(activityLibraries).values(
@@ -844,6 +1476,162 @@ async function seedDailyActivityReferenceData() {
         isActive: true,
         createdByEmployeeId: creatorEmployee.id,
         createdAt: new Date(),
+      },
+    ]);
+  }
+
+  if ((routeTemplateCount[0]?.count ?? 0) === 0 && creatorEmployee) {
+    const [libraryRows] = await Promise.all([
+      db
+        .select({
+          id: activityLibraries.id,
+          activityCode: activityLibraries.activityCode,
+          activityName: activityLibraries.activityName,
+          category: activityLibraries.category,
+          requiresPhoto: activityLibraries.requiresPhoto,
+          requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          requiresDuration: activityLibraries.requiresDuration,
+          basePoints: activityLibraries.basePoints,
+        })
+        .from(activityLibraries)
+        .where(eq(activityLibraries.isActive, true))
+        .orderBy(asc(activityLibraries.activityCode)),
+    ]);
+
+    const [createdTemplate] = await db
+      .insert(activityRouteTemplates)
+      .values({
+        siteId: defaultSite?.id ?? null,
+        departmentId: defaultSection?.departmentId ?? defaultPosition?.departmentId ?? null,
+        sectionId: defaultSection?.id ?? defaultPosition?.sectionId ?? null,
+        positionId: defaultPosition?.id ?? null,
+        routeCode: "ROUTE-TS-001",
+        routeName: "Default Tire Service Daily Route",
+        shiftCode: "ALL",
+        description: "Route awal untuk demonstrasi nested checklist pekerjaan harian.",
+        mobileEnabled: true,
+        approvalRequired: false,
+        versionLabel: "v1",
+        effectiveFrom: new Date(),
+        effectiveTo: null,
+        isActive: true,
+        createdByEmployeeId: creatorEmployee.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning({ id: activityRouteTemplates.id });
+
+    const [safetyGroup, inspectionGroup, executionGroup] = await db
+      .insert(activityRouteGroups)
+      .values([
+        {
+          routeTemplateId: createdTemplate.id,
+          groupKey: "safety-talk",
+          groupName: "Safety Talk",
+          description: "Kickoff, toolbox meeting, dan kesiapan kerja.",
+          sortOrder: 1,
+          isRequired: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          routeTemplateId: createdTemplate.id,
+          groupKey: "inspection",
+          groupName: "Inspection",
+          description: "Pemeriksaan awal unit dan tekanan ban.",
+          sortOrder: 2,
+          isRequired: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          routeTemplateId: createdTemplate.id,
+          groupKey: "execution",
+          groupName: "Execution",
+          description: "Perbaikan, mounting, dan clean up.",
+          sortOrder: 3,
+          isRequired: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ])
+      .returning({ id: activityRouteGroups.id, groupKey: activityRouteGroups.groupKey });
+
+    const groupByKey = new Map([safetyGroup, inspectionGroup, executionGroup].map((group) => [group.groupKey, group]));
+    const libraryByCode = new Map(libraryRows.map((item) => [item.activityCode, item]));
+
+    await db.insert(activityRouteItems).values([
+      {
+        routeGroupId: groupByKey.get("safety-talk")!.id,
+        libraryActivityId: libraryByCode.get("HSE-001")?.id ?? null,
+        itemCode: "RT-001",
+        itemLabel: "Toolbox meeting dan safety briefing",
+        itemDescription: "Pembukaan shift sebelum pekerjaan teknikal dimulai.",
+        pointOverride: 8,
+        requiresUnit: false,
+        requiresTime: true,
+        requiresRemark: true,
+        requiresPhoto: false,
+        requiresChecklistEvidence: false,
+        isOptional: false,
+        allowCustomUnit: false,
+        sortOrder: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        routeGroupId: groupByKey.get("inspection")!.id,
+        libraryActivityId: libraryByCode.get("TS-001")?.id ?? null,
+        itemCode: "RT-002",
+        itemLabel: "Tyre inspection dan pressure check",
+        itemDescription: "Centang bila inspeksi dan pressure check dilakukan pada unit terkait.",
+        pointOverride: 10,
+        requiresUnit: true,
+        requiresTime: true,
+        requiresRemark: false,
+        requiresPhoto: true,
+        requiresChecklistEvidence: false,
+        isOptional: false,
+        allowCustomUnit: true,
+        sortOrder: 2,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        routeGroupId: groupByKey.get("execution")!.id,
+        libraryActivityId: libraryByCode.get("TS-002")?.id ?? null,
+        itemCode: "RT-003",
+        itemLabel: "Tyre change / repair execution",
+        itemDescription: "Dipakai untuk pekerjaan penggantian atau repair tyre pada unit.",
+        pointOverride: 18,
+        requiresUnit: true,
+        requiresTime: true,
+        requiresRemark: true,
+        requiresPhoto: true,
+        requiresChecklistEvidence: false,
+        isOptional: true,
+        allowCustomUnit: true,
+        sortOrder: 3,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        routeGroupId: groupByKey.get("execution")!.id,
+        libraryActivityId: null,
+        itemCode: "RT-004",
+        itemLabel: "Housekeeping dan clean up area kerja",
+        itemDescription: "Item custom default untuk penutupan pekerjaan harian.",
+        pointOverride: 4,
+        requiresUnit: false,
+        requiresTime: true,
+        requiresRemark: false,
+        requiresPhoto: false,
+        requiresChecklistEvidence: false,
+        isOptional: false,
+        allowCustomUnit: false,
+        sortOrder: 4,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
     ]);
   }
@@ -1121,7 +1909,15 @@ export async function getDailyActivityEmployeeData(
   const dayStart = startOfDay();
   const dayEnd = endOfDay();
 
-  const [assignmentRows, activityRows, pointRows, penaltyRows, streak, libraryRows, modifierRows] =
+  const [
+    assignmentRows,
+    activityRows,
+    pointRows,
+    penaltyRows,
+    streak,
+    libraryRows,
+    modifierRows,
+  ] =
     await Promise.all([
       db
         .select({
@@ -1269,6 +2065,7 @@ export async function getDailyActivityEmployeeData(
         )
         .orderBy(desc(activityModifiers.multiplier), asc(activityModifiers.eventName)),
     ]);
+  const routeChecklist = await getMatchedRouteChecklistForEmployee(employee, new Date());
 
   const approvedOrSubmitted = activityRows.filter((row) =>
     ["approved", "pending l1", "pending approval", "submitted"].includes(row.status.toLowerCase()),
@@ -1316,6 +2113,7 @@ export async function getDailyActivityEmployeeData(
     penalties: penaltyRows,
     streak,
     availableLibrary: libraryRows,
+    routeChecklist,
     revalidatePaths: DAILY_ACTIVITY_REVALIDATE_PATHS,
   };
 }
@@ -1334,7 +2132,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
   const dayStart = startOfDay();
   const dayEnd = endOfDay();
 
-  const [assignmentRows, activityRows, pendingApprovalsRows, disputeRows] = await Promise.all([
+  const [assignmentRows, activityRows, pendingApprovalsRows, disputeRows, splRows, splLineRows, routeTemplateRows, libraryRows] = await Promise.all([
     teamIds.length === 0
       ? []
       : db
@@ -1427,7 +2225,212 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
           .where(inArray(pointDisputes.employeeId, teamIds))
           .orderBy(desc(pointDisputes.createdAt))
           .limit(4),
+    db
+      .select({
+        id: overtimeCommandLetters.id,
+        splNumber: overtimeCommandLetters.splNumber,
+        title: overtimeCommandLetters.title,
+        workDate: overtimeCommandLetters.workDate,
+        plannedStartAt: overtimeCommandLetters.plannedStartAt,
+        plannedEndAt: overtimeCommandLetters.plannedEndAt,
+        status: overtimeCommandLetters.status,
+        requestNotes: overtimeCommandLetters.requestNotes,
+        executionNotes: overtimeCommandLetters.executionNotes,
+        sectionId: overtimeCommandLetters.sectionId,
+        sectionName: masterSections.name,
+        positionId: overtimeCommandLetters.positionId,
+        positionName: masterPositions.name,
+        createdAt: overtimeCommandLetters.createdAt,
+      })
+      .from(overtimeCommandLetters)
+      .leftJoin(masterSections, eq(overtimeCommandLetters.sectionId, masterSections.id))
+      .leftJoin(masterPositions, eq(overtimeCommandLetters.positionId, masterPositions.id))
+      .where(eq(overtimeCommandLetters.siteId, currentEmployee.siteId))
+      .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.id))
+      .limit(20),
+    db
+      .select({
+        id: overtimeCommandLetterItems.id,
+        overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+        routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
+        routeTemplateName: activityRouteTemplates.routeName,
+        routeItemId: overtimeCommandLetterItems.routeItemId,
+        libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
+        libraryName: activityLibraries.activityName,
+        lineLabel: overtimeCommandLetterItems.lineLabel,
+        lineDescription: overtimeCommandLetterItems.lineDescription,
+        targetUnit: overtimeCommandLetterItems.targetUnit,
+        estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+        plannedPoints: overtimeCommandLetterItems.plannedPoints,
+        sortOrder: overtimeCommandLetterItems.sortOrder,
+        isCustomLine: overtimeCommandLetterItems.isCustomLine,
+      })
+      .from(overtimeCommandLetterItems)
+      .leftJoin(activityRouteTemplates, eq(overtimeCommandLetterItems.routeTemplateId, activityRouteTemplates.id))
+      .leftJoin(activityLibraries, eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id))
+      .orderBy(
+        asc(overtimeCommandLetterItems.overtimeCommandLetterId),
+        asc(overtimeCommandLetterItems.sortOrder),
+        asc(overtimeCommandLetterItems.id),
+      ),
+    db
+      .select({
+        id: activityRouteTemplates.id,
+        routeCode: activityRouteTemplates.routeCode,
+        routeName: activityRouteTemplates.routeName,
+        sectionId: activityRouteTemplates.sectionId,
+        sectionName: masterSections.name,
+        positionId: activityRouteTemplates.positionId,
+        positionName: masterPositions.name,
+      })
+      .from(activityRouteTemplates)
+      .leftJoin(masterSections, eq(activityRouteTemplates.sectionId, masterSections.id))
+      .leftJoin(masterPositions, eq(activityRouteTemplates.positionId, masterPositions.id))
+      .where(
+        and(
+          eq(activityRouteTemplates.isActive, true),
+          or(eq(activityRouteTemplates.siteId, currentEmployee.siteId), isNull(activityRouteTemplates.siteId)),
+        ),
+      )
+      .orderBy(asc(activityRouteTemplates.routeName)),
+    db
+      .select({
+        id: activityLibraries.id,
+        activityCode: activityLibraries.activityCode,
+        activityName: activityLibraries.activityName,
+        basePoints: activityLibraries.basePoints,
+      })
+      .from(activityLibraries)
+      .where(
+        and(
+          eq(activityLibraries.isActive, true),
+          eq(activityLibraries.isAssignable, true),
+          or(eq(activityLibraries.siteId, currentEmployee.siteId), isNull(activityLibraries.siteId)),
+        ),
+      )
+      .orderBy(asc(activityLibraries.activityCode)),
   ]);
+
+  const splIds = splRows.map((row) => row.id);
+  const [splSessionRows, splSessionItemRows] =
+    splIds.length === 0
+      ? [[], []]
+      : await Promise.all([
+          db
+            .select({
+              id: dailyActivitySessions.id,
+              overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+              employeeId: dailyActivitySessions.employeeId,
+              employeeName: employees.name,
+              status: dailyActivitySessions.status,
+              updatedAt: dailyActivitySessions.updatedAt,
+              submittedAt: dailyActivitySessions.submittedAt,
+              approvedAt: dailyActivitySessions.approvedAt,
+            })
+            .from(dailyActivitySessions)
+            .innerJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+            .where(
+              and(
+                sql`${dailyActivitySessions.overtimeCommandLetterId} is not null`,
+                inArray(dailyActivitySessions.overtimeCommandLetterId, splIds),
+              ),
+            ),
+          db
+            .select({
+              sessionId: dailyActivitySessionItems.sessionId,
+              overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+              overtimeCommandLetterItemId: dailyActivitySessionItems.overtimeCommandLetterItemId,
+              isChecked: dailyActivitySessionItems.isChecked,
+              actualPoints: dailyActivitySessionItems.actualPoints,
+              checkedAt: dailyActivitySessionItems.checkedAt,
+              updatedAt: dailyActivitySessionItems.updatedAt,
+            })
+            .from(dailyActivitySessionItems)
+            .innerJoin(dailyActivitySessions, eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id))
+            .where(
+              and(
+                sql`${dailyActivitySessions.overtimeCommandLetterId} is not null`,
+                inArray(dailyActivitySessions.overtimeCommandLetterId, splIds),
+              ),
+            ),
+        ]);
+
+  const splLinesByHeaderId = new Map<number, typeof splLineRows>();
+  for (const line of splLineRows) {
+    const list = splLinesByHeaderId.get(line.overtimeCommandLetterId) ?? [];
+    list.push(line);
+    splLinesByHeaderId.set(line.overtimeCommandLetterId, list);
+  }
+
+  const splSessionsByHeaderId = new Map<number, typeof splSessionRows>();
+  for (const session of splSessionRows) {
+    if (session.overtimeCommandLetterId == null) {
+      continue;
+    }
+
+    const list = splSessionsByHeaderId.get(session.overtimeCommandLetterId) ?? [];
+    list.push(session);
+    splSessionsByHeaderId.set(session.overtimeCommandLetterId, list);
+  }
+
+  const splSessionItemsByHeaderId = new Map<number, typeof splSessionItemRows>();
+  for (const sessionItem of splSessionItemRows) {
+    if (sessionItem.overtimeCommandLetterId == null) {
+      continue;
+    }
+
+    const list = splSessionItemsByHeaderId.get(sessionItem.overtimeCommandLetterId) ?? [];
+    list.push(sessionItem);
+    splSessionItemsByHeaderId.set(sessionItem.overtimeCommandLetterId, list);
+  }
+
+  const splDocuments = splRows.map((row) => {
+    const items = splLinesByHeaderId.get(row.id) ?? [];
+    const sessions = splSessionsByHeaderId.get(row.id) ?? [];
+    const sessionItems = splSessionItemsByHeaderId.get(row.id) ?? [];
+    const checkedLineIds = new Set(
+      sessionItems
+        .filter((item) => item.isChecked && item.overtimeCommandLetterItemId != null)
+        .map((item) => item.overtimeCommandLetterItemId!),
+    );
+    const checkedSessionIds = new Set(sessionItems.filter((item) => item.isChecked).map((item) => item.sessionId));
+    const workers = Array.from(
+      new Map(sessions.map((session) => [session.employeeId, session.employeeName])).entries(),
+    ).map(([employeeId, employeeName]) => ({
+      employeeId,
+      employeeName,
+    }));
+    const latestUpdateAtMs = Math.max(
+      0,
+      ...sessions.map((session) => session.approvedAt ?? session.submittedAt ?? session.updatedAt).map((value) => value.getTime()),
+      ...sessionItems
+        .map((item) => item.checkedAt ?? item.updatedAt)
+        .map((value) => value.getTime()),
+    );
+    const progressPercent = items.length > 0 ? Math.round((checkedLineIds.size / items.length) * 100) : 0;
+
+    return {
+      ...row,
+      items: items.map((item) => ({
+        ...item,
+        isCheckedOnRoute: checkedLineIds.has(item.id),
+      })),
+      workers,
+      workerCount: workers.length,
+      checkedLineCount: checkedLineIds.size,
+      checkedItemCount: sessionItems.filter((item) => item.isChecked).length,
+      checkedSessionCount: checkedSessionIds.size,
+      actualPointsTotal: sessionItems.reduce(
+        (total, item) => total + (item.isChecked ? item.actualPoints : 0),
+        0,
+      ),
+      progressPercent,
+      latestUpdateAt: latestUpdateAtMs > 0 ? new Date(latestUpdateAtMs) : null,
+      lineCount: items.length,
+      plannedPointsTotal: items.reduce((total, item) => total + item.plannedPoints, 0),
+      estimatedMinutesTotal: items.reduce((total, item) => total + item.estimatedMinutes, 0),
+    };
+  });
 
   const memberCards = team.map((member) => {
     const memberAssignments = assignmentRows.filter((row) => row.assignedToEmployeeId === member.id);
@@ -1577,8 +2580,14 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       emergencyJobs: assignmentRows.filter((row) => row.priority.toLowerCase() === "emergency").length,
       overtimeCandidates: activityRows.filter((row) => minutesBetween(row.startTime, row.endTime) >= 8 * 60).length,
       overdueAssignments,
+      splOpen: splDocuments.filter((row) => !["closed", "cancelled"].includes(row.status.toLowerCase())).length,
     },
     members: memberCards,
+    splDocuments,
+    splOptions: {
+      routeTemplates: routeTemplateRows,
+      libraryActivities: libraryRows,
+    },
     pendingApprovals: pendingApprovalsRows.map((row) => ({
       ...row,
       risk:
@@ -1590,22 +2599,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     })),
     disputes: disputeRows,
     activityGroups,
-    assignmentOptions: await db
-      .select({
-        id: activityLibraries.id,
-        activityCode: activityLibraries.activityCode,
-        activityName: activityLibraries.activityName,
-        category: activityLibraries.category,
-        siteId: activityLibraries.siteId,
-      })
-      .from(activityLibraries)
-      .where(
-        and(
-          eq(activityLibraries.isAssignable, true),
-          or(eq(activityLibraries.siteId, currentEmployee.siteId), isNull(activityLibraries.siteId)),
-        ),
-      )
-      .orderBy(asc(activityLibraries.activityName)),
+    assignmentOptions: libraryRows,
     team,
   };
 }
@@ -1687,6 +2681,180 @@ export async function getDailyActivityLibraryData(email?: string | null) {
     sections: sectionsRows,
     sites: siteRows,
     creators,
+  };
+}
+
+export async function getDailyActivityRouteBuilderData(email?: string | null) {
+  await ensureDailyActivitySeedData();
+
+  const currentEmployee = await getCurrentEmployeeByEmail(email);
+  const [
+    templateRows,
+    groupRows,
+    itemRows,
+    overrideRows,
+    departmentsRows,
+    sectionsRows,
+    positionsRows,
+    siteRows,
+    libraryRows,
+  ] = await Promise.all([
+    db
+      .select({
+        id: activityRouteTemplates.id,
+        routeCode: activityRouteTemplates.routeCode,
+        routeName: activityRouteTemplates.routeName,
+        shiftCode: activityRouteTemplates.shiftCode,
+        description: activityRouteTemplates.description,
+        versionLabel: activityRouteTemplates.versionLabel,
+        mobileEnabled: activityRouteTemplates.mobileEnabled,
+        approvalRequired: activityRouteTemplates.approvalRequired,
+        isActive: activityRouteTemplates.isActive,
+        siteId: activityRouteTemplates.siteId,
+        siteName: sites.name,
+        departmentId: activityRouteTemplates.departmentId,
+        departmentName: masterDepartments.name,
+        sectionId: activityRouteTemplates.sectionId,
+        sectionName: masterSections.name,
+        positionId: activityRouteTemplates.positionId,
+        positionName: masterPositions.name,
+        effectiveFrom: activityRouteTemplates.effectiveFrom,
+        effectiveTo: activityRouteTemplates.effectiveTo,
+        createdAt: activityRouteTemplates.createdAt,
+      })
+      .from(activityRouteTemplates)
+      .leftJoin(sites, eq(activityRouteTemplates.siteId, sites.id))
+      .leftJoin(masterDepartments, eq(activityRouteTemplates.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(activityRouteTemplates.sectionId, masterSections.id))
+      .leftJoin(masterPositions, eq(activityRouteTemplates.positionId, masterPositions.id))
+      .orderBy(desc(activityRouteTemplates.isActive), asc(activityRouteTemplates.routeName)),
+    db
+      .select({
+        id: activityRouteGroups.id,
+        routeTemplateId: activityRouteGroups.routeTemplateId,
+        groupKey: activityRouteGroups.groupKey,
+        groupName: activityRouteGroups.groupName,
+        description: activityRouteGroups.description,
+        sortOrder: activityRouteGroups.sortOrder,
+        isRequired: activityRouteGroups.isRequired,
+      })
+      .from(activityRouteGroups)
+      .orderBy(asc(activityRouteGroups.routeTemplateId), asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+    db
+      .select({
+        id: activityRouteItems.id,
+        routeGroupId: activityRouteItems.routeGroupId,
+        libraryActivityId: activityRouteItems.libraryActivityId,
+        itemCode: activityRouteItems.itemCode,
+        itemLabel: activityRouteItems.itemLabel,
+        itemDescription: activityRouteItems.itemDescription,
+        pointOverride: activityRouteItems.pointOverride,
+        sortOrder: activityRouteItems.sortOrder,
+        requiresUnit: activityRouteItems.requiresUnit,
+        requiresTime: activityRouteItems.requiresTime,
+        requiresRemark: activityRouteItems.requiresRemark,
+        requiresPhoto: activityRouteItems.requiresPhoto,
+        requiresChecklistEvidence: activityRouteItems.requiresChecklistEvidence,
+        isOptional: activityRouteItems.isOptional,
+        allowCustomUnit: activityRouteItems.allowCustomUnit,
+        libraryCode: activityLibraries.activityCode,
+        libraryName: activityLibraries.activityName,
+        libraryPoints: activityLibraries.basePoints,
+      })
+      .from(activityRouteItems)
+      .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
+      .orderBy(asc(activityRouteItems.routeGroupId), asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
+    db
+      .select({
+        id: activitySectionPointOverrides.id,
+        siteId: activitySectionPointOverrides.siteId,
+        siteName: sites.name,
+        departmentId: activitySectionPointOverrides.departmentId,
+        departmentName: masterDepartments.name,
+        sectionId: activitySectionPointOverrides.sectionId,
+        sectionName: masterSections.name,
+        positionId: activitySectionPointOverrides.positionId,
+        positionName: masterPositions.name,
+        libraryActivityId: activitySectionPointOverrides.libraryActivityId,
+        libraryCode: activityLibraries.activityCode,
+        libraryName: activityLibraries.activityName,
+        overrideLabel: activitySectionPointOverrides.overrideLabel,
+        overridePoints: activitySectionPointOverrides.overridePoints,
+        reason: activitySectionPointOverrides.reason,
+        isActive: activitySectionPointOverrides.isActive,
+      })
+      .from(activitySectionPointOverrides)
+      .leftJoin(sites, eq(activitySectionPointOverrides.siteId, sites.id))
+      .leftJoin(masterDepartments, eq(activitySectionPointOverrides.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(activitySectionPointOverrides.sectionId, masterSections.id))
+      .leftJoin(masterPositions, eq(activitySectionPointOverrides.positionId, masterPositions.id))
+      .leftJoin(activityLibraries, eq(activitySectionPointOverrides.libraryActivityId, activityLibraries.id))
+      .orderBy(desc(activitySectionPointOverrides.isActive), asc(activityLibraries.activityName)),
+    db.select().from(masterDepartments).orderBy(asc(masterDepartments.name)),
+    db.select().from(masterSections).orderBy(asc(masterSections.name)),
+    db.select().from(masterPositions).orderBy(asc(masterPositions.name)),
+    db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
+    db
+      .select({
+        id: activityLibraries.id,
+        activityCode: activityLibraries.activityCode,
+        activityName: activityLibraries.activityName,
+        category: activityLibraries.category,
+        basePoints: activityLibraries.basePoints,
+        sectionId: activityLibraries.sectionId,
+        departmentId: activityLibraries.departmentId,
+        isActive: activityLibraries.isActive,
+      })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.isActive, true))
+      .orderBy(asc(activityLibraries.activityCode)),
+  ]);
+
+  const itemsByGroupId = new Map<number, typeof itemRows>();
+  for (const item of itemRows) {
+    const list = itemsByGroupId.get(item.routeGroupId) ?? [];
+    list.push(item);
+    itemsByGroupId.set(item.routeGroupId, list);
+  }
+
+  const groupsByTemplateId = new Map<
+    number,
+    Array<
+      typeof groupRows[number] & {
+        items: typeof itemRows;
+      }
+    >
+  >();
+  for (const group of groupRows) {
+    const list = groupsByTemplateId.get(group.routeTemplateId) ?? [];
+    list.push({
+      ...group,
+      items: itemsByGroupId.get(group.id) ?? [],
+    });
+    groupsByTemplateId.set(group.routeTemplateId, list);
+  }
+
+  const templates = templateRows.map((template) => ({
+    ...template,
+    groups: groupsByTemplateId.get(template.id) ?? [],
+  }));
+
+  return {
+    currentEmployee,
+    metrics: {
+      templates: templates.length,
+      activeTemplates: templates.filter((template) => template.isActive).length,
+      groups: groupRows.length,
+      items: itemRows.length,
+      overrides: overrideRows.length,
+    },
+    templates,
+    overrides: overrideRows,
+    departments: departmentsRows,
+    sections: sectionsRows,
+    positions: positionsRows,
+    sites: siteRows,
+    library: libraryRows,
   };
 }
 

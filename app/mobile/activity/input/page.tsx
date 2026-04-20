@@ -44,8 +44,8 @@ export default async function MobileActivityInputPage() {
         </Link>
 
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Recording Activity</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Add Activity</h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Recording Checklist</p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Input Daily Checklist</h1>
         </div>
       </section>
 
@@ -85,12 +85,42 @@ export default async function MobileActivityInputPage() {
         </div>
       </section>
 
+      {data.routeChecklist ? (
+        <section className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Matched Daily Route</p>
+              <p className="mt-1 text-base font-black text-[#082033]">{data.routeChecklist.routeName}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
+                {data.routeChecklist.groupCount} group • {data.routeChecklist.itemCount} item • {data.routeChecklist.shiftCode}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
+                {data.routeChecklist.routeCode}
+              </Badge>
+              {data.routeChecklist.activeSpl ? (
+                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                  {data.routeChecklist.activeSpl.splNumber}
+                </Badge>
+              ) : null}
+              {data.routeChecklist.positionName ? (
+                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                  {data.routeChecklist.positionName}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <MobileDailyActivityForm
         employeeId={data.employee.id}
         assignments={data.assignments}
         availableLibrary={data.availableLibrary}
         defaultStartTime={dateTimeLocalValue(defaultStart)}
         defaultEndTime={dateTimeLocalValue(now)}
+        routeChecklist={data.routeChecklist}
         site={data.site}
       />
     </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock3, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
+import { Clock3, FileSignature, ListChecks, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
 import {
   submitDailyActivityWithStateAction,
   submitPointDisputeAction,
@@ -90,7 +90,7 @@ export default async function MyDayPage() {
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">My Day Workspace</Badge>
+              <Badge variant="secondary">Daily Checklist Workspace</Badge>
               <Badge variant="outline">{data.site?.name ?? "Site"}</Badge>
               <Badge variant="outline">Shift {data.summary.shift}</Badge>
               {data.summary.activeModifier ? (
@@ -98,10 +98,10 @@ export default async function MyDayPage() {
               ) : null}
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">Daily Activity Ringkas dan Fokus ke Table</CardTitle>
+              <CardTitle className="text-2xl sm:text-3xl">Daily Checklist, Aktivitas, dan Point Feed</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Halaman kerja harian sekarang dipusatkan ke queue assignment, log aktivitas, point feed, dan penalty
-                audit. Input aktivitas dipindah ke modal supaya area utama tetap bersih dan cepat dipindai.
+                Halaman kerja harian dipusatkan ke route checklist, queue kerja, log submit, point feed, dan audit
+                penalty. Input aktivitas tetap cepat, tapi sekarang konteks route per section sudah mulai terlihat.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -137,6 +137,7 @@ export default async function MyDayPage() {
                   defaultStartTime={dateTimeLocalValue(defaultStart)}
                   defaultEndTime={dateTimeLocalValue(now)}
                   defaultSourceMode="assigned"
+                  routeChecklist={data.routeChecklist}
                 />
               </DialogContent>
             </Dialog>
@@ -151,9 +152,105 @@ export default async function MyDayPage() {
         </CardHeader>
       </Card>
 
+      {data.routeChecklist ? (
+        <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+          <CardHeader className="gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{data.routeChecklist.routeCode}</Badge>
+                  <Badge variant="outline">{data.routeChecklist.shiftCode}</Badge>
+                  <Badge variant="outline">{data.routeChecklist.sectionName ?? "Semua section"}</Badge>
+                  <Badge variant="outline">{data.routeChecklist.positionName ?? "Semua jabatan"}</Badge>
+                  {data.routeChecklist.activeSpl ? <Badge variant="outline">{data.routeChecklist.activeSpl.splNumber}</Badge> : null}
+                </div>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <ListChecks className="size-5 text-primary" />
+                  {data.routeChecklist.routeName}
+                </CardTitle>
+                <CardDescription className="max-w-3xl text-sm leading-6">
+                  {data.routeChecklist.description || "Route checklist aktif untuk section/jabatan user ini."}
+                </CardDescription>
+                {data.routeChecklist.activeSpl ? (
+                  <p className="text-sm font-medium text-[#486275]">
+                    SPL aktif: {data.routeChecklist.activeSpl.title} • {data.routeChecklist.activeSpl.lineCount} line
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">{data.routeChecklist.groupCount} group</Badge>
+                <Badge variant="outline">{data.routeChecklist.itemCount} item</Badge>
+                {data.routeChecklist.mobileEnabled ? <Badge variant="outline">Mobile ready</Badge> : null}
+                {data.routeChecklist.sessionId ? (
+                  <Button asChild variant="outline" size="sm" className="rounded-full">
+                    <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}`}>
+                      <FileSignature className="size-4" />
+                      Dokumen user
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.routeChecklist.activeSpl ? (
+              <div className="rounded-[1.1rem] bg-[#fff8e8] px-4 py-3 text-sm text-[#8a5a00]">
+                <p className="font-semibold">{data.routeChecklist.activeSpl.splNumber}</p>
+                <div className="mt-2 space-y-2">
+                  {data.routeChecklist.activeSpl.items.map((item) => (
+                    <div key={item.id}>
+                      <p className="font-medium">{item.lineLabel}</p>
+                      <p className="text-xs">{item.targetUnit || "-"} • {item.plannedPoints} pts</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {data.routeChecklist.groups.map((group) => (
+              <details
+                key={group.id}
+                className="rounded-[1.1rem] bg-surface-container-low px-4 py-3"
+                open={group.sortOrder === 1}
+              >
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">
+                        {group.groupKey}
+                      </p>
+                      <p className="mt-1 text-base font-black text-[#082033]">{group.groupName}</p>
+                      <p className="mt-1 text-sm text-[#486275]">{group.description || "Tanpa deskripsi group."}</p>
+                    </div>
+                    <Badge variant="outline">{group.items.length} item</Badge>
+                  </div>
+                </summary>
+                <div className="mt-3 space-y-2">
+                  {group.items.map((item) => (
+                    <div key={item.id} className="rounded-xl bg-white px-4 py-3 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+                            {item.itemCode || item.libraryCode || "ROUTE ITEM"}
+                          </p>
+                          <p className="mt-1 font-semibold text-[#082033]">{item.itemLabel}</p>
+                          <p className="mt-1 text-sm text-[#486275]">
+                            {item.itemDescription || item.libraryName || "Tanpa deskripsi item."}
+                          </p>
+                        </div>
+                        <Badge variant="outline">{item.pointOverride ?? item.libraryPoints ?? 0} pts</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Tabs defaultValue="jobs" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="jobs">Job Queue</TabsTrigger>
+          <TabsTrigger value="jobs">Checklist Queue</TabsTrigger>
           <TabsTrigger value="activity-log">Activity Log</TabsTrigger>
           {teamData?.hasSubordinates ? <TabsTrigger value="team-activity">Aktivitas Tim</TabsTrigger> : null}
           <TabsTrigger value="points">Point Feed</TabsTrigger>
