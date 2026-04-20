@@ -327,6 +327,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: "main",
+    section: "Central Service",
+    title: "Slow Moving",
+    url: "/dashboard/slow-moving",
+    iconName: "database",
+    resource: "slow_moving",
+    sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Approval Section
   {
     menuArea: "main",
