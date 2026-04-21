@@ -26,6 +26,7 @@ import {
   masterSections,
   overtimeCommandLetterItems,
   overtimeCommandLetters,
+  overtimeRequestLeaderPermissions,
   penaltyEvents,
   pointDisputes,
   pointEvents,
@@ -196,6 +197,7 @@ const manageSectionOverrideSchema = z.object({
 });
 
 const overtimeCommandLetterLineSchema = z.object({
+  assignedEmployeeId: z.coerce.number().int().positive(),
   routeTemplateId: optionalPositiveInt,
   routeItemId: optionalPositiveInt,
   libraryActivityId: optionalPositiveInt,
@@ -226,6 +228,12 @@ const manageOvertimeCommandLetterSchema = z.object({
 const transitionOvertimeCommandLetterStatusSchema = z.object({
   id: z.coerce.number().int().positive(),
   targetStatus: z.enum(["draft", "submitted", "approved", "closed"]),
+});
+
+const manageOvertimeRequestLeaderPermissionSchema = z.object({
+  leaderEmployeeId: z.coerce.number().int().positive(),
+  isActive: formBoolean(false),
+  note: z.string().trim().max(600).optional().default(""),
 });
 
 const submitActivitySchema = z.object({
@@ -340,6 +348,9 @@ async function getAuthenticatedEmployeeContext() {
           id: employees.id,
           authUserId: employees.authUserId,
           email: employees.email,
+          name: employees.name,
+          role: employees.role,
+          accessRole: employees.accessRole,
           siteId: employees.siteId,
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
@@ -359,6 +370,9 @@ async function getAuthenticatedEmployeeContext() {
             id: employees.id,
             authUserId: employees.authUserId,
             email: employees.email,
+            name: employees.name,
+            role: employees.role,
+            accessRole: employees.accessRole,
             siteId: employees.siteId,
             departmentId: employees.departmentId,
             sectionId: employees.sectionId,
@@ -452,6 +466,48 @@ function parseOvertimeCommandLetterLines(value: string) {
   }
 
   return z.array(overtimeCommandLetterLineSchema).parse(parsed);
+}
+
+function canManageOvertimeRequestSettings(
+  employee: Awaited<ReturnType<typeof getAuthenticatedEmployeeContext>>,
+) {
+  return ["Super Admin", "Site Admin", "HC Manager"].includes(employee.accessRole);
+}
+
+async function getOvertimeRequestLeaderPermission(
+  employee: Awaited<ReturnType<typeof getAuthenticatedEmployeeContext>>,
+) {
+  const [permission] = await db
+    .select({
+      id: overtimeRequestLeaderPermissions.id,
+      isActive: overtimeRequestLeaderPermissions.isActive,
+    })
+    .from(overtimeRequestLeaderPermissions)
+    .where(
+      and(
+        eq(overtimeRequestLeaderPermissions.siteId, employee.siteId),
+        eq(overtimeRequestLeaderPermissions.leaderEmployeeId, employee.id),
+      ),
+    )
+    .limit(1);
+
+  return permission ?? null;
+}
+
+async function assertOvertimeRequestCreationAccess(
+  employee: Awaited<ReturnType<typeof getAuthenticatedEmployeeContext>>,
+) {
+  const permission = await getOvertimeRequestLeaderPermission(employee);
+
+  if (permission?.isActive) {
+    return permission;
+  }
+
+  if (canManageOvertimeRequestSettings(employee)) {
+    return permission;
+  }
+
+  throw new Error("Anda belum diizinkan membuat pengajuan lembur. Aktifkan leader ini di pengaturan dulu.");
 }
 
 async function uploadSignatureFile(file: FormDataEntryValue | null, prefix: string) {
@@ -1398,6 +1454,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
 
   const payload = manageOvertimeCommandLetterSchema.parse(Object.fromEntries(formData));
   const currentEmployee = await getAuthenticatedEmployeeContext();
+  await assertOvertimeRequestCreationAccess(currentEmployee);
 
   const existingDocument =
     payload.id == null
@@ -1409,6 +1466,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
               siteId: overtimeCommandLetters.siteId,
               requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
               approvedByEmployeeId: overtimeCommandLetters.approvedByEmployeeId,
+              status: overtimeCommandLetters.status,
             })
             .from(overtimeCommandLetters)
             .where(eq(overtimeCommandLetters.id, payload.id))
@@ -1424,6 +1482,13 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
       throw new Error("Dokumen SPL tidak ditemukan di site Anda.");
     }
 
+    if (
+      existingDocument.requestedByEmployeeId !== currentEmployee.id &&
+      !canManageOvertimeRequestSettings(currentEmployee)
+    ) {
+      throw new Error("Anda tidak bisa menghapus dokumen SPL milik leader lain.");
+    }
+
     await db.delete(overtimeCommandLetters).where(eq(overtimeCommandLetters.id, payload.id));
     revalidateDailyActivitySurfaces();
     return;
@@ -1432,6 +1497,18 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
   const lineItems = parseOvertimeCommandLetterLines(payload.lineItemsJson);
   if (lineItems.length === 0) {
     throw new Error("SPL minimal punya satu line pekerjaan.");
+  }
+
+  const managedEmployeeIds = await getManagedEmployeeIdsForLead(currentEmployee.id);
+  if (managedEmployeeIds.length === 0) {
+    throw new Error("Leader ini belum punya bawahan aktif untuk pengajuan lembur.");
+  }
+
+  const managedEmployeeIdSet = new Set(managedEmployeeIds);
+  const selectedEmployeeIds = Array.from(new Set(lineItems.map((item) => item.assignedEmployeeId)));
+
+  if (selectedEmployeeIds.some((employeeId) => !managedEmployeeIdSet.has(employeeId))) {
+    throw new Error("Pengajuan lembur hanya boleh dibuat untuk bawahan leader ini.");
   }
 
   if (!payload.workDate) {
@@ -1493,6 +1570,13 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
       throw new Error("Dokumen SPL tidak ditemukan di site Anda.");
     }
 
+    if (
+      existingDocument.requestedByEmployeeId !== currentEmployee.id &&
+      !canManageOvertimeRequestSettings(currentEmployee)
+    ) {
+      throw new Error("Anda tidak bisa mengubah dokumen SPL milik leader lain.");
+    }
+
     await db
       .update(overtimeCommandLetters)
       .set(values)
@@ -1508,6 +1592,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
   await db.insert(overtimeCommandLetterItems).values(
     lineItems.map((item, index) => ({
       overtimeCommandLetterId: overtimeCommandLetterId!,
+      assignedEmployeeId: item.assignedEmployeeId,
       routeTemplateId: item.routeTemplateId ?? null,
       routeItemId: item.routeItemId ?? null,
       libraryActivityId: item.libraryActivityId ?? null,
@@ -1524,6 +1609,74 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
   );
 
   revalidateDailyActivitySurfaces();
+}
+
+export async function manageOvertimeRequestLeaderPermissionAction(formData: FormData) {
+  await ensureDailyActivitySeedData();
+
+  const payload = manageOvertimeRequestLeaderPermissionSchema.parse(Object.fromEntries(formData));
+  const currentEmployee = await getAuthenticatedEmployeeContext();
+
+  if (!canManageOvertimeRequestSettings(currentEmployee)) {
+    throw new Error("Anda tidak punya akses untuk mengubah setting leader lembur.");
+  }
+
+  const [leader] = await db
+    .select({
+      id: employees.id,
+      siteId: employees.siteId,
+      isActive: employees.isActive,
+    })
+    .from(employees)
+    .where(eq(employees.id, payload.leaderEmployeeId))
+    .limit(1);
+
+  if (!leader || !leader.isActive || leader.siteId !== currentEmployee.siteId) {
+    throw new Error("Leader yang dipilih tidak valid untuk site ini.");
+  }
+
+  const managedEmployeeIds = await getManagedEmployeeIdsForLead(leader.id);
+  if (managedEmployeeIds.length === 0) {
+    throw new Error("Leader ini belum punya bawahan aktif.");
+  }
+
+  const [existingPermission] = await db
+    .select({
+      id: overtimeRequestLeaderPermissions.id,
+    })
+    .from(overtimeRequestLeaderPermissions)
+    .where(
+      and(
+        eq(overtimeRequestLeaderPermissions.siteId, currentEmployee.siteId),
+        eq(overtimeRequestLeaderPermissions.leaderEmployeeId, payload.leaderEmployeeId),
+      ),
+    )
+    .limit(1);
+
+  if (existingPermission) {
+    await db
+      .update(overtimeRequestLeaderPermissions)
+      .set({
+        isActive: payload.isActive,
+        note: payload.note,
+        enabledByEmployeeId: currentEmployee.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(overtimeRequestLeaderPermissions.id, existingPermission.id));
+  } else {
+    await db.insert(overtimeRequestLeaderPermissions).values({
+      siteId: currentEmployee.siteId,
+      leaderEmployeeId: payload.leaderEmployeeId,
+      enabledByEmployeeId: currentEmployee.id,
+      note: payload.note,
+      isActive: payload.isActive,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  revalidateDailyActivitySurfaces();
+  revalidatePath("/dashboard/overtime-requests");
 }
 
 export async function transitionOvertimeCommandLetterStatusAction(formData: FormData) {

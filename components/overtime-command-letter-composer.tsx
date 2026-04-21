@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type OvertimeLineDraft = {
   key: string;
+  assignedEmployeeId: string;
   routeTemplateId: string;
   libraryActivityId: string;
   lineLabel: string;
@@ -29,6 +30,7 @@ type ComposerDefaults = {
   requestNotes: string;
   executionNotes: string;
   items: Array<{
+    assignedEmployeeId: number | null;
     routeTemplateId: number | null;
     libraryActivityId: number | null;
     lineLabel: string;
@@ -57,6 +59,11 @@ type OvertimeCommandLetterComposerProps = {
     activityName: string;
     basePoints: number;
   }>;
+  teamMembers: Array<{
+    id: number;
+    name: string;
+    role: string;
+  }>;
   defaults?: ComposerDefaults | null;
 };
 
@@ -75,6 +82,7 @@ function dateTimeInputValue(value?: Date | null) {
 function createEmptyLine(): OvertimeLineDraft {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    assignedEmployeeId: "",
     routeTemplateId: "",
     libraryActivityId: "",
     lineLabel: "",
@@ -92,12 +100,14 @@ export function OvertimeCommandLetterComposer({
   submitLabel,
   routeTemplates,
   libraryActivities,
+  teamMembers,
   defaults,
 }: OvertimeCommandLetterComposerProps) {
   const [lines, setLines] = useState<OvertimeLineDraft[]>(
     defaults?.items.length
       ? defaults.items.map((item, index) => ({
           key: `${defaults.id}-${index}`,
+          assignedEmployeeId: item.assignedEmployeeId ? `${item.assignedEmployeeId}` : "",
           routeTemplateId: item.routeTemplateId ? `${item.routeTemplateId}` : "",
           libraryActivityId: item.libraryActivityId ? `${item.libraryActivityId}` : "",
           lineLabel: item.lineLabel,
@@ -123,11 +133,19 @@ export function OvertimeCommandLetterComposer({
           estimatedMinutes: Number(line.estimatedMinutes || 60),
           plannedPoints: Number(line.plannedPoints || 0),
           sortOrder: index + 1,
+          assignedEmployeeId: Number(line.assignedEmployeeId || 0),
           isCustomLine: line.isCustomLine,
         })),
       ),
     [lines],
   );
+
+  const selectedMembers = useMemo(() => {
+    const selectedIds = new Set(
+      lines.map((line) => Number(line.assignedEmployeeId || 0)).filter((value) => value > 0),
+    );
+    return teamMembers.filter((member) => selectedIds.has(member.id));
+  }, [lines, teamMembers]);
 
   function updateLine(key: string, nextValue: Partial<OvertimeLineDraft>) {
     setLines((current) =>
@@ -219,7 +237,9 @@ export function OvertimeCommandLetterComposer({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-foreground">Line pekerjaan SPL</p>
-            <p className="text-xs text-muted-foreground">Pilih route template, library, atau tulis line custom.</p>
+            <p className="text-xs text-muted-foreground">
+              Pilih bawahan dulu, lalu assign checklist/library per orang.
+            </p>
           </div>
           <Button
             type="button"
@@ -232,6 +252,19 @@ export function OvertimeCommandLetterComposer({
             Tambah line
           </Button>
         </div>
+
+        {selectedMembers.length > 0 ? (
+          <div className="flex flex-wrap gap-2 rounded-[1rem] bg-white px-3 py-3 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
+            {selectedMembers.map((member) => (
+              <div
+                key={member.id}
+                className="rounded-full bg-surface-container-low px-3 py-1 text-xs font-semibold text-foreground"
+              >
+                {member.name} • {member.role}
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="space-y-3">
           {lines.map((line, index) => (
@@ -251,6 +284,24 @@ export function OvertimeCommandLetterComposer({
               </div>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Label className="grid gap-2">
+                  Bawahan
+                  <select
+                    name={`assignedEmployee-${line.key}`}
+                    required
+                    value={line.assignedEmployeeId}
+                    onChange={(event) => updateLine(line.key, { assignedEmployeeId: event.target.value })}
+                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Pilih bawahan</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} - {member.role}
+                      </option>
+                    ))}
+                  </select>
+                </Label>
+
                 <Label className="grid gap-2">
                   Route template
                   <select
@@ -277,7 +328,8 @@ export function OvertimeCommandLetterComposer({
                       );
                       updateLine(line.key, {
                         libraryActivityId: event.target.value,
-                        lineLabel: line.lineLabel || selected?.activityName || "",
+                        lineLabel: selected?.activityName || line.lineLabel,
+                        lineDescription: selected ? `Checklist library ${selected.activityCode}` : line.lineDescription,
                         plannedPoints: selected ? `${selected.basePoints}` : line.plannedPoints,
                         isCustomLine: !selected,
                       });
@@ -296,6 +348,7 @@ export function OvertimeCommandLetterComposer({
                 <Label className="grid gap-2 sm:col-span-2">
                   Label pekerjaan
                   <Input
+                    name={`lineLabel-${line.key}`}
                     value={line.lineLabel}
                     onChange={(event) => updateLine(line.key, { lineLabel: event.target.value })}
                     placeholder="Nama pekerjaan lembur"
@@ -317,7 +370,7 @@ export function OvertimeCommandLetterComposer({
                   <Input
                     value={line.targetUnit}
                     onChange={(event) => updateLine(line.key, { targetUnit: event.target.value })}
-                    placeholder="HD785 / DT451 / Area"
+                    placeholder="HD785 / DT451 / Area / Unit"
                   />
                 </Label>
 

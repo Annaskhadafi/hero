@@ -35,6 +35,7 @@ let dailyActivitySeedPromise: Promise<void> | null = null;
 const DAILY_ACTIVITY_REVALIDATE_PATHS = [
   "/dashboard/activity-hub/my-day",
   "/dashboard/activity-hub/team-board",
+  "/dashboard/overtime-requests",
   "/dashboard/activity-hub/library",
   "/dashboard/activity-hub/routes",
   "/dashboard/activity-hub/blueprint",
@@ -45,6 +46,7 @@ const DAILY_ACTIVITY_REVALIDATE_PATHS = [
   "/mobile/dashboard",
   "/mobile/activity",
   "/mobile/activity/input",
+  "/mobile/overtime",
   "/mobile/gamification",
 ] as const;
 
@@ -363,6 +365,7 @@ type MatchedRouteChecklist = {
     plannedPointsTotal: number;
     items: Array<{
       id: number;
+      assignedEmployeeId: number | null;
       routeTemplateId: number | null;
       routeItemId: number | null;
       libraryActivityId: number | null;
@@ -447,14 +450,6 @@ async function getActiveOvertimeCommandLetterForEmployee(
         gte(overtimeCommandLetters.workDate, dayStart),
         lte(overtimeCommandLetters.workDate, dayEnd),
         or(
-          eq(overtimeCommandLetters.sectionId, employee.sectionId ?? -1),
-          isNull(overtimeCommandLetters.sectionId),
-        ),
-        or(
-          eq(overtimeCommandLetters.positionId, employee.positionId ?? -1),
-          isNull(overtimeCommandLetters.positionId),
-        ),
-        or(
           eq(overtimeCommandLetters.status, "draft"),
           eq(overtimeCommandLetters.status, "submitted"),
           eq(overtimeCommandLetters.status, "approved"),
@@ -467,25 +462,12 @@ async function getActiveOvertimeCommandLetterForEmployee(
     return null;
   }
 
-  const selected = splRows
-    .map((row) => ({
-      ...row,
-      score:
-        (row.sectionId != null ? 10 : 1) +
-        (row.positionId != null ? 6 : 1) +
-        (row.status === "approved" ? 4 : row.status === "submitted" ? 3 : 1),
-    }))
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      return right.updatedAt.getTime() - left.updatedAt.getTime();
-    })[0];
-
-  const items = await db
+  const splIds = splRows.map((row) => row.id);
+  const itemRows = await db
     .select({
       id: overtimeCommandLetterItems.id,
+      overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+      assignedEmployeeId: overtimeCommandLetterItems.assignedEmployeeId,
       routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
       routeItemId: overtimeCommandLetterItems.routeItemId,
       libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
@@ -498,22 +480,72 @@ async function getActiveOvertimeCommandLetterForEmployee(
       isCustomLine: overtimeCommandLetterItems.isCustomLine,
     })
     .from(overtimeCommandLetterItems)
-    .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, selected.id))
-    .orderBy(asc(overtimeCommandLetterItems.sortOrder), asc(overtimeCommandLetterItems.id));
+    .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
+    .orderBy(
+      asc(overtimeCommandLetterItems.overtimeCommandLetterId),
+      asc(overtimeCommandLetterItems.sortOrder),
+      asc(overtimeCommandLetterItems.id),
+    );
+
+  const itemsBySplId = new Map<number, typeof itemRows>();
+  for (const item of itemRows) {
+    const list = itemsBySplId.get(item.overtimeCommandLetterId) ?? [];
+    list.push(item);
+    itemsBySplId.set(item.overtimeCommandLetterId, list);
+  }
+
+  const selectedDocument =
+    splRows
+      .map((row) => {
+        const items = itemsBySplId.get(row.id) ?? [];
+        const hasExplicitAssignments = items.some((item) => item.assignedEmployeeId != null);
+        const matchesLegacyScope =
+          (row.sectionId == null || row.sectionId === employee.sectionId) &&
+          (row.positionId == null || row.positionId === employee.positionId);
+        const relevantItems = hasExplicitAssignments
+          ? items.filter((item) => item.assignedEmployeeId === employee.id)
+          : matchesLegacyScope
+            ? items
+            : [];
+        const score =
+          (relevantItems.length > 0 ? 20 : 0) +
+          (hasExplicitAssignments ? 12 : 0) +
+          (row.status === "approved" ? 4 : row.status === "submitted" ? 3 : 1) +
+          (row.sectionId != null ? 2 : 0) +
+          (row.positionId != null ? 1 : 0);
+
+        return {
+          ...row,
+          items: relevantItems,
+          score,
+        };
+      })
+      .filter((row) => row.items.length > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return right.updatedAt.getTime() - left.updatedAt.getTime();
+      })[0] ?? null;
+
+  if (!selectedDocument) {
+    return null;
+  }
 
   return {
-    id: selected.id,
-    splNumber: selected.splNumber,
-    title: selected.title,
-    status: selected.status,
-    workDate: selected.workDate,
-    plannedStartAt: selected.plannedStartAt,
-    plannedEndAt: selected.plannedEndAt,
-    requestNotes: selected.requestNotes,
-    executionNotes: selected.executionNotes,
-    lineCount: items.length,
-    plannedPointsTotal: items.reduce((total, item) => total + item.plannedPoints, 0),
-    items,
+    id: selectedDocument.id,
+    splNumber: selectedDocument.splNumber,
+    title: selectedDocument.title,
+    status: selectedDocument.status,
+    workDate: selectedDocument.workDate,
+    plannedStartAt: selectedDocument.plannedStartAt,
+    plannedEndAt: selectedDocument.plannedEndAt,
+    requestNotes: selectedDocument.requestNotes,
+    executionNotes: selectedDocument.executionNotes,
+    lineCount: selectedDocument.items.length,
+    plannedPointsTotal: selectedDocument.items.reduce((total, item) => total + item.plannedPoints, 0),
+    items: selectedDocument.items,
   };
 }
 
@@ -2261,6 +2293,8 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       .select({
         id: overtimeCommandLetterItems.id,
         overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+        assignedEmployeeId: overtimeCommandLetterItems.assignedEmployeeId,
+        assignedEmployeeName: employees.name,
         routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
         routeTemplateName: activityRouteTemplates.routeName,
         routeItemId: overtimeCommandLetterItems.routeItemId,
@@ -2275,6 +2309,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         isCustomLine: overtimeCommandLetterItems.isCustomLine,
       })
       .from(overtimeCommandLetterItems)
+      .leftJoin(employees, eq(overtimeCommandLetterItems.assignedEmployeeId, employees.id))
       .leftJoin(activityRouteTemplates, eq(overtimeCommandLetterItems.routeTemplateId, activityRouteTemplates.id))
       .leftJoin(activityLibraries, eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id))
       .orderBy(
@@ -2418,8 +2453,14 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         .map((item) => item.overtimeCommandLetterItemId!),
     );
     const checkedSessionIds = new Set(sessionItems.filter((item) => item.isChecked).map((item) => item.sessionId));
+    const workerEntries: Array<readonly [number, string]> = [
+      ...items
+        .filter((item) => item.assignedEmployeeId != null && item.assignedEmployeeName)
+        .map((item) => [item.assignedEmployeeId!, item.assignedEmployeeName!] as const),
+      ...sessions.map((session) => [session.employeeId, session.employeeName] as const),
+    ];
     const workers = Array.from(
-      new Map(sessions.map((session) => [session.employeeId, session.employeeName])).entries(),
+      new Map<number, string>(workerEntries).entries(),
     ).map(([employeeId, employeeName]) => ({
       employeeId,
       employeeName,

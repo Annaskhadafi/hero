@@ -7,14 +7,6 @@ import { OvertimeCommandLetterComposer } from "@/components/overtime-command-let
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -113,29 +105,12 @@ export default async function TeamBoardPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             {data.hasSubordinates ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button className="rounded-full">
-                    <ClipboardList className="size-4" />
-                    Buat SPL
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Buat Surat Perintah Lembur (SPL)</DialogTitle>
-                    <DialogDescription>
-                      Dokumen lembur native. Isi header SPL lalu susun line pekerjaan per route, library, atau custom.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <OvertimeCommandLetterComposer
-                    action={manageOvertimeCommandLetterAction}
-                    intent="create"
-                    submitLabel="Simpan SPL"
-                    routeTemplates={data.splOptions.routeTemplates}
-                    libraryActivities={data.splOptions.libraryActivities}
-                  />
-                </DialogContent>
-              </Dialog>
+              <Button asChild className="rounded-full">
+                <Link href="/dashboard/overtime-requests">
+                  <ClipboardList className="size-4" />
+                  Buat SPL
+                </Link>
+              </Button>
             ) : null}
 
             <Button asChild variant="outline" className="rounded-full">
@@ -254,6 +229,11 @@ export default async function TeamBoardPage() {
                                     submitLabel="Update SPL"
                                     routeTemplates={data.splOptions.routeTemplates}
                                     libraryActivities={data.splOptions.libraryActivities}
+                                    teamMembers={data.team.map((member) => ({
+                                      id: member.id,
+                                      name: member.name,
+                                      role: member.jobTitle || member.role,
+                                    }))}
                                     defaults={document}
                                   />
                                   <form action={manageOvertimeCommandLetterAction} className="mt-3">

@@ -211,6 +211,9 @@ export const overtimeCommandLetterItems = pgTable("hero_overtime_command_letter_
   overtimeCommandLetterId: integer("overtime_command_letter_id")
     .notNull()
     .references(() => overtimeCommandLetters.id, { onDelete: "cascade" }),
+  assignedEmployeeId: integer("assigned_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
   routeTemplateId: integer("route_template_id").references(() => activityRouteTemplates.id, {
     onDelete: "set null",
   }),
@@ -230,6 +233,32 @@ export const overtimeCommandLetterItems = pgTable("hero_overtime_command_letter_
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+export const overtimeRequestLeaderPermissions = pgTable(
+  "hero_overtime_request_leader_permissions",
+  {
+    id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    leaderEmployeeId: integer("leader_employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    enabledByEmployeeId: integer("enabled_by_employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
+    note: text("note").notNull().default(""),
+    isActive: boolean("is_active").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    siteLeaderUnique: uniqueIndex("hero_overtime_request_leader_permissions_site_leader_uq").on(
+      table.siteId,
+      table.leaderEmployeeId,
+    ),
+  }),
+);
 
 export const dailyActivitySessions = pgTable("hero_daily_activity_sessions", {
   id: serial("id").primaryKey(),
