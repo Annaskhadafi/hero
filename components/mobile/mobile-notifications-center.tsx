@@ -1,13 +1,16 @@
 "use client";
 
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   Bell,
   BellRing,
   BriefcaseBusiness,
   Check,
   CheckCheck,
   ChevronDown,
+  FileSignature,
   ShieldAlert,
   Sparkles,
   Smartphone,
@@ -150,6 +153,8 @@ function formatNotificationTitle(item: NotificationRow) {
   if (payloadTitle) return payloadTitle;
 
   switch (item.eventType) {
+    case "spl_assigned":
+      return "SPL baru siap dikerjakan";
     case "step_assigned":
       return "Approval menunggu review";
     case "step_decision":
@@ -198,6 +203,8 @@ function formatNotificationBody(item: NotificationRow) {
   const location = asText(payload?.location);
 
   switch (item.eventType) {
+    case "spl_assigned":
+      return payloadBody || "Ada SPL baru yang perlu diisi evidence kerja lapangan.";
     case "step_assigned": {
       const titlePart = activityTitle ? ` untuk ${activityTitle}` : "";
       const duePart = dueAt ? ` Batas waktu ${formatDate(dueAt)}.` : "";
@@ -240,6 +247,38 @@ function getNotificationDisplayKey(item: NotificationRow) {
   ].join("|");
 }
 
+function getNotificationActionLabel(item: NotificationRow) {
+  if (item.eventType === "spl_assigned") {
+    return "Kerjakan";
+  }
+
+  if ((item.href || "").includes("/approval")) {
+    return "Review";
+  }
+
+  return "Buka";
+}
+
+function getNotificationIcon(item: NotificationRow) {
+  switch (item.eventType) {
+    case "spl_assigned":
+      return FileSignature;
+    case "points_updated":
+      return Sparkles;
+    case "hse_observation_created":
+    case "hse_observation_status_changed":
+    case "hse_incident_created":
+    case "hse_incident_status_changed":
+    case "emergency_incident_reported":
+      return ShieldAlert;
+    case "step_assigned":
+    case "step_decision":
+      return BellRing;
+    default:
+      return Bell;
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -267,6 +306,7 @@ export function MobileNotificationsCenter({
 }: {
   initialData: NotificationApiPayload;
 }) {
+  const router = useRouter();
   const [data, setData] = useState(initialData);
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof window === "undefined" || typeof Notification === "undefined"
@@ -501,6 +541,17 @@ export function MobileNotificationsCenter({
     return notifications.findIndex((candidate) => getNotificationDisplayKey(candidate) === displayKey) === index;
   });
   const unreadCount = visibleNotifications.filter((item) => !item.isRead).length;
+  const unreadSplNotifications = visibleNotifications.filter(
+    (item) => item.eventType === "spl_assigned" && !item.isRead,
+  );
+
+  async function openNotification(item: NotificationRow) {
+    if (!item.isRead) {
+      await runNotificationAction("mark-read", { ids: [item.id] });
+    }
+
+    router.push(item.href || "/mobile/notifications");
+  }
 
   return (
     <div className="space-y-5">
@@ -555,6 +606,50 @@ export function MobileNotificationsCenter({
         <div className="rounded-[1.1rem] bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#003f78]">
           {feedback}
         </div>
+      ) : null}
+
+      {unreadSplNotifications.length > 0 ? (
+        <section className="rounded-[1.35rem] bg-[#5a2200] p-4 text-white shadow-[0_20px_42px_rgba(90,34,0,0.22)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#f7d7bf]">SPL Alert</p>
+              <h2 className="mt-1 text-lg font-black leading-tight">
+                {unreadSplNotifications.length} SPL perlu evidence
+              </h2>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#f4e4d7]">
+                {formatNotificationBody(unreadSplNotifications[0])}
+              </p>
+            </div>
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/14 text-white">
+              <FileSignature className="size-5" />
+            </span>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Button
+              type="button"
+              disabled={isNotificationActionBusy}
+              onClick={() => void openNotification(unreadSplNotifications[0])}
+              className="min-h-12 rounded-2xl bg-white px-4 text-[#5a2200] hover:bg-white/90"
+            >
+              Kerjakan sekarang
+              <ArrowRight className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isNotificationActionBusy}
+              onClick={() =>
+                void runNotificationAction("mark-read", {
+                  ids: unreadSplNotifications.map((item) => item.id),
+                })
+              }
+              className="min-h-12 rounded-2xl border-white/30 bg-transparent px-4 text-white hover:bg-white/10"
+            >
+              Tandai dibaca
+            </Button>
+          </div>
+        </section>
       ) : null}
 
       <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen} className="space-y-3">
@@ -678,21 +773,52 @@ export function MobileNotificationsCenter({
         {visibleNotifications.map((item) => (
           <article
             key={item.id}
-            className="flex items-center gap-3 rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+            className="flex items-start gap-3 rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
           >
-            <span className="flex size-11 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
-              <Bell className="size-5" />
+            <span
+              className={`flex size-11 items-center justify-center rounded-2xl ${
+                item.eventType === "spl_assigned"
+                  ? "bg-[#f6dfcf] text-[#5a2200]"
+                  : "bg-[#e9f6fd] text-[#003f78]"
+              }`}
+            >
+              {(() => {
+                const Icon = getNotificationIcon(item);
+                return <Icon className="size-5" />;
+              })()}
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-black text-[#082033]">
-                {formatNotificationTitle(item)}
-              </p>
-              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">
-                {formatNotificationBody(item)}
-              </p>
-              <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
-                {formatDate(item.sentAt ?? item.createdAt)}
-              </p>
+            <div className="min-w-0 flex-1 space-y-3">
+              <button
+                type="button"
+                disabled={isNotificationActionBusy || !item.href}
+                onClick={() => void openNotification(item)}
+                className="w-full text-left disabled:cursor-default"
+              >
+                <p className="text-sm font-black text-[#082033]">{formatNotificationTitle(item)}</p>
+                <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">
+                  {formatNotificationBody(item)}
+                </p>
+                <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
+                  {formatDate(item.sentAt ?? item.createdAt)}
+                </p>
+              </button>
+              {item.href ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isNotificationActionBusy}
+                  onClick={() => void openNotification(item)}
+                  className={`h-9 rounded-xl border-0 px-3 text-[11px] font-black uppercase tracking-[0.08em] shadow-[0_10px_24px_rgba(8,32,51,0.08)] ${
+                    item.eventType === "spl_assigned"
+                      ? "bg-[#5a2200] text-white hover:bg-[#6b2a00]"
+                      : "bg-[#e9f6fd] text-[#003f78] hover:bg-[#dceef9]"
+                  }`}
+                >
+                  {getNotificationActionLabel(item)}
+                  <ArrowRight className="size-4" />
+                </Button>
+              ) : null}
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2">
               {item.isRead ? (
