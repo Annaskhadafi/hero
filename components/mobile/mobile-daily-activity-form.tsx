@@ -40,6 +40,8 @@ type AssignmentOption = {
   customJobName: string;
   priority?: string | null;
   assignedByName?: string | null;
+  libraryActivityId?: number | null;
+  requiresPhoto?: boolean | null;
 };
 
 type LibraryOption = {
@@ -165,6 +167,7 @@ type MobileDailyActivityFormProps = {
       id: number;
       routeItemId: number | null;
       libraryActivityId: number | null;
+      requiresPhoto: boolean;
       lineLabel: string;
       lineDescription: string;
       targetUnit: string;
@@ -382,6 +385,10 @@ export function MobileDailyActivityForm({
     );
   }, [availableLibrary, librarySearch]);
   const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto);
+  const selectedAssignment = useMemo(
+    () => assignments.find((item) => `${item.id}` === assignmentId) ?? null,
+    [assignmentId, assignments],
+  );
   const checklistContext = useMemo(() => {
     if (routeChecklist) {
       return {
@@ -429,7 +436,7 @@ export function MobileDailyActivityForm({
           requiresUnit: true,
           requiresTime: true,
           requiresRemark: true,
-          requiresPhoto: false,
+          requiresPhoto: item.requiresPhoto,
           requiresChecklistEvidence: true,
           pointOverride: item.plannedPoints,
           libraryCode: null,
@@ -471,6 +478,15 @@ export function MobileDailyActivityForm({
       groups,
     };
   }, [routeChecklist, standaloneOvertimeChecklist]);
+  const assignmentNeedsPhoto = sourceMode === "assigned" && Boolean(selectedAssignment?.requiresPhoto);
+  const checkedChecklistNeedsPhoto =
+    checklistContext?.groups.some((group) =>
+      group.items.some((item) => {
+        const itemState = routeItemState[item.id];
+        return (itemState?.isChecked ?? false) && item.requiresPhoto;
+      }),
+    ) ?? false;
+  const needsAnyPhoto = needsGlobalPhoto || assignmentNeedsPhoto || checkedChecklistNeedsPhoto;
 
   useEffect(() => {
     const draft = queuedDraftKey
@@ -788,6 +804,10 @@ export function MobileDailyActivityForm({
         return "Waktu selesai harus setelah waktu mulai.";
       }
 
+      if (needsAnyPhoto && !photoFile && !restoredPhotoPayload) {
+        return "Foto wajib diupload karena assignment / checklist yang dipilih butuh image evidence.";
+      }
+
       return "";
     }
 
@@ -804,6 +824,10 @@ export function MobileDailyActivityForm({
         return "Waktu selesai harus setelah waktu mulai.";
       }
 
+      if (needsAnyPhoto && !photoFile && !restoredPhotoPayload) {
+        return "Foto wajib diupload karena checklist yang dipilih butuh image evidence.";
+      }
+
       return "";
     }
 
@@ -811,8 +835,8 @@ export function MobileDailyActivityForm({
       return "Pilih minimal satu activity library.";
     }
 
-    if (needsGlobalPhoto && !photoFile && !restoredPhotoPayload) {
-      return "Minimal satu foto wajib karena ada library yang butuh foto.";
+    if (needsAnyPhoto && !photoFile && !restoredPhotoPayload) {
+      return "Minimal satu foto wajib karena ada activity / checklist yang butuh image evidence.";
     }
 
     const ranges: Array<{ code: string; start: Date; end: Date }> = [];
@@ -1116,6 +1140,11 @@ export function MobileDailyActivityForm({
                   </option>
                 ))}
               </select>
+              <p className="text-xs font-semibold leading-5 text-[#486275]">
+                {selectedAssignment?.requiresPhoto
+                  ? "Assignment ini wajib upload foto evidence."
+                  : "Pilih assignment yang sedang dikerjakan."}
+              </p>
             </Label>
           ) : null}
 
@@ -1403,6 +1432,11 @@ export function MobileDailyActivityForm({
                               <span className="mt-1 block text-xs leading-5 text-[#486275]">
                                 {item.itemDescription || item.libraryName || "Checklist item"}
                               </span>
+                              {item.requiresPhoto ? (
+                                <span className="mt-1 inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#8a5a00]">
+                                  Foto wajib
+                                </span>
+                              ) : null}
                               <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-[#003f78]">
                                 {item.pointOverride ?? item.libraryPoints ?? 0} pts
                               </span>
@@ -1585,10 +1619,17 @@ export function MobileDailyActivityForm({
         </section>
 
         <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
-            <Camera className="size-3.5 text-[#003f78]" />
-            Photo camera / galeri
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+              <Camera className="size-3.5 text-[#003f78]" />
+              Photo camera / galeri
+            </p>
+            {needsAnyPhoto ? (
+              <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                Foto wajib
+              </Badge>
+            ) : null}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Button
@@ -1635,8 +1676,8 @@ export function MobileDailyActivityForm({
             <p className="text-xs font-semibold text-[#486275]">{photoName}</p>
           ) : (
             <p className="text-xs font-semibold text-[#486275]">
-              {needsGlobalPhoto
-                ? "Minimal satu foto wajib karena ada activity terpilih yang butuh bukti foto."
+              {needsAnyPhoto
+                ? "Minimal satu foto wajib karena assignment / checklist / activity terpilih butuh image evidence."
                 : "Upload opsional. Cocok untuk bukti kerja dan context lapangan."}
             </p>
           )}

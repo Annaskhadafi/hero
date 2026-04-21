@@ -14,6 +14,7 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { LogoutButton } from "@/components/logout-button";
 import { getServerSession } from "@/lib/auth-session";
 
 const menuItems = [
@@ -77,6 +78,21 @@ export default async function MobileMenuPage() {
             </Link>
           );
         })}
+      </section>
+
+      <section className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#486275]">Session</p>
+        <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Keluar dari HERO</h2>
+        <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
+          Logout cepat dari aplikasi mobile.
+        </p>
+        <div className="mt-4">
+          <LogoutButton
+            variant="default"
+            label="Logout"
+            className="h-12 w-full rounded-2xl border-0 bg-[#5a2200] text-white shadow-[0_14px_28px_rgba(90,34,0,0.18)] hover:bg-[#6b2a00]"
+          />
+        </div>
       </section>
     </div>
   );

@@ -47,6 +47,7 @@ import {
   getManagedEmployeeIdsForLead,
 } from "@/lib/daily-activity";
 import { auth } from "@/lib/auth";
+import { createNotificationEventForEmployee, sendPushNotification } from "@/lib/push-notifications";
 import { uploadAnyFileToS3 } from "@/lib/s3-storage";
 
 const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024;
@@ -1475,6 +1476,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
           await db
             .select({
               id: overtimeCommandLetters.id,
+              splNumber: overtimeCommandLetters.splNumber,
               siteId: overtimeCommandLetters.siteId,
               requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
               approvedByEmployeeId: overtimeCommandLetters.approvedByEmployeeId,
@@ -1561,6 +1563,7 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
   };
 
   let overtimeCommandLetterId = payload.id ?? null;
+  let splNumber = existingDocument?.splNumber ?? null;
 
   if (payload.intent === "create") {
     const [created] = await db
@@ -1570,9 +1573,13 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
         splNumber: buildSplNumber(currentEmployee.siteId, currentEmployee.id, workDate),
         createdAt: new Date(),
       })
-      .returning({ id: overtimeCommandLetters.id });
+      .returning({
+        id: overtimeCommandLetters.id,
+        splNumber: overtimeCommandLetters.splNumber,
+      });
 
     overtimeCommandLetterId = created.id;
+    splNumber = created.splNumber;
   } else {
     if (!payload.id) {
       throw new Error("SPL tidak valid.");
@@ -1619,6 +1626,48 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
       updatedAt: new Date(),
     })),
   );
+
+  if (payload.intent === "create" && overtimeCommandLetterId != null) {
+    const workDateLabel = workDate.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const notificationTitle = "SPL baru siap dikerjakan";
+    const notificationBody = `${splNumber ?? "SPL baru"} • ${payload.title} • ${workDateLabel}`;
+
+    await Promise.all(
+      selectedEmployeeIds.map(async (assignedEmployeeId) => {
+        try {
+          const event = await createNotificationEventForEmployee({
+            employeeId: assignedEmployeeId,
+            eventType: "spl_assigned",
+            category: "approval_requests",
+            title: notificationTitle,
+            body: notificationBody,
+            url: "/mobile/activity/input",
+          });
+
+          await sendPushNotification({
+            employeeId: assignedEmployeeId,
+            category: "approval_requests",
+            title: notificationTitle,
+            body: notificationBody,
+            url: "/mobile/activity/input",
+            tag: `spl-${overtimeCommandLetterId}-${assignedEmployeeId}`,
+            notificationEventId: event?.id,
+            metadata: {
+              overtimeCommandLetterId,
+              splNumber: splNumber ?? "",
+              eventType: "spl_assigned",
+            },
+          });
+        } catch (error) {
+          console.error("Failed to dispatch SPL notification", error);
+        }
+      }),
+    );
+  }
 
   revalidateDailyActivitySurfaces();
 }
@@ -1859,6 +1908,12 @@ export async function submitDailyActivityAction(formData: FormData) {
     }
   }
 
+  const routeSessionItems = parseRouteSessionItems(payload.routeSessionItemsJson);
+  const checklistRequiresPhoto = routeSessionItems.some(
+    (item) => item.isChecked && item.snapshotPayload?.requiresPhoto === true,
+  );
+  const requiresEvidencePhoto = Boolean(library?.requiresPhoto) || checklistRequiresPhoto;
+
   const dayStart = startOfDay(startTime);
   const dayEnd = endOfDay(startTime);
   const configMap = await getDailyActivityConfigMap();
@@ -1928,6 +1983,10 @@ export async function submitDailyActivityAction(formData: FormData) {
 
     const uploaded = await uploadAnyFileToS3(photoFile, "activity-photos");
     uploadedPhotoUrl = uploaded.url;
+  }
+
+  if (requiresEvidencePhoto && uploadedPhotoUrl.trim().length === 0) {
+    throw new Error("Foto wajib diupload untuk activity / checklist yang dipilih.");
   }
 
   await syncDailyRouteSessionForActivity({

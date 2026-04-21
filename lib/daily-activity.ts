@@ -369,6 +369,7 @@ type MatchedRouteChecklist = {
       routeTemplateId: number | null;
       routeItemId: number | null;
       libraryActivityId: number | null;
+      requiresPhoto: boolean;
       lineLabel: string;
       lineDescription: string;
       targetUnit: string;
@@ -471,6 +472,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
       routeTemplateId: overtimeCommandLetterItems.routeTemplateId,
       routeItemId: overtimeCommandLetterItems.routeItemId,
       libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
+      requiresPhoto: sql<boolean>`coalesce(${activityLibraries.requiresPhoto}, false)`,
       lineLabel: overtimeCommandLetterItems.lineLabel,
       lineDescription: overtimeCommandLetterItems.lineDescription,
       targetUnit: overtimeCommandLetterItems.targetUnit,
@@ -480,6 +482,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
       isCustomLine: overtimeCommandLetterItems.isCustomLine,
     })
     .from(overtimeCommandLetterItems)
+    .leftJoin(activityLibraries, eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id))
     .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
     .orderBy(
       asc(overtimeCommandLetterItems.overtimeCommandLetterId),
@@ -2390,6 +2393,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         routeItemId: overtimeCommandLetterItems.routeItemId,
         libraryActivityId: overtimeCommandLetterItems.libraryActivityId,
         libraryName: activityLibraries.activityName,
+        requiresPhoto: sql<boolean>`coalesce(${activityLibraries.requiresPhoto}, false)`,
         lineLabel: overtimeCommandLetterItems.lineLabel,
         lineDescription: overtimeCommandLetterItems.lineDescription,
         targetUnit: overtimeCommandLetterItems.targetUnit,

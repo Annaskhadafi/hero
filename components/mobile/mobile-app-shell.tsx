@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { LogoutButton } from "@/components/logout-button";
 import { cn } from "@/lib/utils";
 
 type NotificationCountResponse = {
@@ -236,6 +237,13 @@ export function MobileAppShell({
                     );
                   })}
                 </nav>
+                <div className="px-4 pb-5">
+                  <LogoutButton
+                    variant="default"
+                    label="Logout"
+                    className="h-12 w-full rounded-xl border-0 bg-[#5a2200] text-white shadow-[0_14px_28px_rgba(90,34,0,0.18)] hover:bg-[#6b2a00]"
+                  />
+                </div>
               </SheetContent>
             </Sheet>
 

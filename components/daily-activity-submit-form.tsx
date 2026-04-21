@@ -19,6 +19,8 @@ type AssignmentOption = {
   customJobName: string;
   priority?: string | null;
   assignedByName?: string | null;
+  libraryActivityId?: number | null;
+  requiresPhoto?: boolean | null;
 };
 
 type LibraryOption = {
@@ -26,6 +28,7 @@ type LibraryOption = {
   activityCode: string;
   activityName: string;
   basePoints: number;
+  requiresPhoto?: boolean;
 };
 
 type DailyActivitySubmitActionState = {
@@ -167,6 +170,7 @@ export function DailyActivitySubmitForm({
   const firstLibraryId = availableLibrary[0]?.id ? `${availableLibrary[0].id}` : "";
   const [sourceMode, setSourceMode] = useState<SourceMode>(defaultSourceMode);
   const [assignmentId, setAssignmentId] = useState(defaultSourceMode === "assigned" ? firstAssignmentId : "");
+  const [libraryActivityId, setLibraryActivityId] = useState(defaultSourceMode === "self_input" ? firstLibraryId : "");
   const [photoName, setPhotoName] = useState("");
   const [photoCaptureMode, setPhotoCaptureMode] = useState<"camera" | "gallery">("gallery");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -176,6 +180,14 @@ export function DailyActivitySubmitForm({
   const showAssignment = sourceMode === "assigned";
   const isMobile = variant === "mobile";
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({});
+  const selectedAssignment = useMemo(
+    () => assignments.find((item) => `${item.id}` === assignmentId) ?? null,
+    [assignmentId, assignments],
+  );
+  const selectedLibrary = useMemo(
+    () => availableLibrary.find((item) => `${item.id}` === libraryActivityId) ?? null,
+    [availableLibrary, libraryActivityId],
+  );
 
   function toDateTimeLocalValue(value?: string | Date | null) {
     if (!value) return "";
@@ -298,6 +310,17 @@ export function DailyActivitySubmitForm({
       ) ?? [],
     [defaultEndTime, defaultStartTime, routeChecklist, routeItemState],
   );
+  const checkedChecklistNeedsPhoto =
+    routeChecklist?.groups.some((group) =>
+      group.items.some((item) => {
+        const itemState = routeItemState[item.id];
+        return (itemState?.isChecked ?? false) && item.requiresPhoto;
+      }),
+    ) ?? false;
+  const needsAnyPhoto =
+    Boolean(selectedLibrary?.requiresPhoto) ||
+    Boolean(selectedAssignment?.requiresPhoto) ||
+    checkedChecklistNeedsPhoto;
 
   const routeChecklistSection =
     routeChecklist != null ? (
@@ -373,6 +396,11 @@ export function DailyActivitySubmitForm({
                           <span className="block text-xs text-muted-foreground">
                             {item.itemDescription || item.libraryName || "Checklist item"}
                           </span>
+                          {item.requiresPhoto ? (
+                            <span className="inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#8a5a00]">
+                              Foto wajib
+                            </span>
+                          ) : null}
                           <span className="block text-[11px] font-semibold text-primary">
                             {item.pointOverride ?? item.libraryPoints ?? 0} pts
                           </span>
@@ -465,6 +493,7 @@ export function DailyActivitySubmitForm({
           const nextMode = event.target.value as SourceMode;
           setSourceMode(nextMode);
           setAssignmentId(nextMode === "assigned" ? firstAssignmentId : "");
+          setLibraryActivityId(nextMode === "self_input" ? firstLibraryId : "");
         }}
         className={fieldClass}
       >
@@ -494,7 +523,9 @@ export function DailyActivitySubmitForm({
         ))}
       </select>
       <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
-        Approval otomatis ke atasan langsung.
+        {selectedAssignment?.requiresPhoto
+          ? "Assignment ini wajib upload foto evidence."
+          : "Approval otomatis ke atasan langsung."}
       </span>
     </Label>
   ) : null;
@@ -502,7 +533,13 @@ export function DailyActivitySubmitForm({
   const libraryField = showLibrary ? (
     <Label className={labelClass}>
       <span className={labelTextClass}>Library activity</span>
-      <select name="libraryActivityId" defaultValue={firstLibraryId} required={showLibrary} className={fieldClass}>
+      <select
+        name="libraryActivityId"
+        value={libraryActivityId}
+        required={showLibrary}
+        onChange={(event) => setLibraryActivityId(event.target.value)}
+        className={fieldClass}
+      >
         <option value="">Pilih activity library</option>
         {availableLibrary.map((item) => (
           <option key={item.id} value={item.id}>
@@ -510,6 +547,11 @@ export function DailyActivitySubmitForm({
           </option>
         ))}
       </select>
+      <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
+        {selectedLibrary?.requiresPhoto
+          ? "Library ini wajib upload foto evidence."
+          : "Pilih activity library sesuai pekerjaan real di lapangan."}
+      </span>
     </Label>
   ) : null;
 
@@ -662,7 +704,9 @@ export function DailyActivitySubmitForm({
                 </Button>
               </div>
               <span className={mobileHintClass}>
-                Di mobile, tombol ini buka kamera atau galeri native. Di web, upload dari file picker browser.
+                {needsAnyPhoto
+                  ? "Foto wajib. Tombol ini buka kamera atau galeri native di mobile, dan file picker di web."
+                  : "Di mobile, tombol ini buka kamera atau galeri native. Di web, upload dari file picker browser."}
               </span>
               {photoName ? <span className={mobileHintClass}>{photoName}</span> : null}
               {state.status === "error" ? (
@@ -736,6 +780,11 @@ export function DailyActivitySubmitForm({
               onChange={(event) => setPhotoName(event.target.files?.[0]?.name ?? "")}
             />
             {photoName ? <span className="text-xs text-muted-foreground">{photoName}</span> : null}
+            <span className="text-xs text-muted-foreground">
+              {needsAnyPhoto
+                ? "Foto wajib karena assignment / checklist / library yang dipilih butuh image evidence."
+                : "Foto opsional, tapi disarankan untuk bukti kerja lapangan."}
+            </span>
           </Label>
         </>
       )}

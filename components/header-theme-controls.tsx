@@ -22,6 +22,7 @@ import {
 import { SimpleThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LogoutButton } from "@/components/logout-button";
 import {
   CommandDialog,
   CommandEmpty,
@@ -396,6 +397,13 @@ export function HeaderThemeControls() {
           </div>
         </PopoverContent>
       </Popover>
+
+      <LogoutButton
+        variant="ghost"
+        size="icon"
+        label="Keluar"
+        className="size-9 min-h-9 min-w-9 rounded-xl bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 hover:text-white sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl"
+      />
 
       <div className="[&_button]:size-9 [&_button]:min-h-9 [&_button]:min-w-9 [&_button]:rounded-xl [&_button]:bg-white/12 [&_button]:text-white [&_button]:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] [&_button]:hover:bg-white/16 [&_button]:hover:text-white sm:[&_button]:size-11 sm:[&_button]:min-h-11 sm:[&_button]:min-w-11 sm:[&_button]:rounded-2xl">
         <SimpleThemeToggle />
