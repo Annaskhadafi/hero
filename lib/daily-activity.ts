@@ -2032,7 +2032,13 @@ export async function getDailyActivityEmployeeData(
           complexityLevel: activityLibraries.complexityLevel,
           requiresPhoto: activityLibraries.requiresPhoto,
           requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          requiresDuration: activityLibraries.requiresDuration,
           requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+          requiresLocationGps: activityLibraries.requiresLocationGps,
+          maxDailyCount: activityLibraries.maxDailyCount,
+          maxPointsPerDay: activityLibraries.maxPointsPerDay,
+          departmentId: activityLibraries.departmentId,
+          sectionId: activityLibraries.sectionId,
           slaHours: activityLibraries.slaHours,
         })
         .from(activityLibraries)
@@ -2049,10 +2055,13 @@ export async function getDailyActivityEmployeeData(
               eq(activityLibraries.departmentId, employee.departmentId ?? -1),
               isNull(activityLibraries.departmentId),
             ),
+            or(
+              eq(activityLibraries.sectionId, employee.sectionId ?? -1),
+              isNull(activityLibraries.sectionId),
+            ),
           ),
         )
-        .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName))
-        .limit(6),
+        .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName)),
       db
         .select()
         .from(activityModifiers)
@@ -2299,13 +2308,28 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         activityCode: activityLibraries.activityCode,
         activityName: activityLibraries.activityName,
         basePoints: activityLibraries.basePoints,
+        requiresPhoto: activityLibraries.requiresPhoto,
+        requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+        requiresDuration: activityLibraries.requiresDuration,
+        requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+        requiresLocationGps: activityLibraries.requiresLocationGps,
+        maxDailyCount: activityLibraries.maxDailyCount,
+        maxPointsPerDay: activityLibraries.maxPointsPerDay,
+        departmentId: activityLibraries.departmentId,
+        sectionId: activityLibraries.sectionId,
       })
       .from(activityLibraries)
       .where(
         and(
           eq(activityLibraries.isActive, true),
-          eq(activityLibraries.isAssignable, true),
+          eq(activityLibraries.isSelfInput, true),
           or(eq(activityLibraries.siteId, currentEmployee.siteId), isNull(activityLibraries.siteId)),
+          currentEmployee.departmentId != null
+            ? or(eq(activityLibraries.departmentId, currentEmployee.departmentId), isNull(activityLibraries.departmentId))
+            : undefined,
+          currentEmployee.sectionId != null
+            ? or(eq(activityLibraries.sectionId, currentEmployee.sectionId), isNull(activityLibraries.sectionId))
+            : undefined,
         ),
       )
       .orderBy(asc(activityLibraries.activityCode)),

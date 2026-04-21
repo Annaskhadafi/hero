@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Camera,
+  Check,
   ImagePlus,
-  MapPin,
+  ListFilter,
   Navigation,
   Save,
+  Search,
   SendHorizontal,
+  X,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +47,15 @@ type LibraryOption = {
   activityCode: string;
   activityName: string;
   basePoints: number;
+  requiresPhoto: boolean;
+  requiresEquipmentNo: boolean;
+  requiresDuration: boolean;
+  requiresMaterialUsed: boolean;
+  requiresLocationGps: boolean;
+  maxDailyCount: number;
+  maxPointsPerDay: number;
+  departmentId: number | null;
+  sectionId: number | null;
 };
 
 type MobileDailyActivityFormProps = {
@@ -119,6 +139,14 @@ type RouteItemState = {
   actualPoints: string;
 };
 
+type SelfInputEntryState = {
+  equipmentNo: string;
+  startTime: string;
+  endTime: string;
+  materialUsed: string;
+  notes: string;
+};
+
 const emptyRouteItemState: RouteItemState = {
   isChecked: false,
   unitNumber: "",
@@ -174,6 +202,58 @@ function clearDraft(key: string) {
   window.localStorage.removeItem(key);
 }
 
+function toDateTimeLocalValue(value?: string | Date | null) {
+  if (!value) return "";
+  const dateValue = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dateValue.getTime())) return "";
+  const local = new Date(dateValue.getTime() - dateValue.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function shiftDateTimeLocalValue(value: string, minutes: number) {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  parsed.setMinutes(parsed.getMinutes() + minutes);
+  return toDateTimeLocalValue(parsed);
+}
+
+function getDurationMinutes(startTime: string, endTime: string) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 60;
+  }
+
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  return minutes > 0 ? minutes : 60;
+}
+
+function buildDefaultSelfInputEntry(
+  index: number,
+  defaultStartTime: string,
+  defaultEndTime: string,
+): SelfInputEntryState {
+  const durationMinutes = getDurationMinutes(defaultStartTime, defaultEndTime);
+  const offsetMinutes = index * durationMinutes;
+
+  return {
+    equipmentNo: "",
+    startTime: shiftDateTimeLocalValue(defaultStartTime, offsetMinutes),
+    endTime: shiftDateTimeLocalValue(defaultEndTime, offsetMinutes),
+    materialUsed: "",
+    notes: "",
+  };
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export function MobileDailyActivityForm({
   employeeId,
   assignments,
@@ -189,7 +269,10 @@ export function MobileDailyActivityForm({
 
   const [sourceMode, setSourceMode] = useState<"assigned" | "self_input" | "custom">("self_input");
   const [assignmentId, setAssignmentId] = useState("");
-  const [libraryActivityId, setLibraryActivityId] = useState(availableLibrary[0]?.id ? `${availableLibrary[0].id}` : "");
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>([]);
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>({});
   const [customActivityName, setCustomActivityName] = useState("");
   const [customActivityDescription, setCustomActivityDescription] = useState("");
   const [equipmentNo, setEquipmentNo] = useState("");
@@ -210,13 +293,28 @@ export function MobileDailyActivityForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({});
 
-  function toDateTimeLocalValue(value?: string | Date | null) {
-    if (!value) return "";
-    const dateValue = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(dateValue.getTime())) return "";
-    const local = new Date(dateValue.getTime() - dateValue.getTimezoneOffset() * 60000);
-    return local.toISOString().slice(0, 16);
-  }
+  const availableLibraryMap = useMemo(
+    () => new Map(availableLibrary.map((item) => [`${item.id}`, item])),
+    [availableLibrary],
+  );
+  const selectedLibraries = useMemo(
+    () =>
+      selectedLibraryIds
+        .map((id) => availableLibraryMap.get(id))
+        .filter((item): item is LibraryOption => Boolean(item)),
+    [availableLibraryMap, selectedLibraryIds],
+  );
+  const filteredLibraries = useMemo(() => {
+    const normalizedSearch = normalizeSearch(librarySearch);
+    if (!normalizedSearch) {
+      return availableLibrary;
+    }
+
+    return availableLibrary.filter((item) =>
+      normalizeSearch(`${item.activityCode} ${item.activityName} ${item.basePoints}`).includes(normalizedSearch),
+    );
+  }, [availableLibrary, librarySearch]);
+  const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto);
 
   useEffect(() => {
     const draft = queuedDraftKey
@@ -231,6 +329,36 @@ export function MobileDailyActivityForm({
       draft.sourceMode === "assigned" || draft.sourceMode === "self_input" || draft.sourceMode === "custom"
         ? draft.sourceMode
         : "self_input";
+    const restoredSelectedLibraryIds =
+      Array.isArray(draft.selectedLibraryActivityIds) && draft.selectedLibraryActivityIds.length > 0
+        ? draft.selectedLibraryActivityIds
+        : draft.libraryActivityId
+          ? [draft.libraryActivityId]
+          : [];
+    const restoredSelfInputEntries = Array.isArray(draft.selfInputActivities)
+      ? Object.fromEntries(
+          draft.selfInputActivities.map((item, index) => [
+            item.libraryActivityId,
+            {
+              equipmentNo: item.equipmentNo ?? "",
+              startTime: item.startTime || buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
+              endTime: item.endTime || buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
+              materialUsed: item.materialUsed ?? "",
+              notes: item.notes ?? "",
+            },
+          ]),
+        )
+      : draft.libraryActivityId
+        ? {
+            [draft.libraryActivityId]: {
+              equipmentNo: draft.equipmentNo ?? "",
+              startTime: draft.startTime || defaultStartTime,
+              endTime: draft.endTime || defaultEndTime,
+              materialUsed: draft.materialUsed ?? "",
+              notes: draft.notes ?? "",
+            },
+          }
+        : {};
     const restoredRouteSessionItems: RouteSessionSyncItem[] = Array.isArray(
       (draft as Partial<ActivitySyncPayload>).routeSessionItems,
     )
@@ -239,7 +367,8 @@ export function MobileDailyActivityForm({
 
     setSourceMode(restoredSourceMode);
     setAssignmentId(draft.assignmentId ?? "");
-    setLibraryActivityId(draft.libraryActivityId ?? "");
+    setSelectedLibraryIds(restoredSelectedLibraryIds);
+    setSelfInputEntries(restoredSelfInputEntries);
     setCustomActivityName(draft.customActivityName ?? "");
     setCustomActivityDescription(draft.customActivityDescription ?? "");
     setEquipmentNo(draft.equipmentNo ?? "");
@@ -343,6 +472,39 @@ export function MobileDailyActivityForm({
     }));
   }
 
+  function updateSelfInputEntry(libraryId: string, nextValue: Partial<SelfInputEntryState>) {
+    setSelfInputEntries((current) => ({
+      ...current,
+      [libraryId]: {
+        ...(current[libraryId] ?? buildDefaultSelfInputEntry(selectedLibraryIds.indexOf(libraryId), defaultStartTime, defaultEndTime)),
+        ...nextValue,
+      },
+    }));
+  }
+
+  function toggleLibrarySelection(libraryId: string) {
+    setSelectedLibraryIds((current) => {
+      const exists = current.includes(libraryId);
+      const nextIds = exists ? current.filter((item) => item !== libraryId) : [...current, libraryId];
+
+      setSelfInputEntries((previous) => {
+        if (exists) {
+          const { [libraryId]: _removed, ...rest } = previous;
+          return rest;
+        }
+
+        return {
+          ...previous,
+          [libraryId]:
+            previous[libraryId] ??
+            buildDefaultSelfInputEntry(current.length, defaultStartTime, defaultEndTime),
+        };
+      });
+
+      return nextIds;
+    });
+  }
+
   const routeSessionItems: RouteSessionSyncItem[] =
     routeChecklist?.groups.flatMap((group) =>
       group.items.map((item) => {
@@ -384,15 +546,27 @@ export function MobileDailyActivityForm({
       }),
     ) ?? [];
 
-  const payload: ActivitySyncPayload = {
+  const draftPayload: ActivitySyncPayload = {
     employeeId,
     sourceMode,
     assignmentId,
-    libraryActivityId,
+    libraryActivityId: selectedLibraryIds[0] ?? "",
+    selectedLibraryActivityIds: selectedLibraryIds,
+    selfInputActivities: selectedLibraryIds.map((libraryId, index) => {
+      const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+      return {
+        libraryActivityId: libraryId,
+        equipmentNo: entry.equipmentNo,
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+        materialUsed: entry.materialUsed,
+        notes: entry.notes,
+      };
+    }),
     routeTemplateId: routeChecklist?.id ? `${routeChecklist.id}` : "",
     overtimeCommandLetterId: routeChecklist?.activeSpl?.id ? `${routeChecklist.activeSpl.id}` : "",
     routeShiftCode: routeChecklist?.shiftCode ?? "",
-    routeSummaryRemark: notes,
+    routeSummaryRemark: "",
     routeSessionItems,
     customActivityName,
     customActivityDescription,
@@ -417,20 +591,12 @@ export function MobileDailyActivityForm({
   };
 
   useEffect(() => {
-    writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, payload);
-  }, [payload]);
+    writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload);
+  }, [draftPayload]);
 
   function validatePayload() {
-    if (sourceMode === "assigned" && !assignmentId) {
-      return "Pilih assignment dulu.";
-    }
-
-    if (sourceMode === "self_input" && !libraryActivityId) {
-      return "Pilih activity library dulu.";
-    }
-
-    if (sourceMode === "custom" && !customActivityName.trim()) {
-      return "Nama custom activity wajib diisi.";
+    if (!geo.latitude && !manualLocation.trim()) {
+      return "Aktifkan GPS atau isi lokasi manual sebagai fallback.";
     }
 
     if (
@@ -441,16 +607,86 @@ export function MobileDailyActivityForm({
       return "Centang minimal satu item checklist route.";
     }
 
-    if (!startTime || !endTime) {
-      return "Waktu mulai dan selesai wajib diisi.";
+    if (sourceMode === "assigned") {
+      if (!assignmentId) {
+        return "Pilih assignment dulu.";
+      }
+
+      if (!startTime || !endTime) {
+        return "Waktu mulai dan selesai wajib diisi.";
+      }
+
+      if (new Date(endTime) <= new Date(startTime)) {
+        return "Waktu selesai harus setelah waktu mulai.";
+      }
+
+      return "";
     }
 
-    if (new Date(endTime) <= new Date(startTime)) {
-      return "Waktu selesai harus setelah waktu mulai.";
+    if (sourceMode === "custom") {
+      if (!customActivityName.trim()) {
+        return "Nama custom activity wajib diisi.";
+      }
+
+      if (!startTime || !endTime) {
+        return "Waktu mulai dan selesai wajib diisi.";
+      }
+
+      if (new Date(endTime) <= new Date(startTime)) {
+        return "Waktu selesai harus setelah waktu mulai.";
+      }
+
+      return "";
     }
 
-    if (!geo.latitude && !manualLocation.trim()) {
-      return "Aktifkan GPS atau isi lokasi manual sebagai fallback.";
+    if (selectedLibraries.length === 0) {
+      return "Pilih minimal satu activity library.";
+    }
+
+    if (needsGlobalPhoto && !photoFile && !restoredPhotoPayload) {
+      return "Minimal satu foto wajib karena ada library yang butuh foto.";
+    }
+
+    const ranges: Array<{ code: string; start: Date; end: Date }> = [];
+
+    for (const [index, library] of selectedLibraries.entries()) {
+      const libraryId = `${library.id}`;
+      const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+
+      if (library.requiresEquipmentNo && !entry.equipmentNo.trim()) {
+        return `${library.activityCode} wajib isi nomor equipment / unit.`;
+      }
+
+      if (library.requiresMaterialUsed && !entry.materialUsed.trim()) {
+        return `${library.activityCode} wajib isi material / tools.`;
+      }
+
+      if (!entry.startTime || !entry.endTime) {
+        return `${library.activityCode} wajib isi waktu mulai dan selesai.`;
+      }
+
+      const start = new Date(entry.startTime);
+      const end = new Date(entry.endTime);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return `${library.activityCode} punya format waktu tidak valid.`;
+      }
+
+      if (end <= start) {
+        return `${library.activityCode} punya waktu selesai lebih kecil dari mulai.`;
+      }
+
+      ranges.push({ code: library.activityCode, start, end });
+    }
+
+    const sortedRanges = [...ranges].sort((left, right) => left.start.getTime() - right.start.getTime());
+    for (let index = 1; index < sortedRanges.length; index += 1) {
+      const previous = sortedRanges[index - 1];
+      const current = sortedRanges[index];
+
+      if (current.start < previous.end) {
+        return `Waktu ${current.code} bentrok dengan ${previous.code}.`;
+      }
     }
 
     return "";
@@ -476,6 +712,34 @@ export function MobileDailyActivityForm({
     return result;
   }
 
+  function buildSelfInputPayloads(sharedPhoto: QueuedFilePayload | null) {
+    return selectedLibraries.map((library, index) => {
+      const libraryId = `${library.id}`;
+      const entry = selfInputEntries[libraryId] ?? buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+
+      return {
+        label: `${library.activityCode} - ${library.activityName}`,
+        payload: {
+          ...draftPayload,
+          sourceMode: "self_input" as const,
+          libraryActivityId: libraryId,
+          assignmentId: "",
+          equipmentNo: entry.equipmentNo,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          materialUsed: entry.materialUsed,
+          notes: entry.notes,
+          routeTemplateId: index === 0 ? draftPayload.routeTemplateId : "",
+          overtimeCommandLetterId: index === 0 ? draftPayload.overtimeCommandLetterId : "",
+          routeShiftCode: index === 0 ? draftPayload.routeShiftCode : "",
+          routeSummaryRemark: "",
+          routeSessionItems: index === 0 ? routeSessionItems : [],
+          photo: sharedPhoto,
+        },
+      };
+    });
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitState({ kind: "idle", message: "" });
@@ -488,21 +752,41 @@ export function MobileDailyActivityForm({
 
     setIsSubmitting(true);
     try {
-      const submitPayload: ActivitySyncPayload = {
-        ...payload,
-        photo: photoFile ? await fileToPayload(photoFile) : restoredPhotoPayload,
-      };
+      const sharedPhoto = photoFile ? await fileToPayload(photoFile) : restoredPhotoPayload;
 
-      await sendPayload(submitPayload);
+      if (sourceMode === "self_input") {
+        const payloads = buildSelfInputPayloads(sharedPhoto);
+
+        for (const item of payloads) {
+          try {
+            await sendPayload(item.payload);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Submit activity gagal.";
+            throw new Error(`Gagal kirim ${item.label}. ${message}`);
+          }
+        }
+
+        setSubmitState({
+          kind: "success",
+          message: `${payloads.length} activity library berhasil dikirim.`,
+        });
+      } else {
+        await sendPayload({
+          ...draftPayload,
+          photo: sharedPhoto,
+          libraryActivityId: "",
+        });
+
+        setSubmitState({
+          kind: "success",
+          message: "Activity berhasil dikirim ke Daily Activity System.",
+        });
+      }
+
       clearDraft(ACTIVITY_DRAFT_STORAGE_KEY);
       if (queuedDraftKey) {
         clearDraft(queuedDraftKey);
       }
-
-      setSubmitState({
-        kind: "success",
-        message: "Activity berhasil dikirim ke Daily Activity System.",
-      });
 
       window.setTimeout(() => {
         router.push("/mobile/activity");
@@ -517,421 +801,705 @@ export function MobileDailyActivityForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {submitState.kind !== "idle" ? (
-        <div
-          className={
-            submitState.kind === "success"
-              ? "rounded-[1.1rem] bg-[#dff4e8] px-4 py-3 text-xs font-semibold text-[#14532d]"
-              : "rounded-[1.1rem] bg-[#f4ddce] px-4 py-3 text-xs font-semibold text-[#5a2200]"
-          }
-        >
-          {submitState.message}
-        </div>
-      ) : null}
+    <>
+      <Dialog open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen}>
+        <DialogContent className="max-h-[calc(100vh-1rem)] max-w-[calc(100vw-1rem)] gap-0 overflow-hidden rounded-[1.6rem] border-0 bg-white p-0 shadow-[0_28px_80px_rgba(8,32,51,0.22)] sm:max-w-xl">
+          <DialogHeader className="bg-[linear-gradient(135deg,rgba(0,52,97,0.96),rgba(0,75,135,0.92))] px-5 py-5 text-left text-white">
+            <DialogTitle className="text-xl font-black">Pilih Activity Library</DialogTitle>
+            <DialogDescription className="text-white/80">
+              Search, scroll, lalu centang banyak item sesuai section. Item terpilih muncul sebagai checklist di bawah form.
+            </DialogDescription>
+          </DialogHeader>
 
-      <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-        <Label className="block space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Source mode</span>
-          <select
-            value={sourceMode}
-            onChange={(event) => setSourceMode(event.target.value as typeof sourceMode)}
-            className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-          >
-            <option value="assigned">Assigned activity</option>
-            <option value="self_input">Self-input activity</option>
-            <option value="custom">Custom activity</option>
-          </select>
-        </Label>
+          <div className="space-y-4 px-4 py-4">
+            <div className="rounded-[1.05rem] bg-[#e9f6fd] px-4 py-3 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
+              <div className="flex items-center gap-3">
+                <Search className="size-4 text-[#486275]" />
+                <input
+                  value={librarySearch}
+                  onChange={(event) => setLibrarySearch(event.target.value)}
+                  placeholder="Cari kode atau nama activity..."
+                  className="w-full bg-transparent text-sm font-semibold text-[#082033] outline-none placeholder:text-[#6c8799]"
+                />
+              </div>
+            </div>
 
-        {sourceMode === "assigned" ? (
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Assignment</span>
-            <select
-              value={assignmentId}
-              onChange={(event) => setAssignmentId(event.target.value)}
-              className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+            <div className="flex items-center justify-between rounded-[1rem] bg-[#f6fbff] px-4 py-3 text-xs font-semibold text-[#486275]">
+              <span>{filteredLibraries.length} library tampil</span>
+              <span>{selectedLibraryIds.length} dipilih</span>
+            </div>
+
+            <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
+              {filteredLibraries.length > 0 ? (
+                filteredLibraries.map((item) => {
+                  const isSelected = selectedLibraryIds.includes(`${item.id}`);
+                  const requirementBadges = [
+                    item.requiresEquipmentNo ? "Equipment" : null,
+                    item.requiresDuration ? "Duration" : null,
+                    item.requiresMaterialUsed ? "Material" : null,
+                    item.requiresPhoto ? "Photo" : null,
+                  ].filter(Boolean);
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => toggleLibrarySelection(`${item.id}`)}
+                      className={
+                        isSelected
+                          ? "w-full rounded-[1rem] bg-[#003f78] px-4 py-4 text-left text-white shadow-[0_16px_30px_rgba(0,63,120,0.18)]"
+                          : "w-full rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left text-[#082033] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black">{item.activityCode}</p>
+                          <p className="mt-1 text-sm font-semibold leading-5">{item.activityName}</p>
+                          <p className={isSelected ? "mt-1 text-xs text-white/80" : "mt-1 text-xs text-[#486275]"}>
+                            {item.basePoints} pts • max {item.maxPointsPerDay} pts / hari
+                          </p>
+                          {requirementBadges.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {requirementBadges.map((badge) => (
+                                <span
+                                  key={badge}
+                                  className={
+                                    isSelected
+                                      ? "rounded-full bg-white/16 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white"
+                                      : "rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]"
+                                  }
+                                >
+                                  {badge}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span
+                          className={
+                            isSelected
+                              ? "flex size-8 items-center justify-center rounded-full bg-white text-[#003f78]"
+                              : "flex size-8 items-center justify-center rounded-full bg-white text-[#9eb6c5]"
+                          }
+                        >
+                          {isSelected ? <Check className="size-4" /> : <ListFilter className="size-4" />}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
+                  Tidak ada activity library yang cocok dengan search.
+                </div>
+              )}
+            </div>
+
+            <Button
+              type="button"
+              className="h-12 w-full rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
+              onClick={() => setLibraryPickerOpen(false)}
             >
-              <option value="">Pilih assignment</option>
-              {assignments.map((assignment) => (
-                <option key={assignment.id} value={assignment.id}>
-                  {(assignment.activityName ?? assignment.customJobName) || `Assignment #${assignment.id}`}
-                </option>
-              ))}
-            </select>
-          </Label>
-        ) : null}
-
-        {sourceMode === "self_input" ? (
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Library activity</span>
-            <select
-              value={libraryActivityId}
-              onChange={(event) => setLibraryActivityId(event.target.value)}
-              className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-            >
-              <option value="">Pilih activity library</option>
-              {availableLibrary.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.activityCode} - {item.activityName} ({item.basePoints} pts)
-                </option>
-              ))}
-            </select>
-          </Label>
-        ) : null}
-
-        {sourceMode === "custom" ? (
-          <>
-            <Label className="block space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Custom activity</span>
-              <Input
-                value={customActivityName}
-                onChange={(event) => setCustomActivityName(event.target.value)}
-                placeholder="Nama aktivitas custom"
-                className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-              />
-            </Label>
-            <Label className="block space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
-              <Textarea
-                value={customActivityDescription}
-                onChange={(event) => setCustomActivityDescription(event.target.value)}
-                rows={4}
-                placeholder="Jelaskan aktivitas custom."
-                className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
-              />
-            </Label>
-          </>
-        ) : null}
-      </section>
-
-      {routeChecklist ? (
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Route checklist</p>
-            <p className="mt-1 text-base font-black text-[#082033]">{routeChecklist.routeName}</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-              {routeChecklist.routeCode} • {routeChecklist.shiftCode}
-            </p>
-            {routeChecklist.activeSpl ? (
-              <>
-                <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-                  SPL aktif: {routeChecklist.activeSpl.splNumber} • {routeChecklist.activeSpl.title}
-                </p>
-                <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                  {routeChecklist.activeSpl.lineCount} line • {routeChecklist.activeSpl.plannedPointsTotal} pts
-                </p>
-              </>
-            ) : null}
+              Pakai {selectedLibraryIds.length} Activity
+            </Button>
           </div>
+        </DialogContent>
+      </Dialog>
 
-          {routeChecklist.activeSpl ? (
-            <div className="space-y-2 rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-              {routeChecklist.activeSpl.items.map((item) => (
-                <div key={item.id}>
-                  <p className="text-sm font-semibold text-[#082033]">{item.lineLabel}</p>
-                  <p className="text-xs font-semibold leading-5 text-[#486275]">
-                    {item.targetUnit || "-"} • {item.plannedPoints} pts
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {submitState.kind !== "idle" ? (
+          <div
+            className={
+              submitState.kind === "success"
+                ? "rounded-[1.1rem] bg-[#dff4e8] px-4 py-3 text-xs font-semibold text-[#14532d]"
+                : "rounded-[1.1rem] bg-[#f4ddce] px-4 py-3 text-xs font-semibold text-[#5a2200]"
+            }
+          >
+            {submitState.message}
+          </div>
+        ) : null}
+
+        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+          <Label className="block space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Source mode</span>
+            <select
+              value={sourceMode}
+              onChange={(event) => setSourceMode(event.target.value as typeof sourceMode)}
+              className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+            >
+              <option value="assigned">Assigned activity</option>
+              <option value="self_input">Self-input activity</option>
+              <option value="custom">Custom activity</option>
+            </select>
+          </Label>
+
+          {sourceMode === "assigned" ? (
+            <Label className="block space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Assignment</span>
+              <select
+                value={assignmentId}
+                onChange={(event) => setAssignmentId(event.target.value)}
+                className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+              >
+                <option value="">Pilih assignment</option>
+                {assignments.map((assignment) => (
+                  <option key={assignment.id} value={assignment.id}>
+                    {(assignment.activityName ?? assignment.customJobName) || `Assignment #${assignment.id}`}
+                  </option>
+                ))}
+              </select>
+            </Label>
+          ) : null}
+
+          {sourceMode === "self_input" ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Library activity</span>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
+                    Searchable, scrollable, multi checklist.
                   </p>
                 </div>
-              ))}
+                <Badge className="border-0 bg-[#eaf4fb] text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]">
+                  {selectedLibraryIds.length} dipilih
+                </Badge>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 w-full justify-between rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                onClick={() => setLibraryPickerOpen(true)}
+              >
+                <span className="truncate text-left">
+                  {selectedLibraries.length > 0
+                    ? `${selectedLibraries.length} activity dipilih`
+                    : "Pilih activity library"}
+                </span>
+                <Search className="size-4 text-[#486275]" />
+              </Button>
+
+              {selectedLibraries.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {selectedLibraries.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => toggleLibrarySelection(`${item.id}`)}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#003f78] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
+                    >
+                      <span>{item.activityCode}</span>
+                      <X className="size-3.5" />
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
-          <div className="space-y-3">
-            {routeChecklist.groups.map((group) => (
-              <div key={group.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">{group.groupKey}</p>
-                <p className="mt-1 text-sm font-black text-[#082033]">{group.groupName}</p>
-                {group.description ? (
-                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{group.description}</p>
-                ) : null}
-
-                <div className="mt-3 space-y-3">
-                  {group.items.map((item) => {
-                    const itemState = routeItemState[item.id] ?? {
-                      isChecked: false,
-                      unitNumber: "",
-                      remark: "",
-                      startedAt: "",
-                      endedAt: "",
-                      actualPoints: `${item.pointOverride ?? item.libraryPoints ?? 0}`,
-                    };
-
-                    return (
-                      <div key={item.id} className="rounded-[0.9rem] bg-white px-3 py-3">
-                        <label className="flex items-start gap-3">
-                          <input
-                            type="checkbox"
-                            checked={itemState.isChecked}
-                            onChange={(event) =>
-                              updateRouteItem(item.id, {
-                                isChecked: event.target.checked,
-                              })
-                            }
-                          />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-semibold text-[#082033]">{item.itemLabel}</span>
-                            <span className="mt-1 block text-xs leading-5 text-[#486275]">
-                              {item.itemDescription || item.libraryName || "Checklist item"}
-                            </span>
-                            <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-[#003f78]">
-                              {item.pointOverride ?? item.libraryPoints ?? 0} pts
-                            </span>
-                          </span>
-                        </label>
-
-                        {itemState.isChecked ? (
-                          <div className="mt-3 grid gap-3">
-                            {item.requiresUnit ? (
-                              <Label className="block space-y-2">
-                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Unit</span>
-                                <Input
-                                  value={itemState.unitNumber}
-                                  onChange={(event) =>
-                                    updateRouteItem(item.id, { unitNumber: event.target.value })
-                                  }
-                                  placeholder="Nomor unit"
-                                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                                />
-                              </Label>
-                            ) : null}
-
-                            {item.requiresTime ? (
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <Label className="block space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Mulai</span>
-                                  <Input
-                                    type="datetime-local"
-                                    value={itemState.startedAt || defaultStartTime}
-                                    onChange={(event) =>
-                                      updateRouteItem(item.id, { startedAt: event.target.value })
-                                    }
-                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                                  />
-                                </Label>
-                                <Label className="block space-y-2">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selesai</span>
-                                  <Input
-                                    type="datetime-local"
-                                    value={itemState.endedAt || defaultEndTime}
-                                    onChange={(event) =>
-                                      updateRouteItem(item.id, { endedAt: event.target.value })
-                                    }
-                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                                  />
-                                </Label>
-                              </div>
-                            ) : null}
-
-                            {item.requiresRemark ? (
-                              <Label className="block space-y-2">
-                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Keterangan</span>
-                                <Textarea
-                                  rows={3}
-                                  value={itemState.remark}
-                                  onChange={(event) =>
-                                    updateRouteItem(item.id, { remark: event.target.value })
-                                  }
-                                  placeholder="Catatan checklist"
-                                  className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
-                                />
-                              </Label>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
+          {sourceMode === "custom" ? (
+            <>
+              <Label className="block space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Custom activity</span>
+                <Input
+                  value={customActivityName}
+                  onChange={(event) => setCustomActivityName(event.target.value)}
+                  placeholder="Nama aktivitas custom"
+                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                />
+              </Label>
+              <Label className="block space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
+                <Textarea
+                  value={customActivityDescription}
+                  onChange={(event) => setCustomActivityDescription(event.target.value)}
+                  rows={4}
+                  placeholder="Jelaskan aktivitas custom."
+                  className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
+                />
+              </Label>
+            </>
+          ) : null}
         </section>
-      ) : null}
 
-      <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-        <div className="grid gap-4 sm:grid-cols-2">
+        {sourceMode === "self_input" ? (
+          <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selected library checklist</p>
+                <p className="mt-1 text-base font-black text-[#082033]">
+                  {selectedLibraries.length > 0 ? `${selectedLibraries.length} activity siap diisi` : "Belum ada activity dipilih"}
+                </p>
+              </div>
+              {needsGlobalPhoto ? (
+                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                  Butuh foto
+                </Badge>
+              ) : null}
+            </div>
+
+            {selectedLibraries.length > 0 ? (
+              <div className="space-y-3">
+                {selectedLibraries.map((library, index) => {
+                  const libraryId = `${library.id}`;
+                  const entry =
+                    selfInputEntries[libraryId] ??
+                    buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime);
+                  const requirementBadges = [
+                    library.requiresEquipmentNo ? "Equipment wajib" : null,
+                    library.requiresDuration ? "Waktu wajib" : null,
+                    library.requiresMaterialUsed ? "Material wajib" : null,
+                    library.requiresPhoto ? "Foto umum wajib" : null,
+                  ].filter(Boolean);
+
+                  return (
+                    <div key={library.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+                            #{index + 1} • {library.activityCode}
+                          </p>
+                          <p className="mt-1 text-sm font-black text-[#082033]">{library.activityName}</p>
+                          <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
+                            {library.basePoints} pts • max {library.maxPointsPerDay} pts / hari
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleLibrarySelection(libraryId)}
+                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-[#486275] shadow-[0_10px_22px_rgba(8,32,51,0.08)]"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </div>
+
+                      {requirementBadges.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {requirementBadges.map((badge) => (
+                            <span
+                              key={badge}
+                              className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]"
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 grid gap-3">
+                        {library.requiresEquipmentNo ? (
+                          <Label className="block space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Equipment / unit no.</span>
+                            <Input
+                              value={entry.equipmentNo}
+                              onChange={(event) =>
+                                updateSelfInputEntry(libraryId, { equipmentNo: event.target.value })
+                              }
+                              placeholder="Nomor unit / equipment"
+                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                            />
+                          </Label>
+                        ) : null}
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Label className="block space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Mulai</span>
+                            <Input
+                              type="datetime-local"
+                              value={entry.startTime}
+                              onChange={(event) =>
+                                updateSelfInputEntry(libraryId, { startTime: event.target.value })
+                              }
+                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                            />
+                          </Label>
+                          <Label className="block space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selesai</span>
+                            <Input
+                              type="datetime-local"
+                              value={entry.endTime}
+                              onChange={(event) =>
+                                updateSelfInputEntry(libraryId, { endTime: event.target.value })
+                              }
+                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                            />
+                          </Label>
+                        </div>
+
+                        {library.requiresMaterialUsed ? (
+                          <Label className="block space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Material used</span>
+                            <Input
+                              value={entry.materialUsed}
+                              onChange={(event) =>
+                                updateSelfInputEntry(libraryId, { materialUsed: event.target.value })
+                              }
+                              placeholder="Material / tools dipakai"
+                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                            />
+                          </Label>
+                        ) : null}
+
+                        <Label className="block space-y-2">
+                          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan item</span>
+                          <Textarea
+                            rows={3}
+                            value={entry.notes}
+                            onChange={(event) =>
+                              updateSelfInputEntry(libraryId, { notes: event.target.value })
+                            }
+                            placeholder="Hasil kerja, temuan, atau catatan singkat."
+                            className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
+                          />
+                        </Label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
+                Buka picker di atas, search activity, lalu pilih beberapa library.
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {routeChecklist ? (
+          <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Route checklist</p>
+              <p className="mt-1 text-base font-black text-[#082033]">{routeChecklist.routeName}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
+                {routeChecklist.routeCode} • {routeChecklist.shiftCode}
+              </p>
+              {routeChecklist.activeSpl ? (
+                <>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
+                    SPL aktif: {routeChecklist.activeSpl.splNumber} • {routeChecklist.activeSpl.title}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
+                    {routeChecklist.activeSpl.lineCount} line • {routeChecklist.activeSpl.plannedPointsTotal} pts
+                  </p>
+                </>
+              ) : null}
+            </div>
+
+            {routeChecklist.activeSpl ? (
+              <div className="space-y-2 rounded-[1rem] bg-[#f6fbff] px-4 py-3">
+                {routeChecklist.activeSpl.items.map((item) => (
+                  <div key={item.id}>
+                    <p className="text-sm font-semibold text-[#082033]">{item.lineLabel}</p>
+                    <p className="text-xs font-semibold leading-5 text-[#486275]">
+                      {item.targetUnit || "-"} • {item.plannedPoints} pts
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              {routeChecklist.groups.map((group) => (
+                <div key={group.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">{group.groupKey}</p>
+                  <p className="mt-1 text-sm font-black text-[#082033]">{group.groupName}</p>
+                  {group.description ? (
+                    <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{group.description}</p>
+                  ) : null}
+
+                  <div className="mt-3 space-y-3">
+                    {group.items.map((item) => {
+                      const itemState = routeItemState[item.id] ?? {
+                        isChecked: false,
+                        unitNumber: "",
+                        remark: "",
+                        startedAt: "",
+                        endedAt: "",
+                        actualPoints: `${item.pointOverride ?? item.libraryPoints ?? 0}`,
+                      };
+
+                      return (
+                        <div key={item.id} className="rounded-[0.9rem] bg-white px-3 py-3">
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={itemState.isChecked}
+                              onChange={(event) =>
+                                updateRouteItem(item.id, {
+                                  isChecked: event.target.checked,
+                                })
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-[#082033]">{item.itemLabel}</span>
+                              <span className="mt-1 block text-xs leading-5 text-[#486275]">
+                                {item.itemDescription || item.libraryName || "Checklist item"}
+                              </span>
+                              <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-[#003f78]">
+                                {item.pointOverride ?? item.libraryPoints ?? 0} pts
+                              </span>
+                            </span>
+                          </label>
+
+                          {itemState.isChecked ? (
+                            <div className="mt-3 grid gap-3">
+                              {item.requiresUnit ? (
+                                <Label className="block space-y-2">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Unit</span>
+                                  <Input
+                                    value={itemState.unitNumber}
+                                    onChange={(event) =>
+                                      updateRouteItem(item.id, { unitNumber: event.target.value })
+                                    }
+                                    placeholder="Nomor unit"
+                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                                  />
+                                </Label>
+                              ) : null}
+
+                              {item.requiresTime ? (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <Label className="block space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Mulai</span>
+                                    <Input
+                                      type="datetime-local"
+                                      value={itemState.startedAt || defaultStartTime}
+                                      onChange={(event) =>
+                                        updateRouteItem(item.id, { startedAt: event.target.value })
+                                      }
+                                      className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                                    />
+                                  </Label>
+                                  <Label className="block space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Selesai</span>
+                                    <Input
+                                      type="datetime-local"
+                                      value={itemState.endedAt || defaultEndTime}
+                                      onChange={(event) =>
+                                        updateRouteItem(item.id, { endedAt: event.target.value })
+                                      }
+                                      className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                                    />
+                                  </Label>
+                                </div>
+                              ) : null}
+
+                              {item.requiresRemark ? (
+                                <Label className="block space-y-2">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Keterangan</span>
+                                  <Textarea
+                                    rows={3}
+                                    value={itemState.remark}
+                                    onChange={(event) =>
+                                      updateRouteItem(item.id, { remark: event.target.value })
+                                    }
+                                    placeholder="Catatan checklist"
+                                    className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
+                                  />
+                                </Label>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {sourceMode !== "self_input" ? (
+          <>
+            <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Label className="block space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Start time</span>
+                  <Input
+                    type="datetime-local"
+                    value={startTime}
+                    onChange={(event) => setStartTime(event.target.value)}
+                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                  />
+                </Label>
+                <Label className="block space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">End time</span>
+                  <Input
+                    type="datetime-local"
+                    value={endTime}
+                    onChange={(event) => setEndTime(event.target.value)}
+                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                  />
+                </Label>
+              </div>
+
+              <Label className="block space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Equipment / unit no.</span>
+                <Input
+                  value={equipmentNo}
+                  onChange={(event) => setEquipmentNo(event.target.value)}
+                  placeholder="Contoh: DT-451 / BAY-03"
+                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                />
+              </Label>
+
+              <Label className="block space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Material used</span>
+                <Input
+                  value={materialUsed}
+                  onChange={(event) => setMaterialUsed(event.target.value)}
+                  placeholder="Material / tools dipakai"
+                  className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                />
+              </Label>
+            </section>
+
+            <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+              <Label className="block space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Notes / hasil kerja</span>
+                <Textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  rows={5}
+                  placeholder="Ringkas pekerjaan, hasil, kendala, bukti penting."
+                  className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
+                />
+              </Label>
+            </section>
+          </>
+        ) : null}
+
+        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+                <Navigation className="size-3.5 text-[#003f78]" />
+                GPS Auto-Capture
+              </p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">
+                {boundary.message}
+              </p>
+            </div>
+            <span
+              className={
+                boundary.gpsValid
+                  ? "rounded-full bg-[#dff4e8] px-3 py-1 text-[10px] font-black uppercase text-[#14532d]"
+                  : "rounded-full bg-[#fff1cf] px-3 py-1 text-[10px] font-black uppercase text-[#8a5a00]"
+              }
+            >
+              {boundary.status}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
+            <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Coordinates</p>
+              <p className="mt-1 text-sm text-[#082033]">
+                {geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : "Waiting GPS"}
+              </p>
+            </div>
+            <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Accuracy</p>
+              <p className="mt-1 text-sm text-[#082033]">{geo.accuracy || geo.message}</p>
+            </div>
+          </div>
+
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Start time</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Fallback manual location</span>
             <Input
-              type="datetime-local"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
+              value={manualLocation}
+              onChange={(event) => setManualLocation(event.target.value)}
+              placeholder="Isi lokasi manual bila GPS/akses lokasi gagal"
               className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
             />
           </Label>
-          <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">End time</span>
-            <Input
-              type="datetime-local"
-              value={endTime}
-              onChange={(event) => setEndTime(event.target.value)}
-              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-            />
-          </Label>
-        </div>
+        </section>
 
-        <Label className="block space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Equipment / unit no.</span>
-          <Input
-            value={equipmentNo}
-            onChange={(event) => setEquipmentNo(event.target.value)}
-            placeholder="Contoh: DT-451 / BAY-03"
-            className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-          />
-        </Label>
+        <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+            <Camera className="size-3.5 text-[#003f78]" />
+            Photo camera / galeri
+          </p>
 
-        <Label className="block space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Material used</span>
-          <Input
-            value={materialUsed}
-            onChange={(event) => setMaterialUsed(event.target.value)}
-            placeholder="Material / tools dipakai"
-            className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-          />
-        </Label>
-
-        <Label className="block space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Notes / hasil kerja</span>
-          <Textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={5}
-            placeholder="Ringkas pekerjaan, hasil, kendala, bukti penting."
-            className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
-          />
-        </Label>
-      </section>
-
-      <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
-              <Navigation className="size-3.5 text-[#003f78]" />
-              GPS Auto-Capture
-            </p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">
-              {boundary.message}
-            </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78]"
+              onClick={() => {
+                setPhotoCaptureMode("camera");
+                document.getElementById("mobile-activity-photo")?.click();
+              }}
+            >
+              <Camera className="size-4" />
+              Kamera
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78]"
+              onClick={() => {
+                setPhotoCaptureMode("gallery");
+                document.getElementById("mobile-activity-photo")?.click();
+              }}
+            >
+              <ImagePlus className="size-4" />
+              Galeri
+            </Button>
           </div>
-          <span
-            className={
-              boundary.gpsValid
-                ? "rounded-full bg-[#dff4e8] px-3 py-1 text-[10px] font-black uppercase text-[#14532d]"
-                : "rounded-full bg-[#fff1cf] px-3 py-1 text-[10px] font-black uppercase text-[#8a5a00]"
-            }
-          >
-            {boundary.status}
-          </span>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
-          <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Coordinates</p>
-            <p className="mt-1 text-sm text-[#082033]">
-              {geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : "Waiting GPS"}
-            </p>
-          </div>
-          <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Accuracy</p>
-            <p className="mt-1 text-sm text-[#082033]">{geo.accuracy || geo.message}</p>
-          </div>
-        </div>
-
-        <Label className="block space-y-2">
-          <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Fallback manual location</span>
-          <Input
-            value={manualLocation}
-            onChange={(event) => setManualLocation(event.target.value)}
-            placeholder="Isi lokasi manual bila GPS/akses lokasi gagal"
-            className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+          <input
+            id="mobile-activity-photo"
+            type="file"
+            accept="image/*"
+            capture={photoCaptureMode === "camera" ? "environment" : undefined}
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              setPhotoFile(file);
+              setPhotoName(file?.name ?? "");
+              setRestoredPhotoPayload(null);
+            }}
           />
-        </Label>
-      </section>
 
-      <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
-          <Camera className="size-3.5 text-[#003f78]" />
-          Photo camera / galeri
-        </p>
+          {photoName ? (
+            <p className="text-xs font-semibold text-[#486275]">{photoName}</p>
+          ) : (
+            <p className="text-xs font-semibold text-[#486275]">
+              {needsGlobalPhoto
+                ? "Minimal satu foto wajib karena ada activity terpilih yang butuh bukti foto."
+                : "Upload opsional. Cocok untuk bukti kerja dan context lapangan."}
+            </p>
+          )}
+        </section>
 
         <div className="grid grid-cols-2 gap-3">
           <Button
             type="button"
             variant="outline"
-            className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78]"
+            className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
             onClick={() => {
-              setPhotoCaptureMode("camera");
-              document.getElementById("mobile-activity-photo")?.click();
+              writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload);
+              setSubmitState({
+                kind: "success",
+                message: "Draft activity disimpan ke local storage.",
+              });
             }}
           >
-            <Camera className="size-4" />
-            Kamera
+            <Save className="size-4" />
+            Save Draft
           </Button>
           <Button
-            type="button"
-            variant="outline"
-            className="h-12 rounded-2xl border-0 bg-[#e9f6fd] text-[#003f78]"
-            onClick={() => {
-              setPhotoCaptureMode("gallery");
-              document.getElementById("mobile-activity-photo")?.click();
-            }}
+            type="submit"
+            className="h-14 rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
+            disabled={isSubmitting}
           >
-            <ImagePlus className="size-4" />
-            Galeri
+            <SendHorizontal className="size-4" />
+            {isSubmitting ? "Submitting..." : "Submit Activity"}
           </Button>
         </div>
-
-        <input
-          id="mobile-activity-photo"
-          type="file"
-          accept="image/*"
-          capture={photoCaptureMode === "camera" ? "environment" : undefined}
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0] ?? null;
-            setPhotoFile(file);
-            setPhotoName(file?.name ?? "");
-            setRestoredPhotoPayload(null);
-          }}
-        />
-
-        {photoName ? (
-          <p className="text-xs font-semibold text-[#486275]">{photoName}</p>
-        ) : (
-          <p className="text-xs font-semibold text-[#486275]">
-            Upload opsional. Cocok untuk bukti kerja dan context lapangan.
-          </p>
-        )}
-      </section>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
-          onClick={() => {
-            writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, payload);
-            setSubmitState({
-              kind: "success",
-              message: "Draft activity disimpan ke local storage.",
-            });
-          }}
-        >
-          <Save className="size-4" />
-          Save Draft
-        </Button>
-        <Button
-          type="submit"
-          className="h-14 rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
-          disabled={isSubmitting}
-        >
-          <SendHorizontal className="size-4" />
-          {isSubmitting ? "Submitting..." : "Submit Activity"}
-        </Button>
-      </div>
-
-    </form>
+      </form>
+    </>
   );
 }

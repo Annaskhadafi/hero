@@ -29,6 +29,15 @@ export type ActivitySyncPayload = {
   sourceMode: "assigned" | "self_input" | "custom";
   assignmentId: string;
   libraryActivityId: string;
+  selectedLibraryActivityIds?: string[];
+  selfInputActivities?: Array<{
+    libraryActivityId: string;
+    equipmentNo: string;
+    startTime: string;
+    endTime: string;
+    materialUsed: string;
+    notes: string;
+  }>;
   routeTemplateId: string;
   overtimeCommandLetterId: string;
   routeShiftCode: string;
