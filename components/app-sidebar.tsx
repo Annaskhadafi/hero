@@ -6,6 +6,7 @@ import Image from "next/image"
 import {
   IconChartBar,
   IconChecklist,
+  IconClockHour4,
   IconDashboard,
   IconDatabase,
   IconFileWord,
@@ -21,7 +22,6 @@ import {
 
 import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -35,6 +35,7 @@ import {
 const iconMap = {
   "chart-bar": IconChartBar,
   checklist: IconChecklist,
+  clock: IconClockHour4,
   dashboard: IconDashboard,
   database: IconDatabase,
   "file-word": IconFileWord,
@@ -53,6 +54,7 @@ type SidebarMenuItem = {
   title: string
   url: string
   iconName: keyof typeof iconMap | string
+  sortOrder?: number
 }
 
 type SidebarDocumentItem = {
@@ -66,7 +68,30 @@ type SidebarUser = {
   name: string
   email: string
   avatar: string
+  unreadNotifications?: number
 }
+
+const DESKTOP_MENU_ORDER = [
+  "Portal Chitra",
+  "Daily Activity",
+  "Approval",
+  "Master Data",
+  "HR",
+  "HSE",
+  "Report",
+  "Setting",
+] as const
+
+const desktopMenuIconMap = {
+  "Portal Chitra": IconDashboard,
+  "Daily Activity": IconChecklist,
+  Approval: IconMail,
+  "Master Data": IconDatabase,
+  HR: IconUsers,
+  HSE: IconShieldHalfFilled,
+  Report: IconReport,
+  Setting: IconSettings,
+} as const
 
 export function AppSidebar({
   user,
@@ -80,17 +105,12 @@ export function AppSidebar({
   navSecondary: readonly SidebarMenuItem[]
   documents: readonly SidebarDocumentItem[]
 }) {
-  const mainItems = navMain.map((item) => ({
+  const desktopItems = [...navMain, ...navSecondary].map((item) => ({
     section: item.section ?? "Menu",
     title: item.title,
     url: item.url,
+    sortOrder: item.sortOrder ?? 999,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
-  }))
-  const secondaryItems = navSecondary.map((item) => ({
-    section: item.section ?? "Sistem",
-    title: item.title,
-    url: item.url,
-    icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconHelp,
   }))
   const documentItems = documents.map((item) => ({
     section: item.section ?? "Dokumen",
@@ -98,13 +118,23 @@ export function AppSidebar({
     url: item.url,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconFolder,
   }))
-  const groupedMainItems = Object.entries(
-    mainItems.reduce<Record<string, typeof mainItems>>((accumulator, item) => {
-      accumulator[item.section] = accumulator[item.section] ?? []
-      accumulator[item.section].push(item)
-      return accumulator
-    }, {})
+  const extraSections = Array.from(
+    new Set(
+      desktopItems
+        .map((item) => item.section)
+        .filter((section) => !DESKTOP_MENU_ORDER.includes(section as (typeof DESKTOP_MENU_ORDER)[number]))
+    )
   )
+  const orderedSections = [...DESKTOP_MENU_ORDER, ...extraSections]
+  const desktopGroups = orderedSections
+    .map((section) => ({
+      title: section,
+      icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
+      items: desktopItems
+        .filter((item) => item.section === section)
+        .sort((left, right) => left.sortOrder - right.sortOrder),
+    }))
+    .filter((group) => group.items.length > 0)
 
   return (
     <Sidebar
@@ -117,27 +147,21 @@ export function AppSidebar({
       }}
     >
       <SidebarHeader className="px-4 pb-3 pt-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
-        <Link href="/" aria-label="HERO" className="flex w-fit items-center">
-          <Image
-            src="/logo-hero.png"
-            alt="HERO"
-            width={132}
-            height={48}
-            className="h-12 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-9"
-            priority
-          />
-        </Link>
+        <div className="surface-chip rounded-[1rem] px-3 py-3 group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:px-1.5">
+          <Link href="/" aria-label="HERO" className="flex w-fit items-center">
+            <Image
+              src="/logo-hero.png"
+              alt="HERO"
+              width={132}
+              height={48}
+              className="h-11 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-9"
+              priority
+            />
+          </Link>
+        </div>
       </SidebarHeader>
       <SidebarContent className="gap-1">
-        {groupedMainItems.map(([section, items], index) => (
-          <React.Fragment key={section}>
-            {index > 0 ? <SidebarSeparator className="mx-2" /> : null}
-            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
-              {section}
-            </div>
-            <NavMain items={items} showQuickCreate={index === 0} />
-          </React.Fragment>
-        ))}
+        <NavMain groups={desktopGroups} showQuickCreate />
         {documentItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-1" />
@@ -145,15 +169,6 @@ export function AppSidebar({
               Dokumen
             </div>
             <NavDocuments items={documentItems} />
-          </>
-        ) : null}
-        {secondaryItems.length > 0 ? (
-          <>
-            <SidebarSeparator className="mx-2 mt-auto" />
-            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
-              Sistem
-            </div>
-            <NavSecondary items={secondaryItems} />
           </>
         ) : null}
       </SidebarContent>

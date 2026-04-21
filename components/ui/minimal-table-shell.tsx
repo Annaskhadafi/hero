@@ -527,13 +527,13 @@ export function MinimalTableShell({
   return (
     <div className={cn("space-y-4", className)}>
       {title || description ? (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {title ? <h3 className="font-display text-lg font-semibold text-foreground">{title}</h3> : null}
-          {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+          {description ? <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
         </div>
       ) : null}
 
-      <div className="rounded-[1rem] bg-surface-container-low p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+      <div className="rounded-[1.05rem] bg-surface-container-low p-2.5 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-1 flex-wrap items-center gap-2">
             {searchEnabled ? (
@@ -543,7 +543,7 @@ export function MinimalTableShell({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={searchPlaceholder ?? `Search ${label}...`}
-                  className="h-9 rounded-lg border-0 bg-white pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+                  className="h-9 rounded-xl border-0 bg-surface-container-lowest pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
                 />
               </div>
             ) : null}
@@ -578,7 +578,7 @@ export function MinimalTableShell({
 
       <div
         className={cn(
-          "flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-lowest px-3 py-2 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between",
+          "flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-lowest px-3 py-2.5 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between",
           summaryClassName,
         )}
       >
@@ -596,13 +596,13 @@ export function MinimalTableShell({
       </div>
 
       {filteredCount > 0 ? (
-        <div className="flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-lowest px-3 py-2 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-low px-3 py-2.5 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <span>Rows</span>
             <select
               value={pageSize}
               onChange={(event) => setPageSize(Number(event.target.value))}
-              className="h-8 rounded-lg border-0 bg-surface-container-low px-2 text-[13px] text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+              className="h-8 rounded-lg border-0 bg-surface-container-lowest px-2 text-[13px] text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             >
               {[10, 20, 30, 50].map((size) => (
                 <option key={size} value={size}>
@@ -621,7 +621,7 @@ export function MinimalTableShell({
               size="sm"
               disabled={pageIndex === 0}
               onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-              className="h-8 rounded-lg border-0 bg-surface-container-low px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+              className="h-8 rounded-lg border-0 bg-surface-container-lowest px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             >
               <IconChevronLeft className="size-4" />
               Prev
@@ -632,7 +632,7 @@ export function MinimalTableShell({
               size="sm"
               disabled={pageIndex >= totalPages - 1}
               onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
-              className="h-8 rounded-lg border-0 bg-surface-container-low px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+              className="h-8 rounded-lg border-0 bg-surface-container-lowest px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             >
               Next
               <IconChevronRight className="size-4" />
@@ -644,7 +644,7 @@ export function MinimalTableShell({
       <div ref={shellRef} className="space-y-3">
         {children}
         {showNoResults ? (
-          <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
             Tidak ada data yang cocok dengan filter table ini.
           </div>
         ) : null}

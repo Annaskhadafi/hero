@@ -51,7 +51,7 @@ export function AdminMetricGrid({
   }[];
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item, index) => {
         const Icon = getMetricIcon(item.label, item.meta);
         const accent = accents[index % accents.length];
@@ -59,20 +59,22 @@ export function AdminMetricGrid({
         return (
           <div
             key={item.label}
-            className="group flex min-h-10 min-w-[150px] items-center gap-2 rounded-lg bg-surface-container-low px-3 py-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] transition duration-200 hover:bg-surface-container"
+            className="group surface-module-card flex min-h-[104px] items-start gap-3 rounded-[1.05rem] px-4 py-4 transition duration-200 hover:-translate-y-0.5"
           >
-            <div className={`grid size-7 shrink-0 place-items-center rounded-md ring-1 transition ${accent}`}>
-              <Icon className="size-3.5" aria-hidden="true" />
+            <div className={`grid size-10 shrink-0 place-items-center rounded-xl ring-1 transition ${accent}`}>
+              <Icon className="size-4" aria-hidden="true" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-1.5">
               <p className="truncate text-[0.68rem] font-semibold uppercase text-muted-foreground">
                 {item.label}
               </p>
-              <p className="truncate font-display text-base font-semibold leading-tight text-foreground">
+              <p className="truncate font-display text-[1.55rem] font-semibold leading-none text-foreground">
                 {item.value}
               </p>
+              <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                {item.meta}
+              </p>
             </div>
-            <p className="sr-only">{item.meta}</p>
           </div>
         );
       })}

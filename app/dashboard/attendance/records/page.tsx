@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { ExternalLink, ImageOff, MapPin } from "lucide-react";
+import { ExternalLink, Eye, ImageOff, MapPin } from "lucide-react";
 import { getTodayAttendanceLogs } from "@/app/actions/attendance";
 import { Button } from "@/components/ui/button";
 import {
@@ -351,7 +351,7 @@ export default function AttendanceRecordsPage() {
                   <th className="p-4">Shift & Overtime</th>
                   <th className="p-4">Location</th>
                   <th className="p-4">GPS Coordinates</th>
-                  <th className="p-4">Photo Evidence</th>
+                  <th className="p-4">Aksi</th>
                 </tr>
               </thead>
               <tbody className="text-sm text-foreground">
@@ -432,12 +432,15 @@ export default function AttendanceRecordsPage() {
                           {log.photoUrl ? (
                             <Button
                               type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-9 rounded-lg px-3 text-xs normal-case tracking-normal"
+                              variant="ghost"
+                              size="icon"
+                              className="rounded-xl text-primary hover:bg-surface-container-low"
                               onClick={() => handleOpenPhoto(log)}
+                              aria-label={`Lihat foto attendance ${log.employeeName}`}
+                              title={`Lihat foto attendance ${log.employeeName}`}
                             >
-                              View Photo
+                              <Eye className="size-4" />
+                              <span className="sr-only">Lihat foto attendance</span>
                             </Button>
                           ) : (
                             <span className="text-muted-foreground">N/A</span>

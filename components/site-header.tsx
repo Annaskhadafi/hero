@@ -36,11 +36,11 @@ export function SiteHeader({
       }}
     >
       <div
-        className="glass-command flex min-h-14 items-center rounded-lg px-3 py-2 shadow-[0_18px_34px_rgba(0,52,97,0.12)] ring-1 ring-white/10 sm:min-h-(--header-height) sm:px-4 sm:py-3 lg:px-6"
+        className="glass-command flex min-h-14 items-center rounded-[1.05rem] px-3 py-2 shadow-[0_16px_30px_rgba(0,52,97,0.1)] ring-1 ring-white/10 sm:min-h-(--header-height) sm:px-4 sm:py-3 lg:px-5"
         style={{
           background: isDark
-            ? "linear-gradient(135deg, rgba(8,24,38,0.94) 0%, rgba(15,38,56,0.9) 55%, rgba(27,65,91,0.84) 100%)"
-            : "linear-gradient(135deg, rgba(0,52,97,0.94) 0%, rgba(0,75,135,0.88) 56%, color-mix(in srgb, var(--header-accent) 48%, transparent) 100%)",
+            ? "linear-gradient(135deg, rgba(8,24,38,0.94) 0%, rgba(14,34,50,0.92) 56%, rgba(27,65,91,0.82) 100%)"
+            : "linear-gradient(135deg, rgba(0,52,97,0.9) 0%, rgba(0,75,135,0.84) 58%, color-mix(in srgb, var(--header-accent) 34%, transparent) 100%)",
           color: "var(--header-text)",
         }}
       >
@@ -56,7 +56,10 @@ export function SiteHeader({
             />
             <Separator orientation="vertical" className="hidden h-8 bg-white/14 lg:block" />
             <div className="min-w-0">
-              <h1 className="font-display truncate text-base font-semibold tracking-normal sm:text-xl lg:text-2xl">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-white/62">
+                Operations Workspace
+              </p>
+              <h1 className="font-display truncate text-base font-semibold tracking-normal sm:text-xl lg:text-[1.6rem]">
                 {title}
               </h1>
               {subtitle ? (

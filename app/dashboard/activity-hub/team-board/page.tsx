@@ -1,17 +1,28 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCheck, ClipboardList } from "lucide-react";
+import { CheckCheck, ClipboardList, Eye, Pencil, Trash2 } from "lucide-react";
 import { manageOvertimeCommandLetterAction } from "@/app/dashboard/activity-hub/actions";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { OvertimeCommandLetterComposer } from "@/components/overtime-command-letter-composer";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityTeamBoardData } from "@/lib/daily-activity";
+
+type TeamBoardData = NonNullable<Awaited<ReturnType<typeof getDailyActivityTeamBoardData>>>;
 
 function statusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
@@ -58,6 +69,131 @@ function MetricPill({
       <span className="text-muted-foreground">{label}</span>
       <span className="ml-2 font-semibold text-foreground">{value}</span>
     </div>
+  );
+}
+
+function SplLinesDialog({
+  document,
+}: {
+  document: TeamBoardData["splDocuments"][number];
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-xl text-primary hover:bg-surface-container-low"
+          aria-label={`Lihat line ${document.title}`}
+          title={`Lihat line ${document.title}`}
+        >
+          <Eye className="size-4" />
+          <span className="sr-only">Lihat line</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Line SPL</DialogTitle>
+          <DialogDescription>
+            {document.title} • {document.lineCount} line • {document.estimatedMinutesTotal} menit • {document.plannedPointsTotal} pts
+          </DialogDescription>
+        </DialogHeader>
+
+        <Accordion type="single" collapsible className="rounded-xl bg-surface-container-low px-4">
+          {document.items.map((item, index) => (
+            <AccordionItem key={item.id} value={`line-${item.id}`} className="border-[rgba(66,71,80,0.08)]">
+              <AccordionTrigger className="hover:no-underline">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Line {index + 1}</p>
+                  <p className="mt-2 font-semibold text-foreground">{item.lineLabel}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {item.targetUnit || "-"} • {item.estimatedMinutes} menit • {item.plannedPoints} pts
+                  </p>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="rounded-xl bg-white px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Detail line</p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Target Unit</p>
+                      <p className="font-medium text-foreground">{item.targetUnit || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Estimasi</p>
+                      <p className="font-medium text-foreground">{item.estimatedMinutes} menit</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Planned Point</p>
+                      <p className="font-medium text-foreground">{item.plannedPoints} pts</p>
+                    </div>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditSplDialog({
+  document,
+  routeTemplates,
+  libraryActivities,
+  teamMembers,
+}: {
+  document: TeamBoardData["splDocuments"][number];
+  routeTemplates: TeamBoardData["splOptions"]["routeTemplates"];
+  libraryActivities: TeamBoardData["splOptions"]["libraryActivities"];
+  teamMembers: Array<{ id: number; name: string; role: string }>;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-xl text-primary hover:bg-surface-container-low"
+          aria-label={`Edit SPL ${document.title}`}
+          title={`Edit SPL ${document.title}`}
+        >
+          <Pencil className="size-4" />
+          <span className="sr-only">Edit SPL</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="w-[min(96vw,1180px)] max-w-[min(96vw,1180px)] overflow-hidden p-0">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle>Edit SPL</DialogTitle>
+          <DialogDescription>
+            Update header, line kerja, peserta, dan rencana point untuk {document.title}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[calc(100vh-9rem)] overflow-y-auto px-6 pb-6">
+          <OvertimeCommandLetterComposer
+            action={manageOvertimeCommandLetterAction}
+            intent="update"
+            submitLabel="Update SPL"
+            routeTemplates={routeTemplates}
+            libraryActivities={libraryActivities}
+            teamMembers={teamMembers}
+            defaults={document}
+          />
+          <form action={manageOvertimeCommandLetterAction} className="mt-4">
+            <input type="hidden" name="intent" value="delete" />
+            <input type="hidden" name="id" value={document.id} />
+            <Button type="submit" variant="outline" className="w-full rounded-xl text-rose-700">
+              <Trash2 className="size-4" />
+              Hapus SPL
+            </Button>
+          </form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -150,6 +286,7 @@ export default async function TeamBoardPage() {
                       <TableHead>Scope</TableHead>
                       <TableHead>Lines</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -203,58 +340,31 @@ export default async function TeamBoardPage() {
                               <p className="text-xs text-muted-foreground">
                                 {document.estimatedMinutesTotal} menit • {document.plannedPointsTotal} pts
                               </p>
-                              <details className="rounded-xl bg-surface-container-low p-3">
-                                <summary className="cursor-pointer text-xs font-semibold text-foreground">
-                                  Lihat line
-                                </summary>
-                                <div className="mt-3 space-y-2">
-                                  {document.items.map((item) => (
-                                    <div key={item.id} className="rounded-lg bg-white px-3 py-2 text-xs">
-                                      <p className="font-semibold text-foreground">{item.lineLabel}</p>
-                                      <p className="text-muted-foreground">
-                                        {item.targetUnit || "-"} • {item.estimatedMinutes} menit • {item.plannedPoints} pts
-                                      </p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
-                              <details className="rounded-xl bg-surface-container-low p-3">
-                                <summary className="cursor-pointer text-xs font-semibold text-foreground">
-                                  Edit SPL
-                                </summary>
-                                <div className="mt-3">
-                                  <OvertimeCommandLetterComposer
-                                    action={manageOvertimeCommandLetterAction}
-                                    intent="update"
-                                    submitLabel="Update SPL"
-                                    routeTemplates={data.splOptions.routeTemplates}
-                                    libraryActivities={data.splOptions.libraryActivities}
-                                    teamMembers={data.team.map((member) => ({
-                                      id: member.id,
-                                      name: member.name,
-                                      role: member.jobTitle || member.role,
-                                    }))}
-                                    defaults={document}
-                                  />
-                                  <form action={manageOvertimeCommandLetterAction} className="mt-3">
-                                    <input type="hidden" name="intent" value="delete" />
-                                    <input type="hidden" name="id" value={document.id} />
-                                    <Button type="submit" variant="outline" className="w-full rounded-xl text-rose-700">
-                                      Hapus SPL
-                                    </Button>
-                                  </form>
-                                </div>
-                              </details>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
                             <Badge className={statusBadgeClass(document.status)}>{document.status}</Badge>
                           </TableCell>
+                          <TableCell className="align-top">
+                            <div className="flex items-center gap-1">
+                              <SplLinesDialog document={document} />
+                              <EditSplDialog
+                                document={document}
+                                routeTemplates={data.splOptions.routeTemplates}
+                                libraryActivities={data.splOptions.libraryActivities}
+                                teamMembers={data.team.map((member) => ({
+                                  id: member.id,
+                                  name: member.name,
+                                  role: member.jobTitle || member.role,
+                                }))}
+                              />
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                           Belum ada dokumen SPL di site ini.
                         </TableCell>
                       </TableRow>

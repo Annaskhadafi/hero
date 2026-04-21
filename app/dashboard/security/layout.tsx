@@ -15,15 +15,15 @@ export default function SecurityLayout({
 }) {
   return (
     <div className="space-y-5 p-3 sm:p-5 lg:p-6">
-      <nav className="flex flex-wrap items-center gap-2 border-b border-border/70 pb-4">
-        <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+      <nav className="surface-muted-card flex flex-wrap items-center gap-2 rounded-[1rem] p-2.5">
+        <span className="grid size-9 place-items-center rounded-xl bg-surface-container-lowest text-primary shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
           <ShieldCheck className="size-4" aria-hidden="true" />
         </span>
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:text-foreground hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] transition hover:text-foreground"
           >
             {tab.label}
           </Link>

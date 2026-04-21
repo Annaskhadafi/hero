@@ -11,39 +11,28 @@ import { useRouter } from "next/navigation";
 import {
   BriefcaseBusiness,
   Check,
-  ChevronLeft,
-  ChevronRight,
-  Cloud,
   Filter,
-  Lock,
   MapPin,
-  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Upload,
   Users2,
   X,
 } from "lucide-react";
+
 import {
   importSecurityUsersAction,
   type ImportUsersActionState,
 } from "@/app/dashboard/admin-actions";
-import type { SecurityUserRecord } from "@/lib/hero-admin";
-import {
-  autoMapHeaders,
-  parseCsv,
-  USER_IMPORT_FIELDS,
-  type UserImportMapping,
-} from "@/lib/security-user-import";
+import { AdminMetricGrid } from "@/components/admin-metric-grid";
+import { AdminPageShell } from "@/components/admin-page-shell";
 import { SecurityUserCreateDialog } from "@/components/security-user-create-dialog";
 import { SecurityUserRowActions } from "@/components/security-user-row-actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Command,
@@ -63,6 +52,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
+  MinimalTableShell,
+  exportRowsToFile,
+} from "@/components/ui/minimal-table-shell";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -76,13 +69,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import type { SecurityUserRecord } from "@/lib/hero-admin";
 import {
-  exportRowsToFile,
-} from "@/components/ui/minimal-table-shell";
+  USER_IMPORT_FIELDS,
+  autoMapHeaders,
+  parseCsv,
+  type UserImportMapping,
+} from "@/lib/security-user-import";
 import { cn } from "@/lib/utils";
 
-const ALL_FILTER = "all";
-const UNMAPPED_VALUE = "__unmapped__";
 const INITIAL_IMPORT_STATE: ImportUsersActionState = {
   status: "idle",
   message: "",
@@ -114,14 +109,29 @@ function getUserInitials(name: string) {
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
-// Multi-select dropdown component
-interface MultiSelectDropdownProps {
-  options: string[];
-  selected: string[];
-  onChange: (selected: string[]) => void;
-  placeholder: string;
-  label: string;
-  icon?: React.ReactNode;
+function FilterChip({
+  children,
+  onRemove,
+}: {
+  children: React.ReactNode;
+  onRemove: () => void;
+}) {
+  return (
+    <Badge
+      variant="secondary"
+      className="surface-chip flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium text-foreground"
+    >
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="grid size-4 place-items-center rounded-full text-muted-foreground transition hover:bg-surface-container-low"
+        aria-label="Hapus filter"
+      >
+        <X className="size-3" />
+      </button>
+    </Badge>
+  );
 }
 
 function MultiSelectDropdown({
@@ -130,22 +140,15 @@ function MultiSelectDropdown({
   onChange,
   placeholder,
   label,
-  icon,
-}: MultiSelectDropdownProps) {
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  placeholder: string;
+  label: string;
+}) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-
-  const toggleOption = (option: string) => {
-    if (selected.includes(option)) {
-      onChange(selected.filter((item) => item !== option));
-    } else {
-      onChange([...selected, option]);
-    }
-  };
-
-  const clearSelection = () => {
-    onChange([]);
-  };
 
   const filteredOptions = options.filter((option) =>
     option.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -156,7 +159,16 @@ function MultiSelectDropdown({
       ? placeholder
       : selected.length === 1
         ? selected[0]
-        : `${selected.length} selected`;
+        : `${selected.length} dipilih`;
+
+  function toggleOption(option: string) {
+    if (selected.includes(option)) {
+      onChange(selected.filter((item) => item !== option));
+      return;
+    }
+
+    onChange([...selected, option]);
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -165,57 +177,50 @@ function MultiSelectDropdown({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-9 min-w-[160px] justify-between rounded-lg border-border bg-muted/50 px-3 text-sm font-normal text-muted-foreground hover:bg-background"
+          className="h-9 min-w-[160px] justify-between rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] font-medium text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)] hover:bg-surface-container-lowest"
         >
-          <span className="flex items-center gap-2 truncate">
-            {icon}
-            <span className="truncate">{displayText}</span>
-          </span>
+          <span className="truncate">{displayText}</span>
           <Filter className="ml-2 size-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[280px] p-0" align="start">
         <Command>
           <CommandInput
-            placeholder={`Search ${label.toLowerCase()}...`}
+            placeholder={`Cari ${label.toLowerCase()}...`}
             value={searchQuery}
             onValueChange={setSearchQuery}
             className="h-9"
           />
-          <CommandList className="max-h-[200px]">
-            <CommandEmpty>No {label.toLowerCase()} found.</CommandEmpty>
+          <CommandList className="max-h-[220px]">
+            <CommandEmpty>Tidak ada {label.toLowerCase()}.</CommandEmpty>
             <CommandGroup>
               {filteredOptions.map((option) => (
                 <CommandItem
                   key={option}
                   onSelect={() => toggleOption(option)}
-                  className="flex items-center gap-2 px-2 py-1.5"
+                  className="flex items-center gap-2 px-2 py-2"
                 >
-                  <Checkbox
-                    checked={selected.includes(option)}
-                    className="border-[#cbd5e1] data-[state=checked]:border-[#3b82f6] data-[state=checked]:bg-[#3b82f6]"
-                  />
+                  <Checkbox checked={selected.includes(option)} />
                   <span className="flex-1 truncate text-sm">{option}</span>
-                  {selected.includes(option) && (
-                    <Check className="size-4 text-[#3b82f6]" />
-                  )}
+                  {selected.includes(option) ? (
+                    <Check className="size-4 text-primary" />
+                  ) : null}
                 </CommandItem>
               ))}
             </CommandGroup>
           </CommandList>
-          {selected.length > 0 && (
-            <div className="border-t border-[#e2e8f0] p-2">
+          {selected.length > 0 ? (
+            <div className="border-t border-border/70 p-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clearSelection}
-                className="h-8 w-full justify-center text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => onChange([])}
+                className="h-8 w-full justify-center text-xs text-muted-foreground"
               >
-                <X className="mr-1 size-3" />
-                Clear selection
+                Bersihkan pilihan
               </Button>
             </div>
-          )}
+          ) : null}
         </Command>
       </PopoverContent>
     </Popover>
@@ -234,12 +239,18 @@ export function SecurityUserManagement({
   roleOptions: Array<{ id: number; name: string }>;
   sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
   departments: Array<{ id: number; code: string; name: string }>;
-  positions: Array<{ id: number; code: string; name: string; siteLocation: string; level: number; departmentId: number | null }>;
+  positions: Array<{
+    id: number;
+    code: string;
+    name: string;
+    siteLocation: string;
+    level: number;
+    departmentId: number | null;
+  }>;
   sites: Array<{ id: number; name: string; location: string }>;
 }) {
   const router = useRouter();
   const [isRefreshing, startRefreshTransition] = useTransition();
-  const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -253,6 +264,10 @@ export function SecurityUserManagement({
   );
 
   const parsedImport = useMemo(() => parseCsv(rawCsv), [rawCsv]);
+  const managerOptions = useMemo(
+    () => users.map((user) => ({ id: user.id, name: user.name })),
+    [users],
+  );
   const departmentFilterOptions = useMemo(
     () => getUniqueOptions(users.map((user) => user.department)),
     [users],
@@ -261,11 +276,6 @@ export function SecurityUserManagement({
     () => getUniqueOptions(roleOptions.map((item) => item.name)),
     [roleOptions],
   );
-  const managerOptions = useMemo(
-    () => users.map((user) => ({ id: user.id, name: user.name })),
-    [users],
-  );
-
   const statusTypeOptions = useMemo(
     () => getUniqueOptions(users.map((user) => user.employeeStatusType)),
     [users],
@@ -298,18 +308,8 @@ export function SecurityUserManagement({
     }
   }, [actionState.status, router, startRefreshTransition]);
 
-  const handleSearch = () => {
-    setSearchQuery(searchInput.trim().toLowerCase());
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSearch();
-    }
-  };
-
   const filteredUsers = useMemo(() => {
-    const query = searchQuery;
+    const query = searchQuery.trim().toLowerCase();
 
     return users.filter((user) => {
       const haystack = [
@@ -339,14 +339,24 @@ export function SecurityUserManagement({
       const matchesStatusType =
         selectedStatusTypes.length === 0 ||
         selectedStatusTypes.includes(user.employeeStatusType);
-      return matchesKeyword && matchesDepartment && matchesRole && matchesStatusType;
+
+      return (
+        matchesKeyword &&
+        matchesDepartment &&
+        matchesRole &&
+        matchesStatusType
+      );
     });
-  }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, users]);
+  }, [
+    searchQuery,
+    selectedDepartments,
+    selectedRoles,
+    selectedStatusTypes,
+    users,
+  ]);
 
   const currentYear = new Date().getFullYear();
-  const activeUsersCount = users.filter(
-    (user) => user.status === "active",
-  ).length;
+  const activeUsersCount = users.filter((user) => user.status === "active").length;
   const newHiresCount = users.filter(
     (user) => user.joinYear === currentYear,
   ).length;
@@ -354,31 +364,28 @@ export function SecurityUserManagement({
     users.length > 0
       ? Math.round((filteredUsers.length / users.length) * 100 * 10) / 10
       : 0;
-
-  const resetFilters = () => {
-    setSearchInput("");
-    setSearchQuery("");
-    setSelectedDepartments([]);
-    setSelectedRoles([]);
-    setSelectedStatusTypes([]);
-  };
-
   const hasActiveFilters =
-    searchQuery ||
+    searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedRoles.length > 0 ||
     selectedStatusTypes.length > 0;
-
   const missingRequiredMappings = USER_IMPORT_FIELDS.filter(
     (field) => field.required && !mapping[field.key],
   );
 
-  const exportVisibleUsers = () => {
+  function resetFilters() {
+    setSearchQuery("");
+    setSelectedDepartments([]);
+    setSelectedRoles([]);
+    setSelectedStatusTypes([]);
+  }
+
+  function exportVisibleUsers() {
     exportRowsToFile({
       columns: [
         "Nama",
         "SN",
-        "Departement",
+        "Departemen",
         "Peran",
         "Lokasi Site",
         "Tipe Status",
@@ -395,678 +402,479 @@ export function SecurityUserManagement({
       ]),
       fileName: "security-users",
     });
-  };
+  }
 
   return (
-    <div className="space-y-6">
-        {/* Header Section */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Manajemen Pengguna
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Kelola akses karyawan, peran, dan status pengguna HERO.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="h-10 rounded-lg border-[#e2e8f0] bg-white px-4 text-sm font-medium text-[#475569] hover:bg-[#F5F7F9] hover:text-[#1e293b]"
-                >
-                  <Upload className="mr-2 size-4" />
-                  Import Pengguna
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-6xl">
-                <DialogHeader>
-                  <DialogTitle>Import Daftar Pengguna</DialogTitle>
-                  <DialogDescription>
-                    Unggah atau tempel daftar karyawan, lalu cocokkan kolom sebelum data disimpan.
-                  </DialogDescription>
-                </DialogHeader>
+    <AdminPageShell
+      eyebrow="Security"
+      title="Manajemen Pengguna"
+      description="Kelola akses akun, struktur HC, dan status karyawan dalam satu workspace table-first yang lebih cepat dipindai."
+      badge={`${filteredUsers.length}/${users.length} visible`}
+      actions={
+        <>
+          <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-10 rounded-xl border-0 bg-surface-container-lowest px-4 text-sm font-semibold text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              >
+                <Upload className="size-4" />
+                Import Pengguna
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Import Daftar Pengguna</DialogTitle>
+                <DialogDescription>
+                  Tempel atau unggah CSV, cocokkan kolom, lalu simpan ke master user.
+                </DialogDescription>
+              </DialogHeader>
 
-                <form action={formAction} className="space-y-5">
-                  <input type="hidden" name="rawCsv" value={rawCsv} />
-                  <input
-                    type="hidden"
-                    name="mappingJson"
-                    value={JSON.stringify(mapping)}
-                  />
+              <form action={formAction} className="space-y-5">
+                <input type="hidden" name="rawCsv" value={rawCsv} />
+                <input
+                  type="hidden"
+                  name="mappingJson"
+                  value={JSON.stringify(mapping)}
+                />
 
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium">File daftar pengguna</p>
-                        <Input
-                          type="file"
-                          accept=".csv,text/csv"
-                          onChange={async (event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            setRawCsv(await file.text());
-                          }}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium">Tempel daftar manual</p>
-                        <Textarea
-                          value={rawCsv}
-                          onChange={(event) =>
-                            setRawCsv(event.target.value)
-                          }
-                          className="min-h-56 text-xs"
-                          placeholder="Tempel data pengguna di sini bila tidak mengunggah file..."
-                        />
-                      </div>
-
-                      <div className="rounded-xl border p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium">Pratinjau data</p>
-                            <p className="text-xs text-muted-foreground">
-                              {parsedImport.records.length} baris terbaca,{" "}
-                              {parsedImport.headers.length} kolom terdeteksi.
-                            </p>
-                          </div>
-                          <Badge variant="outline" className="rounded-full">
-                            {missingRequiredMappings.length === 0
-                              ? "Siap import"
-                              : `${missingRequiredMappings.length} kolom wajib`}
-                          </Badge>
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                  <div className="space-y-4">
+                    <div className="surface-muted-card rounded-[1rem] p-4">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-foreground">
+                            File daftar pengguna
+                          </p>
+                          <Input
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={async (event) => {
+                              const file = event.target.files?.[0];
+                              if (!file) return;
+                              setRawCsv(await file.text());
+                            }}
+                          />
                         </div>
 
-                        <div className="mt-4 overflow-x-auto rounded-xl border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                {parsedImport.headers.length > 0 ? (
-                                  parsedImport.headers.map((header) => (
-                                    <TableHead key={header}>
-                                      {header}
-                                    </TableHead>
-                                  ))
-                                ) : (
-                                  <TableHead>Belum ada kolom</TableHead>
-                                )}
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {parsedImport.records.slice(0, 4).length > 0 ? (
-                                parsedImport.records
-                                  .slice(0, 4)
-                                  .map((record, index) => (
-                                    <TableRow
-                                      key={`${index}-${record[parsedImport.headers[0]] ?? "row"}`}
-                                    >
-                                      {parsedImport.headers.map((header) => (
-                                        <TableCell
-                                          key={`${index}-${header}`}
-                                          className="text-xs"
-                                        >
-                                          {record[header] || "—"}
-                                        </TableCell>
-                                      ))}
-                                    </TableRow>
-                                  ))
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-foreground">
+                            Tempel daftar manual
+                          </p>
+                          <Textarea
+                            value={rawCsv}
+                            onChange={(event) => setRawCsv(event.target.value)}
+                            className="min-h-56 text-xs"
+                            placeholder="Tempel data pengguna di sini bila tidak mengunggah file..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="surface-module-card rounded-[1rem] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            Pratinjau data
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {parsedImport.records.length} baris,{" "}
+                            {parsedImport.headers.length} kolom terdeteksi.
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="rounded-full border-0 bg-surface-container-low px-3 py-1">
+                          {missingRequiredMappings.length === 0
+                            ? "Siap import"
+                            : `${missingRequiredMappings.length} kolom wajib`}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-4 overflow-x-auto rounded-[0.95rem] bg-surface-container-low p-2">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                              {parsedImport.headers.length > 0 ? (
+                                parsedImport.headers.map((header) => (
+                                  <TableHead key={header}>{header}</TableHead>
+                                ))
                               ) : (
-                                <TableRow>
-                                  <TableCell className="text-sm text-muted-foreground">
-                                    Unggah atau tempel daftar pengguna untuk melihat pratinjau.
-                                  </TableCell>
-                                </TableRow>
+                                <TableHead>Belum ada kolom</TableHead>
                               )}
-                            </TableBody>
-                          </Table>
-                        </div>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {parsedImport.records.slice(0, 4).length > 0 ? (
+                              parsedImport.records.slice(0, 4).map((record, index) => (
+                                <TableRow
+                                  key={`${index}-${record[parsedImport.headers[0]] ?? "row"}`}
+                                >
+                                  {parsedImport.headers.map((header) => (
+                                    <TableCell
+                                      key={`${index}-${header}`}
+                                      className="text-xs"
+                                    >
+                                      {record[header] || "—"}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              ))
+                            ) : (
+                              <TableRow>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  Unggah atau tempel daftar pengguna untuk melihat pratinjau.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="space-y-4">
-                      <div className="rounded-xl border p-4">
-                        <p className="text-sm font-medium">Cocokkan Kolom</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Kolom wajib harus dipilih sebelum import dijalankan.
-                        </p>
-                        <div className="mt-4 grid gap-3">
-                          {USER_IMPORT_FIELDS.map((field) => (
-                            <div key={field.key} className="grid gap-2">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium">
-                                  {field.label}
-                                </p>
-                                {field.required ? (
-                                  <Badge
-                                    variant="secondary"
-                                    className="rounded-full"
-                                  >
-                                    Wajib
-                                  </Badge>
-                                ) : null}
-                              </div>
-                              <Command>
-                                <CommandInput
-                                  placeholder="Pilih kolom sumber"
-                                  value={mapping[field.key] || ""}
-                                  onValueChange={(value) =>
-                                    setMapping((current) => ({
-                                      ...current,
-                                      [field.key]: value,
-                                    }))
-                                  }
-                                />
-                                <CommandList className="max-h-[100px]">
-                                  <CommandEmpty>
-                                    Tidak ada kolom yang cocok
-                                  </CommandEmpty>
-                                  <CommandGroup>
-                                    {parsedImport.headers.map((header) => (
-                                      <CommandItem
-                                        key={`${field.key}-${header}`}
-                                        onSelect={() =>
-                                          setMapping((current) => ({
-                                            ...current,
-                                            [field.key]: header,
-                                          }))
-                                        }
-                                      >
-                                        {header}
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
+                  <div className="space-y-4">
+                    <div className="surface-module-card rounded-[1rem] p-4">
+                      <p className="text-sm font-semibold text-foreground">
+                        Cocokkan Kolom
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Semua kolom wajib harus diisi sebelum import dijalankan.
+                      </p>
+                      <div className="mt-4 grid gap-3">
+                        {USER_IMPORT_FIELDS.map((field) => (
+                          <div key={field.key} className="grid gap-2">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-foreground">
+                                {field.label}
+                              </p>
+                              {field.required ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="rounded-full bg-surface-container-low"
+                                >
+                                  Wajib
+                                </Badge>
+                              ) : null}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border bg-muted/30 p-4">
-                        <p className="text-sm font-medium text-foreground">
-                          Ringkasan Kolom
-                        </p>
-                        <p className="mt-2 whitespace-pre-line font-mono text-xs text-muted-foreground">
-                          {toHeaderPreview(mapping)}
-                        </p>
+                            <Command className="rounded-xl border-0 bg-surface-container-lowest shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                              <CommandInput
+                                placeholder="Pilih kolom sumber"
+                                value={mapping[field.key] || ""}
+                                onValueChange={(value) =>
+                                  setMapping((current) => ({
+                                    ...current,
+                                    [field.key]: value,
+                                  }))
+                                }
+                              />
+                              <CommandList className="max-h-[120px]">
+                                <CommandEmpty>
+                                  Tidak ada kolom yang cocok
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {parsedImport.headers.map((header) => (
+                                    <CommandItem
+                                      key={`${field.key}-${header}`}
+                                      onSelect={() =>
+                                        setMapping((current) => ({
+                                          ...current,
+                                          [field.key]: header,
+                                        }))
+                                      }
+                                    >
+                                      {header}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </div>
+                        ))}
                       </div>
                     </div>
+
+                    <div className="surface-muted-card rounded-[1rem] p-4">
+                      <p className="text-sm font-semibold text-foreground">
+                        Ringkasan Kolom
+                      </p>
+                      <p className="mt-2 whitespace-pre-line font-mono text-xs leading-6 text-muted-foreground">
+                        {toHeaderPreview(mapping)}
+                      </p>
+                    </div>
                   </div>
+                </div>
 
-                  {actionState.status !== "idle" ? (
-                    <Alert
-                      className={
-                        actionState.status === "error"
-                          ? "border-red-200 text-red-700"
-                          : "border-emerald-200 text-emerald-700"
-                      }
-                    >
-                      <AlertDescription>
-                        {actionState.message}
-                        {actionState.status === "success" ? (
-                          <span>
-                            {" "}
-                            Baru: {actionState.importedCount ?? 0},
-                            diperbarui:{" "}
-                            {actionState.updatedCount ?? 0}, dilewati:{" "}
-                            {actionState.skippedCount ?? 0}.
-                          </span>
-                        ) : null}
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
+                {actionState.status !== "idle" ? (
+                  <Alert
+                    className={cn(
+                      "border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]",
+                      actionState.status === "error"
+                        ? "bg-red-50 text-red-700"
+                        : "bg-emerald-50 text-emerald-700",
+                    )}
+                  >
+                    <AlertDescription>
+                      {actionState.message}
+                      {actionState.status === "success" ? (
+                        <span>
+                          {" "}
+                          Baru: {actionState.importedCount ?? 0}, diperbarui:{" "}
+                          {actionState.updatedCount ?? 0}, dilewati:{" "}
+                          {actionState.skippedCount ?? 0}.
+                        </span>
+                      ) : null}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
 
-                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsImportOpen(false)}
-                    >
-                      Tutup
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={
-                        isPending ||
-                        !rawCsv.trim() ||
-                        parsedImport.records.length === 0 ||
-                        missingRequiredMappings.length > 0
-                      }
-                    >
-                      {isPending
-                        ? "Mengimpor..."
-                        : "Import ke Manajemen Pengguna"}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsImportOpen(false)}
+                  >
+                    Tutup
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isPending ||
+                      !rawCsv.trim() ||
+                      parsedImport.records.length === 0 ||
+                      missingRequiredMappings.length > 0
+                    }
+                  >
+                    {isPending
+                      ? "Mengimpor..."
+                      : "Import ke Manajemen Pengguna"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
 
+          <Button
+            variant="outline"
+            className="h-10 rounded-xl border-0 bg-surface-container-lowest px-3 text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+            onClick={() => startRefreshTransition(() => router.refresh())}
+            disabled={isRefreshing}
+          >
+            <RefreshCw
+              className={cn("size-4", isRefreshing && "animate-spin")}
+            />
+          </Button>
+
+          <SecurityUserCreateDialog
+            roleOptions={roleOptions}
+            managerOptions={managerOptions}
+            sections={sections}
+            departments={departments}
+            positions={positions}
+            sites={sites}
+          />
+        </>
+      }
+    >
+      <AdminMetricGrid
+        items={[
+          {
+            label: "Total User",
+            value: users.length.toLocaleString(),
+            meta: "Semua akun yang terdaftar di HERO.",
+          },
+          {
+            label: "Active Access",
+            value: activeUsersCount.toLocaleString(),
+            meta: "Akun dengan akses aktif dan siap dipakai.",
+          },
+          {
+            label: `Bergabung ${currentYear}`,
+            value: newHiresCount.toLocaleString(),
+            meta: "Karyawan baru pada tahun berjalan.",
+          },
+          {
+            label: "Cakupan Visible",
+            value: `${visiblePercentage}%`,
+            meta: "Proporsi data yang masih tampil setelah filter diterapkan.",
+          },
+        ]}
+      />
+
+      {hasActiveFilters ? (
+        <div className="surface-muted-card rounded-[1rem] p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {searchQuery.trim() ? (
+              <FilterChip onRemove={() => setSearchQuery("")}>
+                Cari: {searchQuery.trim()}
+              </FilterChip>
+            ) : null}
+            {selectedDepartments.map((department) => (
+              <FilterChip
+                key={department}
+                onRemove={() =>
+                  setSelectedDepartments((current) =>
+                    current.filter((item) => item !== department),
+                  )
+                }
+              >
+                Departemen: {department}
+              </FilterChip>
+            ))}
+            {selectedRoles.map((role) => (
+              <FilterChip
+                key={role}
+                onRemove={() =>
+                  setSelectedRoles((current) =>
+                    current.filter((item) => item !== role),
+                  )
+                }
+              >
+                Peran: {role}
+              </FilterChip>
+            ))}
+            {selectedStatusTypes.map((statusType) => (
+              <FilterChip
+                key={statusType}
+                onRemove={() =>
+                  setSelectedStatusTypes((current) =>
+                    current.filter((item) => item !== statusType),
+                  )
+                }
+              >
+                Status: {statusType}
+              </FilterChip>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              className="h-8 rounded-full px-3 text-xs text-muted-foreground"
+            >
+              Reset semua
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
+        <MinimalTableShell
+          title="Direktori Pengguna"
+          description="Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
+          label="users"
+          fileName="security-users"
+          searchEnabled={false}
+          filters={
+            <>
+              <div className="relative w-full sm:w-[220px] sm:flex-none">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Cari pengguna..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="h-9 rounded-xl border-0 bg-surface-container-lowest pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                />
+              </div>
+              <MultiSelectDropdown
+                options={departmentFilterOptions}
+                selected={selectedDepartments}
+                onChange={setSelectedDepartments}
+                placeholder="Semua departemen"
+                label="Departemen"
+              />
+              <MultiSelectDropdown
+                options={roleNames}
+                selected={selectedRoles}
+                onChange={setSelectedRoles}
+                placeholder="Semua peran"
+                label="Peran"
+              />
+              <MultiSelectDropdown
+                options={statusTypeOptions}
+                selected={selectedStatusTypes}
+                onChange={setSelectedStatusTypes}
+                placeholder="Semua tipe status"
+                label="Tipe status"
+              />
+            </>
+          }
+          actions={
             <Button
               variant="outline"
-              className="h-10 rounded-lg bg-surface-container-low text-sm font-medium text-muted-foreground hover:bg-surface-container-highest hover:text-foreground"
-              onClick={() => startRefreshTransition(() => router.refresh())}
-              disabled={isRefreshing}
+              size="sm"
+              onClick={exportVisibleUsers}
+              className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             >
-              <RefreshCw
-                className={`size-4 ${isRefreshing ? "animate-spin" : ""}`}
-              />
+              Export Terfilter
             </Button>
-
-            <SecurityUserCreateDialog
-              roleOptions={roleOptions}
-              managerOptions={managerOptions}
-              sections={sections}
-              departments={departments}
-              positions={positions}
-              sites={sites}
-            />
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="mb-6 flex flex-wrap gap-2">
-          {/* Total User Card */}
-          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
-            <div className="absolute left-0 top-0 h-full w-1 bg-blue-500" />
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Total User
-                  </p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-foreground">
-                      {users.length.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10">
-                  <Users2 className="size-5 text-blue-500" />
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-1 text-xs">
-                <span className="font-medium text-emerald-500">+12%</span>
-                <span className="text-muted-foreground">vs last month</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Active Access Card */}
-          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
-            <div className="absolute left-0 top-0 h-full w-1 bg-amber-500" />
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Active Access
-                  </p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-foreground">
-                      {activeUsersCount.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-                  <ShieldCheck className="size-5 text-amber-500" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <Badge className="rounded-md border-0 bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-                  Critical
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Join 2026 Card */}
-          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
-            <div className="absolute left-0 top-0 h-full w-1 bg-violet-500" />
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Bergabung {currentYear}
-                  </p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-foreground">
-                      {newHiresCount.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500/10">
-                  <BriefcaseBusiness className="size-5 text-violet-500" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <span className="text-xs text-muted-foreground">Karyawan Baru</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Visible Result Card */}
-          <Card className="relative min-w-[170px] overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
-            <div className="absolute left-0 top-0 h-full w-1 bg-foreground" />
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Cakupan Terlihat
-                  </p>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-foreground">
-                      {visiblePercentage}%
-                    </span>
-                  </div>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                  <MapPin className="size-5 text-foreground" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-foreground transition-all duration-500"
-                    style={{ width: `${visiblePercentage}%` }}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filter Bar with Search */}
-        <Card className="mb-6 bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              {/* Left side: Search and Filters */}
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Search Input with Button */}
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
-                    <Input
-                      placeholder="Cari pengguna..."
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      className="h-9 w-[200px] rounded-lg border-border bg-muted/50 pl-9 text-sm placeholder:text-muted-foreground/60"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleSearch}
-                    className="h-9 rounded-lg bg-[#3b82f6] px-4 text-sm font-medium text-white hover:bg-[#2563eb]"
-                  >
-                    Cari
-                  </Button>
-                </div>
-
-                {/* Multi-select Department Filter */}
-                <MultiSelectDropdown
-                  options={departmentFilterOptions}
-                  selected={selectedDepartments}
-                  onChange={setSelectedDepartments}
-                  placeholder="Semua departemen"
-                  label="Departemen"
-                />
-
-                {/* Multi-select Role Filter */}
-                <MultiSelectDropdown
-                  options={roleNames}
-                  selected={selectedRoles}
-                  onChange={setSelectedRoles}
-                  placeholder="Semua peran"
-                  label="Peran"
-                />
-
-                {/* Multi-select Status Type Filter */}
-                <MultiSelectDropdown
-                  options={statusTypeOptions}
-                  selected={selectedStatusTypes}
-                  onChange={setSelectedStatusTypes}
-                  placeholder="Semua tipe status"
-                  label="Tipe Status"
-                />
-
-                {/* Reset button */}
-                {hasActiveFilters && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetFilters}
-                    className="h-9 text-xs text-muted-foreground hover:text-destructive"
-                  >
-                    <X className="mr-1 size-3" />
-                    Reset
-                  </Button>
-                )}
-              </div>
-
-              {/* Right side: Pagination info */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => exportVisibleUsers()}
-                  className="h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal"
-                >
-                  Excel
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Menampilkan 1-
-                  {Math.min(filteredUsers.length, 10)} dari {filteredUsers.length}{" "}
-                  data
-                </span>
-              </div>
-            </div>
-
-            {/* Active filter badges */}
-            {hasActiveFilters && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[1rem] bg-surface-container-low p-3">
-                {searchQuery && (
-                  <Badge
-                    variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-500"
-                  >
-                    Cari: {searchQuery}
-                    <button
-                      onClick={() => {
-                        setSearchInput("");
-                        setSearchQuery("");
-                      }}
-                      className="ml-1 rounded-full hover:bg-[#dbeafe]"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                )}
-                {selectedDepartments.map((dept) => (
-                  <Badge
-                    key={dept}
-                    variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-500"
-                  >
-                    Departemen: {dept}
-                    <button
-                      onClick={() =>
-                        setSelectedDepartments((prev) =>
-                          prev.filter((d) => d !== dept),
-                        )
-                      }
-                      className="ml-1 rounded-full hover:bg-[#dcfce7]"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-                {selectedRoles.map((role) => (
-                  <Badge
-                    key={role}
-                    variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-500"
-                  >
-                    Peran: {role}
-                    <button
-                      onClick={() =>
-                        setSelectedRoles((prev) =>
-                          prev.filter((r) => r !== role),
-                        )
-                      }
-                      className="ml-1 rounded-full hover:bg-[#f3e8ff]"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-                {selectedStatusTypes.map((type) => (
-                  <Badge
-                    key={type}
-                    variant="secondary"
-                    className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
-                  >
-                    Status: {type}
-                    <button
-                      onClick={() =>
-                        setSelectedStatusTypes((prev) =>
-                          prev.filter((t) => t !== type),
-                        )
-                      }
-                      className="ml-1 rounded-full hover:bg-[#ffedd5]"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Pagination Bar */}
-        <div className="mb-4 flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 rounded-lg bg-surface-container-low"
-            disabled
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            className="h-8 w-8 rounded-lg bg-[#1e3a5f] px-0 text-xs"
-          >
-            1
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 rounded-lg bg-surface-container-low px-0 text-xs"
-          >
-            2
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 rounded-lg bg-surface-container-low"
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-
-        {/* User Table */}
-        <Card className="overflow-hidden bg-surface-container-lowest shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
-          <div className="overflow-x-auto">
+          }
+          dateFilter={false}
+        >
+          <div className="overflow-x-auto rounded-[1rem] bg-surface-container-low p-2">
             <Table>
               <TableHeader>
-                <TableRow className="border-b-border bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="w-[280px] py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Nama
-                  </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    SN
-                  </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Departement
-                  </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Peran
-                  </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Lokasi Site
-                  </TableHead>
-                  <TableHead className="py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Tipe Status
-                  </TableHead>
-                  <TableHead className="py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Tindakan
-                  </TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[320px]">Nama</TableHead>
+                  <TableHead>SN</TableHead>
+                  <TableHead>Departemen</TableHead>
+                  <TableHead>Peran</TableHead>
+                  <TableHead>Lokasi Site</TableHead>
+                  <TableHead>Tipe Status</TableHead>
+                  <TableHead className="w-[120px] text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.length > 0 ? (
-                  filteredUsers.slice(0, 10).map((user) => (
-                    <TableRow
-                      key={user.id}
-                      className="border-b-border transition-colors hover:bg-muted/50"
-                    >
-                      <TableCell className="py-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="size-11 rounded-xl border border-border">
+                  filteredUsers.map((user) => (
+                    <TableRow key={user.id} className="hover:bg-white/55">
+                      <TableCell className="py-3.5">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-11 rounded-xl shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
                             <AvatarImage
                               src={user.profileImage || undefined}
                               alt={user.name}
                               className="object-cover"
                             />
-                            <AvatarFallback className="rounded-xl bg-blue-500/10 text-sm font-semibold text-blue-500">
+                            <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
                               {getUserInitials(user.name)}
                             </AvatarFallback>
                           </Avatar>
-                          <div>
-                            <p className="font-semibold text-foreground">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">
                               {user.name}
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="truncate text-sm text-muted-foreground">
                               {user.email}
                             </p>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="py-4">
-                        <span className="font-mono text-sm font-medium text-foreground/80">
+                      <TableCell className="py-3.5">
+                        <span className="font-mono text-sm text-foreground/80">
                           {user.employeeSn}
                         </span>
                       </TableCell>
-                      <TableCell className="py-4">
+                      <TableCell className="py-3.5">
                         <Badge
                           variant="secondary"
-                          className="rounded-md border-0 bg-muted text-muted-foreground"
+                          className="rounded-full border-0 bg-surface-container-lowest px-3 py-1 text-[11px] text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
                         >
                           {user.department}
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-4">
-                        <span className="text-sm text-foreground/80">
-                          {user.accessRole}
-                        </span>
+                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                        {user.accessRole}
                       </TableCell>
-                      <TableCell className="py-4">
-                        <span className="text-sm text-foreground/80">
-                          {user.workLocation || "—"}
-                        </span>
+                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                        {user.workLocation || "—"}
                       </TableCell>
-                      <TableCell className="py-4">
+                      <TableCell className="py-3.5">
                         <Badge
                           variant="outline"
-                          className="rounded-md border-border bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                          className="rounded-full border-0 bg-surface-container-lowest px-3 py-1 text-[11px] text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
                         >
                           {user.employeeStatusType}
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-4 text-right">
+                      <TableCell className="py-3.5 text-right">
                         <SecurityUserRowActions
                           user={user}
                           managerOptions={managerOptions}
@@ -1085,33 +893,67 @@ export function SecurityUserManagement({
                       colSpan={7}
                       className="py-12 text-center text-sm text-muted-foreground"
                     >
-                      No users found matching your filters.
+                      Tidak ada pengguna yang cocok dengan filter saat ini.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
-        </Card>
+        </MinimalTableShell>
+      </div>
 
-        {/* Footer */}
-        <div className="mt-6 flex flex-col gap-4 rounded-[1.2rem] bg-surface-container-low p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <div className="size-2 rounded-full bg-emerald-500" />
-              <span className="font-medium text-emerald-500">
-                CLOUD SYNC ACTIVE
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Lock className="size-3 text-muted-foreground" />
-              <span>ENCRYPTION LEVEL: AES-256</span>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="surface-muted-card rounded-[1rem] p-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+              <Users2 className="size-4" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                Total scope
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {users.length.toLocaleString()} akun terdaftar
+              </p>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground/60">
-            © 2024 HERO Platform - Industrial Intelligence Console v2.4.0
-          </p>
         </div>
-    </div>
+        <div className="surface-muted-card rounded-[1rem] p-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-xl bg-tertiary-container text-on-tertiary-container">
+              <ShieldCheck className="size-4" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                Access health
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {activeUsersCount.toLocaleString()} akses aktif
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="surface-muted-card rounded-[1rem] p-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+              {visiblePercentage >= 100 ? (
+                <BriefcaseBusiness className="size-4" />
+              ) : (
+                <MapPin className="size-4" />
+              )}
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                Current view
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {filteredUsers.length.toLocaleString()} user siap ditindak
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </AdminPageShell>
   );
 }

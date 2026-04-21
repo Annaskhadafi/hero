@@ -19,6 +19,7 @@ import {
   CheckCheck,
   CircleAlert,
   Clock3,
+  Eye,
   FileCheck2,
   ImageIcon,
   ShieldAlert,
@@ -157,10 +158,17 @@ function ApprovalCard({
         <div className="mt-4 flex gap-2">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="outline" className="flex-1 rounded-full">
-              Detail
-            </Button>
-          </SheetTrigger>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full text-primary hover:bg-surface-container-low"
+                aria-label={`Lihat detail ${item.employee}`}
+                title={`Lihat detail ${item.employee}`}
+              >
+                <Eye className="h-4 w-4" />
+                <span className="sr-only">Lihat detail</span>
+              </Button>
+            </SheetTrigger>
           <SheetContent side="bottom" className="max-h-[90svh] rounded-t-[2rem]">
             <SheetHeader>
               <SheetTitle>{item.employee}</SheetTitle>

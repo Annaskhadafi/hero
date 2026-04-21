@@ -10,6 +10,7 @@ import { SiteHeader } from "@/components/site-header"
 import { getServerSession } from "@/lib/auth-session"
 import { isMobileUserAgent } from "@/lib/device"
 import { getEmployeeDisplayDataByEmail, getNavbarSettingsData, getSidebarDataForUser } from "@/lib/hero-admin"
+import { getRecipientUnreadNotificationCount } from "@/lib/notification-feed"
 
 import "@/app/dashboard/theme.css"
 
@@ -33,10 +34,11 @@ export default async function DashboardLayout({
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
-  const [sidebarData, navbarSettings, employeeDisplay] = await Promise.all([
+  const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
     getEmployeeDisplayDataByEmail(session.user.email),
+    getRecipientUnreadNotificationCount(session.user.email),
   ])
 
   return (
@@ -54,6 +56,7 @@ export default async function DashboardLayout({
           name: employeeDisplay?.name || session.user.name || "User",
           email: employeeDisplay?.email || session.user.email,
           avatar: session.user.image || "/logo.png",
+          unreadNotifications,
         }}
         navMain={sidebarData.navMain}
         navSecondary={sidebarData.navSecondary}

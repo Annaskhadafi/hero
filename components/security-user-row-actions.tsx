@@ -136,9 +136,15 @@ export function SecurityUserRowActions({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-xl text-primary hover:bg-surface-container-low"
+          aria-label={`Kelola ${user.name}`}
+          title={`Kelola ${user.name}`}
+        >
           <Eye className="size-4" />
-          Kelola
+          <span className="sr-only">Kelola pengguna</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] w-full overflow-y-auto sm:max-w-5xl">

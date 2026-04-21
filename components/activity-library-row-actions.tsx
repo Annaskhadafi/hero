@@ -166,12 +166,19 @@ export function ActivityLibraryRowActions({
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className="flex items-center justify-end gap-1">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button type="button" variant="outline" size="sm" className="h-9 rounded-lg px-3">
-            <Pencil className="mr-2 size-4" />
-            Edit
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-xl text-primary hover:bg-surface-container-low"
+            aria-label={`Edit ${row.activityName}`}
+            title={`Edit ${row.activityName}`}
+          >
+            <Pencil className="size-4" />
+            <span className="sr-only">Edit activity</span>
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-4xl">
@@ -321,14 +328,16 @@ export function ActivityLibraryRowActions({
 
       <Button
         type="button"
-        variant="outline"
-        size="sm"
-        className="h-9 rounded-lg px-3 text-rose-700"
+        variant="ghost"
+        size="icon"
+        className="rounded-xl text-rose-700 hover:bg-rose-50"
         onClick={() => void handleDelete()}
         disabled={isDeleting}
+        aria-label={`Hapus ${row.activityName}`}
+        title={`Hapus ${row.activityName}`}
       >
-        {isDeleting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Trash2 className="mr-2 size-4" />}
-        Hapus
+        {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+        <span className="sr-only">Hapus activity</span>
       </Button>
     </div>
   );

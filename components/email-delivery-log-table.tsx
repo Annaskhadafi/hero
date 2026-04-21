@@ -112,7 +112,7 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
               <TableHead>Judul Email</TableHead>
               <TableHead>Dikirim Oleh</TableHead>
               <TableHead>Waktu Kirim</TableHead>
-              <TableHead>Lihat</TableHead>
+              <TableHead>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -140,9 +140,16 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
                   {(log.sentAt ?? log.createdAt).toLocaleString("id-ID")}
                 </TableCell>
                 <TableCell>
-                  <Button variant="outline" size="sm" onClick={() => setSelected(log)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="rounded-xl text-primary hover:bg-surface-container-low"
+                    onClick={() => setSelected(log)}
+                    aria-label={`Lihat email ${log.subject}`}
+                    title={`Lihat email ${log.subject}`}
+                  >
                     <Eye className="size-4" />
-                    Lihat
+                    <span className="sr-only">Lihat detail email</span>
                   </Button>
                 </TableCell>
               </TableRow>

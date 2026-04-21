@@ -5,38 +5,52 @@ export function AdminPageShell({
   title,
   description,
   badge,
+  actions,
   children,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   badge?: string;
+  actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-5 p-3 sm:p-5 lg:p-6">
-      <header className="flex flex-col gap-3 border-b border-border/70 pb-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex h-7 items-center gap-2 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold uppercase text-muted-foreground shadow-sm">
-              <Activity className="size-3.5 text-primary" aria-hidden="true" />
-              {eyebrow}
-            </span>
-            {badge ? (
-              <span className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 text-xs font-semibold text-primary ring-1 ring-primary/15">
-                {badge}
-                <ChevronRight className="size-3" aria-hidden="true" />
+    <div className="space-y-5 p-3 sm:p-5 lg:space-y-6 lg:p-6">
+      <header className="industrial-card overflow-hidden rounded-[1.25rem] px-4 py-4 sm:px-5 sm:py-5 lg:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="surface-chip inline-flex h-8 items-center gap-2 rounded-full px-3 text-[0.68rem] font-semibold uppercase text-muted-foreground">
+                <Activity className="size-3.5 text-primary" aria-hidden="true" />
+                {eyebrow}
               </span>
-            ) : null}
+              {badge ? (
+                <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-[0.68rem] font-semibold uppercase text-primary ring-1 ring-primary/10">
+                  {badge}
+                  <ChevronRight className="size-3" aria-hidden="true" />
+                </span>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <h1 className="max-w-4xl font-display text-[1.7rem] font-semibold leading-tight text-foreground sm:text-[2.1rem]">
+                {title}
+              </h1>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-[0.95rem]">
+                {description}
+              </p>
+            </div>
           </div>
-          <h1 className="font-display text-2xl font-semibold leading-tight tracking-normal text-foreground sm:text-3xl">
-            {title}
-          </h1>
-          <p className="sr-only">{description}</p>
+
+          {actions ? (
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              {actions}
+            </div>
+          ) : null}
         </div>
       </header>
 
-      <div className="space-y-5">
+      <div className="space-y-5 lg:space-y-6">
         {children}
       </div>
     </div>

@@ -14,21 +14,21 @@ export default function SettingsLayout({
 }) {
   return (
     <div className="space-y-5 p-3 sm:p-5 lg:p-6">
-      <header className="border-b border-border/70 pb-4">
-        <h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
-          <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+      <header className="surface-muted-card rounded-[1rem] p-4">
+        <h1 className="flex items-center gap-3 font-display text-2xl font-semibold tracking-normal text-foreground sm:text-3xl">
+          <span className="grid size-9 place-items-center rounded-xl bg-surface-container-lowest text-primary shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
             <Settings2 className="size-4" aria-hidden="true" />
           </span>
           Admin settings studio
         </h1>
       </header>
 
-      <nav className="flex flex-wrap gap-2">
+      <nav className="surface-muted-card flex flex-wrap gap-2 rounded-[1rem] p-2.5">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-muted-foreground shadow-sm transition hover:-translate-y-0.5 hover:text-foreground hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] transition hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             {tab.label}
           </Link>

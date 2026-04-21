@@ -1,13 +1,23 @@
+"use client";
+
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   pendingApprovals,
   teamBoardSummary,
   teamMembers,
 } from "@/lib/activity-hub-data";
-import { CheckCheck, Clock3, Flame, TriangleAlert, Users2 } from "lucide-react";
+import { CheckCheck, Clock3, Eye, Flame, TriangleAlert, Users2 } from "lucide-react";
 
 const memberStatusStyles: Record<string, string> = {
   Working: "bg-emerald-100 text-emerald-900",
@@ -173,9 +183,7 @@ export function ActivityHubTeamBoard() {
             </div>
 
             <div className="mt-4 flex gap-2">
-              <Button asChild size="sm" variant="outline" className="flex-1 rounded-full">
-                <Link href="/dashboard/approval">Detail</Link>
-              </Button>
+              <PendingApprovalDetailDialog approval={approval} />
               <Button asChild size="sm" className="flex-1 rounded-full">
                 <Link href="/dashboard/approval">Approve</Link>
               </Button>
@@ -184,5 +192,67 @@ export function ActivityHubTeamBoard() {
         ))}
       </section>
     </div>
+  );
+}
+
+function PendingApprovalDetailDialog({
+  approval,
+}: {
+  approval: (typeof pendingApprovals)[number];
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="rounded-full text-primary hover:bg-surface-container-low"
+          aria-label={`Lihat detail ${approval.employee}`}
+          title={`Lihat detail ${approval.employee}`}
+        >
+          <Eye className="h-4 w-4" />
+          <span className="sr-only">Lihat detail</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{approval.employee}</DialogTitle>
+          <DialogDescription>
+            Detail approval singkat untuk review cepat di desktop.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="surface-muted-card rounded-[1.25rem] p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Approval ID</p>
+            <p className="mt-2 text-base font-semibold text-foreground">{approval.id}</p>
+          </div>
+          <div className="surface-muted-card rounded-[1.25rem] p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Risk</p>
+            <p className="mt-2 text-base font-semibold text-foreground">{approval.risk}</p>
+          </div>
+          <div className="surface-muted-card rounded-[1.25rem] p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Submitted</p>
+            <p className="mt-2 text-base font-semibold text-foreground">{approval.submittedAt}</p>
+          </div>
+          <div className="surface-muted-card rounded-[1.25rem] p-4">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Lembur</p>
+            <p className="mt-2 text-base font-semibold text-foreground">{approval.overtime}</p>
+          </div>
+        </div>
+
+        <div className="surface-muted-card rounded-[1.25rem] p-4">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Item Approval</p>
+          <p className="mt-2 text-sm leading-6 text-foreground">{approval.item}</p>
+        </div>
+
+        <div className="flex justify-end">
+          <Button asChild className="rounded-full">
+            <Link href="/dashboard/approval">Buka workspace approval</Link>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

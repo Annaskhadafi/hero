@@ -211,9 +211,16 @@ export function EmailTemplateSettingsPanel({
                     />
                   </TableCell>
                   <TableCell>
-                    <Button variant="outline" size="sm" className="rounded-lg" onClick={() => handleOpenDialog(template)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-xl text-primary hover:bg-surface-container-low"
+                      onClick={() => handleOpenDialog(template)}
+                      aria-label={`Edit template ${template.name}`}
+                      title={`Edit template ${template.name}`}
+                    >
                       <Pencil className="size-4" />
-                      Edit
+                      <span className="sr-only">Edit template</span>
                     </Button>
                   </TableCell>
                 </TableRow>

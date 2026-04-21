@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { signOut } from "@/lib/auth-client"
@@ -39,6 +40,7 @@ export function NavUser({
     name: string
     email: string
     avatar: string
+    unreadNotifications?: number
   }
 }) {
   const { isMobile } = useSidebar()
@@ -63,12 +65,26 @@ export function NavUser({
 
   return (
     <SidebarMenu>
-      <SidebarMenuItem>
+      <SidebarMenuItem className="flex items-center gap-2">
+        <SidebarMenuButton
+          asChild
+          tooltip="Notifications"
+          className="relative size-11 shrink-0 rounded-2xl justify-center group-data-[collapsible=icon]:size-10!"
+        >
+          <Link href="/dashboard/notifications" aria-label="Notifications">
+            <IconNotification className="size-4" />
+            {user.unreadNotifications && user.unreadNotifications > 0 ? (
+              <span className="absolute right-2 top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                {user.unreadNotifications > 99 ? "99+" : user.unreadNotifications}
+              </span>
+            ) : null}
+          </Link>
+        </SidebarMenuButton>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-2xl"
+              className="min-w-0 flex-1 rounded-2xl data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarImage src={user.avatar} alt={user.name} />
@@ -112,10 +128,6 @@ export function NavUser({
               <DropdownMenuItem>
                 <IconCreditCard />
                 Tagihan
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconNotification />
-                Notifikasi
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
