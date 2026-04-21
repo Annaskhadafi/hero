@@ -23,13 +23,71 @@ function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ");
 }
 
+function countDelimiterOccurrences(line: string, delimiter: string) {
+  let count = 0;
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const nextChar = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function detectCsvDelimiter(raw: string) {
+  const candidates = [",", ";", "\t", "|"] as const;
+  const lines = raw
+    .replace(/^\uFEFF/, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (lines.length === 0) {
+    return ",";
+  }
+
+  let selectedDelimiter = ",";
+  let selectedScore = 0;
+
+  for (const delimiter of candidates) {
+    const score = lines.reduce(
+      (total, line) => total + countDelimiterOccurrences(line, delimiter),
+      0,
+    );
+
+    if (score > selectedScore) {
+      selectedDelimiter = delimiter;
+      selectedScore = score;
+    }
+  }
+
+  return selectedDelimiter;
+}
+
 export function parseCsv(raw: string) {
   const rows: string[][] = [];
   let currentCell = "";
   let currentRow: string[] = [];
   let inQuotes = false;
 
-  const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const delimiter = detectCsvDelimiter(normalized);
 
   for (let index = 0; index < normalized.length; index += 1) {
     const char = normalized[index];
@@ -46,7 +104,7 @@ export function parseCsv(raw: string) {
       continue;
     }
 
-    if (char === "," && !inQuotes) {
+    if (char === delimiter && !inQuotes) {
       currentRow.push(currentCell.trim());
       currentCell = "";
       continue;

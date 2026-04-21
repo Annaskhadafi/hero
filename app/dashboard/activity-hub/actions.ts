@@ -1202,8 +1202,25 @@ export async function importActivityLibraryAction(
     let importedCount = 0;
     let updatedCount = 0;
     let skippedCount = 0;
+    let duplicateCodeCount = 0;
+    const recordsByActivityCode = new Map<string, Record<string, string>>();
 
     for (const row of parsed.records) {
+      const activityCode = getActivityLibraryImportValue(row, "activityCode");
+      const normalizedActivityCode = activityCode.trim().toLowerCase();
+
+      if (!normalizedActivityCode) {
+        continue;
+      }
+
+      if (recordsByActivityCode.has(normalizedActivityCode)) {
+        duplicateCodeCount += 1;
+      }
+
+      recordsByActivityCode.set(normalizedActivityCode, row);
+    }
+
+    for (const row of recordsByActivityCode.values()) {
       const activityCode = getActivityLibraryImportValue(row, "activityCode");
       const activityName = getActivityLibraryImportValue(row, "activityName");
 
@@ -1267,7 +1284,10 @@ export async function importActivityLibraryAction(
 
     return {
       status: "success",
-      message: "Import Activity Library selesai.",
+      message:
+        duplicateCodeCount > 0
+          ? `Import Activity Library selesai. ${duplicateCodeCount} baris duplicate activityCode digabung, pakai baris terakhir.`
+          : "Import Activity Library selesai.",
       importedCount,
       updatedCount,
       skippedCount,

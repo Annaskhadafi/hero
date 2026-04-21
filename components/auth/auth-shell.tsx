@@ -41,8 +41,8 @@ export function AuthShell({
                                 </div>
                             )}
                         </div>
-                        <p className="text-[0.68rem] font-semibold uppercase tracking-normal text-slate-300/70">
-                            Secure Operations
+                        <p className="text-[1rem] font-semibold uppercase tracking-normal text-slate-300/70">
+                            PT CHITRA PARATAMA
                         </p>
                         <h1 className="font-display mt-2 text-3xl font-semibold tracking-normal text-white">
                             {title}
