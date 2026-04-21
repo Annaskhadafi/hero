@@ -110,6 +110,19 @@ export function MobileOvertimeRequestForm({
     [employeeStates, selectedEmployeeIds],
   );
 
+  const totalValidCustomJobs = useMemo(
+    () =>
+      selectedEmployeeIds.reduce(
+        (total, employeeId) =>
+          total +
+          (employeeStates[employeeId]?.customJobs.filter((job) => job.lineLabel.trim().length > 0).length ?? 0),
+        0,
+      ),
+    [employeeStates, selectedEmployeeIds],
+  );
+
+  const totalSelectedJobs = totalSelectedLibraryJobs + totalValidCustomJobs;
+
   const lineItemsJson = useMemo(() => {
     const lines = selectedEmployeeIds.flatMap((employeeId) => {
       const employeeState = employeeStates[employeeId] ?? { libraryActivityIds: [], customJobs: [] };
@@ -547,11 +560,17 @@ export function MobileOvertimeRequestForm({
         <Button
           type="submit"
           className="h-14 w-full rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
-          disabled={selectedEmployeeIds.length === 0}
+          disabled={selectedEmployeeIds.length === 0 || totalSelectedJobs === 0}
         >
           <Check className="size-4" />
           {submitLabel}
         </Button>
+
+        {selectedEmployeeIds.length > 0 && totalSelectedJobs === 0 ? (
+          <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-4 text-sm font-semibold leading-6 text-[#8a5a00]">
+            Pilih minimal satu daftar pekerjaan atau isi minimal satu pekerjaan custom supaya pengajuan bisa disimpan.
+          </div>
+        ) : null}
       </form>
 
       <Dialog open={employeePickerOpen} onOpenChange={setEmployeePickerOpen}>
@@ -566,19 +585,30 @@ export function MobileOvertimeRequestForm({
               const checked = selectedEmployeeIds.includes(`${member.id}`);
 
               return (
-                <button
+                <div
                   key={member.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => toggleEmployee(`${member.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggleEmployee(`${member.id}`);
+                    }
+                  }}
                   className="flex w-full items-center gap-3 rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left"
                 >
-                  <Checkbox checked={checked} />
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => toggleEmployee(`${member.id}`)}
+                    onClick={(event) => event.stopPropagation()}
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#082033]">{member.name}</p>
                     <p className="mt-1 text-xs font-semibold text-[#486275]">{member.role}</p>
                   </div>
                   <ChevronRight className="size-4 text-[#486275]" />
-                </button>
+                </div>
               );
             })}
           </div>
@@ -610,23 +640,38 @@ export function MobileOvertimeRequestForm({
                   (employeeStates[jobPickerEmployeeId]?.libraryActivityIds ?? []).includes(`${library.id}`);
 
                 return (
-                  <button
+                  <div
                     key={library.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       if (!jobPickerEmployeeId) return;
                       toggleLibraryJob(jobPickerEmployeeId, `${library.id}`);
                     }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        if (!jobPickerEmployeeId) return;
+                        toggleLibraryJob(jobPickerEmployeeId, `${library.id}`);
+                      }
+                    }}
                     className="flex w-full items-center gap-3 rounded-[1rem] bg-[#f6fbff] px-4 py-4 text-left"
                   >
-                    <Checkbox checked={checked} />
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => {
+                        if (!jobPickerEmployeeId) return;
+                        toggleLibraryJob(jobPickerEmployeeId, `${library.id}`);
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-[#082033]">{library.activityName}</p>
                       <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-[#486275]">
                         {library.activityCode} • {library.basePoints} pts
                       </p>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -9,8 +9,6 @@ import {
   employees,
   hseIncidents,
   hseObservations,
-  notificationDeliveries,
-  notificationEvents,
   notificationPushSubscriptions,
   notificationUserPreferences,
   pointEvents,
@@ -20,6 +18,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { ensureHeroSeedData } from "@/lib/hero-admin";
+import { getRecipientNotifications, getRecipientUnreadNotificationCount } from "@/lib/notification-feed";
 import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
 import { getPushChannelConfig } from "@/lib/push-notifications";
 
@@ -79,55 +78,19 @@ export async function getMobileEmployeeContext(
 }
 
 export async function getMobileNotifications(email?: string | null) {
-  await ensureNotificationInfrastructure();
-
   if (!email) {
     return [];
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
-
-  return db
-    .select({
-      id: notificationDeliveries.id,
-      channel: notificationDeliveries.deliveryChannel,
-      recipient: notificationDeliveries.recipient,
-      status: notificationDeliveries.status,
-      eventType: notificationEvents.eventType,
-      deliveryStatus: notificationEvents.deliveryStatus,
-      payloadSnapshot: notificationEvents.payloadSnapshot,
-      createdAt: notificationDeliveries.createdAt,
-      sentAt: notificationDeliveries.sentAt,
-      errorMessage: notificationDeliveries.errorMessage,
-    })
-    .from(notificationDeliveries)
-    .leftJoin(notificationEvents, eq(notificationDeliveries.notificationEventId, notificationEvents.id))
-    .where(sql`lower(${notificationDeliveries.recipient}) = ${normalizedEmail}`)
-    .orderBy(desc(notificationDeliveries.createdAt))
-    .limit(30);
+  return getRecipientNotifications(email, 50);
 }
 
 export async function getMobileNotificationCount(email?: string | null) {
-  await ensureNotificationInfrastructure();
-
   if (!email) {
     return 0;
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const recentWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [row] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(notificationDeliveries)
-    .where(
-      and(
-        sql`lower(${notificationDeliveries.recipient}) = ${normalizedEmail}`,
-        ne(notificationDeliveries.status, "failed"),
-        gte(notificationDeliveries.createdAt, recentWindowStart),
-      ),
-    );
-
-  return row?.count ?? 0;
+  return getRecipientUnreadNotificationCount(email);
 }
 
 export async function getMobileNotificationSettings(email?: string | null) {

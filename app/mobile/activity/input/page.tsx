@@ -29,7 +29,7 @@ export default async function MobileActivityInputPage() {
   }
 
   const now = new Date();
-  const defaultStart = new Date(now.getTime() - 60 * 60 * 1000);
+  const defaultDateTime = dateTimeLocalValue(now);
 
   return (
     <div className="space-y-5">
@@ -114,13 +114,36 @@ export default async function MobileActivityInputPage() {
         </section>
       ) : null}
 
+      {data.standaloneOvertimeChecklist ? (
+        <section className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Active SPL Checklist</p>
+              <p className="mt-1 text-base font-black text-[#082033]">{data.standaloneOvertimeChecklist.title}</p>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
+                {data.standaloneOvertimeChecklist.splNumber} • {data.standaloneOvertimeChecklist.lineCount} line
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
+                {data.standaloneOvertimeChecklist.progressPercent}% progress
+              </Badge>
+              <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+                {data.standaloneOvertimeChecklist.plannedPointsTotal} pts
+              </Badge>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <MobileDailyActivityForm
         employeeId={data.employee.id}
         assignments={data.assignments}
         availableLibrary={data.availableLibrary}
-        defaultStartTime={dateTimeLocalValue(defaultStart)}
-        defaultEndTime={dateTimeLocalValue(now)}
+        defaultStartTime={defaultDateTime}
+        defaultEndTime={defaultDateTime}
         routeChecklist={data.routeChecklist}
+        standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
         site={data.site}
       />
     </div>

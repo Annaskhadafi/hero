@@ -5,10 +5,13 @@ import {
   Bell,
   BellRing,
   BriefcaseBusiness,
+  Check,
+  CheckCheck,
   ChevronDown,
   ShieldAlert,
   Sparkles,
   Smartphone,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,14 +31,19 @@ type NotificationPreferences = {
 type NotificationRow = {
   id: number;
   channel: string;
-  recipient: string;
+  recipient?: string | null;
   status: string;
   eventType: string | null;
-  deliveryStatus: string | null;
-  payloadSnapshot: string | null;
+  deliveryStatus?: string | null;
+  payloadSnapshot?: string | null;
   createdAt: string;
   sentAt: string | null;
-  errorMessage: string | null;
+  errorMessage?: string | null;
+  title?: string;
+  body?: string;
+  href?: string;
+  readAt?: string | null;
+  isRead?: boolean;
 };
 
 type NotificationApiPayload = {
@@ -133,6 +141,10 @@ function humanizeToken(value?: string | null) {
 }
 
 function formatNotificationTitle(item: NotificationRow) {
+  if (item.title?.trim()) {
+    return item.title.trim();
+  }
+
   const payload = parsePayload(item.payloadSnapshot);
   const payloadTitle = asText(payload?.title);
   if (payloadTitle) return payloadTitle;
@@ -165,6 +177,10 @@ function formatNotificationTitle(item: NotificationRow) {
 }
 
 function formatNotificationBody(item: NotificationRow) {
+  if (item.body?.trim()) {
+    return item.body.trim();
+  }
+
   const payload = parsePayload(item.payloadSnapshot);
   const payloadBody = asText(payload?.body);
   if (payloadBody) return payloadBody;
@@ -218,7 +234,8 @@ function formatNotificationBody(item: NotificationRow) {
 function getNotificationDisplayKey(item: NotificationRow) {
   return [
     item.eventType ?? item.channel,
-    item.payloadSnapshot || item.errorMessage || "",
+    item.title || item.payloadSnapshot || item.errorMessage || "",
+    item.body || "",
     formatDate(item.sentAt ?? item.createdAt),
   ].join("|");
 }
@@ -259,6 +276,7 @@ export function MobileNotificationsCenter({
   const [feedback, setFeedback] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isNotificationActionBusy, setIsNotificationActionBusy] = useState(false);
 
   const refreshData = useEffectEvent(async () => {
     const response = await fetch("/api/mobile/notifications", { cache: "no-store" });
@@ -281,6 +299,37 @@ export function MobileNotificationsCenter({
 
     return () => window.clearInterval(interval);
   }, [refreshData]);
+
+  async function runNotificationAction(action: "mark-read" | "clear", options?: { ids?: number[]; scope?: "all" }) {
+    setIsNotificationActionBusy(true);
+    setFeedback("");
+
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action,
+          ids: options?.ids,
+          scope: options?.scope,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { message?: string };
+        throw new Error(payload.message ?? "Aksi notifikasi gagal.");
+      }
+
+      await refreshData();
+      window.dispatchEvent(new Event("hero:notifications-updated"));
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Aksi notifikasi gagal.");
+    } finally {
+      setIsNotificationActionBusy(false);
+    }
+  }
 
   async function updatePreferences(patch: Partial<NotificationPreferences>) {
     setIsBusy(true);
@@ -451,6 +500,7 @@ export function MobileNotificationsCenter({
     const displayKey = getNotificationDisplayKey(item);
     return notifications.findIndex((candidate) => getNotificationDisplayKey(candidate) === displayKey) === index;
   });
+  const unreadCount = visibleNotifications.filter((item) => !item.isRead).length;
 
   return (
     <div className="space-y-5">
@@ -593,7 +643,38 @@ export function MobileNotificationsCenter({
       </Collapsible>
 
       <section className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Recent Alerts</p>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Recent Alerts</p>
+            <p className="mt-1 text-xs font-semibold text-[#486275]">
+              {unreadCount} unread · {visibleNotifications.length} total
+            </p>
+          </div>
+          {visibleNotifications.length > 0 ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isNotificationActionBusy || unreadCount === 0}
+                onClick={() => void runNotificationAction("mark-read", { scope: "all" })}
+                className="h-9 rounded-xl border-0 bg-white px-3 text-[11px] font-black uppercase tracking-[0.1em] text-[#003f78] shadow-[0_10px_24px_rgba(8,32,51,0.08)]"
+              >
+                <CheckCheck className="size-4" />
+                Read all
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isNotificationActionBusy}
+                onClick={() => void runNotificationAction("clear", { scope: "all" })}
+                className="h-9 rounded-xl border-0 bg-white px-3 text-[11px] font-black uppercase tracking-[0.1em] text-[#5a2200] shadow-[0_10px_24px_rgba(8,32,51,0.08)]"
+              >
+                <Trash2 className="size-4" />
+                Clear
+              </Button>
+            </div>
+          ) : null}
+        </div>
         {visibleNotifications.map((item) => (
           <article
             key={item.id}
@@ -612,6 +693,34 @@ export function MobileNotificationsCenter({
               <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
                 {formatDate(item.sentAt ?? item.createdAt)}
               </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {item.isRead ? (
+                <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">Read</Badge>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isNotificationActionBusy}
+                  onClick={() => void runNotificationAction("mark-read", { ids: [item.id] })}
+                  className="h-8 rounded-xl px-2 text-[11px] font-black text-[#003f78]"
+                >
+                  <Check className="size-4" />
+                  Read
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isNotificationActionBusy}
+                onClick={() => void runNotificationAction("clear", { ids: [item.id] })}
+                className="h-8 rounded-xl px-2 text-[11px] font-black text-[#5a2200]"
+              >
+                <Trash2 className="size-4" />
+                Clear
+              </Button>
             </div>
           </article>
         ))}

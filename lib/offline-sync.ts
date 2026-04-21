@@ -10,7 +10,8 @@ export type QueuedFilePayload = {
 };
 
 export type RouteSessionSyncItem = {
-  routeItemId: number;
+  routeItemId: number | null;
+  overtimeCommandLetterItemId?: number | null;
   libraryActivityId: number | null;
   snapshotLabel: string;
   snapshotGroupName: string;

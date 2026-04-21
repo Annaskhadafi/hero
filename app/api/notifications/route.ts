@@ -1,30 +1,11 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
-
-import { db } from "@/db";
-import { notificationDeliveries, notificationEvents } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
-import { ensureNotificationInfrastructure } from "@/lib/notification-infrastructure";
-
-type NotificationPayloadSnapshot = {
-  title?: string;
-  body?: string;
-  url?: string;
-};
-
-function parsePayloadSnapshot(value: string | null) {
-  if (!value) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(value) as NotificationPayloadSnapshot;
-  } catch {
-    return {
-      body: value,
-    };
-  }
-}
+import {
+  clearNotifications,
+  getRecipientNotifications,
+  getRecipientUnreadNotificationCount,
+  markNotificationsRead,
+} from "@/lib/notification-feed";
 
 export async function GET() {
   const session = await getServerSession();
@@ -34,55 +15,57 @@ export async function GET() {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const recentWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  await ensureNotificationInfrastructure();
-
-  const [rows, countRows] = await Promise.all([
-    db
-      .select({
-        id: notificationDeliveries.id,
-        channel: notificationDeliveries.deliveryChannel,
-        recipient: notificationDeliveries.recipient,
-        status: notificationDeliveries.status,
-        eventType: notificationEvents.eventType,
-        payloadSnapshot: notificationEvents.payloadSnapshot,
-        createdAt: notificationDeliveries.createdAt,
-        sentAt: notificationDeliveries.sentAt,
-        errorMessage: notificationDeliveries.errorMessage,
-      })
-      .from(notificationDeliveries)
-      .leftJoin(notificationEvents, eq(notificationDeliveries.notificationEventId, notificationEvents.id))
-      .where(sql`lower(${notificationDeliveries.recipient}) = ${email}`)
-      .orderBy(desc(notificationDeliveries.createdAt))
-      .limit(8),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(notificationDeliveries)
-      .where(
-        and(
-          sql`lower(${notificationDeliveries.recipient}) = ${email}`,
-          ne(notificationDeliveries.status, "failed"),
-          gte(notificationDeliveries.createdAt, recentWindowStart),
-        ),
-      ),
+  const [notifications, count] = await Promise.all([
+    getRecipientNotifications(email, 20),
+    getRecipientUnreadNotificationCount(email),
   ]);
 
   return NextResponse.json({
-    count: countRows[0]?.count ?? 0,
-    notifications: rows.map((row) => {
-      const payload = parsePayloadSnapshot(row.payloadSnapshot);
+    count,
+    notifications,
+  });
+}
 
-      return {
-        id: row.id,
-        title: payload.title || row.eventType || "HERO notification",
-        body: payload.body || row.errorMessage || "Update baru dari HERO.",
-        href: payload.url || "/dashboard/notifications",
-        channel: row.channel,
-        status: row.status,
-        eventType: row.eventType,
-        createdAt: row.createdAt.toISOString(),
-        sentAt: row.sentAt?.toISOString() ?? null,
-      };
-    }),
+type NotificationActionBody = {
+  action?: "mark-read" | "clear";
+  ids?: number[];
+  scope?: "all";
+};
+
+export async function POST(request: Request) {
+  const session = await getServerSession();
+  const email = session?.user?.email?.trim().toLowerCase();
+
+  if (!email) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as NotificationActionBody | null;
+  if (!body?.action) {
+    return NextResponse.json({ message: "Action is required." }, { status: 400 });
+  }
+
+  const ids = body.scope === "all" ? undefined : body.ids;
+
+  const affected =
+    body.action === "mark-read"
+      ? await markNotificationsRead(email, ids)
+      : body.action === "clear"
+        ? await clearNotifications(email, ids)
+        : null;
+
+  if (affected == null) {
+    return NextResponse.json({ message: "Unsupported action." }, { status: 400 });
+  }
+
+  const [notifications, count] = await Promise.all([
+    getRecipientNotifications(email, 20),
+    getRecipientUnreadNotificationCount(email),
+  ]);
+
+  return NextResponse.json({
+    affected,
+    count,
+    notifications,
   });
 }

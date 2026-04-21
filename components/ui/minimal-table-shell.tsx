@@ -6,6 +6,8 @@ import { type DateRange } from "react-day-picker"
 import {
   IconCalendar,
   IconChevronDown,
+  IconChevronLeft,
+  IconChevronRight,
   IconDots,
   IconFileSpreadsheet,
   IconRotate,
@@ -358,9 +360,11 @@ export function MinimalTableShell({
   const [query, setQuery] = React.useState("")
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>()
   const [dateFilterSupported, setDateFilterSupported] = React.useState(dateFilter === true)
-  const [visibleCount, setVisibleCount] = React.useState(0)
+  const [filteredCount, setFilteredCount] = React.useState(0)
   const [totalCount, setTotalCount] = React.useState(0)
   const [showNoResults, setShowNoResults] = React.useState(false)
+  const [pageIndex, setPageIndex] = React.useState(0)
+  const [pageSize, setPageSize] = React.useState(10)
 
   const isDateHeader = React.useEffectEvent((value: string) =>
     /\b(date|tanggal|time|waktu|created|updated|submitted|deadline|expiry|expired|reported|event time|join)\b/i.test(value),
@@ -418,9 +422,7 @@ export function MinimalTableShell({
     setDateFilterSupported(dateFilterActive)
 
     const normalizedQuery = query.trim().toLowerCase()
-    let nextVisibleCount = 0
-
-    snapshot.dataRows.forEach((row) => {
+    const matchedRows = snapshot.dataRows.filter((row) => {
       const searchText = row.textContent?.replace(/\s+/g, " ").trim().toLowerCase() ?? ""
       const rowDate =
         row.dataset.dateValue ??
@@ -429,12 +431,24 @@ export function MinimalTableShell({
 
       const matchesQuery = !normalizedQuery || searchText.includes(normalizedQuery)
       const matchesDate = dateFilterActive ? matchesDateRange(rowDate ?? searchText, dateRange) : true
-      const shouldShow = matchesQuery && matchesDate
+      return matchesQuery && matchesDate
+    })
 
-      row.toggleAttribute("hidden", !shouldShow)
-      if (shouldShow) {
-        nextVisibleCount += 1
-      }
+    const nextFilteredCount = matchedRows.length
+    const nextPageCount = Math.max(1, Math.ceil(nextFilteredCount / pageSize))
+    const nextPageIndex = nextFilteredCount === 0 ? 0 : Math.min(pageIndex, nextPageCount - 1)
+    const pageStart = nextPageIndex * pageSize
+    const pageEnd = pageStart + pageSize
+    const visibleRows = new Set(matchedRows.slice(pageStart, pageEnd))
+
+    if (nextPageIndex !== pageIndex) {
+      setPageIndex(nextPageIndex)
+    }
+
+    snapshot.dataRows.forEach((row) => {
+      const matchesFilters = matchedRows.includes(row)
+      row.dataset.filterMatch = matchesFilters ? "true" : "false"
+      row.toggleAttribute("hidden", !(matchesFilters && visibleRows.has(row)))
     })
 
     snapshot.emptyRows.forEach((row) => {
@@ -442,13 +456,17 @@ export function MinimalTableShell({
     })
 
     setTotalCount(snapshot.dataRows.length)
-    setVisibleCount(nextVisibleCount)
-    setShowNoResults(snapshot.dataRows.length > 0 && nextVisibleCount === 0)
+    setFilteredCount(nextFilteredCount)
+    setShowNoResults(snapshot.dataRows.length > 0 && nextFilteredCount === 0)
   })
 
   React.useEffect(() => {
     applyFilters()
   }, [applyFilters, query, dateRange, children])
+
+  React.useEffect(() => {
+    setPageIndex(0)
+  }, [query, dateRange, pageSize])
 
   React.useEffect(() => {
     if (!dateFilterSupported && (dateRange?.from || dateRange?.to)) {
@@ -488,7 +506,7 @@ export function MinimalTableShell({
       }
 
       const rows = snapshot.dataRows
-        .filter((row) => !row.hasAttribute("hidden"))
+        .filter((row) => row.dataset.filterMatch === "true")
         .map((row) =>
           Array.from(row.cells).map((cell) => cell.textContent?.replace(/\s+/g, " ").trim() ?? ""),
         )
@@ -501,6 +519,10 @@ export function MinimalTableShell({
     },
     [fileName, getTableSnapshot, label],
   )
+
+  const totalPages = Math.max(1, Math.ceil(Math.max(filteredCount, 1) / pageSize))
+  const pageStart = filteredCount === 0 ? 0 : pageIndex * pageSize + 1
+  const pageEnd = filteredCount === 0 ? 0 : Math.min((pageIndex + 1) * pageSize, filteredCount)
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -561,7 +583,8 @@ export function MinimalTableShell({
         )}
       >
         <span>
-          Showing {visibleCount} of {totalCount} {label}
+          Showing {pageStart}-{pageEnd} of {filteredCount} {label}
+          {filteredCount !== totalCount ? ` (total ${totalCount})` : ""}
         </span>
         {dateFilterSupported && dateRange?.from ? (
           <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low px-3 py-1">
@@ -571,6 +594,52 @@ export function MinimalTableShell({
           </Badge>
         ) : null}
       </div>
+
+      {filteredCount > 0 ? (
+        <div className="flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-lowest px-3 py-2 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <span>Rows</span>
+            <select
+              value={pageSize}
+              onChange={(event) => setPageSize(Number(event.target.value))}
+              className="h-8 rounded-lg border-0 bg-surface-container-low px-2 text-[13px] text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+            >
+              {[10, 20, 30, 50].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Page {Math.min(pageIndex + 1, totalPages)} / {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pageIndex === 0}
+              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+              className="h-8 rounded-lg border-0 bg-surface-container-low px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+            >
+              <IconChevronLeft className="size-4" />
+              Prev
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pageIndex >= totalPages - 1}
+              onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+              className="h-8 rounded-lg border-0 bg-surface-container-low px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+            >
+              Next
+              <IconChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div ref={shellRef} className="space-y-3">
         {children}

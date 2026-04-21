@@ -1408,6 +1408,8 @@ export const notificationDeliveries = pgTable("hero_notification_deliveries", {
   recipient: text("recipient").notNull(),
   status: text("status").notNull().default("queued"),
   sentAt: timestamp("sent_at"),
+  readAt: timestamp("read_at"),
+  clearedAt: timestamp("cleared_at"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

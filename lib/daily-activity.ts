@@ -549,6 +549,91 @@ async function getActiveOvertimeCommandLetterForEmployee(
   };
 }
 
+async function getStandaloneOvertimeChecklistForEmployee(
+  employee: typeof employees.$inferSelect,
+  referenceDate = new Date(),
+) {
+  const activeSpl = await getActiveOvertimeCommandLetterForEmployee(employee, referenceDate);
+  if (!activeSpl) {
+    return null;
+  }
+
+  const dayStart = startOfDay(referenceDate);
+  const dayEnd = endOfDay(referenceDate);
+  const [existingSession] = await db
+    .select({
+      id: dailyActivitySessions.id,
+      status: dailyActivitySessions.status,
+    })
+    .from(dailyActivitySessions)
+    .where(
+      and(
+        eq(dailyActivitySessions.employeeId, employee.id),
+        eq(dailyActivitySessions.overtimeCommandLetterId, activeSpl.id),
+        gte(dailyActivitySessions.workDate, dayStart),
+        lte(dailyActivitySessions.workDate, dayEnd),
+      ),
+    )
+    .orderBy(desc(dailyActivitySessions.updatedAt))
+    .limit(1);
+
+  const sessionItemRows =
+    existingSession == null
+      ? []
+      : await db
+          .select({
+            overtimeCommandLetterItemId: dailyActivitySessionItems.overtimeCommandLetterItemId,
+            routeItemId: dailyActivitySessionItems.routeItemId,
+            libraryActivityId: dailyActivitySessionItems.libraryActivityId,
+            startedAt: dailyActivitySessionItems.startedAt,
+            endedAt: dailyActivitySessionItems.endedAt,
+            unitNumber: dailyActivitySessionItems.unitNumber,
+            remark: dailyActivitySessionItems.remark,
+            actualPoints: dailyActivitySessionItems.actualPoints,
+            isChecked: dailyActivitySessionItems.isChecked,
+          })
+          .from(dailyActivitySessionItems)
+          .where(eq(dailyActivitySessionItems.sessionId, existingSession.id))
+          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id));
+
+  const unusedSessionItems = [...sessionItemRows];
+  const items = activeSpl.items.map((item) => {
+    const matchedIndex = unusedSessionItems.findIndex(
+      (sessionItem) =>
+        (sessionItem.overtimeCommandLetterItemId != null &&
+          sessionItem.overtimeCommandLetterItemId === item.id) ||
+        (sessionItem.routeItemId != null &&
+          item.routeItemId != null &&
+          sessionItem.routeItemId === item.routeItemId) ||
+        (sessionItem.libraryActivityId != null &&
+          item.libraryActivityId != null &&
+          sessionItem.libraryActivityId === item.libraryActivityId),
+    );
+    const matched = matchedIndex >= 0 ? unusedSessionItems.splice(matchedIndex, 1)[0] : null;
+
+    return {
+      ...item,
+      isChecked: matched?.isChecked ?? false,
+      unitNumber: matched?.unitNumber ?? item.targetUnit ?? "",
+      remark: matched?.remark ?? "",
+      startedAt: matched?.startedAt ?? null,
+      endedAt: matched?.endedAt ?? null,
+      actualPoints: matched?.actualPoints ?? item.plannedPoints,
+    };
+  });
+
+  const checkedCount = items.filter((item) => item.isChecked).length;
+
+  return {
+    ...activeSpl,
+    sessionId: existingSession?.id ?? null,
+    sessionStatus: existingSession?.status ?? null,
+    checkedCount,
+    progressPercent: items.length > 0 ? Math.round((checkedCount / items.length) * 100) : 0,
+    items,
+  };
+}
+
 async function getMatchedRouteChecklistForEmployee(
   employee: typeof employees.$inferSelect,
   referenceDate = new Date(),
@@ -2107,6 +2192,10 @@ export async function getDailyActivityEmployeeData(
         .orderBy(desc(activityModifiers.multiplier), asc(activityModifiers.eventName)),
     ]);
   const routeChecklist = await getMatchedRouteChecklistForEmployee(employee, new Date());
+  const standaloneOvertimeChecklist =
+    routeChecklist == null
+      ? await getStandaloneOvertimeChecklistForEmployee(employee, new Date())
+      : null;
 
   const approvedOrSubmitted = activityRows.filter((row) =>
     ["approved", "pending l1", "pending approval", "submitted"].includes(row.status.toLowerCase()),
@@ -2155,6 +2244,7 @@ export async function getDailyActivityEmployeeData(
     streak,
     availableLibrary: libraryRows,
     routeChecklist,
+    standaloneOvertimeChecklist,
     revalidatePaths: DAILY_ACTIVITY_REVALIDATE_PATHS,
   };
 }

@@ -82,7 +82,7 @@ export default async function MyDayPage() {
   }
 
   const now = new Date();
-  const defaultStart = new Date(now.getTime() - 90 * 60 * 1000);
+  const defaultDateTime = dateTimeLocalValue(now);
 
   return (
     <div className="space-y-5">
@@ -134,8 +134,8 @@ export default async function MyDayPage() {
                   employeeId={data.employee.id}
                   assignments={data.assignments}
                   availableLibrary={data.availableLibrary}
-                  defaultStartTime={dateTimeLocalValue(defaultStart)}
-                  defaultEndTime={dateTimeLocalValue(now)}
+                  defaultStartTime={defaultDateTime}
+                  defaultEndTime={defaultDateTime}
                   defaultSourceMode="assigned"
                   routeChecklist={data.routeChecklist}
                 />

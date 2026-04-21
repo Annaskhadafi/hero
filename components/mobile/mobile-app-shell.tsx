@@ -104,10 +104,13 @@ export function MobileAppShell({
 
     void loadNotificationCount();
     const interval = window.setInterval(() => void loadNotificationCount(), 30000);
+    const handleNotificationsUpdated = () => void loadNotificationCount();
+    window.addEventListener("hero:notifications-updated", handleNotificationsUpdated);
 
     return () => {
       isMounted = false;
       window.clearInterval(interval);
+      window.removeEventListener("hero:notifications-updated", handleNotificationsUpdated);
     };
   }, []);
 

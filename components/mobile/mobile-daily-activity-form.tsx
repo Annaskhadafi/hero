@@ -58,6 +58,40 @@ type LibraryOption = {
   sectionId: number | null;
 };
 
+type ChecklistRenderItem = {
+  id: number;
+  routeItemId: number | null;
+  overtimeCommandLetterItemId: number | null;
+  libraryActivityId: number | null;
+  itemCode: string | null;
+  itemLabel: string;
+  itemDescription: string | null;
+  sortOrder: number;
+  requiresUnit: boolean;
+  requiresTime: boolean;
+  requiresRemark: boolean;
+  requiresPhoto: boolean;
+  requiresChecklistEvidence: boolean;
+  pointOverride: number | null;
+  libraryCode: string | null;
+  libraryName: string | null;
+  libraryPoints: number | null;
+  isChecked: boolean;
+  unitNumber: string;
+  remark: string;
+  startedAt: string | Date | null;
+  endedAt: string | Date | null;
+  actualPoints: number;
+};
+
+type ChecklistRenderGroup = {
+  id: number;
+  groupKey: string;
+  groupName: string;
+  description: string | null;
+  items: ChecklistRenderItem[];
+};
+
 type MobileDailyActivityFormProps = {
   employeeId: number;
   assignments: AssignmentOption[];
@@ -112,6 +146,38 @@ type MobileDailyActivityFormProps = {
         endedAt: string | Date | null;
         actualPoints: number;
       }>;
+    }>;
+  } | null;
+  standaloneOvertimeChecklist: {
+    id: number;
+    splNumber: string;
+    title: string;
+    status: string;
+    requestNotes: string;
+    executionNotes: string;
+    lineCount: number;
+    plannedPointsTotal: number;
+    sessionId: number | null;
+    sessionStatus: string | null;
+    checkedCount: number;
+    progressPercent: number;
+    items: Array<{
+      id: number;
+      routeItemId: number | null;
+      libraryActivityId: number | null;
+      lineLabel: string;
+      lineDescription: string;
+      targetUnit: string;
+      estimatedMinutes: number;
+      plannedPoints: number;
+      sortOrder: number;
+      isCustomLine: boolean;
+      isChecked: boolean;
+      unitNumber: string;
+      remark: string;
+      startedAt: string | Date | null;
+      endedAt: string | Date | null;
+      actualPoints: number;
     }>;
   } | null;
   site: {
@@ -261,6 +327,7 @@ export function MobileDailyActivityForm({
   defaultStartTime,
   defaultEndTime,
   routeChecklist,
+  standaloneOvertimeChecklist,
   site,
 }: MobileDailyActivityFormProps) {
   const router = useRouter();
@@ -315,6 +382,95 @@ export function MobileDailyActivityForm({
     );
   }, [availableLibrary, librarySearch]);
   const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto);
+  const checklistContext = useMemo(() => {
+    if (routeChecklist) {
+      return {
+        kind: "route" as const,
+        routeTemplateId: routeChecklist.id,
+        overtimeCommandLetterId: routeChecklist.activeSpl?.id ?? null,
+        shiftCode: routeChecklist.shiftCode,
+        title: routeChecklist.routeName,
+        code: routeChecklist.routeCode,
+        summaryLabel: "Route checklist",
+        activeSpl: routeChecklist.activeSpl,
+        groups: routeChecklist.groups.map((group) => ({
+          ...group,
+          items: group.items.map((item) => ({
+            ...item,
+            routeItemId: item.id,
+            overtimeCommandLetterItemId: null,
+          })),
+        })),
+      };
+    }
+
+    if (!standaloneOvertimeChecklist) {
+      return null;
+    }
+
+    const groups: ChecklistRenderGroup[] = [
+      {
+        id: standaloneOvertimeChecklist.id,
+        groupKey: "SPL",
+        groupName: "Checklist lembur",
+        description:
+          standaloneOvertimeChecklist.requestNotes ||
+          standaloneOvertimeChecklist.executionNotes ||
+          null,
+        items: standaloneOvertimeChecklist.items.map((item) => ({
+          id: item.id,
+          routeItemId: item.routeItemId,
+          overtimeCommandLetterItemId: item.id,
+          libraryActivityId: item.libraryActivityId,
+          itemCode: null,
+          itemLabel: item.lineLabel,
+          itemDescription: item.lineDescription || item.targetUnit || null,
+          sortOrder: item.sortOrder,
+          requiresUnit: true,
+          requiresTime: true,
+          requiresRemark: true,
+          requiresPhoto: false,
+          requiresChecklistEvidence: true,
+          pointOverride: item.plannedPoints,
+          libraryCode: null,
+          libraryName: null,
+          libraryPoints: item.plannedPoints,
+          isChecked: item.isChecked,
+          unitNumber: item.unitNumber,
+          remark: item.remark,
+          startedAt: item.startedAt,
+          endedAt: item.endedAt,
+          actualPoints: item.actualPoints,
+        })),
+      },
+    ];
+
+    return {
+      kind: "spl" as const,
+      routeTemplateId: null,
+      overtimeCommandLetterId: standaloneOvertimeChecklist.id,
+      shiftCode: "SPL",
+      title: standaloneOvertimeChecklist.title,
+      code: standaloneOvertimeChecklist.splNumber,
+      summaryLabel: "Checklist SPL",
+      activeSpl: {
+        id: standaloneOvertimeChecklist.id,
+        splNumber: standaloneOvertimeChecklist.splNumber,
+        title: standaloneOvertimeChecklist.title,
+        status: standaloneOvertimeChecklist.status,
+        lineCount: standaloneOvertimeChecklist.lineCount,
+        plannedPointsTotal: standaloneOvertimeChecklist.plannedPointsTotal,
+        requestNotes: standaloneOvertimeChecklist.requestNotes,
+        items: standaloneOvertimeChecklist.items.map((item) => ({
+          id: item.id,
+          lineLabel: item.lineLabel,
+          targetUnit: item.targetUnit,
+          plannedPoints: item.plannedPoints,
+        })),
+      },
+      groups,
+    };
+  }, [routeChecklist, standaloneOvertimeChecklist]);
 
   useEffect(() => {
     const draft = queuedDraftKey
@@ -382,24 +538,33 @@ export function MobileDailyActivityForm({
     if (restoredRouteSessionItems.length > 0) {
       setRouteItemState(
         Object.fromEntries(
-          restoredRouteSessionItems.map((item) => [
-            item.routeItemId,
-            {
-              isChecked: item.isChecked,
-              unitNumber: item.unitNumber,
-              remark: item.remark,
-              startedAt: item.startedAt,
-              endedAt: item.endedAt,
-              actualPoints: `${item.actualPoints}`,
-            },
-          ]),
+          restoredRouteSessionItems.flatMap((item) => {
+            const itemKey = item.overtimeCommandLetterItemId ?? item.routeItemId;
+            if (itemKey == null) {
+              return [];
+            }
+
+            return [
+              [
+                itemKey,
+                {
+                  isChecked: item.isChecked,
+                  unitNumber: item.unitNumber,
+                  remark: item.remark,
+                  startedAt: item.startedAt,
+                  endedAt: item.endedAt,
+                  actualPoints: `${item.actualPoints}`,
+                },
+              ],
+            ];
+          }),
         ) as Record<number, RouteItemState>,
       );
     }
   }, [defaultEndTime, defaultStartTime, queuedDraftKey]);
 
   useEffect(() => {
-    if (!routeChecklist) {
+    if (!checklistContext) {
       setRouteItemState({});
       return;
     }
@@ -410,7 +575,7 @@ export function MobileDailyActivityForm({
       }
 
       return Object.fromEntries(
-        routeChecklist.groups.flatMap((group) =>
+        checklistContext.groups.flatMap((group) =>
           group.items.map((item) => [
             item.id,
             {
@@ -425,7 +590,7 @@ export function MobileDailyActivityForm({
         ),
       ) as Record<number, RouteItemState>;
     });
-  }, [routeChecklist]);
+  }, [checklistContext]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -506,13 +671,14 @@ export function MobileDailyActivityForm({
   }
 
   const routeSessionItems: RouteSessionSyncItem[] =
-    routeChecklist?.groups.flatMap((group) =>
+    checklistContext?.groups.flatMap((group) =>
       group.items.map((item) => {
         const stateForItem = routeItemState[item.id];
         const fallbackPoints = item.pointOverride ?? item.libraryPoints ?? 0;
 
         return {
-          routeItemId: item.id,
+          routeItemId: item.routeItemId,
+          overtimeCommandLetterItemId: item.overtimeCommandLetterItemId,
           libraryActivityId: item.libraryActivityId,
           snapshotLabel: item.itemLabel,
           snapshotGroupName: group.groupName,
@@ -563,9 +729,9 @@ export function MobileDailyActivityForm({
         notes: entry.notes,
       };
     }),
-    routeTemplateId: routeChecklist?.id ? `${routeChecklist.id}` : "",
-    overtimeCommandLetterId: routeChecklist?.activeSpl?.id ? `${routeChecklist.activeSpl.id}` : "",
-    routeShiftCode: routeChecklist?.shiftCode ?? "",
+    routeTemplateId: checklistContext?.routeTemplateId ? `${checklistContext.routeTemplateId}` : "",
+    overtimeCommandLetterId: checklistContext?.overtimeCommandLetterId ? `${checklistContext.overtimeCommandLetterId}` : "",
+    routeShiftCode: checklistContext?.shiftCode ?? "",
     routeSummaryRemark: "",
     routeSessionItems,
     customActivityName,
@@ -600,11 +766,13 @@ export function MobileDailyActivityForm({
     }
 
     if (
-      routeChecklist &&
+      checklistContext &&
       routeSessionItems.length > 0 &&
       routeSessionItems.every((item) => !item.isChecked)
     ) {
-      return "Centang minimal satu item checklist route.";
+      return checklistContext.kind === "spl"
+        ? "Centang minimal satu item checklist SPL."
+        : "Centang minimal satu item checklist route.";
     }
 
     if (sourceMode === "assigned") {
@@ -1165,29 +1333,29 @@ export function MobileDailyActivityForm({
           </section>
         ) : null}
 
-        {routeChecklist ? (
+        {checklistContext ? (
           <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Route checklist</p>
-              <p className="mt-1 text-base font-black text-[#082033]">{routeChecklist.routeName}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">{checklistContext.summaryLabel}</p>
+              <p className="mt-1 text-base font-black text-[#082033]">{checklistContext.title}</p>
               <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-                {routeChecklist.routeCode} • {routeChecklist.shiftCode}
+                {checklistContext.code} • {checklistContext.shiftCode}
               </p>
-              {routeChecklist.activeSpl ? (
+              {checklistContext.activeSpl ? (
                 <>
                   <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-                    SPL aktif: {routeChecklist.activeSpl.splNumber} • {routeChecklist.activeSpl.title}
+                    SPL aktif: {checklistContext.activeSpl.splNumber} • {checklistContext.activeSpl.title}
                   </p>
                   <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                    {routeChecklist.activeSpl.lineCount} line • {routeChecklist.activeSpl.plannedPointsTotal} pts
+                    {checklistContext.activeSpl.lineCount} line • {checklistContext.activeSpl.plannedPointsTotal} pts
                   </p>
                 </>
               ) : null}
             </div>
 
-            {routeChecklist.activeSpl ? (
+            {checklistContext.activeSpl ? (
               <div className="space-y-2 rounded-[1rem] bg-[#f6fbff] px-4 py-3">
-                {routeChecklist.activeSpl.items.map((item) => (
+                {checklistContext.activeSpl.items.map((item) => (
                   <div key={item.id}>
                     <p className="text-sm font-semibold text-[#082033]">{item.lineLabel}</p>
                     <p className="text-xs font-semibold leading-5 text-[#486275]">
@@ -1199,7 +1367,7 @@ export function MobileDailyActivityForm({
             ) : null}
 
             <div className="space-y-3">
-              {routeChecklist.groups.map((group) => (
+              {checklistContext.groups.map((group) => (
                 <div key={group.id} className="rounded-[1rem] bg-[#f6fbff] px-4 py-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">{group.groupKey}</p>
                   <p className="mt-1 text-sm font-black text-[#082033]">{group.groupName}</p>

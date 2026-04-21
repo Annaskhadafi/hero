@@ -303,7 +303,8 @@ type DailyActivityDocumentSignoffActionState = {
 };
 
 const routeSessionItemSchema = z.object({
-  routeItemId: z.coerce.number().int().positive(),
+  routeItemId: optionalPositiveInt,
+  overtimeCommandLetterItemId: optionalPositiveInt,
   libraryActivityId: optionalPositiveInt,
   snapshotLabel: z.string().trim().min(1).max(160),
   snapshotGroupName: z.string().trim().max(160).optional().default(""),
@@ -541,7 +542,10 @@ async function syncDailyRouteSessionForActivity(params: {
   startTime: Date;
 }) {
   const routeItems = parseRouteSessionItems(params.payload.routeSessionItemsJson);
-  const hasRoutePayload = Boolean(params.payload.routeTemplateId) || routeItems.length > 0;
+  const hasRoutePayload =
+    Boolean(params.payload.routeTemplateId) ||
+    Boolean(params.payload.overtimeCommandLetterId) ||
+    routeItems.length > 0;
 
   if (!hasRoutePayload) {
     return null;
@@ -639,9 +643,17 @@ async function syncDailyRouteSessionForActivity(params: {
     const unusedLineIds = new Set(splLineRows.map((row) => row.id));
 
     function matchSplLine(item: (typeof routeItems)[number]) {
+      if (item.overtimeCommandLetterItemId != null) {
+        return item.overtimeCommandLetterItemId;
+      }
+
       const matched =
         splLineRows.find(
-          (row) => unusedLineIds.has(row.id) && row.routeItemId != null && row.routeItemId === item.routeItemId,
+          (row) =>
+            unusedLineIds.has(row.id) &&
+            row.routeItemId != null &&
+            item.routeItemId != null &&
+            row.routeItemId === item.routeItemId,
         ) ??
         splLineRows.find(
           (row) =>
@@ -662,7 +674,7 @@ async function syncDailyRouteSessionForActivity(params: {
     await db.insert(dailyActivitySessionItems).values(
       routeItems.map((item) => ({
         sessionId,
-        routeItemId: item.routeItemId,
+        routeItemId: item.routeItemId ?? null,
         libraryActivityId: item.libraryActivityId ?? null,
         overtimeCommandLetterItemId: matchSplLine(item),
         snapshotLabel: item.snapshotLabel,

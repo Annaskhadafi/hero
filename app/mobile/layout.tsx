@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { MobileAppShell } from "@/components/mobile/mobile-app-shell";
 import { getServerSession } from "@/lib/auth-session";
+import { getMobileNotificationCount } from "@/lib/mobile-data";
 
 import "@/app/dashboard/theme.css";
 
@@ -26,10 +27,14 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     redirect("/sign-in");
   }
 
+  const notificationCount = session.user.email
+    ? await getMobileNotificationCount(session.user.email)
+    : 0;
+
   return (
     <MobileAppShell
       userName={session.user.name || session.user.email || "HERO User"}
-      notificationCount={0}
+      notificationCount={notificationCount}
     >
       {children}
     </MobileAppShell>

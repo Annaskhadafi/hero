@@ -54,10 +54,22 @@ export async function ensureNotificationInfrastructure() {
           recipient text not null,
           status text not null default 'queued',
           sent_at timestamp,
+          read_at timestamp,
+          cleared_at timestamp,
           error_message text,
           created_at timestamp not null default now(),
           updated_at timestamp not null default now()
         );
+      `);
+
+      await tx.execute(sql`
+        alter table hero_notification_deliveries
+        add column if not exists read_at timestamp;
+      `);
+
+      await tx.execute(sql`
+        alter table hero_notification_deliveries
+        add column if not exists cleared_at timestamp;
       `);
 
       await tx.execute(sql`

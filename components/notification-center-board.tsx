@@ -88,7 +88,7 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
                   </TableHeader>
                   <TableBody>
                     {data.events.length > 0 ? (
-                      data.events.slice(0, 8).map((event) => (
+                      data.events.map((event) => (
                         <TableRow key={event.id} data-date-value={event.createdAt.toISOString()}>
                           <TableCell className="align-top">
                             <div className="space-y-1">
@@ -144,7 +144,7 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
                   </TableHeader>
                   <TableBody>
                     {data.reminders.length > 0 ? (
-                      data.reminders.slice(0, 6).map((reminder) => (
+                      data.reminders.map((reminder) => (
                         <TableRow key={reminder.id} data-date-value={reminder.reminderAt.toISOString()}>
                           <TableCell className="align-top">
                             <AdminStatusBadge value={reminder.reminderType} />
@@ -195,7 +195,7 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
                   </TableHeader>
                   <TableBody>
                     {data.inboxRows.length > 0 ? (
-                      data.inboxRows.slice(0, 6).map((item) => (
+                      data.inboxRows.map((item) => (
                         <TableRow key={item.id} data-date-value={item.dueAt?.toISOString() ?? ""}>
                           <TableCell className="align-top">
                             <AdminStatusBadge value={item.inboxType} />

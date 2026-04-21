@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -61,12 +61,22 @@ function statusBadgeClass(status: string) {
 
 export function MobileActivityLog({ activities }: MobileActivityLogProps) {
   const [selected, setSelected] = useState<ActivityLogItem | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 6;
+  const totalPages = Math.max(1, Math.ceil(Math.max(activities.length, 1) / pageSize));
+  const paginatedActivities = activities.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages, pageSize]);
 
   return (
     <>
       {activities.length > 0 ? (
         <div className="space-y-3">
-          {activities.map((activity) => (
+          {paginatedActivities.map((activity) => (
             <button
               key={activity.id}
               type="button"
@@ -120,6 +130,37 @@ export function MobileActivityLog({ activities }: MobileActivityLogProps) {
               </div>
             </button>
           ))}
+          <div className="flex items-center justify-between rounded-[1rem] bg-white px-4 py-3 text-xs font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+            <span>
+              {Math.min((page - 1) * pageSize + 1, activities.length)}-
+              {Math.min(page * pageSize, activities.length)} / {activities.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page === 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="h-8 rounded-xl px-3 text-[11px] font-black text-[#003f78]"
+              >
+                Prev
+              </Button>
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[#486275]">
+                Page {page}/{totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                className="h-8 rounded-xl px-3 text-[11px] font-black text-[#003f78]"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="rounded-[1.25rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">

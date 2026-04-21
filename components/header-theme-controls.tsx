@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { 
   Bell, 
   BellRing,
+  Check,
+  CheckCheck,
   Search, 
   LayoutDashboard, 
   Users, 
@@ -15,6 +17,7 @@ import {
   Mail,
   FileText,
   Activity,
+  Trash2,
 } from "lucide-react";
 import { SimpleThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -43,6 +46,8 @@ type NotificationItem = {
   channel: string;
   status: string;
   createdAt: string;
+  readAt: string | null;
+  isRead: boolean;
 };
 
 type NotificationResponse = {
@@ -64,6 +69,7 @@ export function HeaderThemeControls() {
   const [open, setOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
+  const [isNotificationBusy, setIsNotificationBusy] = React.useState(false);
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -76,45 +82,102 @@ export function HeaderThemeControls() {
     return () => document.removeEventListener("keydown", down);
   }, []);
 
-  React.useEffect(() => {
-    let isMounted = true;
+  const syncNotifications = React.useCallback((payload: NotificationResponse) => {
+    setNotifications(payload.notifications);
+    setUnreadCount(payload.count);
+  }, []);
 
-    async function loadNotifications() {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 5000);
+  const loadNotifications = React.useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5000);
 
-      try {
-        const response = await fetch("/api/notifications", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
+    try {
+      const response = await fetch("/api/notifications", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
 
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = (await response.json()) as NotificationResponse;
-        if (isMounted) {
-          setNotifications(payload.notifications);
-          setUnreadCount(payload.count);
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-      } finally {
-        window.clearTimeout(timeout);
+      if (!response.ok) {
+        return;
       }
-    }
 
+      const payload = (await response.json()) as NotificationResponse;
+      syncNotifications(payload);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, [syncNotifications]);
+
+  React.useEffect(() => {
     void loadNotifications();
     const interval = window.setInterval(() => void loadNotifications(), 30000);
 
     return () => {
-      isMounted = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [loadNotifications]);
+
+  React.useEffect(() => {
+    const handleNotificationsUpdated = () => {
+      void loadNotifications();
+    };
+
+    window.addEventListener("hero:notifications-updated", handleNotificationsUpdated);
+    return () => window.removeEventListener("hero:notifications-updated", handleNotificationsUpdated);
+  }, [loadNotifications]);
+
+  const runNotificationAction = React.useCallback(
+    async (action: "mark-read" | "clear", options?: { ids?: number[]; scope?: "all" }) => {
+      setIsNotificationBusy(true);
+
+      try {
+        const response = await fetch("/api/notifications", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action,
+            ids: options?.ids,
+            scope: options?.scope,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Notification action failed.");
+        }
+
+        const payload = (await response.json()) as NotificationResponse;
+        syncNotifications(payload);
+        window.dispatchEvent(new Event("hero:notifications-updated"));
+      } catch {
+        await loadNotifications();
+      } finally {
+        setIsNotificationBusy(false);
+      }
+    },
+    [loadNotifications, syncNotifications],
+  );
+
+  const handleOpenNotification = React.useCallback(
+    async (notification: NotificationItem) => {
+      if (!notification.isRead) {
+        try {
+          await runNotificationAction("mark-read", { ids: [notification.id] });
+        } catch {
+          // Keep navigation responsive even if the read sync fails.
+        }
+      }
+
+      setOpen(false);
+      router.push(notification.href || "/dashboard/notifications");
+    },
+    [router, runNotificationAction],
+  );
 
   const runCommand = React.useCallback((command: () => void) => {
     setOpen(false);
@@ -213,44 +276,106 @@ export function HeaderThemeControls() {
                 <p className="industrial-label">Signal Queue</p>
                 <h4 className="mt-1 font-display text-lg font-semibold">Notifications</h4>
               </div>
-              {unreadCount > 0 && (
-                <Badge variant="secondary" className="rounded-full">
-                  {unreadCount} New
-                </Badge>
-              )}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {unreadCount > 0 ? (
+                  <Badge variant="secondary" className="rounded-full">
+                    {unreadCount} New
+                  </Badge>
+                ) : null}
+                {notifications.length > 0 ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isNotificationBusy || unreadCount === 0}
+                      className="h-8 rounded-xl px-3 text-xs"
+                      onClick={() => void runNotificationAction("mark-read", { scope: "all" })}
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      Read all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isNotificationBusy}
+                      className="h-8 rounded-xl px-3 text-xs text-[#5a2200] hover:text-[#5a2200]"
+                      onClick={() => void runNotificationAction("clear", { scope: "all" })}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Clear
+                    </Button>
+                  </>
+                ) : null}
+              </div>
             </div>
           </div>
           <div className="mt-2 max-h-[420px] space-y-2 overflow-auto pr-1">
             {notifications.length > 0 ? (
               notifications.map((notification) => (
-                <button
-                  type="button"
+                <div
                   key={notification.id}
-                  onClick={() => router.push(notification.href || "/dashboard/notifications")}
-                  className="surface-module-card w-full rounded-2xl bg-surface-container-lowest p-4 text-left transition-transform hover:-translate-y-0.5"
+                  className="surface-module-card rounded-2xl bg-surface-container-lowest p-4 transition-transform hover:-translate-y-0.5"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-2xl bg-surface-container-low p-2.5 text-primary">
-                      <BellRing className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold leading-none text-foreground">
-                          {notification.title}
-                        </p>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {formatNotificationTime(notification.createdAt)}
-                        </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenNotification(notification)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 rounded-2xl bg-surface-container-low p-2.5 text-primary">
+                        <BellRing className="h-4 w-4" />
                       </div>
-                      <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
-                        {notification.body}
-                      </p>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-semibold leading-none text-foreground">
+                            {notification.title}
+                          </p>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {formatNotificationTime(notification.createdAt)}
+                          </span>
+                        </div>
+                        <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
+                          {notification.body}
+                        </p>
+                      </div>
+                      {!notification.isRead && notification.status !== "failed" ? (
+                        <div className="mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
+                      ) : null}
                     </div>
-                    {notification.status !== "failed" ? (
-                      <div className="mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
-                    ) : null}
+                  </button>
+                  <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                    {notification.isRead ? (
+                      <Badge variant="secondary" className="rounded-full">
+                        Read
+                      </Badge>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isNotificationBusy}
+                        className="h-8 rounded-xl px-3 text-xs"
+                        onClick={() => void runNotificationAction("mark-read", { ids: [notification.id] })}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Mark read
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isNotificationBusy}
+                      className="h-8 rounded-xl px-3 text-xs text-[#5a2200] hover:text-[#5a2200]"
+                      onClick={() => void runNotificationAction("clear", { ids: [notification.id] })}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Clear
+                    </Button>
                   </div>
-                </button>
+                </div>
               ))
             ) : (
               <div className="surface-module-card flex flex-col items-center justify-center rounded-2xl py-12 text-center">

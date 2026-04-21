@@ -58,6 +58,8 @@ export function MobileReportsOverview({
   initialData: ReportsPayload;
 }) {
   const [data, setData] = useState(initialData);
+  const [page, setPage] = useState(1);
+  const pageSize = 5;
 
   const refreshData = useEffectEvent(async () => {
     const response = await fetch("/api/mobile/reports", { cache: "no-store" });
@@ -77,8 +79,17 @@ export function MobileReportsOverview({
     return () => window.clearInterval(interval);
   }, [refreshData]);
 
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(Math.max(data.reports.length, 1) / pageSize));
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [data.reports.length, page, pageSize]);
+
   const latest = data.reports[0];
   const readiness = latest ? Math.round((latest.readySections / Math.max(1, latest.totalSections)) * 100) : 0;
+  const totalPages = Math.max(1, Math.ceil(Math.max(data.reports.length, 1) / pageSize));
+  const paginatedReports = data.reports.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="space-y-5">
@@ -134,7 +145,7 @@ export function MobileReportsOverview({
 
       <section className="space-y-3">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Report History</p>
-        {data.reports.map((report) => (
+        {paginatedReports.map((report) => (
           <article key={report.id} className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -154,6 +165,39 @@ export function MobileReportsOverview({
             </Button>
           </article>
         ))}
+        {data.reports.length > 0 ? (
+          <div className="flex items-center justify-between rounded-[1rem] bg-white px-4 py-3 text-xs font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+            <span>
+              {Math.min((page - 1) * pageSize + 1, data.reports.length)}-
+              {Math.min(page * pageSize, data.reports.length)} / {data.reports.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page === 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="h-8 rounded-xl px-3 text-[11px] font-black text-[#003f78]"
+              >
+                Prev
+              </Button>
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[#486275]">
+                Page {page}/{totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                className="h-8 rounded-xl px-3 text-[11px] font-black text-[#003f78]"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

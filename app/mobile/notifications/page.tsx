@@ -18,11 +18,7 @@ export default async function MobileNotificationsPage() {
   return (
     <MobileNotificationsCenter
       initialData={{
-        notifications: notifications.map((item) => ({
-          ...item,
-          createdAt: item.createdAt.toISOString(),
-          sentAt: item.sentAt?.toISOString() ?? null,
-        })),
+        notifications,
         ...settings,
       }}
     />

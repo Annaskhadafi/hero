@@ -269,6 +269,75 @@ export default async function MobileActivityPage() {
         </section>
       ) : null}
 
+      {data.standaloneOvertimeChecklist ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">SPL Aktif</p>
+            <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+              {data.standaloneOvertimeChecklist.lineCount} line
+            </Badge>
+          </div>
+
+          <article className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
+                  {data.standaloneOvertimeChecklist.splNumber}
+                </p>
+                <h2 className="mt-1 flex items-center gap-2 text-base font-black leading-tight text-[#082033]">
+                  <ListChecks className="size-4 text-[#003f78]" />
+                  {data.standaloneOvertimeChecklist.title}
+                </h2>
+                <p className="mt-2 text-xs font-semibold text-[#486275]">
+                  {data.standaloneOvertimeChecklist.checkedCount}/{data.standaloneOvertimeChecklist.lineCount} line selesai
+                </p>
+              </div>
+              <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">
+                {data.standaloneOvertimeChecklist.progressPercent}%
+              </Badge>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <Link
+                prefetch={false}
+                href="/mobile/activity/input"
+                className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#003f78] px-4 text-xs font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_30px_rgba(0,63,120,0.16)] active:scale-[0.98]"
+              >
+                <FileSignature className="size-4" />
+                Isi Evidence SPL
+              </Link>
+              {data.standaloneOvertimeChecklist.sessionId ? (
+                <Link
+                  prefetch={false}
+                  href={`/mobile/activity/document/${data.standaloneOvertimeChecklist.sessionId}`}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#eaf4fb] px-4 text-xs font-black uppercase tracking-[0.14em] text-[#003f78] active:scale-[0.98]"
+                >
+                  <FileSignature className="size-4" />
+                  Dokumen User
+                </Link>
+              ) : null}
+              <div className="space-y-2">
+                {data.standaloneOvertimeChecklist.items.map((item) => (
+                  <div key={item.id} className="rounded-[0.9rem] bg-[#f6fbff] px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[#082033]">{item.lineLabel}</p>
+                        <p className="mt-1 text-xs leading-5 text-[#486275]">
+                          {item.lineDescription || item.targetUnit || "Checklist SPL"}
+                        </p>
+                      </div>
+                      <Badge className="border-0 bg-[#eaf4fb] text-[#003f78]">
+                        {item.plannedPoints} pts
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </article>
+        </section>
+      ) : null}
+
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Activity Log</p>
