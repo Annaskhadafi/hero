@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Clock3, ClipboardList, Users2 } from "lucide-react";
 
 import { manageOvertimeCommandLetterAction } from "@/app/dashboard/activity-hub/actions";
-import { OvertimeCommandLetterComposer } from "@/components/overtime-command-letter-composer";
+import { MobileOvertimeRequestForm } from "@/components/mobile/mobile-overtime-request-form";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { getOvertimeRequestWorkspaceData } from "@/lib/overtime-request-data";
@@ -39,7 +39,7 @@ export default async function MobileOvertimePage() {
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Leader Workspace</p>
         <h1 className="text-2xl font-black tracking-tight text-[#003461]">Pengajuan Lembur</h1>
         <p className="text-sm font-semibold leading-6 text-[#486275]">
-          Pilih bawahan, assign checklist library, lalu simpan SPL dari mobile.
+          Pilih beberapa bawahan, centang daftar pekerjaan, lalu tambah pekerjaan custom bila perlu.
         </p>
       </section>
 
@@ -77,16 +77,14 @@ export default async function MobileOvertimePage() {
         <div className="mb-4">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Form Pengajuan</p>
           <p className="mt-1 text-sm font-semibold leading-6 text-[#486275]">
-            Tambah line sesuai bawahan dan checklist kerja yang mau dikerjakan saat lembur.
+            Flow mobile native: pilih bawahan dulu, lalu multi select daftar pekerjaan dan custom pekerjaan.
           </p>
         </div>
 
         {data.canCreateRequests && data.team.length > 0 ? (
-          <OvertimeCommandLetterComposer
+          <MobileOvertimeRequestForm
             action={manageOvertimeCommandLetterAction}
-            intent="create"
             submitLabel="Simpan Pengajuan"
-            routeTemplates={data.splOptions.routeTemplates}
             libraryActivities={data.splOptions.libraryActivities}
             teamMembers={data.team.map((member) => ({
               id: member.id,
