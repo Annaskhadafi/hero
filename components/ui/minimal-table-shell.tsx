@@ -582,7 +582,7 @@ export function MinimalTableShell({
           summaryClassName,
         )}
       >
-        <span>
+        <span className="tabular-nums">
           Showing {pageStart}-{pageEnd} of {filteredCount} {label}
           {filteredCount !== totalCount ? ` (total ${totalCount})` : ""}
         </span>
@@ -612,7 +612,7 @@ export function MinimalTableShell({
             </select>
           </div>
           <div className="flex items-center justify-end gap-2">
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="tabular-nums text-xs font-medium text-muted-foreground">
               Page {Math.min(pageIndex + 1, totalPages)} / {totalPages}
             </span>
             <Button

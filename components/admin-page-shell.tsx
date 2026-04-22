@@ -33,10 +33,10 @@ export function AdminPageShell({
               ) : null}
             </div>
             <div className="space-y-2">
-              <h1 className="max-w-4xl font-display text-[1.7rem] font-semibold leading-tight text-foreground sm:text-[2.1rem]">
+              <h1 className="max-w-4xl font-display text-[1.7rem] font-semibold leading-tight text-foreground [text-wrap:balance] sm:text-[2.1rem]">
                 {title}
               </h1>
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground sm:text-[0.95rem]">
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground [text-wrap:pretty] sm:text-[0.95rem]">
                 {description}
               </p>
             </div>

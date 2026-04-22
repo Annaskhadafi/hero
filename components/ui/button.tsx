@@ -9,7 +9,7 @@ import {
 } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold uppercase tracking-normal transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold uppercase tracking-normal transition-[transform,background-color,box-shadow,opacity,color] duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
   {
     variants: {
       variant: {
@@ -44,10 +44,12 @@ function Button({
   variant,
   size,
   asChild = false,
+  static: isStatic = false,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    static?: boolean
   }) {
   const Comp = asChild ? Slot : "button"
 
@@ -56,6 +58,7 @@ function Button({
       data-slot="button"
       className={cn(
         buttonVariants({ variant, size }),
+        !isStatic && "active:scale-[0.96]",
         inferBackgroundResetClassName(className),
         inferInteractiveTextClassName(className),
         className

@@ -68,7 +68,7 @@ export function AdminMetricGrid({
               <p className="truncate text-[0.68rem] font-semibold uppercase text-muted-foreground">
                 {item.label}
               </p>
-              <p className="truncate font-display text-[1.55rem] font-semibold leading-none text-foreground">
+              <p className="tabular-nums truncate font-display text-[1.55rem] font-semibold leading-none text-foreground">
                 {item.value}
               </p>
               <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">

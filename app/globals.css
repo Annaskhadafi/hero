@@ -167,6 +167,8 @@
 
   body {
     @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     background-image:
       radial-gradient(circle at top left, rgba(0, 75, 135, 0.12), transparent 26%),
       radial-gradient(circle at top right, rgba(255, 255, 255, 0.56), transparent 22%),
@@ -191,11 +193,16 @@
   h6 {
     font-family: var(--font-manrope), var(--font-inter), sans-serif;
     letter-spacing: 0;
+    text-wrap: balance;
   }
 
   ::selection {
     background: rgba(0, 75, 135, 0.2);
     color: var(--foreground);
+  }
+
+  p {
+    text-wrap: pretty;
   }
 }
 
@@ -223,7 +230,7 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
   }
 
@@ -233,6 +240,7 @@
     font-weight: 800;
     letter-spacing: 0;
     line-height: 0.95;
+    font-variant-numeric: tabular-nums;
   }
 
   .command-panel {
@@ -320,18 +328,9 @@
     [data-slot="tabs-list"],
     [data-slot="tabs-trigger"],
     [data-slot="dialog-content"],
-    [data-slot="table-container"],
-    [class*="rounded-xl"],
-    [class*="rounded-2xl"],
-    [class*="rounded-3xl"],
-    [class*="rounded-[1."],
-    [class*="rounded-[2."]
+    [data-slot="table-container"]
   ) {
     border-radius: var(--radius) !important;
-  }
-
-  :where([class*="tracking-"]) {
-    letter-spacing: 0 !important;
   }
 
   .mobile-light-scope {
@@ -381,6 +380,10 @@
 
   .mobile-light-scope * {
     color-scheme: light;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }
 
