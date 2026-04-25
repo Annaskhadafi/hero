@@ -55,6 +55,8 @@ async function getAuthenticatedEmployee() {
   return employee;
 }
 
+const MAX_OFFLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+
 function dataUrlToFile(file: QueuedFilePayload, fallbackName: string) {
   const matches = file.dataUrl.match(/^data:(.+);base64,(.+)$/);
   if (!matches) {
@@ -62,11 +64,29 @@ function dataUrlToFile(file: QueuedFilePayload, fallbackName: string) {
   }
 
   const [, mimeType, base64] = matches;
+  const resolvedType = (file.type || mimeType).trim();
+
+  if (!resolvedType.startsWith("image/")) {
+    throw new Error("File emergency harus berupa gambar.");
+  }
+
+  if (file.size > MAX_OFFLINE_IMAGE_BYTES) {
+    throw new Error("Ukuran foto emergency maksimal 5MB.");
+  }
+
   const buffer = Buffer.from(base64, "base64");
 
   return new File([buffer], file.name || fallbackName, {
-    type: file.type || mimeType,
+    type: resolvedType,
   });
+}
+
+function normalizeSyncText(value: string, maxLength: number) {
+  return value.trim().slice(0, maxLength);
+}
+
+function normalizeCoordinate(value: string) {
+  return value.trim();
 }
 
 async function createNotificationDelivery(input: {
@@ -246,21 +266,28 @@ async function sendEmergencyAlerts(input: {
 
 export async function submitHseObservationFromPayload(payload: HseObservationSyncPayload) {
   const employee = await getAuthenticatedEmployee();
+  const title = normalizeSyncText(payload.title, 160);
+  const category = normalizeSyncText(payload.category, 80);
+  const severity = normalizeSyncText(payload.severity, 40);
+  const location = normalizeSyncText(payload.location, 160);
+  const notes = normalizeSyncText(payload.notes, 1200);
+  const latitude = normalizeCoordinate(payload.latitude);
+  const longitude = normalizeCoordinate(payload.longitude);
 
   const [record] = await db
     .insert(hseObservations)
     .values({
       siteId: employee.siteId,
       employeeId: employee.id,
-      category: payload.category,
-      title: payload.title,
-      location: payload.location,
-      severity: payload.severity,
+      category,
+      title,
+      location,
+      severity,
       status: "open",
       notes: [
-        payload.notes.trim(),
-        payload.latitude && payload.longitude
-          ? `GPS ${payload.latitude}, ${payload.longitude}`
+        notes,
+        latitude && longitude
+          ? `GPS ${latitude}, ${longitude}`
           : null,
       ]
         .filter(Boolean)
@@ -280,6 +307,40 @@ export async function submitHseObservationFromPayload(payload: HseObservationSyn
 
 export async function submitEmergencyIncidentFromPayload(payload: EmergencyIncidentSyncPayload) {
   const employee = await getAuthenticatedEmployee();
+  const clientRequestId = normalizeSyncText(payload.clientRequestId ?? "", 120);
+  const title = normalizeSyncText(payload.title, 160);
+  const type = normalizeSyncText(payload.type, 80);
+  const impact = normalizeSyncText(payload.impact, 80);
+  const status = normalizeSyncText(payload.status, 40);
+  const unitNumber = normalizeSyncText(payload.unitNumber, 80) || "-";
+  const location = normalizeSyncText(payload.location, 160);
+  const notes = normalizeSyncText(payload.notes, 1200);
+  const latitude = normalizeCoordinate(payload.latitude);
+  const longitude = normalizeCoordinate(payload.longitude);
+  if (clientRequestId) {
+    const [existingIncident] = await db
+      .select({
+        id: hseIncidents.id,
+        alertStatus: hseIncidents.alertStatus,
+      })
+      .from(hseIncidents)
+      .where(
+        and(
+          eq(hseIncidents.employeeId, employee.id),
+          eq(hseIncidents.clientRequestId, clientRequestId),
+        ),
+      )
+      .limit(1);
+
+    if (existingIncident) {
+      return {
+        id: existingIncident.id,
+        alertStatus: existingIncident.alertStatus,
+        message: "Emergency report sudah pernah disinkronkan sebelumnya.",
+      };
+    }
+  }
+
   let photoUrl = "";
 
   if (payload.photo) {
@@ -293,17 +354,18 @@ export async function submitEmergencyIncidentFromPayload(payload: EmergencyIncid
     .values({
       siteId: employee.siteId,
       employeeId: employee.id,
-      type: payload.type,
-      title: payload.title,
-      unitNumber: payload.unitNumber || "-",
-      impact: payload.impact,
-      location: payload.location,
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-      notes: payload.notes,
+      type,
+      title,
+      unitNumber,
+      impact,
+      location,
+      latitude,
+      longitude,
+      notes,
       photoUrl,
+      clientRequestId: clientRequestId || null,
       alertStatus: "pending",
-      status: payload.status,
+      status,
       reportedAt: new Date(),
     })
     .returning({ id: hseIncidents.id });

@@ -33,7 +33,7 @@ function startOfDayInAppTimeZone(reference: Date) {
 
 function formatOptionalDate(value: Date | null) {
   if (!value) {
-    return "No expiry";
+    return "Tanpa expiry";
   }
 
   return value.toLocaleDateString("id-ID", {
@@ -94,33 +94,33 @@ export default async function TrainingRecordsPage({
   return (
     <AdminPageShell
       eyebrow="M7 • Training Intelligence"
-      title="Training Records"
-      description="Riwayat pelatihan karyawan dengan filter karyawan, department, dan tahun, plus import CSV untuk sinkron ke mobile training history."
-      badge="Mobile Sync"
+      title="Riwayat Training"
+      description="Riwayat sertifikasi dan pelatihan karyawan untuk audit expiry, koreksi data, dan sinkron tampilan mobile."
+      badge="Sinkron Mobile"
     >
       <AdminMetricGrid
+        mode="compact"
         items={[
-          { label: "Training records", value: `${filteredRows.length}`, meta: "Record pada scope filter aktif" },
-          { label: "Employees covered", value: `${employeeCoverage}`, meta: "Karyawan unik dalam history" },
-          { label: "Due soon", value: `${expiringSoon}`, meta: "Training dengan expiry 30 hari atau kurang" },
-          { label: "No expiry", value: `${noExpiry}`, meta: "Record history tanpa masa berlaku" },
+          { label: "Record training", value: `${filteredRows.length}`, meta: "Scope filter aktif" },
+          { label: "Karyawan tercakup", value: `${employeeCoverage}`, meta: "Karyawan unik dalam histori" },
+          { label: "Segera expiry", value: `${expiringSoon}`, meta: "Berlaku 30 hari atau kurang" },
+          { label: "Tanpa expiry", value: `${noExpiry}`, meta: "History tanpa masa berlaku" },
         ]}
       />
 
       <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
-            <CardTitle className="flex items-center gap-2 text-xl text-foreground">
+            <CardTitle className="flex items-center gap-2 text-lg text-foreground">
               <Smartphone className="size-5 text-primary" />
-              Mobile Training History
+              Sinkron ke mobile training history
             </CardTitle>
             <CardDescription className="max-w-3xl">
-              Dataset halaman ini langsung dipakai route mobile `/mobile/training`. User mobile melihat passport summary,
-              riwayat training per tahun, dan status expiry dari record yang sama.
+              Dataset ini dipakai juga oleh route `/mobile/training`, jadi update di sini langsung konsisten ke tampilan mobile.
             </CardDescription>
           </div>
-          <Button asChild className="h-11 rounded-xl">
-            <Link href="/mobile/training">Open Mobile View</Link>
+          <Button asChild className="h-10 rounded-xl">
+            <Link href="/mobile/training">Buka tampilan mobile</Link>
           </Button>
         </CardHeader>
       </Card>
@@ -129,10 +129,10 @@ export default async function TrainingRecordsPage({
         <CardHeader className="pb-0">
           <CardTitle className="flex items-center gap-2 text-xl text-foreground">
             <TableProperties className="size-5 text-primary" />
-            Training History Workspace
+            Workspace riwayat training
           </CardTitle>
           <CardDescription>
-            Table-first workspace untuk import, review, dan koreksi riwayat training karyawan.
+            Workspace table-first untuk import, review, dan koreksi riwayat sertifikasi karyawan.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
@@ -183,7 +183,7 @@ export default async function TrainingRecordsPage({
                         <TableCell className="align-top">
                           <div className="space-y-1">
                             <p className="font-semibold text-foreground">{row.trainingName}</p>
-                            <p className="text-xs text-muted-foreground">Muncul di mobile training history</p>
+                            <p className="text-xs text-muted-foreground">Tampil juga di riwayat training mobile</p>
                           </div>
                         </TableCell>
                         <TableCell className="align-top text-sm text-foreground">{row.provider}</TableCell>
@@ -233,3 +233,4 @@ export default async function TrainingRecordsPage({
     </AdminPageShell>
   );
 }
+

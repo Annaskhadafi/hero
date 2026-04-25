@@ -1,184 +1,219 @@
 import { approveApprovalGroupAction, reviewApprovalAction } from "@/app/dashboard/admin-actions";
+import { AdminDetailDrawer } from "@/components/admin/admin-detail-drawer";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
+import { TableFilterPresets } from "@/components/table-filter-presets";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { getApprovalCenterData } from "@/lib/approval-workspace";
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>;
 
+function ApprovalFilterBar({
+  sites,
+  priorities,
+  statusOptions,
+}: {
+  sites: string[];
+  priorities: string[];
+  statusOptions: string[];
+}) {
+  return (
+    <>
+      <select
+        data-table-filter-key="site"
+        defaultValue=""
+        className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+      >
+        <option value="">Semua site</option>
+        {sites.map((site) => (
+          <option key={site} value={site}>
+            {site}
+          </option>
+        ))}
+      </select>
+      <select
+        data-table-filter-key="priority"
+        defaultValue=""
+        className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+      >
+        <option value="">Semua prioritas</option>
+        {priorities.map((priority) => (
+          <option key={priority} value={priority}>
+            {priority}
+          </option>
+        ))}
+      </select>
+      <select
+        data-table-filter-key="status"
+        defaultValue=""
+        className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+      >
+        <option value="">Semua status</option>
+        {statusOptions.map((status) => (
+          <option key={status} value={status}>
+            {status}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
 function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
   if (groups.length === 0) {
     return (
       <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
-          <CardTitle>Inbox Approval</CardTitle>
-          <CardDescription>Belum ada activity yang menunggu approval Anda.</CardDescription>
+          <CardTitle>Inbox approval</CardTitle>
+          <CardDescription>Belum ada aktivitas yang menunggu keputusan Anda.</CardDescription>
         </CardHeader>
       </Card>
     );
   }
 
+  const sites = Array.from(new Set(groups.map((group) => group.siteName))).sort();
+  const priorities = Array.from(
+    new Set(groups.flatMap((group) => group.items.map((item) => item.priority))),
+  ).sort();
+
   return (
-    <div className="space-y-4">
-      {groups.map((group, groupIndex) => (
-        <details
-          key={group.id}
-          open={groupIndex === 0}
-          className="overflow-hidden rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]"
+    <Card className="rounded-[1.4rem] border-0 bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+      <CardContent className="pt-6">
+        <MinimalTableShell
+          title="Inbox keputusan"
+          description="Mulai dari list kerja utama. Gunakan filter untuk fokus ke site, prioritas, atau SLA yang paling mendesak."
+          label="approval items"
+          fileName="approval-inbox"
+          searchPlaceholder="Cari requester, site, aktivitas, unit, atau step approval..."
+          dateFilter
+          filters={<ApprovalFilterBar sites={sites} priorities={priorities} statusOptions={["on_track", "due_soon", "overdue"]} />}
+          presets={<TableFilterPresets presets={[{ label: "Terlambat", filters: { status: "overdue" } }, { label: "Segera jatuh tempo", filters: { status: "due_soon" } }]} />}
         >
-          <summary className="cursor-pointer list-none bg-surface-container-low px-6 py-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-lg font-black tracking-tight text-[#082033]">{group.requesterName}</p>
-                <p className="text-sm text-muted-foreground">
-                  {group.requesterJobTitle || "-"} • {group.siteName} • {group.workDateLabel}
-                </p>
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {group.activityCount} activity • overtime {group.totalOvertimeLabel}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <AdminStatusBadge value={`${group.activityCount} activity`} />
-                {group.dueSoonCount > 0 ? <AdminStatusBadge value="due_soon" /> : null}
-                {group.overdueCount > 0 ? <AdminStatusBadge value="overdue" /> : null}
-              </div>
-            </div>
-          </summary>
-
-          <div className="space-y-4 px-5 py-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.1rem] bg-surface-container-low px-4 py-4">
-              <div>
-                <p className="text-sm font-semibold text-[#082033]">Aksi per grup</p>
-                <p className="text-xs text-muted-foreground">
-                  Setujui semua activity user ini untuk tanggal kerja yang sama.
-                </p>
-              </div>
-              <form action={approveApprovalGroupAction}>
-                {group.items.map((item) => (
-                  <input key={item.approvalId} type="hidden" name="approvalIds" value={item.approvalId} />
-                ))}
-                <Button type="submit" className="rounded-full px-4">
-                  Approve Semua
-                </Button>
-              </form>
-            </div>
-
-            <div className="space-y-3">
-              {group.items.map((item, itemIndex) => (
-                <details
-                  key={item.approvalId}
-                  open={groupIndex === 0 && itemIndex === 0}
-                  className="overflow-hidden rounded-[1.15rem] bg-surface-container-low"
-                >
-                  <summary className="cursor-pointer list-none px-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Requester</TableHead>
+                <TableHead>Site</TableHead>
+                <TableHead>Aktivitas</TableHead>
+                <TableHead>Step</TableHead>
+                <TableHead>SLA</TableHead>
+                <TableHead>Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {groups.flatMap((group) =>
+                group.items.map((item) => (
+                  <TableRow
+                    key={item.approvalId}
+                    data-date-value={item.submittedAt.toISOString()}
+                    data-filter-site={group.siteName}
+                    data-filter-priority={item.priority}
+                    data-filter-status={item.dueState}
+                  >
+                    <TableCell className="align-top">
                       <div className="space-y-1">
-                        <p className="font-semibold text-[#082033]">
-                          {item.title} • {item.unitNumber}
-                        </p>
+                        <p className="font-semibold text-foreground">{group.requesterName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {item.activityType} • {item.timeRange} • {item.shiftLabel}
+                          {group.requesterJobTitle || "-"} • {group.workDateLabel}
                         </p>
+                        <p className="text-xs text-muted-foreground">{group.activityCount} aktivitas hari itu</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="space-y-1">
+                        <p className="text-sm text-foreground">{group.siteName}</p>
+                        <p className="text-xs text-muted-foreground">Overtime {group.totalOvertimeLabel}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">{item.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          Submit {item.submittedAt.toLocaleString("id-ID")}
+                          {item.activityType} • {item.unitNumber} • {item.timeRange}
                         </p>
+                        <div className="flex flex-wrap gap-2">
+                          <AdminStatusBadge value={item.priority} />
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <AdminStatusBadge value={item.currentStepLabel} />
-                        <AdminStatusBadge value={item.priority} />
-                        <AdminStatusBadge value={item.dueState} />
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-foreground">{item.currentStepLabel}</p>
+                        <p className="text-xs text-muted-foreground">Submit {item.submittedAt.toLocaleString("id-ID")}</p>
                       </div>
-                    </div>
-                  </summary>
-
-                  <div className="space-y-4 border-t border-white/60 px-4 py-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-[1rem] bg-white px-4 py-4">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                          Ringkasan
-                        </p>
-                        <p className="mt-2 text-sm text-[#082033]">
-                          Due {item.dueAt.toLocaleString("id-ID")} • overtime {item.overtimeLabel}
-                        </p>
-                        <p className="mt-2 text-sm text-muted-foreground">{item.remarks || "Tanpa remark tambahan."}</p>
-                      </div>
-                      <div className="rounded-[1rem] bg-white px-4 py-4">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                          Catatan Terakhir
-                        </p>
-                        <p className="mt-2 text-sm text-[#082033]">
-                          {item.lastNote ? item.lastNote.message : "Belum ada komentar approval."}
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {item.lastNote
-                            ? `${item.lastNote.actor} • ${item.lastNote.at.toLocaleString("id-ID")}`
-                            : "Requester baru submit activity ini."}
-                        </p>
-                      </div>
-                    </div>
-
-                    <form action={reviewApprovalAction} className="space-y-3 rounded-[1rem] bg-white px-4 py-4">
-                      <input type="hidden" name="approvalId" value={item.approvalId} />
-                      <p className="text-sm font-semibold text-[#082033]">Keputusan Activity</p>
-                      <Textarea
-                        name="note"
-                        rows={3}
-                        placeholder="Isi komentar bila reject / revisi. Approve boleh kosong atau beri catatan."
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="submit" name="decision" value="approved" className="rounded-full px-4">
-                          Approve
-                        </Button>
-                        <Button
-                          type="submit"
-                          name="decision"
-                          value="rejected"
-                          variant="secondary"
-                          className="rounded-full px-4"
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          type="submit"
-                          name="decision"
-                          value="needs_correction"
-                          variant="outline"
-                          className="rounded-full px-4"
-                        >
-                          Revisi
-                        </Button>
-                      </div>
-                    </form>
-
-                    {item.notes.length > 0 ? (
+                    </TableCell>
+                    <TableCell className="align-top">
                       <div className="space-y-2">
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                          Riwayat Catatan
-                        </p>
-                        {item.notes.map((note) => (
-                          <div key={note.id} className="rounded-[1rem] bg-white px-4 py-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-sm font-semibold text-[#082033]">{note.actor}</p>
-                              <AdminStatusBadge value={note.kind} />
-                            </div>
-                            <p className="mt-2 text-sm text-[#082033]">{note.message}</p>
-                            <p className="mt-2 text-xs text-muted-foreground">{note.at.toLocaleString("id-ID")}</p>
-                          </div>
-                        ))}
+                        <AdminStatusBadge value={item.dueState} />
+                        <p className="text-xs text-muted-foreground">Due {item.dueAt.toLocaleString("id-ID")}</p>
                       </div>
-                    ) : null}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        </details>
-      ))}
-    </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <AdminDetailDrawer
+                        title={`Review ${item.title}`}
+                        description={`${group.requesterName} • ${group.siteName} • ${item.currentStepLabel}`}
+                        width="wide"
+                        trigger={
+                          <Button type="button" variant="outline" size="dense">
+                            Review
+                          </Button>
+                        }
+                      >
+                        <form action={reviewApprovalAction} className="space-y-3">
+                          <input type="hidden" name="approvalId" value={item.approvalId} />
+                          <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
+                            <p className="font-semibold">Ringkasan kerja</p>
+                            <p className="mt-1 text-muted-foreground">{item.remarks || "Tanpa catatan tambahan dari requester."}</p>
+                          </div>
+                          <div className="rounded-lg bg-surface-container-low p-3 text-sm text-foreground">
+                            <p className="font-semibold">Catatan terakhir</p>
+                            <p className="mt-1 text-muted-foreground">
+                              {item.lastNote ? item.lastNote.message : "Belum ada komentar approval sebelumnya."}
+                            </p>
+                          </div>
+                          <Textarea
+                            name="note"
+                            rows={3}
+                            placeholder="Isi komentar bila reject atau revisi. Approve boleh kosong atau beri konteks singkat."
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="submit" name="decision" value="approved" size="dense">
+                              Setujui
+                            </Button>
+                            <Button type="submit" name="decision" value="needs_correction" variant="outline" size="dense">
+                              Minta revisi
+                            </Button>
+                            <Button type="submit" name="decision" value="rejected" variant="secondary" size="dense">
+                              Tolak
+                            </Button>
+                          </div>
+                        </form>
+                        {group.items.length > 1 ? (
+                          <form action={approveApprovalGroupAction} className="mt-3 border-t border-outline-ghost/70 pt-3">
+                            {group.items.map((approvalItem) => (
+                              <input key={approvalItem.approvalId} type="hidden" name="approvalIds" value={approvalItem.approvalId} />
+                            ))}
+                            <Button type="submit" variant="outline" size="dense">
+                              Setujui semua milik {group.requesterName}
+                            </Button>
+                          </form>
+                        ) : null}
+                      </AdminDetailDrawer>
+                    </TableCell>
+                  </TableRow>
+                )),
+              )}
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -187,125 +222,137 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData["historyGroups"] })
     return (
       <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
-          <CardTitle>History Approval</CardTitle>
-          <CardDescription>Belum ada activity yang Anda submit ke workflow approval.</CardDescription>
+          <CardTitle>Riwayat approval</CardTitle>
+          <CardDescription>Belum ada aktivitas yang Anda kirim ke workflow approval.</CardDescription>
         </CardHeader>
       </Card>
     );
   }
 
+  const sites = Array.from(new Set(groups.flatMap((group) => group.items.map((item) => item.siteName)))).sort();
+  const priorities = Array.from(new Set(groups.flatMap((group) => group.items.map((item) => item.priority)))).sort();
+  const statuses = Array.from(new Set(groups.flatMap((group) => group.items.map((item) => item.status)))).sort();
+
   return (
-    <div className="space-y-4">
-      {groups.map((group, groupIndex) => (
-        <details
-          key={group.id}
-          open={groupIndex === 0}
-          className="overflow-hidden rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]"
+    <Card className="rounded-[1.4rem] border-0 bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+      <CardContent className="pt-6">
+        <MinimalTableShell
+          title="Riwayat pengajuan"
+          description="Lacak status akhir, approver aktif, dan jejak keputusan tanpa harus membuka banyak panel bertingkat."
+          label="request history"
+          fileName="approval-history"
+          searchPlaceholder="Cari aktivitas, site, approver, workflow, atau hasil keputusan..."
+          dateFilter
+          filters={<ApprovalFilterBar sites={sites} priorities={priorities} statusOptions={statuses} />}
+          presets={<TableFilterPresets presets={[{ label: "Disetujui", filters: { status: "approved" } }, { label: "Perlu revisi", filters: { status: "needs_revision" } }]} />}
         >
-          <summary className="cursor-pointer list-none bg-surface-container-low px-6 py-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-lg font-black tracking-tight text-[#082033]">{group.workDateLabel}</p>
-                <p className="text-sm text-muted-foreground">{group.activityCount} activity diajukan</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {group.pendingCount > 0 ? <AdminStatusBadge value="in_review" /> : null}
-                {group.approvedCount > 0 ? <AdminStatusBadge value="approved" /> : null}
-                {group.rejectedCount > 0 ? <AdminStatusBadge value="rejected" /> : null}
-                {group.revisionCount > 0 ? <AdminStatusBadge value="needs_revision" /> : null}
-              </div>
-            </div>
-          </summary>
-
-          <div className="space-y-3 px-5 py-5">
-            {group.items.map((item, itemIndex) => (
-              <details
-                key={item.activityId}
-                open={groupIndex === 0 && itemIndex === 0}
-                className="overflow-hidden rounded-[1.15rem] bg-surface-container-low"
-              >
-                <summary className="cursor-pointer list-none px-4 py-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-[#082033]">
-                        {item.title} • {item.unitNumber}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.activityType} • {item.siteName} • {item.timeRange}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Tahap {item.currentStepLabel} • menunggu {item.pendingWith}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <AdminStatusBadge value={item.status} />
-                      <AdminStatusBadge value={item.priority} />
-                    </div>
-                  </div>
-                </summary>
-
-                <div className="space-y-4 border-t border-white/60 px-4 py-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[1rem] bg-white px-4 py-4">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                        Hasil Terakhir
-                      </p>
-                      <p className="mt-2 text-sm text-[#082033]">{item.lastDecision}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Submit {item.submittedAt.toLocaleString("id-ID")} • {item.shiftLabel}
-                      </p>
-                    </div>
-                    <div className="rounded-[1rem] bg-white px-4 py-4">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                        Workflow
-                      </p>
-                      <p className="mt-2 text-sm text-[#082033]">{item.workflowLabel}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">Priority {item.priority}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                      Trail Approval
-                    </p>
-                    {item.notes.map((note) => (
-                      <div key={note.id} className="rounded-[1rem] bg-white px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-[#082033]">{note.actor}</p>
-                          <AdminStatusBadge value={note.kind} />
-                        </div>
-                        <p className="mt-2 text-sm text-[#082033]">{note.message}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">{note.at.toLocaleString("id-ID")}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                      Status Per Step
-                    </p>
-                    {item.steps.map((step) => (
-                      <div key={step.approvalId} className="rounded-[1rem] bg-white px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-[#082033]">
-                            L{step.level} • {step.label}
-                          </p>
-                          <AdminStatusBadge value={step.status} />
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">{step.approverName}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {step.reviewedAt ? step.reviewedAt.toLocaleString("id-ID") : "Belum diputuskan"}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Aktivitas</TableHead>
+                <TableHead>Site</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Menunggu</TableHead>
+                <TableHead>Workflow</TableHead>
+                <TableHead>Detail</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {groups.flatMap((group) =>
+                group.items.map((item) => (
+                  <TableRow
+                    key={item.activityId}
+                    data-date-value={item.submittedAt.toISOString()}
+                    data-filter-site={item.siteName}
+                    data-filter-priority={item.priority}
+                    data-filter-status={item.status}
+                  >
+                    <TableCell className="align-top">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-foreground">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.activityType} • {item.unitNumber} • {group.workDateLabel}
                         </p>
+                        <div className="flex flex-wrap gap-2">
+                          <AdminStatusBadge value={item.priority} />
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </details>
-            ))}
-          </div>
-        </details>
-      ))}
-    </div>
+                    </TableCell>
+                    <TableCell className="align-top text-sm text-foreground">{item.siteName}</TableCell>
+                    <TableCell className="align-top">
+                      <div className="space-y-2">
+                        <AdminStatusBadge value={item.status} />
+                        <p className="text-xs text-muted-foreground">{item.lastDecision}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="space-y-1 text-sm">
+                        <p className="text-foreground">{item.pendingWith}</p>
+                        <p className="text-xs text-muted-foreground">Tahap {item.currentStepLabel}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="space-y-1 text-sm">
+                        <p className="text-foreground">{item.workflowLabel}</p>
+                        <p className="text-xs text-muted-foreground">{item.shiftLabel} • {item.timeRange}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <AdminDetailDrawer
+                        title={`Trail ${item.title}`}
+                        description={`${item.siteName} • ${item.workflowLabel}`}
+                        width="wide"
+                        trigger={
+                          <Button type="button" variant="outline" size="dense">
+                            Trail
+                          </Button>
+                        }
+                      >
+                        <div className="space-y-3">
+                          <div className="rounded-lg bg-surface-container-low p-3">
+                            <p className="text-sm font-semibold text-foreground">Jejak approval</p>
+                            <div className="mt-2 space-y-2">
+                              {item.notes.map((note) => (
+                                <div key={note.id} className="rounded-lg bg-surface-container-lowest px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-medium text-foreground">{note.actor}</p>
+                                    <AdminStatusBadge value={note.kind} />
+                                  </div>
+                                  <p className="mt-2 text-sm text-foreground">{note.message}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">{note.at.toLocaleString("id-ID")}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-surface-container-low p-3">
+                            <p className="text-sm font-semibold text-foreground">Status per step</p>
+                            <div className="mt-2 space-y-2">
+                              {item.steps.map((step) => (
+                                <div key={step.approvalId} className="rounded-lg bg-surface-container-lowest px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-medium text-foreground">
+                                      L{step.level} • {step.label}
+                                    </p>
+                                    <AdminStatusBadge value={step.status} />
+                                  </div>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {step.approverName} • {step.reviewedAt ? step.reviewedAt.toLocaleString("id-ID") : "Belum diputuskan"}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </AdminDetailDrawer>
+                    </TableCell>
+                  </TableRow>
+                )),
+              )}
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -314,47 +361,48 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
     <AdminPageShell
       eyebrow="Approval"
       title="Approval Center"
-      description="Inbox approval harian yang grouped per user dan history hasil approval untuk activity yang Anda ajukan."
+      description="Antrian keputusan dan riwayat pengajuan dalam pola list-first supaya item mendesak lebih cepat terlihat dan ditindaklanjuti."
     >
       <AdminMetricGrid
+        mode="compact"
         items={[
           {
-            label: "Group inbox",
+            label: "Grup menunggu",
             value: `${data.inboxMetrics.pendingGroups}`,
-            meta: "Kelompok user-hari yang menunggu approval",
+            meta: "Requester-hari yang masih perlu keputusan",
           },
           {
-            label: "Activity pending",
+            label: "Item pending",
             value: `${data.inboxMetrics.pendingActivities}`,
-            meta: "Jumlah item activity yang bisa diputuskan",
+            meta: "Aktivitas yang bisa diputuskan sekarang",
           },
           {
-            label: "Due soon",
+            label: "Segera jatuh tempo",
             value: `${data.inboxMetrics.dueSoon}`,
-            meta: "Item yang perlu diprioritaskan segera",
+            meta: "Butuh diprioritaskan di shift ini",
           },
           {
-            label: "Overdue",
+            label: "Terlambat",
             value: `${data.inboxMetrics.overdue}`,
-            meta: "Activity yang sudah melewati SLA",
+            meta: "Sudah melewati SLA review",
           },
           {
-            label: "History approved",
+            label: "Riwayat disetujui",
             value: `${data.historyMetrics.approved}`,
-            meta: "Pengajuan Anda yang selesai disetujui",
+            meta: "Pengajuan Anda yang selesai mulus",
           },
           {
-            label: "History rejected",
+            label: "Riwayat ditolak",
             value: `${data.historyMetrics.rejected}`,
-            meta: "Pengajuan Anda yang ditolak",
+            meta: "Butuh tindak lanjut atau submit ulang",
           },
         ]}
       />
 
       <Tabs defaultValue="inbox" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="inbox">Inbox Approval</TabsTrigger>
-          <TabsTrigger value="history">History Approval</TabsTrigger>
+          <TabsTrigger value="inbox">Inbox keputusan</TabsTrigger>
+          <TabsTrigger value="history">Riwayat pengajuan</TabsTrigger>
         </TabsList>
 
         <TabsContent value="inbox">
@@ -368,3 +416,4 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
     </AdminPageShell>
   );
 }
+

@@ -1,0 +1,24 @@
+{
+  "source_records": 485,
+  "master_counts": {
+    "departments": 10,
+    "sections": 41,
+    "sites": 32,
+    "work_locations": 59,
+    "job_levels": 3,
+    "genders": 2,
+    "age_bands": 5,
+    "service_bands": 6,
+    "educations": 4,
+    "employee_statuses": 2,
+    "positions": 17
+  },
+  "organization_count": 297,
+  "user_count": 485,
+  "users_with_org_node": 475,
+  "users_without_org_node": 10,
+  "users_with_position": 475,
+  "users_without_position": 10,
+  "users_with_email": 412,
+  "users_without_email": 73
+}

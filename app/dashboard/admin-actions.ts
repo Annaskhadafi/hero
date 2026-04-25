@@ -1127,7 +1127,6 @@ function revalidateAdminSurfaces() {
     "/mobile",
     "/mobile/dashboard",
     "/mobile/activity",
-    "/mobile/menu",
     "/mobile/approval",
   ];
 

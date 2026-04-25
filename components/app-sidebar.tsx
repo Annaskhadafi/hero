@@ -73,26 +73,35 @@ type SidebarUser = {
 
 const DESKTOP_MENU_ORDER = [
   "Portal Chitra",
-  "Daily Activity",
+  "Aktivitas Harian",
   "Approval",
-  "Master Data",
-  "HR",
+  "Data Induk",
+  "HC",
   "HSE",
-  "Report",
-  "Setting",
+  "Laporan",
+  "Pengaturan",
 ] as const
 
 const desktopMenuIconMap = {
   "Portal Chitra": IconDashboard,
-  "Daily Activity": IconChecklist,
+  "Aktivitas Harian": IconChecklist,
   Approval: IconMail,
-  "Master Data": IconDatabase,
-  HR: IconUsers,
+  "Data Induk": IconDatabase,
+  HC: IconUsers,
   HSE: IconShieldHalfFilled,
-  Report: IconReport,
-  Setting: IconSettings,
+  Laporan: IconReport,
+  Pengaturan: IconSettings,
 } as const
 
+const sectionLabelMap: Record<string, string> = {
+  "Daily Activity": "Aktivitas Harian",
+  Approval: "Approval",
+  "Master Data": "Data Induk",
+  HR: "HC",
+  HSE: "HSE",
+  Report: "Laporan",
+  Setting: "Pengaturan",
+}
 export function AppSidebar({
   user,
   navMain,
@@ -106,7 +115,7 @@ export function AppSidebar({
   documents: readonly SidebarDocumentItem[]
 }) {
   const desktopItems = [...navMain, ...navSecondary].map((item) => ({
-    section: item.section ?? "Menu",
+    section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
     title: item.title,
     url: item.url,
     sortOrder: item.sortOrder ?? 999,
@@ -146,26 +155,26 @@ export function AppSidebar({
         fontFamily: "var(--font-inter), sans-serif",
       }}
     >
-      <SidebarHeader className="px-4 pb-3 pt-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
-        <div className="surface-chip rounded-[1rem] px-3 py-3 group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:px-1.5">
+      <SidebarHeader className="px-3 pb-2 pt-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
+        <div className="rounded-lg bg-surface-container-lowest px-2 py-2 shadow-[inset_0_0_0_1px_var(--outline-ghost)] group-data-[collapsible=icon]:px-1.5">
           <Link href="/" aria-label="HERO" className="flex w-fit items-center">
             <Image
               src="/logo-hero.png"
               alt="HERO"
               width={132}
               height={48}
-              className="h-11 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-9"
+              className="h-9 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-8"
               priority
             />
           </Link>
         </div>
       </SidebarHeader>
-      <SidebarContent className="gap-1">
+      <SidebarContent className="gap-0.5">
         <NavMain groups={desktopGroups} showQuickCreate />
         {documentItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-1" />
-            <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
+            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               Dokumen
             </div>
             <NavDocuments items={documentItems} />
@@ -179,3 +188,6 @@ export function AppSidebar({
     </Sidebar>
   )
 }
+
+
+

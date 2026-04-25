@@ -409,10 +409,10 @@ export default async function MobileDashboardPage() {
                 </Link>
                 <Link
                   prefetch={false}
-                  href="/mobile/menu"
+                  href="/mobile/approval"
                   className="flex min-h-11 items-center justify-center rounded-lg bg-white px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#003f78] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
                 >
-                  Menu
+                  Approval
                 </Link>
               </div>
             </div>

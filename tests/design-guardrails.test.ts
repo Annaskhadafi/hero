@@ -46,3 +46,29 @@ test("mobile shell separates chrome with tonal layers instead of hard borders", 
   assert.doesNotMatch(mobileShell, /border-b border\[/);
   assert.doesNotMatch(mobileShell, /border-t border\[/);
 });
+
+test("desktop dashboard shell stays compact", () => {
+  const dashboardLayout = read("app/dashboard/layout.tsx");
+  const siteHeader = read("components/site-header.tsx");
+
+  assert.match(dashboardLayout, /"--sidebar-width": "15\.5rem"/);
+  assert.match(siteHeader, /min-h-\[(48|52|56)px\]|min-h-12|min-h-14/);
+  assert.doesNotMatch(siteHeader, /sm:min-h-\(--header-height\)/);
+});
+
+test("admin table shell exposes daily admin controls", () => {
+  const tableShell = read("components/ui/minimal-table-shell.tsx");
+
+  assert.match(tableShell, /Import/);
+  assert.match(tableShell, /Excel/);
+  assert.match(tableShell, /pageSize/);
+  assert.match(tableShell, /sort/);
+  assert.match(tableShell, /data-table-filter-key/);
+});
+
+test("approval workbench no longer expands long details inline", () => {
+  const approvalWorkbench = read("components/approval-workbench.tsx");
+
+  assert.doesNotMatch(approvalWorkbench, /<details/);
+  assert.match(approvalWorkbench, /AdminDetailDrawer/);
+});

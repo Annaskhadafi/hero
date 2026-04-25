@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { submitAttendance } from "@/app/actions/attendance";
-import type { AttendanceSyncPayload } from "@/lib/offline-sync";
+import {
+  attendanceSyncPayloadSchema,
+  parseOfflineSyncPayload,
+  type AttendanceSyncPayload,
+} from "@/lib/offline-sync";
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as AttendanceSyncPayload;
+    const payload = parseOfflineSyncPayload<AttendanceSyncPayload>(
+      attendanceSyncPayloadSchema,
+      await request.json(),
+    );
     const formData = new FormData();
 
     if (!payload.photo) {
@@ -25,6 +32,7 @@ export async function POST(request: Request) {
 
     formData.append("file", file);
     formData.append("uploadTarget", "attendance");
+    formData.append("clientRequestId", payload.clientRequestId ?? "");
     formData.append("type", payload.type);
     formData.append("latitude", payload.latitude);
     formData.append("longitude", payload.longitude);
@@ -53,10 +61,12 @@ export async function POST(request: Request) {
       record: result.record ?? null,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Sync attendance gagal.";
+
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : "Sync attendance gagal.",
+        message,
       },
       { status: 400 },
     );

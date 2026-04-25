@@ -27,6 +27,13 @@ import {
   levels,
   badges,
   employeeBadges,
+  hrDepartments,
+  hrEmployeeStatuses,
+  hrEmployees,
+  hrOrgNodes,
+  hrPositions,
+  hrSections,
+  hrSites,
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
@@ -56,7 +63,7 @@ let governanceSeedPromise: Promise<void> | null = null;
 
 export type SecurityUserRecord = {
   id: number;
-  siteId: number;
+  siteId: number | null;
   employeeSn: string;
   joinYear: number;
   name: string;
@@ -81,6 +88,58 @@ export type SecurityUserRecord = {
   siteName: string;
   totalPoints: number;
 };
+
+export async function getSecurityUserReferenceData() {
+  const [sections, departments, positions, sitesData] = await Promise.all([
+    db
+      .select({
+        id: hrSections.id,
+        code: hrSections.code,
+        name: hrSections.name,
+        departmentId: hrSections.departmentId,
+      })
+      .from(hrSections)
+      .where(eq(hrSections.isActive, true))
+      .orderBy(asc(hrSections.name)),
+    db
+      .select({
+        id: hrDepartments.id,
+        code: hrDepartments.code,
+        name: hrDepartments.name,
+      })
+      .from(hrDepartments)
+      .where(eq(hrDepartments.isActive, true))
+      .orderBy(asc(hrDepartments.name)),
+    db
+      .select({
+        id: hrPositions.id,
+        code: hrPositions.code,
+        name: hrPositions.rankName,
+        siteLocation: sql<string>``.as("site_location"),
+        level: sql<number>`1`.as("level"),
+        departmentId: sql<number | null>`null`.as("department_id"),
+      })
+      .from(hrPositions)
+      .where(eq(hrPositions.isActive, true))
+      .orderBy(asc(hrPositions.rankName), asc(hrPositions.levelName)),
+    db
+      .select({
+        id: hrSites.id,
+        name: hrSites.name,
+        location: hrSites.name,
+      })
+      .from(hrSites)
+      .where(eq(hrSites.isActive, true))
+      .orderBy(asc(hrSites.name)),
+  ]);
+
+  return {
+    sections,
+    departments,
+    positions,
+    sites: sitesData,
+  };
+}
 
 export type SecurityRoleMenuPermissionRecord = {
   id: number;
@@ -2527,39 +2586,42 @@ export async function getSecurityOverviewData() {
 }
 
 export async function getSecurityUsersData() {
-  await ensureHeroGovernanceSeedData();
-
   const rows = await db
     .select({
-      id: employees.id,
-      employeeSn: employees.employeeSn,
-      siteId: employees.siteId,
-      joinYear: employees.joinYear,
-      name: employees.name,
+      id: hrEmployees.id,
+      employeeSn: hrEmployees.employeeId,
+      siteId: hrEmployees.siteId,
+      joinDate: hrEmployees.joinDate,
+      name: hrEmployees.fullName,
       profileImage: authUser.image,
-      birthPlaceDate: employees.birthPlaceDate,
-      domicile: employees.domicile,
-      directManagerId: employees.directManagerId,
-      section: employees.section,
-      jobTitle: employees.jobTitle,
-      workLocation: employees.workLocation,
-      phoneNumber: employees.phoneNumber,
-      email: employees.email,
-      employmentStatus: employees.employmentStatus,
-      employeeStatusType: employees.employeeStatusType,
-      accessRole: employees.accessRole,
-      role: employees.role,
-      department: employees.department,
-      levelName: employees.levelName,
-      fitStatus: employees.fitStatus,
-      isActive: employees.isActive,
-      siteName: sites.name,
-      totalPoints: employees.totalPoints,
+      birthDate: hrEmployees.birthDate,
+      domicile: sql<string>`''`.as("domicile"),
+      directManagerId: sql<number | null>`null`.as("direct_manager_id"),
+      section: hrSections.name,
+      jobTitle: hrPositions.rankName,
+      workLocation: hrOrgNodes.name,
+      phoneNumber: sql<string>`''`.as("phone_number"),
+      email: hrEmployees.email,
+      employmentStatus: hrEmployeeStatuses.name,
+      employeeStatusType: hrEmployeeStatuses.name,
+      accessRole: sql<string>`coalesce(${hrPositions.levelName}, 'User')`.as("access_role"),
+      role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as("role"),
+      department: hrDepartments.name,
+      levelName: hrPositions.levelName,
+      fitStatus: sql<string>`'fit'`.as("fit_status"),
+      isActive: hrEmployees.isActive,
+      siteName: hrSites.name,
+      totalPoints: sql<number>`0`.as("total_points"),
     })
-    .from(employees)
-    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
-    .orderBy(employees.name);
+    .from(hrEmployees)
+    .leftJoin(authUser, eq(hrEmployees.authUserId, authUser.id))
+    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
+    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
+    .leftJoin(hrOrgNodes, eq(hrEmployees.orgNodeId, hrOrgNodes.id))
+    .leftJoin(hrEmployeeStatuses, eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code))
+    .orderBy(hrEmployees.fullName);
 
   const employeeNameById = new Map(rows.map((row) => [row.id, row.name]));
 
@@ -2567,26 +2629,26 @@ export async function getSecurityUsersData() {
     id: row.id,
     siteId: row.siteId,
     employeeSn: row.employeeSn,
-    joinYear: row.joinYear,
+    joinYear: row.joinDate ? new Date(row.joinDate).getFullYear() : new Date().getFullYear(),
     name: row.name,
     profileImage: row.profileImage,
-    birthPlaceDate: row.birthPlaceDate,
+    birthPlaceDate: row.birthDate ? new Date(row.birthDate).toISOString().slice(0, 10) : "",
     domicile: row.domicile,
     directManagerId: row.directManagerId,
     directManagerName: row.directManagerId
       ? employeeNameById.get(row.directManagerId) ?? null
       : null,
-    section: row.section,
-    department: row.department,
-    jobTitle: row.jobTitle,
-    workLocation: row.workLocation,
-    employeeStatusType: row.employeeStatusType,
+    section: row.section ?? "",
+    department: row.department ?? "",
+    jobTitle: row.jobTitle ?? "",
+    workLocation: row.workLocation ?? "",
+    employeeStatusType: row.employeeStatusType ?? "",
     phoneNumber: row.phoneNumber,
-    email: row.email,
-    status: row.isActive ? row.employmentStatus : "inactive",
+    email: row.email ?? "",
+    status: row.isActive ? row.employmentStatus ?? "active" : "inactive",
     role: row.role,
     accessRole: row.accessRole,
-    levelName: row.levelName,
+    levelName: row.levelName ?? "",
     fitStatus: row.fitStatus,
     isActive: row.isActive,
     siteName: row.siteName ?? row.workLocation ?? "Belum diisi",

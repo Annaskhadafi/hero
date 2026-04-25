@@ -30,6 +30,8 @@ const buttonVariants = cva(
         sm: "h-11 min-w-11 gap-1.5 px-4 has-[>svg]:px-3.5",
         lg: "h-12 min-w-12 px-7 has-[>svg]:px-5",
         icon: "size-12 min-h-12 min-w-12",
+        dense: "h-9 min-w-9 gap-1.5 rounded-md px-3 text-[13px] normal-case tracking-normal has-[>svg]:px-2.5",
+        denseIcon: "size-9 min-h-9 min-w-9 rounded-md",
       },
     },
     defaultVariants: {

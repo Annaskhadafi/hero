@@ -16,8 +16,8 @@ export function AdminPageShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-5 p-3 sm:p-5 lg:space-y-6 lg:p-6">
-      <header className="industrial-card overflow-hidden rounded-[1.25rem] px-4 py-4 sm:px-5 sm:py-5 lg:px-6">
+    <div className="space-y-4 p-4 lg:p-5">
+      <header className="admin-daily-card overflow-hidden rounded-lg px-4 py-3">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -33,12 +33,10 @@ export function AdminPageShell({
               ) : null}
             </div>
             <div className="space-y-2">
-              <h1 className="max-w-4xl font-display text-[1.7rem] font-semibold leading-tight text-foreground [text-wrap:balance] sm:text-[2.1rem]">
+              <h1 className="max-w-4xl font-display text-xl font-semibold leading-tight text-foreground [text-wrap:balance] sm:text-2xl">
                 {title}
               </h1>
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground [text-wrap:pretty] sm:text-[0.95rem]">
-                {description}
-              </p>
+              <span className="sr-only">{description}</span>
             </div>
           </div>
 

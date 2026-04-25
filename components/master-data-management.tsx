@@ -1715,10 +1715,14 @@ function SectionManagement({
               <Input
                 id="code"
                 value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 3) })
+                }
                 placeholder="e.g., OPS, FIN, HR"
+                maxLength={3}
                 required
               />
+              <p className="text-xs text-[#64748b]">Maksimal 3 huruf.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="name">Nama Section</Label>
@@ -1986,10 +1990,14 @@ function DepartmentManagement({
               <Input
                 id="dept-code"
                 value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                placeholder="e.g., FIN-ACC, HR-GA"
+                onChange={(e) =>
+                  setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 3) })
+                }
+                placeholder="e.g., FIN, HRD, OPR"
+                maxLength={3}
                 required
               />
+              <p className="text-xs text-[#64748b]">Maksimal 3 huruf.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="dept-name">Nama Department</Label>
@@ -2306,10 +2314,14 @@ function PositionManagement({
                 <Input
                   id="pos-code"
                   value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 3) })
+                  }
                   placeholder="e.g., MGR, SPV"
+                  maxLength={3}
                   required
                 />
+                <p className="text-xs text-[#64748b]">Maksimal 3 huruf.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="pos-level">Level</Label>

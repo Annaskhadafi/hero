@@ -92,9 +92,11 @@ function toCsvRows(rows: ActivityLibraryRow[]): ActivityLibraryCsvRow[] {
 export function ActivityLibraryImportExport({
   rows,
   currentEmployeeId,
+  mode = "full",
 }: {
   rows: ActivityLibraryRow[];
   currentEmployeeId: number | null;
+  mode?: "full" | "import";
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -132,36 +134,37 @@ export function ActivityLibraryImportExport({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-9 rounded-full border-0 bg-surface-container-lowest px-4 shadow-[0_10px_24px_rgba(8,32,51,0.08)]"
-        onClick={() => downloadCsv(buildActivityLibraryCsv(toCsvRows(rows)), "activity-library-export.csv")}
-      >
-        <Download className="mr-2 size-4" />
-        Excel
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-9 rounded-full border-0 bg-surface-container-lowest px-4 shadow-[0_10px_24px_rgba(8,32,51,0.08)]"
-        onClick={() => downloadCsv(ACTIVITY_LIBRARY_EXAMPLE_CSV, "activity-library-example.csv")}
-      >
-        <FileSpreadsheet className="mr-2 size-4" />
-        Template CSV
-      </Button>
+      {mode === "full" ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="dense"
+            onClick={() => downloadCsv(buildActivityLibraryCsv(toCsvRows(rows)), "activity-library-export.csv")}
+          >
+            <Download className="size-4" />
+            Excel
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="dense"
+            onClick={() => downloadCsv(ACTIVITY_LIBRARY_EXAMPLE_CSV, "activity-library-example.csv")}
+          >
+            <FileSpreadsheet className="size-4" />
+            Template CSV
+          </Button>
+        </>
+      ) : null}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           <Button
             type="button"
-            size="sm"
-            className="h-9 rounded-full bg-[linear-gradient(135deg,var(--primary),var(--primary-container))] px-4 text-white shadow-[0_14px_30px_rgba(0,52,97,0.24)]"
+            size="dense"
           >
-            <Upload className="mr-2 size-4" />
-            Import Library
+            <Upload className="size-4" />
+            Import
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-6xl border-0 bg-surface-container-lowest p-0 shadow-[0_28px_90px_rgba(8,32,51,0.22)]">

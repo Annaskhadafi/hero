@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Layers3, Settings2 } from "lucide-react";
+import { AdminCrudDialog } from "@/components/admin/admin-crud-dialog";
 import { manageActivityLibraryAction } from "@/app/dashboard/activity-hub/actions";
 import { ActivityLibraryFilters } from "@/components/activity-library-filters";
 import { ActivityLibraryImportExport } from "@/components/activity-library-import-export";
@@ -25,12 +26,102 @@ function SummaryChip({ label, value }: { label: string; value: string | number }
   );
 }
 
-function getSearchParamValue(
-  searchParams: Record<string, string | string[] | undefined> | undefined,
-  key: string,
-) {
-  const value = searchParams?.[key];
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+type DailyActivityLibraryData = Awaited<ReturnType<typeof getDailyActivityLibraryData>>;
+
+function ActivityLibraryCreateForm({ data }: { data: DailyActivityLibraryData }) {
+  return (
+    <form action={manageActivityLibraryAction} className="space-y-4">
+      <input type="hidden" name="intent" value="create" />
+      <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Label className="grid gap-2">
+          Activity code
+          <Input name="activityCode" placeholder="TS-003" required />
+        </Label>
+        <Label className="grid gap-2">
+          Category
+          <select name="category" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
+            {["Technical", "HSE", "Administrative", "Training", "Wellness", "Standby"].map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </Label>
+        <Label className="grid gap-2 sm:col-span-2">
+          Activity name
+          <Input name="activityName" placeholder="Nama aktivitas resmi yang tampil ke karyawan" required />
+        </Label>
+        <Label className="grid gap-2 sm:col-span-2">
+          Lokasi kerja / Site
+          <select name="siteId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
+            <option value="">Global - semua site</option>
+            {data.sites.map((site) => (
+              <option key={site.id} value={site.id}>
+                {site.name}
+              </option>
+            ))}
+          </select>
+        </Label>
+        <ActivityRouteDepartmentSectionFields
+          departments={data.departments}
+          sections={data.sections}
+          selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+          departmentPlaceholder="Tanpa department spesifik"
+          sectionPlaceholder="Tanpa section spesifik"
+        />
+        <Label className="grid gap-2">
+          Base points
+          <Input name="basePoints" type="number" defaultValue={10} />
+        </Label>
+        <Label className="grid gap-2">
+          Complexity
+          <Input name="complexityLevel" type="number" min={1} max={5} defaultValue={2} />
+        </Label>
+        <Label className="grid gap-2">
+          Max daily count
+          <Input name="maxDailyCount" type="number" defaultValue={3} />
+        </Label>
+        <Label className="grid gap-2">
+          Max points per day
+          <Input name="maxPointsPerDay" type="number" defaultValue={50} />
+        </Label>
+        <Label className="grid gap-2 sm:col-span-2">
+          SLA hours
+          <Input name="slaHours" type="number" defaultValue={24} />
+        </Label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[
+          ["requiresPhoto", "Wajib foto"],
+          ["requiresEquipmentNo", "Wajib nomor equipment"],
+          ["requiresDuration", "Wajib durasi"],
+          ["requiresLocationGps", "Wajib GPS"],
+          ["requiresMaterialUsed", "Wajib material"],
+          ["isAssignable", "Bisa di-assign"],
+          ["isSelfInput", "Bisa self-input"],
+          ["approvalRequired", "Butuh approval"],
+          ["autoApproveIfGpsValid", "Auto-approve jika GPS valid"],
+          ["isActive", "Aktif"],
+        ].map(([field, label]) => (
+          <Label key={field} className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-3 text-sm">
+            <input
+              type="checkbox"
+              name={field}
+              defaultChecked={["requiresDuration", "isAssignable", "isSelfInput", "approvalRequired", "isActive"].includes(field)}
+            />
+            {label}
+          </Label>
+        ))}
+      </div>
+
+      <Button type="submit" className="w-full rounded-lg">
+        Simpan activity library
+      </Button>
+    </form>
+  );
 }
 
 export default async function DailyActivityLibraryPage({
@@ -45,15 +136,8 @@ export default async function DailyActivityLibraryPage({
   }
 
   const data = await getDailyActivityLibraryData(session.user.email);
-  const resolvedSearchParams = await searchParams;
-  const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
-  const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
-  const filteredRows = data.rows.filter((row) => {
-    const matchesDepartment = !selectedDepartment || `${row.departmentId ?? ""}` === selectedDepartment;
-    const matchesSection = !selectedSection || `${row.sectionId ?? ""}` === selectedSection;
-
-    return matchesDepartment && matchesSection;
-  });
+  await searchParams;
+  const filteredRows = data.rows;
 
   return (
     <div className="space-y-5">
@@ -69,7 +153,6 @@ export default async function DailyActivityLibraryPage({
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           <TabsTrigger value="overview">Activity Library Overview</TabsTrigger>
-          <TabsTrigger value="create">Tambah Activity Library</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -79,21 +162,14 @@ export default async function DailyActivityLibraryPage({
                 <Settings2 className="size-5 text-primary" />
                 Activity Library Overview
               </CardTitle>
-              <CardDescription>
-                Daftar aktivitas resmi per departemen beserta atribut validasi, SLA, default point, dan pondasi override
-                per section.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap gap-2">
-                  {data.categories.map((item) => (
-                    <Badge key={item.label} variant="secondary">
-                      {item.label} • {item.count}
-                    </Badge>
-                  ))}
-                </div>
-                <ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} />
+              <div className="flex flex-wrap gap-2">
+                {data.categories.map((item) => (
+                  <Badge key={item.label} variant="secondary">
+                    {item.label} • {item.count}
+                  </Badge>
+                ))}
               </div>
 
               <MinimalTableShell
@@ -103,6 +179,16 @@ export default async function DailyActivityLibraryPage({
                 summaryClassName="bg-transparent px-1 py-0 shadow-none"
                 dateFilter={false}
                 filters={<ActivityLibraryFilters departments={data.departments} sections={data.sections} />}
+                importAction={<ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} mode="import" />}
+                primaryAction={
+                  <AdminCrudDialog
+                    title="Tambah Activity Library"
+                    description="Tambah master activity yang dipakai Route Builder."
+                    size="lg"
+                  >
+                    <ActivityLibraryCreateForm data={data} />
+                  </AdminCrudDialog>
+                }
               >
                 <Table>
                   <TableHeader>
@@ -118,7 +204,14 @@ export default async function DailyActivityLibraryPage({
                   <TableBody>
                     {filteredRows.length > 0 ? (
                     filteredRows.map((row) => (
-                      <TableRow key={row.id} className="hover:bg-surface-container-low/70">
+                      <TableRow
+                        key={row.id}
+                        className="hover:bg-surface-container-low/70"
+                        data-filter-department={row.departmentName ?? ""}
+                        data-filter-section={row.sectionName ?? ""}
+                        data-filter-category={row.category}
+                        data-filter-status={row.isActive ? "Aktif" : "Nonaktif"}
+                      >
                         <TableCell className="align-top">
                           <div className="space-y-1">
                             <p className="font-semibold text-foreground">{row.activityName}</p>
@@ -154,13 +247,12 @@ export default async function DailyActivityLibraryPage({
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
-                          <div className="flex flex-wrap gap-2">
-                            <Badge className={row.isActive ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-800"}>
-                              {row.isActive ? "Aktif" : "Nonaktif"}
-                            </Badge>
-                            {row.isSelfInput ? <Badge variant="secondary">Self-input</Badge> : null}
-                            {row.isAssignable ? <Badge variant="secondary">Assignable</Badge> : null}
-                          </div>
+                          <p className="text-sm font-medium text-foreground">
+                            {row.isActive ? "Aktif" : "Nonaktif"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {[row.isSelfInput ? "Self-input" : null, row.isAssignable ? "Assignable" : null].filter(Boolean).join(" • ") || "-"}
+                          </p>
                         </TableCell>
                         <TableCell className="align-top">
                           <ActivityLibraryRowActions

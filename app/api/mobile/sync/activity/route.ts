@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { submitDailyActivityAction } from "@/app/dashboard/activity-hub/actions";
-import type { ActivitySyncPayload } from "@/lib/offline-sync";
+import {
+  activitySyncPayloadSchema,
+  parseOfflineSyncPayload,
+  type ActivitySyncPayload,
+} from "@/lib/offline-sync";
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as ActivitySyncPayload;
+    const payload = parseOfflineSyncPayload<ActivitySyncPayload>(
+      activitySyncPayloadSchema,
+      await request.json(),
+    );
     const formData = new FormData();
 
     formData.append("employeeId", String(payload.employeeId));

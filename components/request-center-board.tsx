@@ -2,6 +2,7 @@ import { cancelDraftSubmissionAction } from "@/app/dashboard/admin-actions";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
+import { RequestCenterFilters } from "@/components/request-center-filters";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,13 +25,16 @@ import type { getRequestCenterData } from "@/lib/approval-workspace";
 type RequestCenterData = Awaited<ReturnType<typeof getRequestCenterData>>;
 
 export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
+  const siteOptions = Array.from(new Set(data.requests.map((request) => request.siteName))).sort();
+  const statusOptions = Array.from(new Set(data.requests.map((request) => request.status))).sort();
   return (
     <AdminPageShell
-      eyebrow="Request Center"
+      eyebrow="Pusat Pengajuan"
       title={data.scopeLabel}
-      description="Ringkasan pengajuan karyawan, status terakhir, pemeriksa aktif, dan alur approval yang berjalan."
+      description="Pantau draft, pengajuan yang sedang berjalan, dan bottleneck approval dari satu daftar operasional."
     >
       <AdminMetricGrid
+        mode="compact"
         items={[
           { label: "Tersimpan", value: `${data.metrics.draft}`, meta: "Pengajuan yang masih disimpan sementara" },
           { label: "Dikirim", value: `${data.metrics.submitted}`, meta: "Pengajuan yang sudah masuk daftar approval" },
@@ -46,7 +50,7 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
         <CardHeader className="bg-surface-container-low px-7 py-6">
           <CardTitle>Daftar Pengajuan</CardTitle>
           <CardDescription>
-            Saat ini daftar berfokus ke Daily Activity. Jenis form lain akan ikut tampil saat prosesnya tersedia untuk tim.
+            Saat ini daftar paling banyak berisi Daily Activity. Jenis pengajuan lain akan ikut muncul saat alurnya aktif di operasi harian.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
@@ -55,7 +59,8 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
             fileName="request-center"
             searchPlaceholder="Cari pengajuan, requester, form, atau workflow..."
             summaryClassName="bg-transparent px-1 py-0 shadow-none"
-          >
+            filters={<RequestCenterFilters sites={siteOptions} statuses={statusOptions} />}
+>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -141,3 +146,22 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
     </AdminPageShell>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

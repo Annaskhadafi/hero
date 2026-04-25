@@ -1,0 +1,315 @@
+{
+  "record_count": 485,
+  "department_count": 10,
+  "section_count": 34,
+  "site_count": 32,
+  "work_location_count": 59,
+  "position_signature_count": 18,
+  "org_node_count": 265,
+  "dept_section_combo_count": 34,
+  "section_site_combo_count": 93,
+  "site_work_location_combo_count": 97,
+  "incomplete_core_records": 0,
+  "user_mapping_missing_count": 10,
+  "top_department_sizes": [
+    {
+      "department": "Central Services",
+      "employees": 398
+    },
+    {
+      "department": "Supply Chain Dept",
+      "employees": 18
+    },
+    {
+      "department": "Human Capital",
+      "employees": 17
+    },
+    {
+      "department": "Sales Operation",
+      "employees": 16
+    },
+    {
+      "department": "BI & Marketing",
+      "employees": 15
+    },
+    {
+      "department": "Finance & Accounting",
+      "employees": 9
+    },
+    {
+      "department": "Support Facilities Management",
+      "employees": 7
+    },
+    {
+      "department": "CI & Audit",
+      "employees": 2
+    },
+    {
+      "department": "Legal & ERM",
+      "employees": 2
+    },
+    {
+      "department": "Management",
+      "employees": 1
+    }
+  ],
+  "top_section_sizes": [
+    {
+      "section": "Service Operation",
+      "employees": 232
+    },
+    {
+      "section": "Repair & Retread",
+      "employees": 143
+    },
+    {
+      "section": "Technical",
+      "employees": 19
+    },
+    {
+      "section": "Inventory & Warehouse Management",
+      "employees": 13
+    },
+    {
+      "section": "HSE",
+      "employees": 9
+    },
+    {
+      "section": "Sales Kalimantan",
+      "employees": 8
+    },
+    {
+      "section": "Mark., Research & Innovation",
+      "employees": 7
+    },
+    {
+      "section": "Facility & Maintenance",
+      "employees": 6
+    },
+    {
+      "section": "Finance & Accounting",
+      "employees": 5
+    },
+    {
+      "section": "EXIM Compliance & Procurement",
+      "employees": 4
+    },
+    {
+      "section": "Product Accessories",
+      "employees": 3
+    },
+    {
+      "section": "IT",
+      "employees": 3
+    },
+    {
+      "section": "HRGA",
+      "employees": 3
+    },
+    {
+      "section": "Training Center",
+      "employees": 3
+    },
+    {
+      "section": "CI & Audit",
+      "employees": 2
+    },
+    {
+      "section": "Sales East Indonesia",
+      "employees": 2
+    },
+    {
+      "section": "Sales Palembang",
+      "employees": 2
+    },
+    {
+      "section": "Accounting & Asset",
+      "employees": 2
+    },
+    {
+      "section": "Database Management",
+      "employees": 2
+    },
+    {
+      "section": "Legal & ERM",
+      "employees": 2
+    },
+    {
+      "section": "Finance",
+      "employees": 2
+    },
+    {
+      "section": "Support Facilities Management",
+      "employees": 1
+    },
+    {
+      "section": "Supply Chain Dept",
+      "employees": 1
+    },
+    {
+      "section": "Sales Operation",
+      "employees": 1
+    },
+    {
+      "section": "BI & Marketing",
+      "employees": 1
+    },
+    {
+      "section": "Human Capital",
+      "employees": 1
+    },
+    {
+      "section": "Central Services",
+      "employees": 1
+    },
+    {
+      "section": "Management",
+      "employees": 1
+    },
+    {
+      "section": "Sales Java Sumatra",
+      "employees": 1
+    },
+    {
+      "section": "Sales Java",
+      "employees": 1
+    },
+    {
+      "section": "Markcomm",
+      "employees": 1
+    },
+    {
+      "section": "Corcomm",
+      "employees": 1
+    },
+    {
+      "section": "Sales Pekanbaru",
+      "employees": 1
+    },
+    {
+      "section": "CSM",
+      "employees": 1
+    }
+  ],
+  "position_signatures": [
+    {
+      "level": "Non Staff",
+      "pangkat": "Non Staff Contract",
+      "job_level": "Non-Staff",
+      "employee_status": "Contract",
+      "employees": 287
+    },
+    {
+      "level": "Non Staff",
+      "pangkat": "Non Staff Permanent",
+      "job_level": "Non-Staff",
+      "employee_status": "Permanent",
+      "employees": 79
+    },
+    {
+      "level": "Staff",
+      "pangkat": "Staff",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 51
+    },
+    {
+      "level": "Staff",
+      "pangkat": "Staff Contract",
+      "job_level": "Non-Managerial",
+      "employee_status": "Contract",
+      "employees": 14
+    },
+    {
+      "level": "Manager",
+      "pangkat": "Manager",
+      "job_level": "Managerial",
+      "employee_status": "Permanent",
+      "employees": 11
+    },
+    {
+      "level": "Coordinator",
+      "pangkat": "Jr. Coordinator",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 11
+    },
+    {
+      "level": "Supervisor",
+      "pangkat": "Jr. Supervisor",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 5
+    },
+    {
+      "level": "Supervisor",
+      "pangkat": "Supervisor",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 3
+    },
+    {
+      "level": "Coordinator",
+      "pangkat": "Coordinator",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 3
+    },
+    {
+      "level": "Supervisor",
+      "pangkat": "Sr. Supervisor",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 2
+    },
+    {
+      "level": "Non Staff",
+      "pangkat": "Non Staff Contract",
+      "job_level": "Non-Staff",
+      "employee_status": "Permanent",
+      "employees": 2
+    },
+    {
+      "level": "Staff",
+      "pangkat": "Staff Contract",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 2
+    },
+    {
+      "level": "Manager",
+      "pangkat": "Sr. Supervisor",
+      "job_level": "Managerial",
+      "employee_status": "Permanent",
+      "employees": 1
+    },
+    {
+      "level": "Staff",
+      "pangkat": "Sr. Staff",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 1
+    },
+    {
+      "level": "Coordinator",
+      "pangkat": "Sr. Coordinator",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 1
+    },
+    {
+      "level": "Staff",
+      "pangkat": "Staff Permanent",
+      "job_level": "Non-Managerial",
+      "employee_status": "Permanent",
+      "employees": 1
+    },
+    {
+      "level": "Coordinator",
+      "pangkat": "Jr. Coordinator",
+      "job_level": "Non-Managerial",
+      "employee_status": "Contract",
+      "employees": 1
+    }
+  ]
+}

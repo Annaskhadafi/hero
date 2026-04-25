@@ -9,6 +9,7 @@ import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { DailyActivitySubmitForm } from "@/components/daily-activity-submit-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TableFilterPresets } from "@/components/table-filter-presets";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -65,6 +66,39 @@ function MetricPill({
   );
 }
 
+function WorkspaceTabBadge({ value }: { value: string }) {
+  return (
+    <Badge variant="outline" className="rounded-full px-3 py-1 text-[0.68rem]">
+      {value}
+    </Badge>
+  );
+}
+
+function SelectFilter({
+  filterKey,
+  placeholder,
+  options,
+}: {
+  filterKey: string;
+  placeholder: string;
+  options: string[];
+}) {
+  return (
+    <select
+      data-table-filter-key={filterKey}
+      defaultValue=""
+      className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default async function MyDayPage() {
   const session = await getServerSession();
 
@@ -83,14 +117,19 @@ export default async function MyDayPage() {
 
   const now = new Date();
   const defaultDateTime = dateTimeLocalValue(now);
+  const assignmentStatuses = Array.from(new Set(data.assignments.map((assignment) => assignment.statusLabel))).sort();
+  const assignmentPriorities = Array.from(new Set(data.assignments.map((assignment) => assignment.priority))).sort();
+  const activityStatuses = Array.from(new Set(data.activities.map((activity) => activity.statusLabel))).sort();
+  const activitySources = Array.from(new Set(data.activities.map((activity) => activity.sourceMode))).sort();
+  const penaltyStatuses = Array.from(new Set(data.penalties.map((penalty) => penalty.disputeStatus))).sort();
 
   return (
     <div className="space-y-5">
-      <Card className="rounded-[1.5rem]">
+      <Card className="rounded-[1.5rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Daily Checklist Workspace</Badge>
+              <Badge variant="secondary">Workspace Aktivitas Harian</Badge>
               <Badge variant="outline">{data.site?.name ?? "Site"}</Badge>
               <Badge variant="outline">Shift {data.summary.shift}</Badge>
               {data.summary.activeModifier ? (
@@ -98,18 +137,20 @@ export default async function MyDayPage() {
               ) : null}
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">Daily Checklist, Aktivitas, dan Point Feed</CardTitle>
+              <CardTitle className="text-2xl sm:text-3xl">Checklist Harian, Aktivitas, dan Feed Poin</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Halaman kerja harian dipusatkan ke route checklist, queue kerja, log submit, point feed, dan audit
-                penalty. Input aktivitas tetap cepat, tapi sekarang konteks route per section sudah mulai terlihat.
+                Workspace harian untuk cek assignment yang harus dikerjakan, submit aktivitas, lalu pantau status approval,
+                poin, dan penalty tanpa pindah halaman.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <MetricPill label="Job list" value={`${data.summary.jobsCompleted}/${data.summary.jobsAssigned}`} />
               <MetricPill label="Poin hari ini" value={data.summary.pointsToday} />
-              <MetricPill label="Streak" value={`${data.summary.streakDays} hari`} />
+              <MetricPill
+                label="Pending approval"
+                value={data.activities.filter((activity) => activity.statusLabel.toLowerCase().includes("pending")).length}
+              />
               <MetricPill label="Penalty" value={`-${data.summary.penaltyToday}`} />
-              <MetricPill label="Level" value={data.summary.currentLevel} />
               <MetricPill label="Sync" value={data.summary.syncAt} />
             </div>
           </div>
@@ -119,12 +160,12 @@ export default async function MyDayPage() {
               <DialogTrigger asChild>
                 <Button className="rounded-full">
                   <Sparkles className="size-4" />
-                  Submit Activity
+                  Submit aktivitas
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-3xl">
                 <DialogHeader>
-                  <DialogTitle>Submit Daily Activity</DialogTitle>
+                  <DialogTitle>Submit aktivitas harian</DialogTitle>
                   <DialogDescription>
                     Form tetap lengkap, tapi sekarang dibuka sebagai modal supaya halaman utama tetap fokus ke data.
                   </DialogDescription>
@@ -150,6 +191,14 @@ export default async function MyDayPage() {
             </Button>
           </div>
         </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex flex-wrap gap-2">
+            <WorkspaceTabBadge value="1. Cek assignment" />
+            <WorkspaceTabBadge value="2. Submit activity" />
+            <WorkspaceTabBadge value="3. Pantau status" />
+            <WorkspaceTabBadge value="4. Review poin & penalty" />
+          </div>
+        </CardContent>
       </Card>
 
       {data.routeChecklist ? (
@@ -164,13 +213,14 @@ export default async function MyDayPage() {
                   <Badge variant="outline">{data.routeChecklist.positionName ?? "Semua jabatan"}</Badge>
                   {data.routeChecklist.activeSpl ? <Badge variant="outline">{data.routeChecklist.activeSpl.splNumber}</Badge> : null}
                 </div>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <ListChecks className="size-5 text-primary" />
-                  {data.routeChecklist.routeName}
-                </CardTitle>
-                <CardDescription className="max-w-3xl text-sm leading-6">
-                  {data.routeChecklist.description || "Route checklist aktif untuk section/jabatan user ini."}
-                </CardDescription>
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <ListChecks className="size-5 text-primary" />
+                    Route checklist aktif
+                  </CardTitle>
+                  <CardDescription className="max-w-3xl text-sm leading-6">
+                    {data.routeChecklist.routeName}.{" "}
+                    {data.routeChecklist.description || "Gunakan blok ini sebagai konteks kerja aktif untuk section dan jabatan Anda."}
+                  </CardDescription>
                 {data.routeChecklist.activeSpl ? (
                   <p className="text-sm font-medium text-[#486275]">
                     SPL aktif: {data.routeChecklist.activeSpl.title} • {data.routeChecklist.activeSpl.lineCount} line
@@ -206,66 +256,70 @@ export default async function MyDayPage() {
                 </div>
               </div>
             ) : null}
-            {data.routeChecklist.groups.map((group) => (
-              <details
-                key={group.id}
-                className="rounded-[1.1rem] bg-surface-container-low px-4 py-3"
-                open={group.sortOrder === 1}
-              >
-                <summary className="cursor-pointer list-none">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">
-                        {group.groupKey}
-                      </p>
-                      <p className="mt-1 text-base font-black text-[#082033]">{group.groupName}</p>
-                      <p className="mt-1 text-sm text-[#486275]">{group.description || "Tanpa deskripsi group."}</p>
-                    </div>
-                    <Badge variant="outline">{group.items.length} item</Badge>
-                  </div>
-                </summary>
-                <div className="mt-3 space-y-2">
-                  {group.items.map((item) => (
-                    <div key={item.id} className="rounded-xl bg-white px-4 py-3 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
-                            {item.itemCode || item.libraryCode || "ROUTE ITEM"}
-                          </p>
-                          <p className="mt-1 font-semibold text-[#082033]">{item.itemLabel}</p>
-                          <p className="mt-1 text-sm text-[#486275]">
-                            {item.itemDescription || item.libraryName || "Tanpa deskripsi item."}
-                          </p>
-                        </div>
-                        <Badge variant="outline">{item.pointOverride ?? item.libraryPoints ?? 0} pts</Badge>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {data.routeChecklist.groups.map((group) => (
+                <details
+                  key={group.id}
+                  className="rounded-[1.1rem] bg-surface-container-low px-4 py-3"
+                  open={group.sortOrder === 1}
+                >
+                  <summary className="cursor-pointer list-none">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">
+                          {group.groupKey}
+                        </p>
+                        <p className="mt-1 text-base font-black text-[#082033]">{group.groupName}</p>
+                        <p className="mt-1 text-sm text-[#486275]">{group.description || "Tanpa deskripsi group."}</p>
                       </div>
+                      <Badge variant="outline">{group.items.length} item</Badge>
                     </div>
-                  ))}
-                </div>
-              </details>
-            ))}
+                  </summary>
+                  <div className="mt-3 space-y-2">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="rounded-xl bg-white px-4 py-3 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
+                              {item.itemCode || item.libraryCode || "ROUTE ITEM"}
+                            </p>
+                            <p className="mt-1 font-semibold text-[#082033]">{item.itemLabel}</p>
+                            <p className="mt-1 text-sm text-[#486275]">
+                              {item.itemDescription || item.libraryName || "Tanpa deskripsi item."}
+                            </p>
+                          </div>
+                          <Badge variant="outline">{item.pointOverride ?? item.libraryPoints ?? 0} pts</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}
 
       <Tabs defaultValue="jobs" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="jobs">Checklist Queue</TabsTrigger>
-          <TabsTrigger value="activity-log">Activity Log</TabsTrigger>
+          <TabsTrigger value="jobs">Antrean checklist</TabsTrigger>
+          <TabsTrigger value="activity-log">Log aktivitas</TabsTrigger>
           {teamData?.hasSubordinates ? <TabsTrigger value="team-activity">Aktivitas Tim</TabsTrigger> : null}
-          <TabsTrigger value="points">Point Feed</TabsTrigger>
-          <TabsTrigger value="penalties">Penalty Audit</TabsTrigger>
+          <TabsTrigger value="points">Feed poin</TabsTrigger>
+          <TabsTrigger value="penalties">Audit penalty</TabsTrigger>
         </TabsList>
 
         <TabsContent value="jobs" className="space-y-4">
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Job List Hari Ini"
-                description="Assignment aktif dipindah ke table utama supaya lebih cepat dicari, difilter, dan diexport."
+                title="Antrean kerja hari ini"
+                description="Mulai dari assignment yang wajib diselesaikan lebih dulu, lalu susun prioritas kerja dari tabel utama."
                 label="assignments"
                 fileName="my-day-assignments"
                 searchPlaceholder="Cari assignment, activity, prioritas, atau PIC..."
+                filters={<><SelectFilter filterKey="status" placeholder="Semua status" options={assignmentStatuses} /><SelectFilter filterKey="priority" placeholder="Semua prioritas" options={assignmentPriorities} /><SelectFilter filterKey="mandatory" placeholder="Semua kewajiban" options={["ya", "opsional"]} /></>}
+                presets={<TableFilterPresets presets={[{ label: "Prioritas tinggi", filters: { priority: "High" } }, { label: "Wajib", filters: { mandatory: "ya" } }]} />}
               >
                 <Table>
                   <TableHeader>
@@ -284,6 +338,9 @@ export default async function MyDayPage() {
                         <TableRow
                           key={assignment.id}
                           data-date-value={(assignment.deadline ?? assignment.createdAt).toISOString()}
+                          data-filter-status={assignment.statusLabel}
+                          data-filter-priority={assignment.priority}
+                          data-filter-mandatory={assignment.isMandatory ? "ya" : "opsional"}
                         >
                           <TableCell className="align-top">
                             <div className="space-y-1">
@@ -337,7 +394,7 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Library Self-Input"
+                title="Library input mandiri"
                 description="Pilihan aktivitas self-input ditampilkan sebagai table agar tidak memenuhi layar dengan card grid."
                 label="library activities"
                 fileName="my-day-library"
@@ -372,8 +429,8 @@ export default async function MyDayPage() {
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="flex flex-wrap gap-2">
-                              {item.requiresPhoto ? <Badge variant="outline">Photo</Badge> : null}
-                              {item.requiresEquipmentNo ? <Badge variant="outline">Equipment</Badge> : null}
+                              {item.requiresPhoto ? <Badge variant="outline">Foto</Badge> : null}
+                              {item.requiresEquipmentNo ? <Badge variant="outline">Unit/alat</Badge> : null}
                               {item.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
                             </div>
                           </TableCell>
@@ -398,11 +455,13 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Aktivitas Terkirim Hari Ini"
-                description="Log submit harian berikut status approval, durasi, dan dampak poin."
+                title="Log aktivitas terkirim"
+                description="Pantau aktivitas yang sudah masuk, status approval, dan dampak poin tanpa pindah ke halaman lain."
                 label="activities"
                 fileName="my-day-activity-log"
                 searchPlaceholder="Cari aktivitas, status, submission, atau unit..."
+                filters={<><SelectFilter filterKey="status" placeholder="Semua status" options={activityStatuses} /><SelectFilter filterKey="source" placeholder="Semua sumber" options={activitySources} /></>}
+                presets={<TableFilterPresets presets={[{ label: "Pending approval", filters: { status: "Pending" } }, { label: "Self input", filters: { source: "self_input" } }]} />}
               >
                 <Table>
                   <TableHeader>
@@ -417,7 +476,12 @@ export default async function MyDayPage() {
                   <TableBody>
                     {data.activities.length > 0 ? (
                       data.activities.map((activity) => (
-                        <TableRow key={activity.id} data-date-value={activity.startTime.toISOString()}>
+                        <TableRow
+                          key={activity.id}
+                          data-date-value={activity.startTime.toISOString()}
+                          data-filter-status={activity.statusLabel}
+                          data-filter-source={activity.sourceMode}
+                        >
                           <TableCell className="align-top">
                             <div className="space-y-1">
                               <p className="font-medium">{activity.title}</p>
@@ -516,7 +580,7 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Point Feed"
+                title="Feed poin"
                 description="Perubahan poin terbaru untuk akun Anda dalam bentuk audit table yang lebih mudah diurutkan."
                 label="point events"
                 fileName="my-day-point-feed"
@@ -564,11 +628,13 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Penalty dan Dispute"
-                description="Audit penalty harian dengan action modal untuk pengajuan dispute."
+                title="Penalty dan dispute"
+                description="Audit penalty yang mempengaruhi poin hari ini, lalu ajukan dispute bila perlu klarifikasi."
                 label="penalties"
                 fileName="my-day-penalties"
                 searchPlaceholder="Cari kode penalty, type, alasan, atau status dispute..."
+                filters={<SelectFilter filterKey="dispute" placeholder="Semua status dispute" options={penaltyStatuses} />}
+                presets={<TableFilterPresets presets={[{ label: "Dispute aktif", filters: { dispute: "in_review" } }, { label: "Belum diajukan", filters: { dispute: "not_disputed" } }]} />}
               >
                 <Table>
                   <TableHeader>
@@ -583,7 +649,11 @@ export default async function MyDayPage() {
                   <TableBody>
                     {data.penalties.length > 0 ? (
                       data.penalties.map((penalty) => (
-                        <TableRow key={penalty.id} data-date-value={penalty.createdAt.toISOString()}>
+                        <TableRow
+                          key={penalty.id}
+                          data-date-value={penalty.createdAt.toISOString()}
+                          data-filter-dispute={penalty.disputeStatus}
+                        >
                           <TableCell className="align-top">
                             <div className="space-y-1">
                               <p className="font-medium">
@@ -664,3 +734,5 @@ export default async function MyDayPage() {
     </div>
   );
 }
+
+

@@ -336,6 +336,24 @@ export async function submitAttendance(formData: FormData) {
       return { success: false, error: "Unauthorized" };
     }
 
+    const clientRequestId = getTrimmedFormValue(formData, "clientRequestId");
+    if (clientRequestId) {
+      const [existingRecord] = await db
+        .select()
+        .from(attendanceRecords)
+        .where(
+          and(
+            eq(attendanceRecords.employeeId, employee.id),
+            eq(attendanceRecords.clientRequestId, clientRequestId),
+          ),
+        )
+        .limit(1);
+
+      if (existingRecord) {
+        return { success: true, record: existingRecord };
+      }
+    }
+
     const photoUrlResult = await uploadFile(formData);
     if (!photoUrlResult.success || !photoUrlResult.url) {
       return {
@@ -383,6 +401,7 @@ export async function submitAttendance(formData: FormData) {
       photoUrl,
       latitude,
       longitude,
+      clientRequestId: clientRequestId || null,
     }).returning();
 
     revalidatePath("/mobile/attendance");

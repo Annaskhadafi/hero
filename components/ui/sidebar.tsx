@@ -29,7 +29,7 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH_ICON = "4.5rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 type SidebarContextProps = {
@@ -235,7 +235,7 @@ function Sidebar({
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+            ? "overflow-hidden p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className
         )}
@@ -244,7 +244,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="glass-command bg-sidebar flex h-full w-full flex-col rounded-[1.1rem] shadow-[0_18px_34px_rgba(0,52,97,0.09)] ring-1 ring-sidebar-border"
+          className="glass-command bg-sidebar flex h-full w-full flex-col overflow-hidden rounded-[1.1rem] shadow-[0_18px_34px_rgba(0,52,97,0.09)] ring-1 ring-sidebar-border group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:[&_[data-sidebar=group-label]]:hidden group-data-[collapsible=icon]:[&_[data-sidebar=menu-button]]:mx-auto group-data-[collapsible=icon]:[&_[data-sidebar=menu-button]]:justify-center group-data-[collapsible=icon]:[&_[data-sidebar=menu-button]]:px-0 group-data-[collapsible=icon]:[&_[data-sidebar=menu-button]>span]:hidden group-data-[collapsible=icon]:[&_[data-sidebar=menu-button]>svg+span]:hidden group-data-[collapsible=icon]:[&_[data-sidebar=menu]]:items-center"
         >
           {children}
         </div>

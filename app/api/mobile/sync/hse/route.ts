@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { submitHseObservationFromPayload } from "@/app/actions/hse";
-import type { HseObservationSyncPayload } from "@/lib/offline-sync";
+import {
+  hseObservationSyncPayloadSchema,
+  parseOfflineSyncPayload,
+  type HseObservationSyncPayload,
+} from "@/lib/offline-sync";
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as HseObservationSyncPayload;
+    const payload = parseOfflineSyncPayload<HseObservationSyncPayload>(
+      hseObservationSyncPayloadSchema,
+      await request.json(),
+    );
     const result = await submitHseObservationFromPayload(payload);
 
     return NextResponse.json({
@@ -13,10 +20,12 @@ export async function POST(request: Request) {
       ...result,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Sync observasi HSE gagal.";
+
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : "Sync observasi HSE gagal.",
+        message,
       },
       { status: 400 },
     );

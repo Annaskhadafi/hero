@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  BarChart3,
   Bell,
   CheckCircle2,
   ClipboardList,
@@ -32,23 +33,23 @@ type NotificationCountResponse = {
 const bottomNavItems = [
   { label: "Dashboard", href: "/mobile/dashboard", icon: Home },
   { label: "Activity", href: "/mobile/activity", icon: ClipboardList },
-  { label: "Menu", href: "/mobile/menu", icon: Grid3X3 },
+  { label: "Approval", href: "/mobile/approval", icon: CheckCircle2 },
   { label: "Profile", href: "/mobile/profile", icon: UserRound },
 ];
 
 const drawerItems = [
-  { label: "Mobile Dashboard", href: "/mobile/dashboard", icon: Home },
+  { label: "Dashboard", href: "/mobile/dashboard", icon: Home },
   { label: "Daily Activity", href: "/mobile/activity", icon: ClipboardList },
   { label: "Approval", href: "/mobile/approval", icon: CheckCircle2 },
   { label: "Lembur", href: "/mobile/overtime", icon: FileSignature },
-  { label: "Activity Input", href: "/mobile/activity/input", icon: Grid3X3 },
+  { label: "Input Aktivitas", href: "/mobile/activity/input", icon: Grid3X3 },
   { label: "HSE Report", href: "/mobile/hse", icon: ShieldCheck },
   { label: "Daily Report", href: "/mobile/reports", icon: FileText },
   { label: "Timesheet", href: "/mobile/timesheet", icon: Timer },
   { label: "Training", href: "/mobile/training", icon: ShieldAlert },
   { label: "Wellness", href: "/mobile/wellness", icon: Dumbbell },
   { label: "Gamification", href: "/mobile/gamification", icon: Trophy },
-  { label: "Executive", href: "/mobile/executive", icon: Bell },
+  { label: "Executive", href: "/mobile/executive", icon: BarChart3 },
   { label: "Profile", href: "/mobile/profile", icon: UserRound },
 ];
 

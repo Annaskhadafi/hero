@@ -16,12 +16,20 @@ export function AdminTableCard({
   columns,
   rows,
   dateFilter = "auto",
+  filters,
+  actions,
+  presets,
+  rowAttributes,
 }: {
   title: string;
   description: string;
   columns: string[];
   rows: (string | React.ReactNode)[][];
   dateFilter?: boolean | "auto";
+  filters?: React.ReactNode;
+  actions?: React.ReactNode;
+  presets?: React.ReactNode;
+  rowAttributes?: Array<Record<string, string | undefined>>;
 }) {
   return (
     <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
@@ -48,6 +56,9 @@ export function AdminTableCard({
           searchPlaceholder={`Cari di ${title.toLowerCase()}...`}
           summaryClassName="bg-transparent px-1 py-0 shadow-none"
           dateFilter={dateFilter}
+          filters={filters}
+          actions={actions}
+          presets={presets}
         >
           <Table>
             <TableHeader>
@@ -61,7 +72,7 @@ export function AdminTableCard({
             </TableHeader>
             <TableBody>
               {rows.map((row, rowIndex) => (
-                <TableRow key={rowIndex} className="transition-colors hover:bg-muted/35">
+                <TableRow key={rowIndex} className="transition-colors hover:bg-muted/35" {...rowAttributes?.[rowIndex]}>
                   {row.map((cell, cellIndex) => (
                     <TableCell key={cellIndex} className="py-3.5 align-top text-sm whitespace-normal">
                       {cell}
@@ -76,3 +87,5 @@ export function AdminTableCard({
     </Card>
   );
 }
+
+

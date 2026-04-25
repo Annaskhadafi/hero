@@ -46,7 +46,7 @@ export default async function DashboardLayout({
       defaultOpen={defaultOpen}
       style={
         {
-          "--sidebar-width": "18rem",
+          "--sidebar-width": "15.5rem",
         } as React.CSSProperties
       }
     >
@@ -62,9 +62,11 @@ export default async function DashboardLayout({
         navSecondary={sidebarData.navSecondary}
         documents={sidebarData.documents}
       />
-      <SidebarInset>
+      <SidebarInset data-admin-dashboard-shell>
         <SiteHeader
-          title="Hub for Employee Reporting & Operations"
+          eyebrow="HERO Command Center"
+          title="Operasional desktop lintas modul"
+          subtitle="Navigasi global, notifikasi, tema, dan akses cepat ke seluruh workspace admin."
           backgroundColor={navbarSettings.theme?.headerBackgroundColor ?? "#FFFFFF"}
           textColor={navbarSettings.theme?.textColor ?? "#0F172A"}
         />

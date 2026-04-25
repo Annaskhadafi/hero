@@ -6,7 +6,33 @@ import {
   DailyReportCrudForm,
   DailyReportRowActions,
 } from "@/components/operational-crud-panels";
+import { TableFilterPresets } from "@/components/table-filter-presets";
 import { getOperationalCrudOptions, getReportsPageData } from "@/lib/hero-admin";
+
+function SelectFilter({
+  filterKey,
+  placeholder,
+  options,
+}: {
+  filterKey: string;
+  placeholder: string;
+  options: string[];
+}) {
+  return (
+    <select
+      data-table-filter-key={filterKey}
+      defaultValue=""
+      className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export default async function ReportsPage() {
   const [rows, options] = await Promise.all([
@@ -14,6 +40,9 @@ export default async function ReportsPage() {
     getOperationalCrudOptions(),
   ]);
   const latest = rows[0];
+  const siteOptions = Array.from(new Set(rows.map((row) => row.siteName))).sort();
+  const statusOptions = Array.from(new Set(rows.map((row) => row.status))).sort();
+  const customerOptions = Array.from(new Set(rows.map((row) => row.customerName))).sort();
 
   return (
     <AdminPageShell
@@ -23,25 +52,35 @@ export default async function ReportsPage() {
       badge={latest?.siteName}
     >
       <AdminMetricGrid
+        mode="compact"
         items={[
-          { label: "Reports", value: `${rows.length}`, meta: "Daily report tersimpan" },
+          { label: "Report harian", value: `${rows.length}`, meta: "Laporan customer yang sudah tercatat" },
           {
-            label: "Latest readiness",
+            label: "Kesiapan terbaru",
             value: latest ? `${latest.readySections}/${latest.totalSections}` : "0/0",
-            meta: "Kesiapan section report terbaru",
+            meta: "Section siap pada laporan paling baru",
           },
           {
-            label: "Manpower present",
+            label: "Manpower hadir",
             value: latest ? `${latest.manpowerPresent}` : "0",
-            meta: "Masuk ke report terbaru",
+            meta: "Masuk ke rekap laporan terbaru",
           },
         ]}
       />
-      <DailyReportCrudForm sites={options.sites} categoryOptions={options.categoryOptions} />
       <AdminTableCard
-        title="Daily Reports"
-        description="Report yang sudah dirakit dari aktivitas, approval, timesheet, dan HSE summary."
+        title="Kontrol laporan harian"
+        description="Review kesiapan laporan customer, cari report yang belum lengkap, lalu tindak lanjuti dari tabel utama."
         columns={["Date", "Customer", "Sections", "Jobs", "Manpower", "HSE", "Status", "Action"]}
+        actions={<DailyReportCrudForm sites={options.sites} categoryOptions={options.categoryOptions} />}
+        filters={
+          <>
+            <SelectFilter filterKey="site" placeholder="Semua site" options={siteOptions} />
+            <SelectFilter filterKey="status" placeholder="Semua status" options={statusOptions} />
+            <SelectFilter filterKey="customer" placeholder="Semua customer" options={customerOptions} />
+          </>
+        }
+        presets={<TableFilterPresets presets={[{ label: "Draft", filters: { status: "draft" } }, { label: "Siap kirim", filters: { status: "ready" } }]} />}
+        dateFilter
         rows={rows.map((row, index) => [
           row.reportDate.toLocaleDateString("id-ID"),
           row.customerName,
@@ -57,7 +96,15 @@ export default async function ReportsPage() {
             categoryOptions={options.categoryOptions}
           />,
         ])}
+        rowAttributes={rows.map((row) => ({
+          "data-date-value": row.reportDate.toISOString(),
+          "data-filter-site": row.siteName,
+          "data-filter-status": row.status,
+          "data-filter-customer": row.customerName,
+        }))}
       />
     </AdminPageShell>
   );
 }
+
+

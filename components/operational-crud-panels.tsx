@@ -1,5 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -282,40 +290,53 @@ function CrudFormCard({
   description,
   action,
   children,
+  triggerLabel,
 }: {
   title: string;
   description: string;
   action: CrudAction;
   children: React.ReactNode;
+  triggerLabel?: string;
 }) {
   const formAction = action as unknown as NativeFormAction;
 
   return (
-    <Card className="rounded-lg border border-border bg-card p-0 shadow-sm">
-      <details>
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 transition hover:bg-muted/45">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
-              <Plus className="size-4" aria-hidden="true" />
-            </span>
-            <span className="truncate font-display text-base font-semibold tracking-normal">
-              Tambah {title}
-            </span>
-          </span>
-          <span className="rounded-lg bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
-            Create
-          </span>
-        </summary>
-        <form action={formAction} className="grid gap-4 border-t border-border/70 px-4 py-4">
-          <input type="hidden" name="intent" value="create" />
-          <p className="sr-only">{description}</p>
-          {children}
-          <Button type="submit" className="w-fit rounded-lg">
-            Simpan data
-          </Button>
-        </form>
-      </details>
-    </Card>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button className="h-11 rounded-full px-4">
+          <Plus className="size-4" aria-hidden="true" />
+          {triggerLabel ?? `Tambah ${title}`}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto rounded-[1.4rem] border-0 bg-surface-bright p-0 shadow-[0_24px_70px_rgba(8,32,51,0.22)]">
+        <Card className="border-0 bg-transparent p-0 shadow-none">
+          <DialogHeader className="space-y-3 px-6 pb-0 pt-6">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
+                <Plus className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <DialogTitle className="font-display text-xl font-semibold tracking-normal text-foreground">
+                  Tambah {title}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {description}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <form action={formAction} className="grid gap-4 px-6 py-6">
+            <input type="hidden" name="intent" value="create" />
+            {children}
+            <div className="flex justify-end">
+              <Button type="submit" className="rounded-xl px-5">
+                Simpan data
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -836,14 +857,16 @@ export function HseCrudForms({
   employees,
   sites,
   categoryOptions,
+  mode = "all",
 }: {
   employees: EmployeeOption[];
   sites: SiteOption[];
   categoryOptions?: MasterCategoryOptionMap;
+  mode?: "all" | "observation" | "incident";
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <CrudFormCard
+    <div className="flex flex-wrap gap-3">
+      {mode !== "incident" ? <CrudFormCard
         title="Observasi HSE"
         description="Catat unsafe act, unsafe condition, patrol finding, atau tindakan korektif."
         action={manageHseObservationAction}
@@ -896,9 +919,9 @@ export function HseCrudForms({
           </SelectField>
         </div>
         <Textarea name="notes" placeholder="Catatan temuan dan tindakan awal" rows={3} />
-      </CrudFormCard>
+      </CrudFormCard> : null}
 
-      <CrudFormCard
+      {mode !== "observation" ? <CrudFormCard
         title="Incident HSE"
         description="Catat incident recordable, near miss, property damage, atau investigasi."
         action={manageHseIncidentAction}
@@ -934,7 +957,7 @@ export function HseCrudForms({
           </SelectField>
         </div>
         <Textarea name="impact" placeholder="Dampak dan tindak lanjut awal" rows={3} />
-      </CrudFormCard>
+      </CrudFormCard> : null}
     </div>
   );
 }
@@ -943,14 +966,16 @@ export function HcCrudForms({
   employees,
   sites,
   categoryOptions,
+  mode = "all",
 }: {
   employees: EmployeeOption[];
   sites: SiteOption[];
   categoryOptions?: MasterCategoryOptionMap;
+  mode?: "all" | "attendance" | "training" | "wellness";
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
-      <CrudFormCard
+    <div className="flex flex-wrap gap-3">
+      {mode === "all" || mode === "attendance" ? <CrudFormCard
         title="Attendance Manual"
         description="Tambah atau koreksi record attendance dari sisi admin."
         action={manageAttendanceRecordAction}
@@ -989,9 +1014,9 @@ export function HcCrudForms({
           <TextField name="latitude" label="Latitude" placeholder="Opsional" />
           <TextField name="longitude" label="Longitude" placeholder="Opsional" />
         </div>
-      </CrudFormCard>
+      </CrudFormCard> : null}
 
-      <CrudFormCard
+      {mode === "all" || mode === "training" ? <CrudFormCard
         title="Training Record"
         description="Catat sertifikasi, expiry, dan status training karyawan."
         action={manageTrainingRecordAction}
@@ -1014,9 +1039,9 @@ export function HcCrudForms({
             </option>
           ))}
         </SelectField>
-      </CrudFormCard>
+      </CrudFormCard> : null}
 
-      <CrudFormCard
+      {mode === "all" || mode === "wellness" ? <CrudFormCard
         title="Wellness Record"
         description="Catat hasil fit-to-work, MCU, BMI, atau follow-up kesehatan."
         action={manageWellnessRecordAction}
@@ -1049,7 +1074,7 @@ export function HcCrudForms({
           ))}
         </SelectField>
         <Textarea name="notes" placeholder="Catatan HC/wellness" rows={3} />
-      </CrudFormCard>
+      </CrudFormCard> : null}
     </div>
   );
 }

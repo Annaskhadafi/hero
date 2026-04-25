@@ -84,14 +84,14 @@ export function NavMain({
 
   return (
     <SidebarGroup>
-      <SidebarGroupContent className="flex flex-col gap-2">
+      <SidebarGroupContent className="flex flex-col gap-1">
         {showQuickCreate ? (
           <SidebarMenu>
             <SidebarMenuItem className="flex items-center gap-2">
               <SidebarMenuButton
                 asChild
-                tooltip="Quick Create"
-                className="min-w-8 rounded-[1rem] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)] text-primary-foreground shadow-[0_14px_28px_rgba(0,52,97,0.18)] duration-200 ease-linear hover:text-primary-foreground active:text-primary-foreground"
+                tooltip="Aksi cepat"
+                className="min-h-9 min-w-8 rounded-md bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)] px-2 text-[13px] text-primary-foreground shadow-none duration-200 ease-linear hover:text-primary-foreground active:text-primary-foreground"
               >
                 <Link href="/dashboard/activity-hub/my-day">
                   <IconCirclePlusFilled />
@@ -99,12 +99,15 @@ export function NavMain({
                 </Link>
               </SidebarMenuButton>
               <Button
-                size="icon"
-                className="size-10 rounded-[1rem] bg-surface-container-low group-data-[collapsible=icon]:opacity-0"
+                asChild
+                size="denseIcon"
+                className="bg-surface-container-low group-data-[collapsible=icon]:opacity-0"
                 variant="outline"
               >
-                <IconMail />
-                <span className="sr-only">Inbox</span>
+                <Link href="/dashboard/approval">
+                  <IconMail />
+                  <span className="sr-only">Approval</span>
+                </Link>
               </Button>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -131,7 +134,7 @@ export function NavMain({
                     <SidebarMenuButton
                       tooltip={group.title}
                       isActive={hasActiveItem}
-                      className="rounded-[1rem]"
+                      className="min-h-9 rounded-md px-2 text-[13px] font-medium"
                     >
                       {group.icon && <group.icon />}
                       <span>{group.title}</span>
@@ -144,12 +147,13 @@ export function NavMain({
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <SidebarMenuSub className="mt-1">
+                    <SidebarMenuSub className="mt-0.5">
                       {group.items.map((item) => (
                         <SidebarMenuSubItem key={item.url}>
                           <SidebarMenuSubButton
                             asChild
                             isActive={isMenuItemActive(pathname, item.url)}
+                            className="min-h-8 rounded-md px-2 text-[13px]"
                           >
                             <Link href={item.url}>
                               {item.icon && <item.icon />}
@@ -169,3 +173,7 @@ export function NavMain({
     </SidebarGroup>
   )
 }
+
+
+
+

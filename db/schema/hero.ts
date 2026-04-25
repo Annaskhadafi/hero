@@ -2,6 +2,7 @@ import {
   type AnyPgColumn,
   boolean,
   integer,
+  date,
   pgTable,
   serial,
   text,
@@ -615,10 +616,14 @@ export const hseIncidents = pgTable("hero_hse_incidents", {
   longitude: text("longitude").notNull().default(""),
   notes: text("notes").notNull().default(""),
   photoUrl: text("photo_url").notNull().default(""),
+  clientRequestId: text("client_request_id"),
   alertStatus: text("alert_status").notNull().default("pending"),
   status: text("status").notNull(),
   reportedAt: timestamp("reported_at").notNull(),
-});
+},
+(table) => ({
+  clientRequestUnique: uniqueIndex("hero_hse_incidents_client_request_id_uq").on(table.clientRequestId),
+}));
 
 export const attendanceRecords = pgTable("hero_attendance_records", {
   id: serial("id").primaryKey(),
@@ -635,7 +640,11 @@ export const attendanceRecords = pgTable("hero_attendance_records", {
   photoUrl: text("photo_url"),
   latitude: text("latitude"),
   longitude: text("longitude"),
-});
+  clientRequestId: text("client_request_id"),
+},
+(table) => ({
+  clientRequestUnique: uniqueIndex("hero_attendance_records_client_request_id_uq").on(table.clientRequestId),
+}));
 
 export const trainingRecords = pgTable("hero_training_records", {
   id: serial("id").primaryKey(),
@@ -1507,4 +1516,172 @@ export const employeeBadges = pgTable("hero_employee_badges", {
     .notNull()
     .references(() => badges.id, { onDelete: "cascade" }),
   awardedAt: timestamp("awarded_at").notNull().defaultNow(),
+});
+
+export const hrDepartments = pgTable("hero_hr_departments", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const hrSections = pgTable(
+  "hero_hr_sections",
+  {
+    id: serial("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    departmentId: integer("department_id").references(() => hrDepartments.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    departmentNameUnique: uniqueIndex("hero_hr_sections_department_name_uq").on(
+      table.departmentId,
+      table.name,
+    ),
+  }),
+);
+
+export const hrSites = pgTable("hero_hr_sites", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const hrWorkLocations = pgTable("hero_hr_work_locations", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const hrJobLevels = pgTable("hero_hr_job_levels", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrGenders = pgTable("hero_hr_genders", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrAgeBands = pgTable("hero_hr_age_bands", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrServiceBands = pgTable("hero_hr_service_bands", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrEducations = pgTable("hero_hr_educations", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrEmployeeStatuses = pgTable("hero_hr_employee_statuses", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrLocationCategories = pgTable("hero_hr_location_categories", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const hrPositions = pgTable(
+  "hero_hr_positions",
+  {
+    id: serial("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    levelName: text("level_name").notNull(),
+    rankName: text("rank_name").notNull(),
+    jobLevelCode: text("job_level_code").references(() => hrJobLevels.code, {
+      onDelete: "set null",
+    }),
+    employeeStatusCode: text("employee_status_code").references(() => hrEmployeeStatuses.code, {
+      onDelete: "set null",
+    }),
+    isManagerial: boolean("is_managerial").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    signatureUnique: uniqueIndex("hero_hr_positions_signature_uq").on(
+      table.levelName,
+      table.rankName,
+      table.jobLevelCode,
+      table.employeeStatusCode,
+    ),
+  }),
+);
+
+export const hrOrgNodes = pgTable("hero_hr_org_nodes", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  parentNodeId: integer("parent_node_id").references((): AnyPgColumn => hrOrgNodes.id, {
+    onDelete: "set null",
+  }),
+  nodeType: text("node_type").notNull(),
+  name: text("name").notNull(),
+  departmentId: integer("department_id").references(() => hrDepartments.id, { onDelete: "set null" }),
+  sectionId: integer("section_id").references(() => hrSections.id, { onDelete: "set null" }),
+  siteId: integer("site_id").references(() => hrSites.id, { onDelete: "set null" }),
+  workLocationId: integer("work_location_id").references(() => hrWorkLocations.id, {
+    onDelete: "set null",
+  }),
+  hierarchyLevel: integer("hierarchy_level").notNull().default(0),
+  pathText: text("path_text").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const hrEmployees = pgTable("hero_hr_employees", {
+  id: serial("id").primaryKey(),
+  employeeId: text("employee_id").notNull().unique(),
+  authUserId: text("auth_user_id").references(() => user.id, { onDelete: "set null" }),
+  fullName: text("full_name").notNull(),
+  email: text("email"),
+  emailPasswordMigration: text("email_password_migration"),
+  departmentId: integer("department_id").references(() => hrDepartments.id, { onDelete: "set null" }),
+  sectionId: integer("section_id").references(() => hrSections.id, { onDelete: "set null" }),
+  siteId: integer("site_id").references(() => hrSites.id, { onDelete: "set null" }),
+  workLocationId: integer("work_location_id").references(() => hrWorkLocations.id, {
+    onDelete: "set null",
+  }),
+  positionId: integer("position_id").references(() => hrPositions.id, { onDelete: "set null" }),
+  orgNodeId: integer("org_node_id").references(() => hrOrgNodes.id, { onDelete: "set null" }),
+  joinDate: date("join_date"),
+  birthDate: date("birth_date"),
+  genderCode: text("gender_code").references(() => hrGenders.code, { onDelete: "set null" }),
+  ageBandCode: text("age_band_code").references(() => hrAgeBands.code, { onDelete: "set null" }),
+  serviceBandCode: text("service_band_code").references(() => hrServiceBands.code, {
+    onDelete: "set null",
+  }),
+  educationCode: text("education_code").references(() => hrEducations.code, { onDelete: "set null" }),
+  demographicEmployeeStatusCode: text("demographic_employee_status_code").references(
+    () => hrEmployeeStatuses.code,
+    { onDelete: "set null" },
+  ),
+  locationCategoryCode: text("location_category_code").references(() => hrLocationCategories.code, {
+    onDelete: "set null",
+  }),
+  accountStatus: text("account_status").notNull().default("active"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

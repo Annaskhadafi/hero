@@ -40,11 +40,15 @@ export function NavDocuments({
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Documents</SidebarGroupLabel>
+      <SidebarGroupLabel className="h-6 px-2 text-[10px] uppercase tracking-[0.14em]">Dokumen</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton asChild tooltip={item.section ? `${item.section} • ${item.name}` : item.name}>
+            <SidebarMenuButton
+              asChild
+              tooltip={item.section ? `${item.section} • ${item.name}` : item.name}
+              className="min-h-9 rounded-md px-2 text-[13px] font-medium"
+            >
               <Link href={item.url}>
                 <item.icon />
                 <span>{item.name}</span>
@@ -57,7 +61,7 @@ export function NavDocuments({
                   className="data-[state=open]:bg-accent rounded-sm"
                 >
                   <IconDots />
-                  <span className="sr-only">More</span>
+                  <span className="sr-only">Lainnya</span>
                 </SidebarMenuAction>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -68,29 +72,31 @@ export function NavDocuments({
                 <DropdownMenuItem asChild>
                   <Link href={item.url}>
                     <IconFolder />
-                    <span>Open</span>
+                    <span>Buka</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
                   <IconShare3 />
-                  <span>Share</span>
+                  <span>Bagikan</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive">
                   <IconTrash />
-                  <span>Delete</span>
+                  <span>Hapus</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip="More documents" className="text-sidebar-foreground/70">
+          <SidebarMenuButton tooltip="Dokumen lainnya" className="min-h-9 rounded-md px-2 text-[13px] text-sidebar-foreground/70">
             <IconDots className="text-sidebar-foreground/70" />
-            <span>More</span>
+            <span>Lainnya</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
   )
 }
+
+

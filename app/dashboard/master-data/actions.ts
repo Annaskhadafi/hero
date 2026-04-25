@@ -59,7 +59,7 @@ const formBooleanField = (defaultValue: boolean) =>
 const sectionSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
   id: optionalPositiveIntField,
-  code: z.string().trim().min(1).max(20),
+  code: z.string().trim().min(1).max(3),
   name: z.string().trim().min(1).max(100),
   departmentId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
@@ -70,7 +70,7 @@ const sectionSchema = z.object({
 const departmentSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
   id: optionalPositiveIntField,
-  code: z.string().trim().min(1).max(20),
+  code: z.string().trim().min(1).max(3),
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500).optional(),
   isActive: formBooleanField(true),
@@ -97,7 +97,7 @@ const siteSchema = z.object({
 const positionSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
   id: optionalPositiveIntField,
-  code: z.string().trim().min(1).max(20),
+  code: z.string().trim().min(1).max(3),
   name: z.string().trim().min(1).max(100),
   departmentId: optionalPositiveIntField,
   sectionId: optionalPositiveIntField,
@@ -735,6 +735,7 @@ export async function manageSectionAction(
   }
 
   const { intent, id, code, name, departmentId, description, isActive } = parsed.data;
+  const normalizedCode = code.trim().toUpperCase();
 
   try {
     if (intent === "create") {
@@ -742,7 +743,7 @@ export async function manageSectionAction(
       const existing = await db
         .select({ id: masterSections.id })
         .from(masterSections)
-        .where(eq(masterSections.code, code))
+        .where(eq(masterSections.code, normalizedCode))
         .limit(1);
 
       if (existing.length > 0) {
@@ -753,7 +754,7 @@ export async function manageSectionAction(
       }
 
       await db.insert(masterSections).values({
-        code,
+        code: normalizedCode,
         name,
         departmentId: departmentId || null,
         description: description || "",
@@ -775,7 +776,7 @@ export async function manageSectionAction(
       const existing = await db
         .select({ id: masterSections.id })
         .from(masterSections)
-        .where(and(eq(masterSections.code, code), sql`${masterSections.id} != ${id}`))
+        .where(and(eq(masterSections.code, normalizedCode), sql`${masterSections.id} != ${id}`))
         .limit(1);
 
       if (existing.length > 0) {
@@ -788,7 +789,7 @@ export async function manageSectionAction(
       await db
         .update(masterSections)
         .set({
-          code,
+          code: normalizedCode,
           name,
           departmentId: departmentId || null,
           description: description || "",
@@ -878,13 +879,14 @@ export async function manageDepartmentAction(
   }
 
   const { intent, id, code, name, description, isActive } = parsed.data;
+  const normalizedCode = code.trim().toUpperCase();
 
   try {
     if (intent === "create") {
       const existing = await db
         .select({ id: masterDepartments.id })
         .from(masterDepartments)
-        .where(eq(masterDepartments.code, code))
+        .where(eq(masterDepartments.code, normalizedCode))
         .limit(1);
 
       if (existing.length > 0) {
@@ -895,7 +897,7 @@ export async function manageDepartmentAction(
       }
 
       await db.insert(masterDepartments).values({
-        code,
+        code: normalizedCode,
         name,
         description: description || "",
         isActive,
@@ -915,7 +917,7 @@ export async function manageDepartmentAction(
       const existing = await db
         .select({ id: masterDepartments.id })
         .from(masterDepartments)
-        .where(and(eq(masterDepartments.code, code), sql`${masterDepartments.id} != ${id}`))
+        .where(and(eq(masterDepartments.code, normalizedCode), sql`${masterDepartments.id} != ${id}`))
         .limit(1);
 
       if (existing.length > 0) {
@@ -928,7 +930,7 @@ export async function manageDepartmentAction(
       await db
         .update(masterDepartments)
         .set({
-          code,
+          code: normalizedCode,
           name,
           description: description || "",
           isActive,
@@ -1018,6 +1020,7 @@ export async function managePositionAction(
   }
 
   const { intent, id, code, name, departmentId, sectionId, siteLocation, level, description, isActive } = parsed.data;
+  const normalizedCode = code.trim().toUpperCase();
 
   try {
     let resolvedDepartmentId = departmentId || null;
@@ -1057,7 +1060,7 @@ export async function managePositionAction(
       const existing = await db
         .select({ id: masterPositions.id })
         .from(masterPositions)
-        .where(eq(masterPositions.code, code))
+        .where(eq(masterPositions.code, normalizedCode))
         .limit(1);
 
       if (existing.length > 0) {
@@ -1068,7 +1071,7 @@ export async function managePositionAction(
       }
 
       await db.insert(masterPositions).values({
-        code,
+        code: normalizedCode,
         name,
         departmentId: resolvedDepartmentId,
         sectionId: sectionId || null,
@@ -1092,7 +1095,7 @@ export async function managePositionAction(
       const existing = await db
         .select({ id: masterPositions.id })
         .from(masterPositions)
-        .where(and(eq(masterPositions.code, code), sql`${masterPositions.id} != ${id}`))
+        .where(and(eq(masterPositions.code, normalizedCode), sql`${masterPositions.id} != ${id}`))
         .limit(1);
 
       if (existing.length > 0) {
@@ -1105,7 +1108,7 @@ export async function managePositionAction(
       await db
         .update(masterPositions)
         .set({
-          code,
+          code: normalizedCode,
           name,
           departmentId: resolvedDepartmentId,
           sectionId: sectionId || null,

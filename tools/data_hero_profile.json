@@ -1,0 +1,775 @@
+[
+  {
+    "sheet": "Sheet1",
+    "max_row": 486,
+    "max_col": 29,
+    "header": [
+      "Employee ID",
+      "Employee Name",
+      "Email Address",
+      "Password Email",
+      "Section",
+      "Employee Status",
+      "Level",
+      "Pangkat",
+      "Join Date",
+      "Tanggal Lahir",
+      "DOB (KIOSK)",
+      "Location / Site",
+      "Department",
+      "Section",
+      "Lokasi Kerja",
+      "Job Level Code",
+      "Job Level",
+      "Gender Code",
+      "Gender",
+      "Age Code",
+      "Age",
+      "Length of Service Code",
+      "Length of Service",
+      "Last Formal Education Code",
+      "Last Formal Education",
+      "Demographic Employee Status Code",
+      "Demographic Employee Status",
+      "Location Code",
+      "Location"
+    ],
+    "nonempty_rows": 485,
+    "duplicate_rows": 0,
+    "column_stats": [
+      {
+        "column": "Employee ID",
+        "filled": 485,
+        "null": 0,
+        "distinct": 485
+      },
+      {
+        "column": "Employee Name",
+        "filled": 485,
+        "null": 0,
+        "distinct": 484
+      },
+      {
+        "column": "Email Address",
+        "filled": 412,
+        "null": 73,
+        "distinct": 412
+      },
+      {
+        "column": "Password Email",
+        "filled": 485,
+        "null": 0,
+        "distinct": 485
+      },
+      {
+        "column": "Section",
+        "filled": 485,
+        "null": 0,
+        "distinct": 34
+      },
+      {
+        "column": "Employee Status",
+        "filled": 475,
+        "null": 10,
+        "distinct": 2
+      },
+      {
+        "column": "Level",
+        "filled": 475,
+        "null": 10,
+        "distinct": 5
+      },
+      {
+        "column": "Pangkat",
+        "filled": 475,
+        "null": 10,
+        "distinct": 13
+      },
+      {
+        "column": "Join Date",
+        "filled": 475,
+        "null": 10,
+        "distinct": 239
+      },
+      {
+        "column": "Tanggal Lahir",
+        "filled": 475,
+        "null": 10,
+        "distinct": 456
+      },
+      {
+        "column": "DOB (KIOSK)",
+        "filled": 0,
+        "null": 485,
+        "distinct": 0
+      },
+      {
+        "column": "Location / Site",
+        "filled": 475,
+        "null": 10,
+        "distinct": 32
+      },
+      {
+        "column": "Department",
+        "filled": 485,
+        "null": 0,
+        "distinct": 10
+      },
+      {
+        "column": "Section",
+        "filled": 485,
+        "null": 0,
+        "distinct": 34
+      },
+      {
+        "column": "Lokasi Kerja",
+        "filled": 485,
+        "null": 0,
+        "distinct": 59
+      },
+      {
+        "column": "Job Level Code",
+        "filled": 485,
+        "null": 0,
+        "distinct": 3
+      },
+      {
+        "column": "Job Level",
+        "filled": 485,
+        "null": 0,
+        "distinct": 3
+      },
+      {
+        "column": "Gender Code",
+        "filled": 412,
+        "null": 73,
+        "distinct": 2
+      },
+      {
+        "column": "Gender",
+        "filled": 412,
+        "null": 73,
+        "distinct": 2
+      },
+      {
+        "column": "Age Code",
+        "filled": 485,
+        "null": 0,
+        "distinct": 5
+      },
+      {
+        "column": "Age",
+        "filled": 485,
+        "null": 0,
+        "distinct": 5
+      },
+      {
+        "column": "Length of Service Code",
+        "filled": 485,
+        "null": 0,
+        "distinct": 6
+      },
+      {
+        "column": "Length of Service",
+        "filled": 485,
+        "null": 0,
+        "distinct": 6
+      },
+      {
+        "column": "Last Formal Education Code",
+        "filled": 412,
+        "null": 73,
+        "distinct": 4
+      },
+      {
+        "column": "Last Formal Education",
+        "filled": 412,
+        "null": 73,
+        "distinct": 4
+      },
+      {
+        "column": "Demographic Employee Status Code",
+        "filled": 485,
+        "null": 0,
+        "distinct": 2
+      },
+      {
+        "column": "Demographic Employee Status",
+        "filled": 485,
+        "null": 0,
+        "distinct": 2
+      },
+      {
+        "column": "Location Code",
+        "filled": 485,
+        "null": 0,
+        "distinct": 2
+      },
+      {
+        "column": "Location",
+        "filled": 485,
+        "null": 0,
+        "distinct": 2
+      }
+    ],
+    "candidate_unique_keys": {
+      "Employee ID": {
+        "filled": 485,
+        "distinct": 485,
+        "duplicates": 0
+      },
+      "Email Address": {
+        "filled": 412,
+        "distinct": 412,
+        "duplicates": 0
+      }
+    },
+    "taxonomies": {
+      "Department": [
+        "BI & Marketing",
+        "CI & Audit",
+        "Central Services",
+        "Finance & Accounting",
+        "Human Capital",
+        "Legal & ERM",
+        "Management",
+        "Sales Operation",
+        "Supply Chain Dept",
+        "Support Facilities Management"
+      ],
+      "Section": [
+        "Accounting & Asset",
+        "BI & Marketing",
+        "CI & Audit",
+        "CSM",
+        "Central Services",
+        "Corcomm",
+        "Database Management",
+        "EXIM Compliance & Procurement",
+        "Facility & Maintenance",
+        "Finance",
+        "Finance & Accounting",
+        "HRGA",
+        "HSE",
+        "Human Capital",
+        "IT",
+        "Inventory & Warehouse Management",
+        "Legal & ERM",
+        "Management",
+        "Mark., Research & Innovation",
+        "Markcomm",
+        "Product Accessories",
+        "Repair & Retread",
+        "Sales East Indonesia",
+        "Sales Java",
+        "Sales Java Sumatra",
+        "Sales Kalimantan",
+        "Sales Operation",
+        "Sales Palembang",
+        "Sales Pekanbaru",
+        "Service Operation",
+        "Supply Chain Dept",
+        "Support Facilities Management",
+        "Technical",
+        "Training Center"
+      ],
+      "Location / Site": [
+        "AMM Mifa Holing",
+        "AMM Tabang",
+        "Balikpapan",
+        "CDE Bengkulu",
+        "CK BIB",
+        "CK BMB",
+        "CK DMP",
+        "CK KIM",
+        "CK MHU",
+        "CK MIFA",
+        "CK NCN",
+        "Jakarta",
+        "KPUC Malinau",
+        "MTN - Berau",
+        "MTN - ME",
+        "Makassar",
+        "PKA Musi Rawas",
+        "PPA BA",
+        "PPA BIB",
+        "PT SMJ - Berau",
+        "Palembang",
+        "Pekanbaru",
+        "Petrosea Freeport",
+        "Petrosea SDA",
+        "SIS Adaro",
+        "Sangatta",
+        "Sebamban",
+        "TU Batu Hijau",
+        "TU Gresik",
+        "Tj. Adaro",
+        "Tj. Redeb - Berau",
+        "Vale - Sorowako"
+      ],
+      "Lokasi Kerja": [
+        "Balikpapan",
+        "HSE - CK BIB",
+        "HSE - CK BMB",
+        "HSE - CK KIM",
+        "HSE - CK MHU",
+        "HSE - Sangatta",
+        "Innovation - CK KIM",
+        "Jakarta",
+        "Kendari",
+        "Makassar",
+        "PA - Balikpapan",
+        "Palembang",
+        "Pekanbaru",
+        "Repair & Retread - AMM Mifa Holing",
+        "Repair & Retread - BSI Banyuwangi",
+        "Repair & Retread - Balikpapan",
+        "Repair & Retread - CK BIB",
+        "Repair & Retread - CK BMB",
+        "Repair & Retread - CK DMP Lahat",
+        "Repair & Retread - CK KIM Jambi",
+        "Repair & Retread - CK MHU",
+        "Repair & Retread - KPUC Malinau",
+        "Repair & Retread - Macmahon Martabe",
+        "Repair & Retread - Madhani Berau",
+        "Repair & Retread - Madhani ME",
+        "Repair & Retread - PPA Bukit Asam",
+        "Repair & Retread - Sangatta",
+        "Repair & Retread - Vale Sorowako",
+        "Sangatta",
+        "Sebamban",
+        "Service Operation - AMM Mifa Holing",
+        "Service Operation - AMM Tabang",
+        "Service Operation - Balikpapan",
+        "Service Operation - Batu Hijau Sumbawa",
+        "Service Operation - CK BIB",
+        "Service Operation - CK BMB",
+        "Service Operation - CK DMP Lahat",
+        "Service Operation - CK KIM Jambi",
+        "Service Operation - CK MHU",
+        "Service Operation - Gresik",
+        "Service Operation - Jakarta",
+        "Service Operation - PPA BIB",
+        "Service Operation - PT GET Sebakis",
+        "Service Operation - Petrosea Freeport",
+        "Service Operation - Vale Sorowako",
+        "Technical - AMM Mifa Holing",
+        "Technical - AMM Tabang",
+        "Technical - Balikpapan",
+        "Technical - CK BIB",
+        "Technical - CK DMP Lahat",
+        "Technical - CK KIM Jambi",
+        "Technical - CK MHU",
+        "Technical - PPA BIB",
+        "Technical - Palembang",
+        "Technical - Petrosea Freeport",
+        "Technical - Sangatta",
+        "Technical - Tanjung Tabalong",
+        "Technical - Vale Sorowako",
+        "Tj. Redeb - Berau"
+      ],
+      "Level": [
+        "Coordinator",
+        "Manager",
+        "Non Staff",
+        "Staff",
+        "Supervisor"
+      ],
+      "Pangkat": [
+        "Coordinator",
+        "Jr. Coordinator",
+        "Jr. Supervisor",
+        "Manager",
+        "Non Staff Contract",
+        "Non Staff Permanent",
+        "Sr. Coordinator",
+        "Sr. Staff",
+        "Sr. Supervisor",
+        "Staff",
+        "Staff Contract",
+        "Staff Permanent",
+        "Supervisor"
+      ],
+      "Job Level": [
+        "Managerial",
+        "Non-Managerial",
+        "Non-Staff"
+      ],
+      "Employee Status": [
+        "Contract",
+        "Permanent"
+      ]
+    },
+    "department_to_sections": {
+      "BI & Marketing": [
+        "BI & Marketing",
+        "CSM",
+        "Database Management",
+        "IT",
+        "Mark., Research & Innovation",
+        "Markcomm"
+      ],
+      "CI & Audit": [
+        "CI & Audit"
+      ],
+      "Central Services": [
+        "Central Services",
+        "Product Accessories",
+        "Repair & Retread",
+        "Service Operation",
+        "Technical"
+      ],
+      "Finance & Accounting": [
+        "Accounting & Asset",
+        "Finance",
+        "Finance & Accounting"
+      ],
+      "Human Capital": [
+        "Corcomm",
+        "HRGA",
+        "HSE",
+        "Human Capital",
+        "Training Center"
+      ],
+      "Legal & ERM": [
+        "Legal & ERM"
+      ],
+      "Management": [
+        "Management"
+      ],
+      "Sales Operation": [
+        "Sales East Indonesia",
+        "Sales Java",
+        "Sales Java Sumatra",
+        "Sales Kalimantan",
+        "Sales Operation",
+        "Sales Palembang",
+        "Sales Pekanbaru"
+      ],
+      "Supply Chain Dept": [
+        "EXIM Compliance & Procurement",
+        "Inventory & Warehouse Management",
+        "Supply Chain Dept"
+      ],
+      "Support Facilities Management": [
+        "Facility & Maintenance",
+        "Support Facilities Management"
+      ]
+    },
+    "section_to_sites": {
+      "Accounting & Asset": [
+        "Jakarta"
+      ],
+      "BI & Marketing": [
+        "Jakarta"
+      ],
+      "CI & Audit": [
+        "Balikpapan"
+      ],
+      "CSM": [
+        "Jakarta"
+      ],
+      "Central Services": [
+        "Balikpapan"
+      ],
+      "Corcomm": [
+        "Jakarta"
+      ],
+      "Database Management": [
+        "Balikpapan"
+      ],
+      "EXIM Compliance & Procurement": [
+        "Balikpapan",
+        "Jakarta"
+      ],
+      "Facility & Maintenance": [
+        "Balikpapan",
+        "Sangatta"
+      ],
+      "Finance": [
+        "Jakarta"
+      ],
+      "Finance & Accounting": [
+        "Balikpapan",
+        "Jakarta"
+      ],
+      "HRGA": [
+        "Balikpapan"
+      ],
+      "HSE": [
+        "Balikpapan",
+        "CK BIB",
+        "CK BMB",
+        "CK KIM",
+        "CK MHU",
+        "Sangatta",
+        "Vale - Sorowako"
+      ],
+      "Human Capital": [
+        "Jakarta"
+      ],
+      "IT": [
+        "Balikpapan",
+        "Jakarta"
+      ],
+      "Inventory & Warehouse Management": [
+        "Balikpapan",
+        "Jakarta"
+      ],
+      "Legal & ERM": [
+        "Jakarta"
+      ],
+      "Management": [
+        "Jakarta"
+      ],
+      "Mark., Research & Innovation": [
+        "Balikpapan",
+        "Vale - Sorowako"
+      ],
+      "Markcomm": [
+        "Jakarta"
+      ],
+      "Product Accessories": [
+        "Balikpapan"
+      ],
+      "Repair & Retread": [
+        "AMM Mifa Holing",
+        "Balikpapan",
+        "CK BIB",
+        "CK BMB",
+        "CK KIM",
+        "CK MHU",
+        "KPUC Malinau",
+        "MTN - Berau",
+        "MTN - ME",
+        "PKA Musi Rawas",
+        "PPA BA",
+        "Petrosea SDA",
+        "SIS Adaro",
+        "Sangatta",
+        "Vale - Sorowako"
+      ],
+      "Sales East Indonesia": [
+        "Balikpapan",
+        "Makassar"
+      ],
+      "Sales Java": [
+        "Jakarta"
+      ],
+      "Sales Java Sumatra": [
+        "Pekanbaru"
+      ],
+      "Sales Kalimantan": [
+        "Balikpapan",
+        "Palembang",
+        "Sangatta",
+        "Sebamban",
+        "Tj. Redeb - Berau"
+      ],
+      "Sales Operation": [
+        "Jakarta"
+      ],
+      "Sales Palembang": [
+        "Palembang"
+      ],
+      "Sales Pekanbaru": [
+        "Pekanbaru"
+      ],
+      "Service Operation": [
+        "AMM Mifa Holing",
+        "AMM Tabang",
+        "Balikpapan",
+        "CK BIB",
+        "CK BMB",
+        "CK KIM",
+        "CK MHU",
+        "CK MIFA",
+        "CK NCN",
+        "Jakarta",
+        "PPA BIB",
+        "Petrosea Freeport",
+        "SIS Adaro",
+        "TU Batu Hijau",
+        "TU Gresik",
+        "Vale - Sorowako"
+      ],
+      "Supply Chain Dept": [
+        "Jakarta"
+      ],
+      "Support Facilities Management": [
+        "Balikpapan"
+      ],
+      "Technical": [
+        "AMM Mifa Holing",
+        "AMM Tabang",
+        "Balikpapan",
+        "CDE Bengkulu",
+        "CK BIB",
+        "CK DMP",
+        "CK KIM",
+        "CK MHU",
+        "PPA BIB",
+        "PT SMJ - Berau",
+        "Petrosea Freeport",
+        "Sangatta",
+        "Tj. Adaro",
+        "Vale - Sorowako"
+      ],
+      "Training Center": [
+        "Balikpapan"
+      ]
+    },
+    "samples": [
+      {
+        "Employee ID": "20",
+        "Employee Name": "Susanto",
+        "Email Address": "santo.susanto@chitraparatama.co.id",
+        "Password Email": "Chitra#20",
+        "Section": "Support Facilities Management",
+        "Employee Status": "Permanent",
+        "Level": "Manager",
+        "Pangkat": "Manager",
+        "Join Date": "1999-12-01",
+        "Tanggal Lahir": "1974-08-01",
+        "DOB (KIOSK)": null,
+        "Location / Site": "Balikpapan",
+        "Department": "Support Facilities Management",
+        "Lokasi Kerja": "Balikpapan",
+        "Job Level Code": "2",
+        "Job Level": "Managerial",
+        "Gender Code": "1",
+        "Gender": "Male",
+        "Age Code": "5",
+        "Age": "50 and above years old",
+        "Length of Service Code": "6",
+        "Length of Service": "10 years or above",
+        "Last Formal Education Code": "3",
+        "Last Formal Education": "Bachelor's Degree (S1)",
+        "Demographic Employee Status Code": "1",
+        "Demographic Employee Status": "Permanent",
+        "Location Code": "2",
+        "Location": "Site Office"
+      },
+      {
+        "Employee ID": "1101",
+        "Employee Name": "Didik Wahyudi",
+        "Email Address": "didik.wahyudi@chitraparatama.co.id",
+        "Password Email": "Chitra#1101",
+        "Section": "Facility & Maintenance",
+        "Employee Status": "Permanent",
+        "Level": "Supervisor",
+        "Pangkat": "Supervisor",
+        "Join Date": "2000-12-01",
+        "Tanggal Lahir": "1977-05-18",
+        "DOB (KIOSK)": null,
+        "Location / Site": "Balikpapan",
+        "Department": "Support Facilities Management",
+        "Lokasi Kerja": "Balikpapan",
+        "Job Level Code": "3",
+        "Job Level": "Non-Managerial",
+        "Gender Code": "1",
+        "Gender": "Male",
+        "Age Code": "4",
+        "Age": "40 to <50 years old",
+        "Length of Service Code": "6",
+        "Length of Service": "10 years or above",
+        "Last Formal Education Code": "5",
+        "Last Formal Education": "High School Graduate (SMU,SMK,MAN, dll )",
+        "Demographic Employee Status Code": "1",
+        "Demographic Employee Status": "Permanent",
+        "Location Code": "2",
+        "Location": "Site Office"
+      },
+      {
+        "Employee ID": "5035",
+        "Employee Name": "Bekti Widyasmoro",
+        "Email Address": "bekti.widyasmoro@chitraparatama.co.id",
+        "Password Email": "Chitra#5035",
+        "Section": "Supply Chain Dept",
+        "Employee Status": "Permanent",
+        "Level": "Manager",
+        "Pangkat": "Manager",
+        "Join Date": "2002-04-01",
+        "Tanggal Lahir": "1977-12-12",
+        "DOB (KIOSK)": null,
+        "Location / Site": "Jakarta",
+        "Department": "Supply Chain Dept",
+        "Lokasi Kerja": "Jakarta",
+        "Job Level Code": "2",
+        "Job Level": "Managerial",
+        "Gender Code": "1",
+        "Gender": "Male",
+        "Age Code": "4",
+        "Age": "40 to <50 years old",
+        "Length of Service Code": "6",
+        "Length of Service": "10 years or above",
+        "Last Formal Education Code": "3",
+        "Last Formal Education": "Bachelor's Degree (S1)",
+        "Demographic Employee Status Code": "1",
+        "Demographic Employee Status": "Permanent",
+        "Location Code": "1",
+        "Location": "Head Office"
+      },
+      {
+        "Employee ID": "5588",
+        "Employee Name": "Bardinia Susi Ekawaty",
+        "Email Address": "bardynia.susi@chitraparatama.co.id",
+        "Password Email": "Chitra#5588",
+        "Section": "CI & Audit",
+        "Employee Status": "Permanent",
+        "Level": "Manager",
+        "Pangkat": "Manager",
+        "Join Date": "2002-09-01",
+        "Tanggal Lahir": "1978-04-11",
+        "DOB (KIOSK)": null,
+        "Location / Site": "Balikpapan",
+        "Department": "CI & Audit",
+        "Lokasi Kerja": "Balikpapan",
+        "Job Level Code": "2",
+        "Job Level": "Managerial",
+        "Gender Code": "2",
+        "Gender": "Female",
+        "Age Code": "4",
+        "Age": "40 to <50 years old",
+        "Length of Service Code": "6",
+        "Length of Service": "10 years or above",
+        "Last Formal Education Code": "3",
+        "Last Formal Education": "Bachelor's Degree (S1)",
+        "Demographic Employee Status Code": "1",
+        "Demographic Employee Status": "Permanent",
+        "Location Code": "2",
+        "Location": "Site Office"
+      },
+      {
+        "Employee ID": "5715",
+        "Employee Name": "Yohanis",
+        "Email Address": "yohanisans55@gmail.com",
+        "Password Email": "Chitra#5715",
+        "Section": "Repair & Retread",
+        "Employee Status": "Permanent",
+        "Level": "Non Staff",
+        "Pangkat": "Non Staff Permanent",
+        "Join Date": "2002-09-01",
+        "Tanggal Lahir": "1976-02-06",
+        "DOB (KIOSK)": null,
+        "Location / Site": "Sangatta",
+        "Department": "Central Services",
+        "Lokasi Kerja": "Repair & Retread - Sangatta",
+        "Job Level Code": "4",
+        "Job Level": "Non-Staff",
+        "Gender Code": "1",
+        "Gender": "Male",
+        "Age Code": "4",
+        "Age": "40 to <50 years old",
+        "Length of Service Code": "6",
+        "Length of Service": "10 years or above",
+        "Last Formal Education Code": "5",
+        "Last Formal Education": "High School Graduate (SMU,SMK,MAN, dll )",
+        "Demographic Employee Status Code": "1",
+        "Demographic Employee Status": "Permanent",
+        "Location Code": "2",
+        "Location": "Site Office"
+      }
+    ]
+  }
+]

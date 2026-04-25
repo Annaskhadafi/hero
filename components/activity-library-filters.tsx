@@ -1,9 +1,12 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronsUpDown, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 type DepartmentOption = {
   id: number;
@@ -18,6 +21,109 @@ type SectionOption = {
   departmentId: number | null;
 };
 
+type MultiOption = {
+  value: string;
+  label: string;
+};
+
+function SearchableMultiFilter({
+  label,
+  filterKey,
+  options,
+}: {
+  label: string;
+  filterKey: string;
+  options: MultiOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const filteredOptions = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return options;
+    return options.filter((option) => option.label.toLowerCase().includes(normalized));
+  }, [options, query]);
+
+  const selectedLabel =
+    selected.length === 0
+      ? `Semua ${label}`
+      : selected.length === 1
+        ? options.find((option) => option.value === selected[0])?.label ?? `1 ${label}`
+        : `${selected.length} ${label}`;
+
+  useEffect(() => {
+    inputRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+    inputRef.current?.dispatchEvent(new Event("change", { bubbles: true }));
+  }, [selected]);
+
+  return (
+    <div className="flex-none">
+      <input ref={inputRef} type="hidden" data-table-filter-key={filterKey} value={selected.join("|")} readOnly />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="dense"
+            className="w-[220px] justify-between bg-surface-container-lowest"
+          >
+            <span className="truncate">{selectedLabel}</span>
+            <ChevronsUpDown className="size-4 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[260px] p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Cari ${label.toLowerCase()}...`}
+              className="h-9 pl-8"
+            />
+          </div>
+          <div className="mt-2 max-h-64 overflow-auto">
+            <button
+              type="button"
+              className="flex w-full items-center rounded-md px-2 py-2 text-left text-sm hover:bg-surface-container-low"
+              onClick={() => setSelected([])}
+            >
+              Semua {label}
+            </button>
+            {filteredOptions.map((option) => {
+              const isSelected = selected.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-surface-container-low"
+                  onClick={() =>
+                    setSelected((current) =>
+                      current.includes(option.value)
+                        ? current.filter((value) => value !== option.value)
+                        : [...current, option.value],
+                    )
+                  }
+                >
+                  <span
+                    className={cn(
+                      "grid size-4 place-items-center rounded border border-outline-ghost",
+                      isSelected && "bg-primary text-primary-foreground",
+                    )}
+                  >
+                    {isSelected ? <Check className="size-3" /> : null}
+                  </span>
+                  <span className="truncate">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export function ActivityLibraryFilters({
   departments,
   sections,
@@ -25,81 +131,24 @@ export function ActivityLibraryFilters({
   departments: DepartmentOption[];
   sections: SectionOption[];
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const selectedDepartment = searchParams.get("department") ?? "";
-  const selectedSection = searchParams.get("section") ?? "";
-  const visibleSections = selectedDepartment
-    ? sections.filter((section) => `${section.departmentId ?? ""}` === selectedDepartment)
-    : sections;
-
-  function updateFilter(key: "department" | "section", value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set(key, value);
-    } else {
-      params.delete(key);
-    }
-
-    if (key === "department") {
-      params.delete("section");
-    }
-
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  }
-
-  function resetFilters() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("department");
-    params.delete("section");
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  }
-
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <select
-        value={selectedDepartment}
-        onChange={(event) => updateFilter("department", event.target.value)}
-        className="h-9 min-w-[180px] rounded-lg border-0 bg-white px-3 text-[13px] font-medium text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
-        aria-label="Filter department"
-      >
-        <option value="">Semua Department</option>
-        {departments.map((department) => (
-          <option key={department.id} value={department.id}>
-            {department.name}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={selectedSection}
-        onChange={(event) => updateFilter("section", event.target.value)}
-        className="h-9 min-w-[180px] rounded-lg border-0 bg-white px-3 text-[13px] font-medium text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
-        aria-label="Filter section"
-      >
-        <option value="">Semua Section</option>
-        {visibleSections.map((section) => (
-          <option key={section.id} value={section.id}>
-            {section.name}
-          </option>
-        ))}
-      </select>
-
-      {selectedDepartment || selectedSection ? (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={resetFilters}
-          className="h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal text-muted-foreground"
-        >
-          <RotateCcw className="size-4" />
-          Reset Scope
-        </Button>
-      ) : null}
+    <div className="flex min-w-max items-center gap-2">
+      <SearchableMultiFilter
+        label="Department"
+        filterKey="department"
+        options={departments.map((department) => ({
+          value: department.name,
+          label: department.name,
+        }))}
+      />
+      <SearchableMultiFilter
+        label="Section"
+        filterKey="section"
+        options={sections.map((section) => ({
+          value: section.name,
+          label: section.name,
+        }))}
+      />
     </div>
   );
 }
-
