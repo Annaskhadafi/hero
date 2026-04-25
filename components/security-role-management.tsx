@@ -2,7 +2,16 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Copy, Plus, Save, Shield, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  Copy,
+  ListChecks,
+  Plus,
+  Save,
+  Shield,
+  Smartphone,
+  Trash2,
+} from "lucide-react";
 import {
   manageSecurityRoleAction,
   type AdminMutationState,
@@ -11,6 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +78,13 @@ type DraftPermission = {
   canDelete: boolean;
   canSelectAll: boolean;
 };
+
+const PERMISSION_FIELDS = [
+  { key: "canView", label: "Lihat" },
+  { key: "canEdit", label: "Ubah" },
+  { key: "canDelete", label: "Hapus" },
+  { key: "canSelectAll", label: "Akses penuh" },
+] as const;
 
 const INITIAL_STATE: AdminMutationState = {
   status: "idle",
@@ -129,6 +150,18 @@ function buildDraftPermissions(
   });
 }
 
+function countEnabledPermissions(permissions: DraftPermission[]) {
+  return permissions.reduce((total, permission) => {
+    return (
+      total +
+      Number(permission.canView) +
+      Number(permission.canEdit) +
+      Number(permission.canDelete) +
+      Number(permission.canSelectAll)
+    );
+  }, 0);
+}
+
 export function SecurityRoleManagement({
   roles,
   menuItems,
@@ -142,6 +175,9 @@ export function SecurityRoleManagement({
   const [draftPermissions, setDraftPermissions] = useState<DraftPermission[]>(
     buildDraftPermissions(roles[0]?.id ?? 0, menuItems, menuPermissions),
   );
+  const [openMenuAreas, setOpenMenuAreas] = useState<Set<string>>(
+    () => new Set(menuItems.map((menuItem) => menuItem.menuArea)),
+  );
   const [roleState, roleFormAction] = useActionState(
     manageSecurityRoleAction,
     INITIAL_STATE,
@@ -153,6 +189,10 @@ export function SecurityRoleManagement({
     );
   }, [menuItems, menuPermissions, selectedRoleId]);
 
+  useEffect(() => {
+    setOpenMenuAreas(new Set(menuItems.map((menuItem) => menuItem.menuArea)));
+  }, [menuItems]);
+
   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0];
   const groupedMenus = useMemo(() => {
     return menuItems.reduce<Record<string, MenuRow[]>>((accumulator, menuItem) => {
@@ -161,6 +201,43 @@ export function SecurityRoleManagement({
       return accumulator;
     }, {});
   }, [menuItems]);
+  const permissionByMenuId = useMemo(() => {
+    return new Map(
+      draftPermissions.map((permission) => [permission.menuItemId, permission]),
+    );
+  }, [draftPermissions]);
+
+  const selectedRoleEnabledCount = countEnabledPermissions(draftPermissions);
+
+  const toggleMenuArea = (menuArea: string) => {
+    setOpenMenuAreas((current) => {
+      const next = new Set(current);
+      if (next.has(menuArea)) {
+        next.delete(menuArea);
+      } else {
+        next.add(menuArea);
+      }
+
+      return next;
+    });
+  };
+
+  const updatePermission = (
+    menuItemId: number,
+    field: (typeof PERMISSION_FIELDS)[number]["key"],
+    checked: boolean,
+  ) => {
+    setDraftPermissions((current) =>
+      current.map((permission) =>
+        permission.menuItemId === menuItemId
+          ? {
+              ...permission,
+              [field]: checked,
+            }
+          : permission,
+      ),
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -177,7 +254,7 @@ export function SecurityRoleManagement({
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="rounded-[1.6rem] bg-surface-container-lowest">
+        <Card className="industrial-card rounded-xl bg-surface-container-lowest shadow-[0_18px_42px_rgba(0,52,97,0.08)]">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base">Daftar Peran</CardTitle>
@@ -231,10 +308,10 @@ export function SecurityRoleManagement({
                 key={role.id}
                 type="button"
                 onClick={() => setSelectedRoleId(role.id)}
-                className={`w-full rounded-[1.05rem] px-4 py-4 text-left transition ${
+                className={`w-full rounded-lg px-4 py-4 text-left transition-[background-color,box-shadow,transform] active:scale-[0.96] ${
                   selectedRoleId === role.id
-                    ? "bg-primary/5"
-                    : "bg-surface-container-low hover:bg-surface-container-highest"
+                    ? "bg-primary/8 shadow-[inset_3px_0_0_var(--primary),0_12px_24px_rgba(0,52,97,0.08)]"
+                    : "bg-surface-container-low hover:bg-surface-container"
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -255,7 +332,7 @@ export function SecurityRoleManagement({
         </Card>
 
         <div className="space-y-4">
-          <Card className="rounded-[1.6rem] bg-surface-container-lowest">
+          <Card className="industrial-card rounded-xl bg-surface-container-lowest shadow-[0_18px_42px_rgba(0,52,97,0.08)]">
             <CardHeader>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -269,6 +346,16 @@ export function SecurityRoleManagement({
                     </span>
                     .
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1 font-medium">
+                      <ListChecks className="size-3.5" />
+                      {selectedRoleEnabledCount} izin aktif
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-low px-3 py-1 font-medium md:hidden">
+                      <Smartphone className="size-3.5" />
+                      Mobile view
+                    </span>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Dialog>
@@ -397,28 +484,113 @@ export function SecurityRoleManagement({
                   value={JSON.stringify(draftPermissions)}
                 />
 
-                {Object.entries(groupedMenus).map(([menuArea, items]) => (
-                  <div key={menuArea} className="overflow-hidden rounded-[1.2rem] bg-surface-container-low">
-                    <div className="bg-surface-container-high px-4 py-4">
-                      <p className="font-medium">{formatMenuArea(menuArea)}</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-muted/40">
-                          <tr>
-                            <th className="px-4 py-3 text-left font-medium">Menu</th>
-                            <th className="px-4 py-3 text-left font-medium">Lihat</th>
-                            <th className="px-4 py-3 text-left font-medium">Ubah</th>
-                            <th className="px-4 py-3 text-left font-medium">Hapus</th>
-                            <th className="px-4 py-3 text-left font-medium">Akses penuh</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                {Object.entries(groupedMenus).map(([menuArea, items]) => {
+                  const areaPermissions = items.map((menuItem) =>
+                    permissionByMenuId.get(menuItem.id),
+                  );
+                  const activeCount = countEnabledPermissions(
+                    areaPermissions.filter(Boolean) as DraftPermission[],
+                  );
+                  const isOpen = openMenuAreas.has(menuArea);
+
+                  return (
+                    <Collapsible
+                      key={menuArea}
+                      open={isOpen}
+                      onOpenChange={() => toggleMenuArea(menuArea)}
+                      className="overflow-hidden rounded-xl bg-surface-container-low shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
+                    >
+                      <CollapsibleTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex min-h-14 w-full items-center justify-between gap-3 bg-surface-container px-4 py-3 text-left transition-[background-color] hover:bg-surface-container-high"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <ChevronDown
+                              className={`size-4 shrink-0 text-primary transition-transform ${
+                                isOpen ? "rotate-0" : "-rotate-90"
+                              }`}
+                            />
+                            <div className="min-w-0">
+                              <p className="font-medium">{formatMenuArea(menuArea)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {items.length} menu • {activeCount} izin aktif
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="rounded-full">
+                            {isOpen ? "Terbuka" : "Tutup"}
+                          </Badge>
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="hidden overflow-x-auto md:block">
+                          <table className="w-full text-sm">
+                            <thead className="bg-surface-container-low">
+                              <tr>
+                                <th className="px-4 py-3 text-left font-medium">Menu</th>
+                                {PERMISSION_FIELDS.map((field) => (
+                                  <th
+                                    key={field.key}
+                                    className="px-4 py-3 text-center font-medium"
+                                  >
+                                    {field.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.map((menuItem) => {
+                                const currentPermission =
+                                  permissionByMenuId.get(menuItem.id) ?? {
+                                    menuItemId: menuItem.id,
+                                    canView: false,
+                                    canEdit: false,
+                                    canDelete: false,
+                                    canSelectAll: false,
+                                  };
+
+                                return (
+                                  <tr
+                                    key={menuItem.id}
+                                    className="bg-surface-container-lowest shadow-[inset_0_-1px_0_var(--outline-ghost)] transition-[background-color] hover:bg-surface-bright"
+                                  >
+                                    <td className="px-4 py-3">
+                                      <div>
+                                        <p className="font-medium">{menuItem.title}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {menuItem.section}
+                                        </p>
+                                      </div>
+                                    </td>
+                                    {PERMISSION_FIELDS.map((field) => (
+                                      <td
+                                        key={`${menuItem.id}-${field.key}`}
+                                        className="px-4 py-3 text-center"
+                                      >
+                                        <Checkbox
+                                          checked={currentPermission[field.key]}
+                                          onCheckedChange={(checked) =>
+                                            updatePermission(
+                                              menuItem.id,
+                                              field.key,
+                                              Boolean(checked),
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="space-y-3 p-3 md:hidden">
                           {items.map((menuItem) => {
                             const currentPermission =
-                              draftPermissions.find(
-                                (permission) => permission.menuItemId === menuItem.id,
-                              ) ?? {
+                              permissionByMenuId.get(menuItem.id) ?? {
                                 menuItemId: menuItem.id,
                                 canView: false,
                                 canEdit: false,
@@ -427,47 +599,44 @@ export function SecurityRoleManagement({
                               };
 
                             return (
-                              <tr key={menuItem.id} className="bg-surface-container-lowest">
-                                <td className="px-4 py-3">
-                                  <div>
-                                    <p className="font-medium">{menuItem.title}</p>
-                                    <p className="text-xs text-muted-foreground">{menuItem.section}</p>
-                                  </div>
-                                </td>
-                                {(
-                                  [
-                                    "canView",
-                                    "canEdit",
-                                    "canDelete",
-                                    "canSelectAll",
-                                  ] as const
-                                ).map((field) => (
-                                  <td key={`${menuItem.id}-${field}`} className="px-4 py-3">
-                                    <Checkbox
-                                      checked={currentPermission[field]}
-                                      onCheckedChange={(checked) =>
-                                        setDraftPermissions((current) =>
-                                          current.map((permission) =>
-                                            permission.menuItemId === menuItem.id
-                                              ? {
-                                                  ...permission,
-                                                  [field]: Boolean(checked),
-                                                }
-                                              : permission,
-                                          ),
-                                        )
-                                      }
-                                    />
-                                  </td>
-                                ))}
-                              </tr>
+                              <section
+                                key={menuItem.id}
+                                className="rounded-lg bg-surface-container-lowest p-4 shadow-[0_10px_22px_rgba(0,52,97,0.08)]"
+                              >
+                                <div>
+                                  <p className="font-medium">{menuItem.title}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {menuItem.section}
+                                  </p>
+                                </div>
+                                <div className="mt-4 grid grid-cols-2 gap-2">
+                                  {PERMISSION_FIELDS.map((field) => (
+                                    <label
+                                      key={`${menuItem.id}-${field.key}`}
+                                      className="flex min-h-12 items-center justify-between gap-3 rounded-md bg-surface-container-low px-3 text-sm font-medium"
+                                    >
+                                      <span>{field.label}</span>
+                                      <Checkbox
+                                        checked={currentPermission[field.key]}
+                                        onCheckedChange={(checked) =>
+                                          updatePermission(
+                                            menuItem.id,
+                                            field.key,
+                                            Boolean(checked),
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                  ))}
+                                </div>
+                              </section>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })}
 
                 <div className="flex justify-end">
                   <SubmitButton>
