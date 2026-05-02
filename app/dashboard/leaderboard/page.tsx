@@ -7,6 +7,7 @@ import {
   PenaltyEventCrudForm,
   DisputeReviewActions
 } from "@/components/operational-crud-panels";
+import { PointEventImportButton } from "@/components/point-event-import-button";
 import { LevelConfigPanel, BadgeConfigPanel } from "@/components/gamification-config-panels";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getOperationalCrudOptions, getPointsPageData } from "@/lib/hero-admin";
@@ -26,6 +27,7 @@ export default async function LeaderboardPage() {
       badge={topPerformer ? `Top • ${topPerformer.name}` : undefined}
     >
       <AdminMetricGrid
+        mode="compact"
         items={[
           { label: "Active leaderboard", value: `${leaderboard.length}`, meta: "Karyawan dengan skor aktif" },
           {
@@ -41,8 +43,6 @@ export default async function LeaderboardPage() {
         ]}
       />
 
-      <PointEventCrudForm employees={options.employees} categoryOptions={options.categoryOptions} />
-
       <Tabs defaultValue="leaderboard" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
           <TabsTrigger value="leaderboard">Site Leaderboard</TabsTrigger>
@@ -55,9 +55,9 @@ export default async function LeaderboardPage() {
         <TabsContent value="leaderboard">
           <AdminTableCard
             title="Site Leaderboard"
-            description="Ranking poin yang dipakai admin untuk reward, badge, dan tracking performa."
             columns={["Employee", "Role", "Department", "Level", "Points"]}
             dateFilter={false}
+            showImport={false}
             rows={leaderboard.map((row) => [
               row.name,
               row.role,
@@ -71,9 +71,15 @@ export default async function LeaderboardPage() {
         <TabsContent value="events">
           <AdminTableCard
             title="Recent Point Events"
-            description="Event poin terakhir yang masuk ke sistem."
             columns={["Employee", "Category", "Label", "Points", "Date", "Action"]}
             dateFilter
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <PointEventImportButton />
+                <PointEventCrudForm employees={options.employees} categoryOptions={options.categoryOptions} />
+              </div>
+            }
+            showImport={false}
             rows={recentPointEvents.map((row) => [
               row.employeeName,
               row.category,
@@ -87,6 +93,9 @@ export default async function LeaderboardPage() {
                 categoryOptions={options.categoryOptions}
               />,
             ])}
+            rowAttributes={recentPointEvents.map((row) => ({
+              "data-date-value": row.createdAt.toISOString(),
+            }))}
           />
         </TabsContent>
 
@@ -94,9 +103,9 @@ export default async function LeaderboardPage() {
           <PenaltyEventCrudForm employees={options.employees} />
           <AdminTableCard
             title="Penalty Events"
-            description="Riwayat pemotongan poin untuk karyawan."
             columns={["Employee", "Penalty Code", "Deducted", "Date", "Dispute Status"]}
             dateFilter
+            showImport={false}
             rows={recentPenaltyEvents.map((row) => [
               row.employeeName,
               row.penaltyCode,
@@ -112,15 +121,18 @@ export default async function LeaderboardPage() {
                 </span>
               ),
             ])}
+            rowAttributes={recentPenaltyEvents.map((row) => ({
+              "data-date-value": row.createdAt.toISOString(),
+            }))}
           />
         </TabsContent>
 
         <TabsContent value="disputes" className="space-y-4">
           <AdminTableCard
             title="Dispute Queue"
-            description="Daftar pengajuan keberatan penalti karyawan yang butuh review (Phase A)."
             columns={["Employee", "Penalty Code", "Deducted", "Reason", "Status", "Review"]}
             dateFilter
+            showImport={false}
             rows={disputes.map((row) => [
               row.employeeName,
               row.penaltyCode,
@@ -148,6 +160,9 @@ export default async function LeaderboardPage() {
                 </span>
               )
             ])}
+            rowAttributes={disputes.map((row) => ({
+              "data-date-value": row.createdAt?.toISOString?.() ?? "",
+            }))}
           />
         </TabsContent>
 

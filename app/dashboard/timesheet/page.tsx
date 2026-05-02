@@ -7,32 +7,8 @@ import {
   TimesheetRowActions,
 } from "@/components/operational-crud-panels";
 import { TableFilterPresets } from "@/components/table-filter-presets";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import { getOperationalCrudOptions, getTimesheetPageData } from "@/lib/hero-admin";
-
-function SelectFilter({
-  filterKey,
-  placeholder,
-  options,
-}: {
-  filterKey: string;
-  placeholder: string;
-  options: string[];
-}) {
-  return (
-    <select
-      data-table-filter-key={filterKey}
-      defaultValue=""
-      className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-    >
-      <option value="">{placeholder}</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 export default async function TimesheetPage() {
   const [rows, options] = await Promise.all([
@@ -73,9 +49,9 @@ export default async function TimesheetPage() {
         actions={<TimesheetCrudForm employees={options.employees} sites={options.sites} categoryOptions={options.categoryOptions} />}
         filters={
           <>
-            <SelectFilter filterKey="period" placeholder="Semua periode" options={periodOptions} />
-            <SelectFilter filterKey="status" placeholder="Semua status" options={statusOptions} />
-            <SelectFilter filterKey="site" placeholder="Semua site" options={siteOptions} />
+            <TableMultiFilter label="periode" filterKey="period" options={periodOptions.map((option) => ({ value: option, label: option }))} />
+            <TableMultiFilter label="status" filterKey="status" options={statusOptions.map((option) => ({ value: option, label: option }))} />
+            <TableMultiFilter label="site" filterKey="site" options={siteOptions.map((option) => ({ value: option, label: option }))} />
           </>
         }
         presets={<TableFilterPresets presets={[{ label: "Siap payroll", filters: { status: "ready_for_payroll" } }, { label: "Perlu koreksi", filters: { status: "needs_correction" } }]} />}

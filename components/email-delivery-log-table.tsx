@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import {
   Table,
   TableBody,
@@ -58,30 +52,7 @@ function getStatusLabel(value: string) {
 }
 
 export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
-  const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("all");
   const [selected, setSelected] = useState<EmailLogRow | null>(null);
-
-  const filtered = useMemo(() => {
-    const query = keyword.trim().toLowerCase();
-
-    return logs.filter((log) => {
-      const haystack = [
-        log.toEmail,
-        log.ccEmail ?? "",
-        log.subject,
-        log.templateName ?? "",
-        log.templateCode ?? "",
-        log.employeeName ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      const matchesKeyword = !query || haystack.includes(query);
-      const matchesStatus = status === "all" || log.status === status;
-      return matchesKeyword && matchesStatus;
-    });
-  }, [keyword, logs, status]);
 
   return (
     <div className="space-y-4">
@@ -90,17 +61,15 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
         fileName="email-delivery-log"
         searchPlaceholder="Cari penerima, judul email, atau nama karyawan..."
         filters={
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="h-11 w-full rounded-[1rem] border-0 bg-white md:w-44">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua status</SelectItem>
-              <SelectItem value="sent">Terkirim</SelectItem>
-              <SelectItem value="pending">Menunggu</SelectItem>
-              <SelectItem value="failed">Gagal</SelectItem>
-            </SelectContent>
-          </Select>
+          <TableMultiFilter
+            label="status"
+            filterKey="status"
+            options={[
+              { value: "sent", label: "Terkirim" },
+              { value: "pending", label: "Menunggu" },
+              { value: "failed", label: "Gagal" },
+            ]}
+          />
         }
       >
         <Table>
@@ -116,8 +85,12 @@ export function EmailDeliveryLogTable({ logs }: { logs: EmailLogRow[] }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((log) => (
-              <TableRow key={log.id} data-date-value={(log.sentAt ?? log.createdAt).toISOString()}>
+            {logs.map((log) => (
+              <TableRow
+                key={log.id}
+                data-date-value={(log.sentAt ?? log.createdAt).toISOString()}
+                data-filter-status={log.status}
+              >
                 <TableCell>
                   <Badge
                     variant={log.status === "failed" ? "destructive" : log.status === "sent" ? "default" : "outline"}

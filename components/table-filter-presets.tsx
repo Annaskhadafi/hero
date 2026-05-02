@@ -15,7 +15,9 @@ export function TableFilterPresets({ presets }: { presets: TableFilterPreset[] }
       if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement)) {
         continue
       }
-      control.value = filters[key] ?? ""
+      const nextValue = filters[key] ?? ""
+      control.value = nextValue
+      window.dispatchEvent(new CustomEvent("hero-table-apply-filter", { detail: { key, value: nextValue } }))
       control.dispatchEvent(new Event("input", { bubbles: true }))
       control.dispatchEvent(new Event("change", { bubbles: true }))
     }

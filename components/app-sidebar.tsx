@@ -155,9 +155,9 @@ export function AppSidebar({
         fontFamily: "var(--font-inter), sans-serif",
       }}
     >
-      <SidebarHeader className="px-3 pb-2 pt-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
-        <div className="rounded-lg bg-surface-container-lowest px-2 py-2 shadow-[inset_0_0_0_1px_var(--outline-ghost)] group-data-[collapsible=icon]:px-1.5">
-          <Link href="/" aria-label="HERO" className="flex w-fit items-center">
+      <SidebarHeader className="px-3 pb-3 pt-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
+        <div className="rounded-2xl border border-sidebar-border/80 bg-white px-3 py-3 shadow-sm group-data-[collapsible=icon]:px-2">
+          <Link href="/" aria-label="HERO" className="flex w-full items-center gap-3 group-data-[collapsible=icon]:justify-center">
             <Image
               src="/logo-hero.png"
               alt="HERO"
@@ -166,15 +166,19 @@ export function AppSidebar({
               className="h-9 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-8"
               priority
             />
+            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+              <p className="truncate text-sm font-semibold text-sidebar-foreground">HERO</p>
+              <p className="truncate text-xs text-muted-foreground">Operational workspace</p>
+            </div>
           </Link>
         </div>
       </SidebarHeader>
-      <SidebarContent className="gap-0.5">
+      <SidebarContent className="gap-1 px-2">
         <NavMain groups={desktopGroups} showQuickCreate />
         {documentItems.length > 0 ? (
           <>
-            <SidebarSeparator className="mx-2 mt-1" />
-            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
+            <SidebarSeparator className="mx-2 mt-2" />
+            <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
               Dokumen
             </div>
             <NavDocuments items={documentItems} />

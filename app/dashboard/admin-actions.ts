@@ -3256,6 +3256,122 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
   }
 }
 
+type PointEventImportPayload = {
+  headers: string[];
+  rows: string[][];
+  mapping: Record<string, string>;
+};
+
+function findMappedColumnIndex(headers: string[], mappedHeader: string | undefined) {
+  return mappedHeader ? headers.findIndex((header) => header === mappedHeader) : -1;
+}
+
+function parseImportedPointValue(value: string) {
+  const normalized = value.replace(/[^0-9.-]+/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+export async function importPointEventsAction(payload: PointEventImportPayload): Promise<AdminMutationState> {
+  try {
+    await ensureHeroSeedData();
+
+    const employeeIndex = findMappedColumnIndex(payload.headers, payload.mapping.employee);
+    const categoryIndex = findMappedColumnIndex(payload.headers, payload.mapping.category);
+    const labelIndex = findMappedColumnIndex(payload.headers, payload.mapping.label);
+    const pointsIndex = findMappedColumnIndex(payload.headers, payload.mapping.points);
+
+    if ([employeeIndex, categoryIndex, labelIndex, pointsIndex].some((index) => index < 0)) {
+      return { status: "error", message: "Mapping Employee, Category, Label, dan Points wajib lengkap." };
+    }
+
+    const directory = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+      })
+      .from(employees);
+
+    const employeeByName = new Map(directory.map((employee) => [employee.name.trim().toLowerCase(), employee]));
+    const employeeByEmail = new Map(
+      directory
+        .filter((employee) => employee.email)
+        .map((employee) => [employee.email!.trim().toLowerCase(), employee]),
+    );
+
+    let importedCount = 0;
+    const failures: string[] = [];
+
+    for (const [rowIndex, row] of payload.rows.entries()) {
+      const employeeRef = row[employeeIndex]?.trim();
+      const category = row[categoryIndex]?.trim();
+      const label = row[labelIndex]?.trim();
+      const pointValue = row[pointsIndex]?.trim();
+
+      if (!employeeRef && !category && !label && !pointValue) {
+        continue;
+      }
+
+      const employee = employeeRef?.includes("@")
+        ? employeeByEmail.get(employeeRef.toLowerCase())
+        : employeeByName.get((employeeRef ?? "").toLowerCase());
+      const points = parseImportedPointValue(pointValue ?? "");
+
+      if (!employee) {
+        failures.push(`Baris ${rowIndex + 2}: employee "${employeeRef}" tidak ditemukan.`);
+        continue;
+      }
+
+      if (!category || !label || !Number.isFinite(points) || points === 0) {
+        failures.push(`Baris ${rowIndex + 2}: Category, Label, atau Points tidak valid.`);
+        continue;
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.insert(pointEvents).values({
+          employeeId: employee.id,
+          category,
+          label,
+          points,
+          createdAt: new Date(),
+        });
+
+        const [updatedEmployee] = await tx
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} + ${points}` })
+          .where(eq(employees.id, employee.id))
+          .returning({ totalPoints: employees.totalPoints });
+
+        await evaluatePointThresholdBadges(tx, employee.id, updatedEmployee.totalPoints);
+      });
+
+      importedCount += 1;
+    }
+
+    revalidateOperationalPages("/dashboard/leaderboard");
+
+    if (importedCount === 0) {
+      return {
+        status: "error",
+        message: failures[0] ?? "Tidak ada point event yang berhasil diimport.",
+      };
+    }
+
+    return {
+      status: "success",
+      message: failures.length > 0
+        ? `${importedCount} point event berhasil diimport. ${failures.length} baris dilewati.`
+        : `${importedCount} point event berhasil diimport.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal import point events.",
+    };
+  }
+}
+
 export async function updateNavbarThemeAction(
   _previousState: AdminMutationState,
   formData: FormData,

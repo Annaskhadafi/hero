@@ -303,7 +303,7 @@ function CrudFormCard({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="h-11 rounded-full px-4">
+        <Button size="dense" className="rounded-lg px-3">
           <Plus className="size-4" aria-hidden="true" />
           {triggerLabel ?? `Tambah ${title}`}
         </Button>

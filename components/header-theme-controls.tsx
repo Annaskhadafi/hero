@@ -38,6 +38,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { useTheme } from "@/components/theme-provider";
+import { cn } from "@/lib/utils";
 
 type NotificationItem = {
   id: number;
@@ -67,6 +69,7 @@ function formatNotificationTime(value: string) {
 
 export function HeaderThemeControls() {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
   const [open, setOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
@@ -185,18 +188,26 @@ export function HeaderThemeControls() {
     command();
   }, []);
 
+  const isDark = resolvedTheme === "dark";
+  const glassButtonClassName = isDark
+    ? "bg-slate-900 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-slate-800 hover:text-white"
+    : "bg-white text-slate-700 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)] hover:bg-slate-100 hover:text-slate-900";
+  const searchClassName = isDark
+    ? "bg-slate-900 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-slate-800"
+    : "bg-white text-slate-700 shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)] hover:bg-slate-100";
+
   return (
     <div className="flex w-auto items-center justify-end gap-1.5 sm:gap-2 lg:w-full lg:gap-3">
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden min-w-[240px] flex-1 items-center gap-3 rounded-2xl bg-white/12 px-4 py-3 text-left text-white/82 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 lg:flex"
+        className={cn("hidden min-w-[220px] flex-1 items-center gap-3 rounded-xl px-4 py-2.5 text-left transition lg:flex", searchClassName)}
       >
-        <Search className="h-4 w-4 text-white/65" />
+        <Search className={cn("h-4 w-4", isDark ? "text-slate-400" : "text-slate-500")} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">Search page, command, or module</p>
         </div>
-        <span className="rounded-full bg-white/12 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-white/72">
+        <span className={cn("rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]", isDark ? "bg-slate-800 text-slate-300" : "bg-slate-100 text-slate-500")}>
           Ctrl K
         </span>
       </button>
@@ -258,7 +269,7 @@ export function HeaderThemeControls() {
             type="button"
             variant="ghost"
             size="icon"
-            className="relative size-9 min-h-9 min-w-9 rounded-xl bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 hover:text-white sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl"
+            className={cn("relative size-9 min-h-9 min-w-9 rounded-xl transition sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl", glassButtonClassName)}
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
@@ -402,10 +413,17 @@ export function HeaderThemeControls() {
         variant="ghost"
         size="icon"
         label="Keluar"
-        className="size-9 min-h-9 min-w-9 rounded-xl bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] transition hover:bg-white/16 hover:text-white sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl"
+        className={cn("size-9 min-h-9 min-w-9 rounded-xl transition sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl", glassButtonClassName)}
       />
 
-      <div className="[&_button]:size-9 [&_button]:min-h-9 [&_button]:min-w-9 [&_button]:rounded-xl [&_button]:bg-white/12 [&_button]:text-white [&_button]:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] [&_button]:hover:bg-white/16 [&_button]:hover:text-white sm:[&_button]:size-11 sm:[&_button]:min-h-11 sm:[&_button]:min-w-11 sm:[&_button]:rounded-2xl">
+      <div
+        className={cn(
+          "[&_button]:size-9 [&_button]:min-h-9 [&_button]:min-w-9 [&_button]:rounded-xl sm:[&_button]:size-11 sm:[&_button]:min-h-11 sm:[&_button]:min-w-11 sm:[&_button]:rounded-2xl",
+          isDark
+            ? "[&_button]:bg-slate-900 [&_button]:text-slate-100 [&_button]:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] [&_button]:hover:bg-slate-800 [&_button]:hover:text-white"
+            : "[&_button]:bg-white [&_button]:text-slate-700 [&_button]:shadow-[inset_0_0_0_1px_rgba(148,163,184,0.22)] [&_button]:hover:bg-slate-100 [&_button]:hover:text-slate-900",
+        )}
+      >
         <SimpleThemeToggle />
       </div>
     </div>

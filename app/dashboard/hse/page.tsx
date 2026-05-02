@@ -9,32 +9,8 @@ import {
   HseObservationRowActions,
 } from "@/components/operational-crud-panels";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import { getHsePageData, getOperationalCrudOptions } from "@/lib/hero-admin";
-
-function SelectFilter({
-  filterKey,
-  placeholder,
-  options,
-}: {
-  filterKey: string;
-  placeholder: string;
-  options: string[];
-}) {
-  return (
-    <select
-      data-table-filter-key={filterKey}
-      defaultValue=""
-      className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-    >
-      <option value="">{placeholder}</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 export default async function HsePage() {
   const [{ observations, incidents }, options] = await Promise.all([
@@ -86,9 +62,9 @@ export default async function HsePage() {
             presets={<TableFilterPresets presets={[{ label: "Terbuka", filters: { status: "open" } }, { label: "Ditangani", filters: { status: "action_taken" } }]} />}
             filters={
               <>
-                <SelectFilter filterKey="site" placeholder="Semua site" options={siteOptions} />
-                <SelectFilter filterKey="category" placeholder="Semua kategori" options={observationCategories} />
-                <SelectFilter filterKey="status" placeholder="Semua status" options={observationStatuses} />
+                <TableMultiFilter label="site" filterKey="site" options={siteOptions.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="kategori" filterKey="category" options={observationCategories.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="status" filterKey="status" options={observationStatuses.map((option) => ({ value: option, label: option }))} />
               </>
             }
             rows={observations.map((row, index) => [
@@ -125,9 +101,9 @@ export default async function HsePage() {
             presets={<TableFilterPresets presets={[{ label: "Ditinjau", filters: { status: "investigating" } }, { label: "Selesai", filters: { status: "closed" } }]} />}
             filters={
               <>
-                <SelectFilter filterKey="site" placeholder="Semua site" options={siteOptions} />
-                <SelectFilter filterKey="type" placeholder="Semua tipe" options={incidentTypes} />
-                <SelectFilter filterKey="status" placeholder="Semua status" options={incidentStatuses} />
+                <TableMultiFilter label="site" filterKey="site" options={siteOptions.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="tipe" filterKey="type" options={incidentTypes.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="status" filterKey="status" options={incidentStatuses.map((option) => ({ value: option, label: option }))} />
               </>
             }
             rows={incidents.map((row, index) => [

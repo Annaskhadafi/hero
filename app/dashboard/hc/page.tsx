@@ -3,6 +3,7 @@ import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
 import { TableFilterPresets } from "@/components/table-filter-presets";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import {
   AttendanceRowActions,
   HcCrudForms,
@@ -11,31 +12,6 @@ import {
 } from "@/components/operational-crud-panels";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getHcPageData, getOperationalCrudOptions } from "@/lib/hero-admin";
-
-function SelectFilter({
-  filterKey,
-  placeholder,
-  options,
-}: {
-  filterKey: string;
-  placeholder: string;
-  options: string[];
-}) {
-  return (
-    <select
-      data-table-filter-key={filterKey}
-      defaultValue=""
-      className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-    >
-      <option value="">{placeholder}</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 export default async function HcPage() {
   const [{ attendance, trainings, wellness }, options] = await Promise.all([
@@ -82,9 +58,9 @@ export default async function HcPage() {
             presets={<TableFilterPresets presets={[{ label: "Aman", filters: { status: "healthy" } }, { label: "Perlu tindak lanjut", filters: { status: "follow_up" } }]} />}
             filters={
               <>
-                <SelectFilter filterKey="site" placeholder="Semua site" options={siteOptions} />
-                <SelectFilter filterKey="event" placeholder="Semua event" options={attendanceEvents} />
-                <SelectFilter filterKey="status" placeholder="Semua status" options={attendanceStatuses} />
+                <TableMultiFilter label="site" filterKey="site" options={siteOptions.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="event" filterKey="event" options={attendanceEvents.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="status" filterKey="status" options={attendanceStatuses.map((option) => ({ value: option, label: option }))} />
               </>
             }
             rows={attendance.map((row, index) => [
@@ -121,8 +97,8 @@ export default async function HcPage() {
             presets={<TableFilterPresets presets={[{ label: "Aman", filters: { status: "healthy" } }, { label: "Perlu tindak lanjut", filters: { status: "follow_up" } }]} />}
             filters={
               <>
-                <SelectFilter filterKey="department" placeholder="Semua departemen" options={trainingDepartments} />
-                <SelectFilter filterKey="status" placeholder="Semua status" options={trainingStatuses} />
+                <TableMultiFilter label="departemen" filterKey="department" options={trainingDepartments.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="status" filterKey="status" options={trainingStatuses.map((option) => ({ value: option, label: option }))} />
               </>
             }
             rows={trainings.map((row, index) => [
@@ -157,8 +133,8 @@ export default async function HcPage() {
             presets={<TableFilterPresets presets={[{ label: "Aman", filters: { status: "healthy" } }, { label: "Perlu tindak lanjut", filters: { status: "follow_up" } }]} />}
             filters={
               <>
-                <SelectFilter filterKey="metric" placeholder="Semua metrik" options={wellnessMetrics} />
-                <SelectFilter filterKey="status" placeholder="Semua status" options={wellnessStatuses} />
+                <TableMultiFilter label="metrik" filterKey="metric" options={wellnessMetrics.map((option) => ({ value: option, label: option }))} />
+                <TableMultiFilter label="status" filterKey="status" options={wellnessStatuses.map((option) => ({ value: option, label: option }))} />
               </>
             }
             rows={wellness.map((row, index) => [

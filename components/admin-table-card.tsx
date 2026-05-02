@@ -19,16 +19,18 @@ export function AdminTableCard({
   filters,
   actions,
   presets,
+  showImport = true,
   rowAttributes,
 }: {
   title: string;
-  description: string;
+  description?: string;
   columns: string[];
   rows: (string | React.ReactNode)[][];
   dateFilter?: boolean | "auto";
   filters?: React.ReactNode;
   actions?: React.ReactNode;
   presets?: React.ReactNode;
+  showImport?: boolean;
   rowAttributes?: Array<Record<string, string | undefined>>;
 }) {
   return (
@@ -59,6 +61,7 @@ export function AdminTableCard({
           filters={filters}
           actions={actions}
           presets={presets}
+          showImport={showImport}
         >
           <Table>
             <TableHeader>

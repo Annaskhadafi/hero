@@ -28,17 +28,23 @@ export function SiteHeader({
   }, [])
 
   const isDark = mounted && resolvedTheme === "dark"
+  const shellClassName = isDark
+    ? "border-b border-white/10 bg-slate-950/92"
+    : "border-b border-border/80 bg-white/92"
+  const triggerClassName = isDark
+    ? "bg-slate-900 text-slate-100 hover:bg-slate-800 hover:text-white border-white/10"
+    : "bg-white text-foreground hover:bg-muted/50 hover:text-foreground border-border/70"
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-outline-ghost/60 bg-surface-container-lowest/88 backdrop-blur-xl"
+      className={cn("sticky top-0 z-30 backdrop-blur-xl", shellClassName)}
       style={{
         ["--header-accent" as string]: isDark ? "#1b415b" : backgroundColor,
         ["--header-text" as string]: isDark ? "#f3faff" : textColor,
       }}
     >
       <div
-        className="flex min-h-12 items-center px-3 py-1.5 shadow-none sm:px-4 lg:px-5"
+        className="flex min-h-14 items-center px-3 py-2 shadow-none sm:px-4 lg:px-6"
         style={{
           color: isDark ? "#f3faff" : "var(--foreground)",
         }}
@@ -47,20 +53,19 @@ export function SiteHeader({
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <SidebarTrigger
               className={cn(
-                "size-9 min-h-9 min-w-9 rounded-md border-0 shadow-none",
-                isDark
-                  ? "bg-surface-container-lowest text-slate-950 hover:bg-surface-bright hover:text-slate-900"
-                  : "bg-surface-container-lowest text-primary hover:bg-surface-bright hover:text-primary-container",
+                "size-9 min-h-9 min-w-9 rounded-lg border border-border/70 shadow-none",
+                triggerClassName,
               )}
             />
-            <Separator orientation="vertical" className="hidden h-7 bg-outline-ghost lg:block" />
+            <Separator orientation="vertical" className={cn("hidden h-7 lg:block", isDark ? "bg-white/12" : "bg-border")} />
             <div className="min-w-0">
-              <p className="text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              <p className={cn("text-[0.62rem] font-semibold uppercase tracking-[0.16em]", isDark ? "text-slate-400" : "text-muted-foreground")}>
                 {eyebrow}
               </p>
-              <p className="font-display truncate text-sm font-semibold tracking-normal text-foreground sm:text-base">
+              <p className={cn("font-display truncate text-sm font-semibold tracking-normal sm:text-[1rem]", isDark ? "text-slate-50" : "text-foreground")}>
                 {title}
               </p>
+              {subtitle ? <p className={cn("truncate text-xs", isDark ? "text-slate-400" : "text-muted-foreground")}>{subtitle}</p> : null}
             </div>
           </div>
 

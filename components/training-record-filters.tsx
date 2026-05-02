@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type EmployeeOption = {
   id: number;
@@ -67,47 +68,35 @@ export function TrainingRecordFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <select
+      <SearchableSelect
+        label="karyawan"
         value={selectedEmployeeId}
-        onChange={(event) => updateFilter("employeeId", event.target.value)}
-        className="h-9 min-w-[220px] rounded-lg border-0 bg-white px-3 text-[13px] font-medium text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
-        aria-label="Filter karyawan"
-      >
-        <option value="">Semua karyawan</option>
-        {visibleEmployees.map((employee) => (
-          <option key={employee.id} value={employee.id}>
-            {employee.name} {employee.employeeSn ? `(${employee.employeeSn})` : ""}
-          </option>
-        ))}
-      </select>
+        onValueChange={(value) => updateFilter("employeeId", value)}
+        placeholder="Semua karyawan"
+        options={visibleEmployees.map((employee) => ({
+          value: String(employee.id),
+          label: `${employee.name}${employee.employeeSn ? ` (${employee.employeeSn})` : ""}`,
+        }))}
+        widthClassName="min-w-[260px]"
+      />
 
-      <select
+      <SearchableSelect
+        label="department"
         value={selectedDepartment}
-        onChange={(event) => updateFilter("department", event.target.value)}
-        className="h-9 min-w-[180px] rounded-lg border-0 bg-white px-3 text-[13px] font-medium text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
-        aria-label="Filter department"
-      >
-        <option value="">Semua department</option>
-        {departments.map((department) => (
-          <option key={department} value={department}>
-            {department}
-          </option>
-        ))}
-      </select>
+        onValueChange={(value) => updateFilter("department", value)}
+        placeholder="Semua department"
+        options={departments.map((department) => ({ value: department, label: department }))}
+        widthClassName="min-w-[200px]"
+      />
 
-      <select
+      <SearchableSelect
+        label="tahun"
         value={selectedYear}
-        onChange={(event) => updateFilter("year", event.target.value)}
-        className="h-9 min-w-[140px] rounded-lg border-0 bg-white px-3 text-[13px] font-medium text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
-        aria-label="Filter tahun training"
-      >
-        <option value="">Semua tahun</option>
-        {years.map((year) => (
-          <option key={year} value={year}>
-            {year}
-          </option>
-        ))}
-      </select>
+        onValueChange={(value) => updateFilter("year", value)}
+        placeholder="Semua tahun"
+        options={years.map((year) => ({ value: String(year), label: String(year) }))}
+        widthClassName="min-w-[150px]"
+      />
 
       <Button type="button" variant="outline" onClick={() => applyPreset("current-year")} className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]">Tahun berjalan</Button>
       <Button type="button" variant="outline" onClick={() => updateFilter("department", "Operations")} className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]">Fokus operasi</Button>

@@ -54,7 +54,7 @@ export function AdminMetricGrid({
 }) {
   if (mode === "compact") {
     return (
-      <div className="flex flex-wrap gap-2.5">
+      <div className="flex flex-wrap gap-2">
         {items.map((item, index) => {
           const Icon = getMetricIcon(item.label, item.meta);
           const accent = accents[index % accents.length];
@@ -62,20 +62,20 @@ export function AdminMetricGrid({
           return (
             <div
               key={item.label}
-              className="group inline-flex min-h-12 min-w-[180px] items-center gap-3 rounded-full bg-surface-container-lowest px-3.5 py-2.5 shadow-[0_10px_24px_rgba(8,32,51,0.06)] ring-1 ring-[rgba(66,71,80,0.08)]"
+              className="group inline-flex min-h-11 min-w-[160px] items-center gap-2.5 rounded-[1rem] bg-surface-container-lowest px-3 py-2 shadow-[0_8px_20px_rgba(8,32,51,0.05)] ring-1 ring-[rgba(66,71,80,0.08)]"
             >
-              <div className={`grid size-8 shrink-0 place-items-center rounded-full ring-1 transition ${accent}`}>
-                <Icon className="size-4" aria-hidden="true" />
+              <div className={`grid size-7 shrink-0 place-items-center rounded-xl ring-1 transition ${accent}`}>
+                <Icon className="size-3.5" aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <p className="truncate text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   {item.label}
                 </p>
                 <div className="flex min-w-0 items-baseline gap-2">
-                  <p className="tabular-nums truncate font-display text-lg font-semibold leading-none text-foreground">
+                  <p className="tabular-nums truncate font-display text-base font-semibold leading-none text-foreground">
                     {item.value}
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">{item.meta}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{item.meta}</p>
                 </div>
               </div>
             </div>

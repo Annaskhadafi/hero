@@ -1,15 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import {
   Table,
   TableBody,
@@ -48,31 +41,6 @@ function formatSeverity(value: string) {
 }
 
 export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
-  const [keyword, setKeyword] = useState("");
-  const [severity, setSeverity] = useState("all");
-
-  const filtered = useMemo(() => {
-    const query = keyword.trim().toLowerCase();
-
-    return logs.filter((log) => {
-      const haystack = [
-        log.action,
-        log.entityType,
-        log.entityLabel,
-        log.description,
-        log.actorName ?? "",
-        log.actorEmail ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      const matchesKeyword = !query || haystack.includes(query);
-      const matchesSeverity = severity === "all" || log.severity === severity;
-
-      return matchesKeyword && matchesSeverity;
-    });
-  }, [keyword, logs, severity]);
-
   return (
     <div className="space-y-4">
       <MinimalTableShell
@@ -80,17 +48,15 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
         fileName="security-audit-logs"
         searchPlaceholder="Cari aktivitas, pengguna, atau deskripsi..."
         filters={
-          <Select value={severity} onValueChange={setSeverity}>
-            <SelectTrigger className="h-11 w-full rounded-[1rem] border-0 bg-white md:w-44">
-              <SelectValue placeholder="Tingkat Risiko" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua tingkat</SelectItem>
-              <SelectItem value="info">Info</SelectItem>
-              <SelectItem value="medium">Sedang</SelectItem>
-              <SelectItem value="high">Tinggi</SelectItem>
-            </SelectContent>
-          </Select>
+          <TableMultiFilter
+            label="tingkat risiko"
+            filterKey="severity"
+            options={[
+              { value: "info", label: "Info" },
+              { value: "medium", label: "Sedang" },
+              { value: "high", label: "Tinggi" },
+            ]}
+          />
         }
       >
         <Table>
@@ -105,8 +71,12 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((log) => (
-              <TableRow key={log.id} data-date-value={log.createdAt.toISOString()}>
+            {logs.map((log) => (
+              <TableRow
+                key={log.id}
+                data-date-value={log.createdAt.toISOString()}
+                data-filter-severity={log.severity}
+              >
                 <TableCell>
                   <Badge variant="secondary" className="rounded-full">
                     {formatAuditValue(log.action)}

@@ -122,6 +122,45 @@ function normalizeFilterValue(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase()
 }
 
+function normalizeCellText(value: string | null | undefined) {
+  return value?.replace(/\s+/g, " ").trim() ?? ""
+}
+
+function parseSortableNumber(value: string) {
+  if (!/\d/.test(value)) {
+    return null
+  }
+
+  const normalized = value
+    .replace(/\s/g, "")
+    .replace(/[^0-9,.-]/g, "")
+    .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".")
+
+  if (!normalized || normalized === "-" || normalized === "." || normalized === "-.") {
+    return null
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function compareCellValues(leftValue: string, rightValue: string) {
+  const leftDate = parseTableDate(leftValue)
+  const rightDate = parseTableDate(rightValue)
+  if (leftDate && rightDate) {
+    return leftDate.getTime() - rightDate.getTime()
+  }
+
+  const leftNumber = parseSortableNumber(leftValue)
+  const rightNumber = parseSortableNumber(rightValue)
+  if (leftNumber != null && rightNumber != null) {
+    return leftNumber - rightNumber
+  }
+
+  return leftValue.localeCompare(rightValue, "id", { numeric: true, sensitivity: "base" })
+}
+
 function matchesDataFilter(row: HTMLTableRowElement, key: string, expectedValue: string) {
   if (!expectedValue) {
     return true
@@ -143,6 +182,14 @@ function matchesDataFilter(row: HTMLTableRowElement, key: string, expectedValue:
   }
 
   return normalizedExpectedValues.some((expected) => normalizedActualValues.includes(expected))
+}
+
+function normalizeImportKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "field"
 }
 
 function parseNumericDate(text: string) {
@@ -363,6 +410,7 @@ type MinimalTableShellProps = {
   filters?: React.ReactNode
   actions?: React.ReactNode
   importAction?: React.ReactNode
+  showImport?: boolean
   primaryAction?: React.ReactNode
   presets?: React.ReactNode
   children: React.ReactNode
@@ -374,9 +422,20 @@ type MinimalTableShellProps = {
 
 type TableSnapshot = {
   table: Element
+  tbody: HTMLTableSectionElement
   headerCells: string[]
   emptyRows: HTMLTableRowElement[]
   dataRows: HTMLTableRowElement[]
+}
+
+function getHeaderLabel(cell: HTMLTableCellElement) {
+  const clone = cell.cloneNode(true)
+  if (!(clone instanceof HTMLElement)) {
+    return cell.textContent?.replace(/\s+/g, " ").trim() ?? ""
+  }
+
+  clone.querySelectorAll("[data-sort-indicator-id]").forEach((node) => node.remove())
+  return clone.textContent?.replace(/\s+/g, " ").trim() ?? ""
 }
 
 export function MinimalTableShell({
@@ -388,6 +447,7 @@ export function MinimalTableShell({
   filters,
   actions,
   importAction,
+  showImport = true,
   primaryAction,
   presets,
   children,
@@ -407,6 +467,19 @@ export function MinimalTableShell({
   const [pageSize, setPageSize] = React.useState(10)
   const [sortColumnIndex, setSortColumnIndex] = React.useState<number | null>(null)
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc")
+  const sortColumnIndexRef = React.useRef<number | null>(null)
+  const sortDirectionRef = React.useRef<"asc" | "desc">("asc")
+  const [importFields, setImportFields] = React.useState<Array<{ key: string; label: string; required?: boolean }>>([
+    { key: "primary", label: "Kolom utama", required: true },
+  ])
+
+  React.useEffect(() => {
+    sortColumnIndexRef.current = sortColumnIndex
+  }, [sortColumnIndex])
+
+  React.useEffect(() => {
+    sortDirectionRef.current = sortDirection
+  }, [sortDirection])
 
   const isDateHeader = React.useEffectEvent((value: string) =>
     /\b(date|tanggal|time|waktu|created|updated|submitted|deadline|expiry|expired|reported|event time|join)\b/i.test(value),
@@ -440,9 +513,13 @@ export function MinimalTableShell({
       return null
     }
 
+    const tbody = table.querySelector("tbody")
+    if (!(tbody instanceof HTMLTableSectionElement)) {
+      return null
+    }
+
     const headerCells = Array.from(table.querySelectorAll("thead th"))
-      .map((cell) => cell.textContent?.replace(/\s+/g, " ").trim() ?? "")
-      .filter(Boolean)
+      .map((cell) => getHeaderLabel(cell as HTMLTableCellElement))
 
     const bodyRows = Array.from(table.querySelectorAll("tbody tr")) as HTMLTableRowElement[]
     const emptyRows = bodyRows.filter((row) => {
@@ -451,7 +528,7 @@ export function MinimalTableShell({
     })
     const dataRows = bodyRows.filter((row) => !emptyRows.includes(row))
 
-    return { table, headerCells, emptyRows, dataRows }
+    return { table, tbody, headerCells, emptyRows, dataRows }
   })
 
   const wireSortableHeaders = React.useEffectEvent(() => {
@@ -462,34 +539,53 @@ export function MinimalTableShell({
 
     const headers = Array.from(snapshot.table.querySelectorAll("thead th")) as HTMLTableCellElement[]
     headers.forEach((header, index) => {
-      if (header.dataset.sortReady === "true") {
-        return
-      }
+      if (header.dataset.sortReady !== "true") {
+        header.dataset.sortReady = "true"
+        header.tabIndex = 0
+        header.style.cursor = "pointer"
+        header.title = "Sort table"
 
-      header.dataset.sortReady = "true"
-      header.tabIndex = 0
-      header.style.cursor = "pointer"
-      header.title = "Sort table"
+        const handleSort = () => {
+          const currentIndex = sortColumnIndexRef.current
+          const currentDirection = sortDirectionRef.current
 
-      const handleSort = () => {
-        setSortColumnIndex((current) => {
-          if (current === index) {
-            setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"))
-            return current
+          if (currentIndex === index) {
+            setSortDirection(currentDirection === "asc" ? "desc" : "asc")
+            return
           }
 
+          setSortColumnIndex(index)
           setSortDirection("asc")
-          return index
+        }
+
+        header.addEventListener("click", handleSort)
+        header.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            handleSort()
+          }
         })
       }
 
-      header.addEventListener("click", handleSort)
-      header.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault()
-          handleSort()
-        }
-      })
+      const indicatorId = `table-sort-indicator-${index}`
+      let indicator = header.querySelector<HTMLElement>(`[data-sort-indicator-id="${indicatorId}"]`)
+      if (!indicator) {
+        indicator = document.createElement("span")
+        indicator.dataset.sortIndicatorId = indicatorId
+        indicator.className = "ml-2 inline-flex min-w-3.5 justify-center align-middle text-[10px] font-semibold text-muted-foreground"
+        indicator.textContent = "↕"
+        header.appendChild(indicator)
+      }
+
+      if (sortColumnIndex === index) {
+        header.setAttribute("aria-sort", sortDirection === "asc" ? "ascending" : "descending")
+        indicator.className = "ml-2 inline-flex min-w-3.5 justify-center align-middle text-[10px] font-semibold text-foreground"
+        indicator.textContent = sortDirection === "asc" ? "↑" : "↓"
+      } else {
+        header.setAttribute("aria-sort", "none")
+        indicator.className = "ml-2 inline-flex min-w-3.5 justify-center align-middle text-[10px] font-semibold text-muted-foreground"
+        indicator.textContent = "↕"
+      }
     })
   })
 
@@ -497,6 +593,22 @@ export function MinimalTableShell({
     const snapshot = getTableSnapshot()
     if (!snapshot) {
       return
+    }
+
+    const nextImportFields = snapshot.headerCells
+      .filter((header) => header && !/^(action|aksi)$/i.test(header))
+      .map((header, index) => ({
+        key: normalizeImportKey(header),
+        label: header,
+        required: index === 0,
+      }))
+
+    if (nextImportFields.length > 0) {
+      setImportFields((current) => {
+        const currentSignature = current.map((field) => `${field.key}:${field.label}:${field.required ? "1" : "0"}`).join("|")
+        const nextSignature = nextImportFields.map((field) => `${field.key}:${field.label}:${field.required ? "1" : "0"}`).join("|")
+        return currentSignature === nextSignature ? current : nextImportFields
+      })
     }
 
     const dateFilterActive = supportsDateFilter(snapshot)
@@ -528,14 +640,9 @@ export function MinimalTableShell({
     const sortedRows = [...matchedRows]
     if (sortColumnIndex != null) {
       sortedRows.sort((left, right) => {
-        const leftText = left.cells[sortColumnIndex]?.textContent?.replace(/\s+/g, " ").trim() ?? ""
-        const rightText = right.cells[sortColumnIndex]?.textContent?.replace(/\s+/g, " ").trim() ?? ""
-        const leftNumber = Number(leftText.replace(/[^0-9.-]/g, ""))
-        const rightNumber = Number(rightText.replace(/[^0-9.-]/g, ""))
-        const result =
-          Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
-            ? leftNumber - rightNumber
-            : leftText.localeCompare(rightText, "id", { numeric: true, sensitivity: "base" })
+        const leftText = normalizeCellText(left.cells[sortColumnIndex]?.textContent)
+        const rightText = normalizeCellText(right.cells[sortColumnIndex]?.textContent)
+        const result = compareCellValues(leftText, rightText)
 
         return sortDirection === "asc" ? result : -result
       })
@@ -546,7 +653,8 @@ export function MinimalTableShell({
     const nextPageIndex = nextFilteredCount === 0 ? 0 : Math.min(pageIndex, nextPageCount - 1)
     const pageStart = nextPageIndex * pageSize
     const pageEnd = pageStart + pageSize
-    const visibleRows = new Set(sortedRows.slice(pageStart, pageEnd))
+    const pagedRows = sortedRows.slice(pageStart, pageEnd)
+    const visibleRows = new Set(pagedRows)
 
     if (nextPageIndex !== pageIndex) {
       setPageIndex(nextPageIndex)
@@ -561,6 +669,13 @@ export function MinimalTableShell({
     snapshot.emptyRows.forEach((row) => {
       row.toggleAttribute("hidden", snapshot.dataRows.length > 0)
     })
+
+    // Reorder DOM rows to match active sort + pagination.
+    if (pagedRows.length > 0) {
+      for (const row of pagedRows) {
+        snapshot.tbody.appendChild(row)
+      }
+    }
 
     setTotalCount(snapshot.dataRows.length)
     setFilteredCount(nextFilteredCount)
@@ -629,6 +744,8 @@ export function MinimalTableShell({
   const handleReset = React.useCallback(() => {
     setQuery("")
     setDateRange(undefined)
+    setSortColumnIndex(null)
+    setSortDirection("asc")
 
     const filterControls = Array.from(
       shellRef.current?.parentElement?.querySelectorAll<HTMLSelectElement | HTMLInputElement | HTMLTextAreaElement>("[data-table-filter-key]") ?? [],
@@ -641,6 +758,8 @@ export function MinimalTableShell({
         control.value = ""
       }
     })
+
+    window.dispatchEvent(new CustomEvent("hero-table-reset-filters"))
   }, [])
 
   const exportVisibleTable = React.useCallback(
@@ -678,7 +797,7 @@ export function MinimalTableShell({
         </div>
       ) : null}
 
-      <div className="rounded-lg bg-surface-container-low p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+      <div className="rounded-[1rem] border border-border/70 bg-white p-2.5 shadow-sm">
         <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
           <div className="flex min-w-max flex-1 items-center gap-2">
             {searchEnabled ? (
@@ -688,7 +807,7 @@ export function MinimalTableShell({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={searchPlaceholder ?? `Search ${label}...`}
-                  className="h-9 rounded-xl border-0 bg-surface-container-lowest pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                  className="h-9 rounded-lg border-border/70 bg-muted/30 pl-9 text-[13px] shadow-none"
                 />
               </div>
             ) : null}
@@ -699,7 +818,7 @@ export function MinimalTableShell({
               <Button
                 variant="ghost"
                 onClick={handleReset}
-                className="h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal text-muted-foreground"
+                className="h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal text-muted-foreground hover:bg-muted/50"
               >
                 <IconRotate className="size-4" />
                 Reset
@@ -709,18 +828,16 @@ export function MinimalTableShell({
 
           <div className="flex min-w-max items-center gap-2">
             {actions}
-            <div aria-label="Import data">
-              {importAction ?? (
-                <AdminImportDialog
-                  title={`Import ${label}`}
-                  fields={[
-                    { key: "primary", label: "Kolom utama", required: true },
-                    { key: "status", label: "Status" },
-                    { key: "category", label: "Kategori" },
-                  ]}
-                />
-              )}
-            </div>
+            {showImport ? (
+              <div aria-label="Import data">
+                {importAction ?? (
+                  <AdminImportDialog
+                    title={`Import ${label}`}
+                    fields={importFields}
+                  />
+                )}
+              </div>
+            ) : null}
             <Button
               variant="outline"
               onClick={() => exportVisibleTable()}
@@ -736,7 +853,7 @@ export function MinimalTableShell({
 
       <div
         className={cn(
-          "flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-lowest px-3 py-2.5 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between",
+          "flex flex-col gap-2 rounded-[0.95rem] border border-border/70 bg-white px-3 py-2.5 text-sm text-muted-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between",
           summaryClassName,
         )}
       >
@@ -754,13 +871,13 @@ export function MinimalTableShell({
       </div>
 
       {filteredCount > 0 ? (
-        <div className="flex flex-col gap-2 rounded-[0.95rem] bg-surface-container-low px-3 py-2.5 text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 rounded-[0.95rem] border border-border/70 bg-white px-3 py-2.5 text-sm text-muted-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <span>Rows</span>
             <select
               value={pageSize}
               onChange={(event) => setPageSize(Number(event.target.value))}
-              className="h-8 rounded-lg border-0 bg-surface-container-lowest px-2 text-[13px] text-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              className="h-8 rounded-lg border border-border/70 bg-muted/30 px-2 text-[13px] text-foreground shadow-none"
             >
               {[10, 20, 50, 100].map((size) => (
                 <option key={size} value={size}>
@@ -779,7 +896,7 @@ export function MinimalTableShell({
               size="sm"
               disabled={pageIndex === 0}
               onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-              className="h-8 rounded-lg border-0 bg-surface-container-lowest px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              className="h-8 rounded-lg border border-border/70 bg-white px-2 text-[13px] shadow-none"
             >
               <IconChevronLeft className="size-4" />
               Prev
@@ -790,7 +907,7 @@ export function MinimalTableShell({
               size="sm"
               disabled={pageIndex >= totalPages - 1}
               onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
-              className="h-8 rounded-lg border-0 bg-surface-container-lowest px-2 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              className="h-8 rounded-lg border border-border/70 bg-white px-2 text-[13px] shadow-none"
             >
               Next
               <IconChevronRight className="size-4" />
@@ -802,7 +919,7 @@ export function MinimalTableShell({
       <div ref={shellRef} className="space-y-3">
         {children}
         {showNoResults ? (
-          <div className="rounded-[1.1rem] bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+          <div className="rounded-[1.1rem] border border-border/70 bg-white px-4 py-8 text-center text-sm text-muted-foreground shadow-sm">
             Tidak ada data yang cocok dengan filter table ini.
           </div>
         ) : null}
