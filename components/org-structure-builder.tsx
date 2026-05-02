@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Pencil, Plus, Search, Trash2, ChevronDown, ChevronRight, User, ChevronUp } from "lucide-react";
+import { AlertCircle, Pencil, Plus, Search, Trash2, ChevronDown, ChevronRight, User, ChevronUp, ArrowUpToLine, Check } from "lucide-react";
 import { toast } from "sonner";
 import type { MasterDepartment, MasterPosition, MasterSite, OrgStructure } from "@/lib/master-data";
 import { manageOrgStructureAction, type MasterDataActionState } from "@/app/dashboard/master-data/actions";
@@ -624,12 +624,12 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
 
                 <div className="flex items-center justify-between mt-1">
                   {depth > 0 ? (
-                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => updateNode(node.id, { parentNodeId: null })}>
-                      Jadikan Utama
+                    <Button type="button" variant="ghost" size="icon" onClick={() => updateNode(node.id, { parentNodeId: null })} aria-label="Jadikan Utama">
+                      <ArrowUpToLine className="size-4" />
                     </Button>
                   ) : <div />}
-                  <Button type="button" size="sm" className="h-7 text-xs bg-[#3b82f6] hover:bg-[#2563eb]" onClick={() => setEditingNodeId(null)}>
-                    Selesai
+                  <Button type="button" variant="ghost" size="icon" onClick={() => setEditingNodeId(null)} aria-label="Selesai">
+                    <Check className="size-4" />
                   </Button>
                 </div>
               </div>

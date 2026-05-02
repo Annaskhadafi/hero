@@ -11,7 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, Check, Trash2 } from "lucide-react";
 import {
   manageAttendanceRecordAction,
   manageDailyReportAction,
@@ -371,15 +371,15 @@ export function RowStatusDeleteActions({
             </option>
           ))}
         </select>
-        <Button type="submit" size="sm" variant="outline" className="h-9 rounded-lg px-3">
-          Update
+        <Button variant="ghost" size="icon" aria-label="Update status" type="submit" className="h-9 rounded-lg px-3">
+          <Check className="size-4" />
         </Button>
       </form>
       <form action={formAction}>
         <input type="hidden" name="intent" value="delete" />
         <input type="hidden" name="id" value={id} />
-        <Button type="submit" size="sm" variant="outline" className="h-9 rounded-lg px-3 text-red-600">
-          {deleteLabel}
+        <Button type="submit" size="icon" variant="ghost" className="h-9 rounded-lg px-3 text-red-600" aria-label="Hapus">
+          <Trash2 className="size-4" />
         </Button>
       </form>
     </div>
@@ -400,19 +400,26 @@ function RowEditShell({
   const formAction = action as unknown as NativeFormAction;
 
   return (
-    <details className="min-w-[280px] rounded-lg border border-input bg-background p-3">
-      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-normal text-muted-foreground">
-        {title}
-      </summary>
-      <form action={formAction} className="mt-3 grid gap-3">
-        <input type="hidden" name="intent" value="update" />
-        <input type="hidden" name="id" value={id} />
-        {children}
-        <Button type="submit" size="sm" className="h-9 w-fit rounded-lg px-3">
-          Simpan Detail
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={title}>
+          <Pencil className="size-4" />
         </Button>
-      </form>
-    </details>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form action={formAction} className="mt-3 grid gap-3">
+          <input type="hidden" name="intent" value="update" />
+          <input type="hidden" name="id" value={id} />
+          {children}
+          <Button type="submit" size="sm" className="h-9 w-fit rounded-lg px-3">
+            Simpan Detail
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -420,13 +427,27 @@ function PointDeleteAction({ id }: { id: number }) {
   const formAction = managePointEventAction as unknown as NativeFormAction;
 
   return (
-    <form action={formAction}>
-      <input type="hidden" name="intent" value="delete" />
-      <input type="hidden" name="id" value={id} />
-      <Button type="submit" size="sm" variant="outline" className="h-9 rounded-lg px-3 text-red-600">
-        Hapus
-      </Button>
-    </form>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="text-red-600" aria-label="Hapus">
+          <Trash2 className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Hapus</DialogTitle>
+        </DialogHeader>
+        <form action={formAction} className="mt-3 grid gap-3">
+          <input type="hidden" name="intent" value="delete" />
+          <input type="hidden" name="id" value={id} />
+          <div className="flex justify-end">
+            <Button type="submit" size="sm" variant="outline" className="h-9 rounded-lg px-3 text-red-600">
+              Hapus
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

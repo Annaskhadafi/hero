@@ -27,13 +27,13 @@ import {
   IconChevronsLeft,
   IconChevronsRight,
   IconCircleCheckFilled,
-  IconDotsVertical,
   IconGripVertical,
   IconLayoutColumns,
   IconLoader,
   IconPlus,
   IconTrendingUp,
 } from "@tabler/icons-react"
+import { Pencil, Copy, Star, Trash2 } from "lucide-react"
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -288,25 +288,20 @@ const columns: ColumnDef<z.infer<typeof schema>>[] = [
   {
     id: "actions",
     cell: () => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="data-[state=open]:bg-muted text-muted-foreground flex size-8"
-            size="icon"
-          >
-            <IconDotsVertical />
-            <span className="sr-only">Open menu</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-32">
-          <DropdownMenuItem>Edit</DropdownMenuItem>
-          <DropdownMenuItem>Make a copy</DropdownMenuItem>
-          <DropdownMenuItem>Favorite</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" className="size-8" aria-label="Edit">
+          <Pencil className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" aria-label="Copy">
+          <Copy className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" aria-label="Favorite">
+          <Star className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="size-8" aria-label="Delete">
+          <Trash2 className="size-4 text-destructive" />
+        </Button>
+      </div>
     ),
   },
 ]

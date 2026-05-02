@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation"
 import {
   IconChevronRight,
   IconCirclePlusFilled,
-  IconMail,
   type Icon,
 } from "@tabler/icons-react"
 
@@ -98,17 +97,7 @@ export function NavMain({
                   <span>Tambah Aktivitas</span>
                 </Link>
               </SidebarMenuButton>
-              <Button
-                asChild
-                size="denseIcon"
-                className="bg-surface-container-low group-data-[collapsible=icon]:opacity-0"
-                variant="outline"
-              >
-                <Link href="/dashboard/approval">
-                  <IconMail />
-                  <span className="sr-only">Approval</span>
-                </Link>
-              </Button>
+
             </SidebarMenuItem>
           </SidebarMenu>
         ) : null}

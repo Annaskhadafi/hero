@@ -129,7 +129,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
-      <head suppressHydrationWarning>
+      <head>
         <script
           id="strip-extension-hydration-attrs"
           dangerouslySetInnerHTML={{ __html: stripExtensionHydrationAttrs }}

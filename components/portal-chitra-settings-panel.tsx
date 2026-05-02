@@ -244,9 +244,8 @@ export function PortalChitraSettingsPanel({
               </div>
 
               <div className="flex flex-wrap items-start gap-2 xl:justify-end">
-                <Button variant="outline" onClick={() => openEditDialog(app)}>
+                <Button variant="ghost" size="icon" onClick={() => openEditDialog(app)} aria-label="Edit">
                   <Edit3 className="size-4" />
-                  Edit
                 </Button>
                 <form action={deleteFormAction}>
                   <input type="hidden" name="id" value={app.id} />

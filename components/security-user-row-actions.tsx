@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Eye, Pencil, ShieldBan, Trash2 } from "lucide-react";
+import { Eye, Pencil, ShieldBan, Trash2, Save, UserCog, Key, Ban } from "lucide-react";
 import {
   manageSecurityUserAction,
   type AdminMutationState,
@@ -440,8 +440,8 @@ export function SecurityUserRowActions({
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <SubmitButton>Simpan Profil</SubmitButton>
+                <div className="flex justify-end">
+                <SubmitButton><Save className="size-4 mr-2" />Simpan Profil</SubmitButton>
               </div>
             </form>
 
@@ -469,7 +469,7 @@ export function SecurityUserRowActions({
                   </Select>
                 </div>
                 <div className="flex justify-end">
-                  <SubmitButton>Ganti Peran</SubmitButton>
+                  <SubmitButton><UserCog className="size-4 mr-2" />Ganti Peran</SubmitButton>
                 </div>
               </form>
 
@@ -489,7 +489,7 @@ export function SecurityUserRowActions({
                   />
                 </label>
                 <div className="flex justify-end">
-                  <SubmitButton>Reset Password</SubmitButton>
+                  <SubmitButton><Key className="size-4 mr-2" />Reset Password</SubmitButton>
                 </div>
               </form>
             </div>
@@ -506,7 +506,7 @@ export function SecurityUserRowActions({
                   Menonaktifkan akses login dan mengakhiri sesi aktif pengguna.
                 </p>
                 <div className="flex justify-end">
-                  <SubmitButton variant="outline">Nonaktifkan Pengguna</SubmitButton>
+                  <SubmitButton variant="outline"><Ban className="size-4 mr-2" />Nonaktifkan Pengguna</SubmitButton>
                 </div>
               </form>
 
@@ -521,7 +521,7 @@ export function SecurityUserRowActions({
                   Hapus pengguna dari daftar karyawan dan akun login terkait.
                 </p>
                 <div className="flex justify-end">
-                  <SubmitButton variant="destructive">Hapus Pengguna</SubmitButton>
+                  <SubmitButton variant="destructive"><Trash2 className="size-4 mr-2" />Hapus Pengguna</SubmitButton>
                 </div>
               </form>
             </div>

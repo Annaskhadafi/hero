@@ -466,9 +466,8 @@ export function ApprovalMatrixManager({
                 </div>
                 <div className="flex items-center gap-2">
                   {draftMatrix.id ? (
-                    <Button type="button" variant="outline" onClick={handleDelete} disabled={isSubmitting}>
-                      <Trash2 className="mr-2 size-4" />
-                      Hapus
+                    <Button type="button" variant="ghost" size="icon" onClick={handleDelete} disabled={isSubmitting} aria-label="Hapus" className="text-red-600">
+                      <Trash2 className="size-4" />
                     </Button>
                   ) : null}
                   <Button type="button" onClick={handleSave} disabled={isSubmitting} className="bg-[#0f766e] hover:bg-[#115e59]">
