@@ -1,0 +1,142 @@
+﻿╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                    DATABASE MIGRATION - MANUAL INSTRUCTIONS                 ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✅ MIGRATION VERIFIED SAFE
+
+  ✓ No DROP TABLE
+  ✓ No DELETE FROM
+  ✓ No TRUNCATE
+  ✓ Only adds new structures (tables, columns, indexes)
+  ✓ Duplicate emails renamed (not deleted)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📝 STEP-BY-STEP INSTRUCTIONS
+
+1. Open Terminal/PowerShell
+
+2. Navigate to project directory:
+   cd "D:\[01] PROJECT\HERO"
+
+3. (OPTIONAL) Backup database first:
+   pg_dump -U postgres -d hero_db > backup_20260503.sql
+
+4. Run migration:
+   psql -U postgres -d hero_db -f db\migrations\add_user_constraints.sql
+
+   Or if using Drizzle:
+   npx drizzle-kit push:pg
+
+5. Verify migration success:
+   psql -U postgres -d hero_db
+
+   Then run these queries:
+
+   -- Check new tables
+   SELECT table_name FROM information_schema.tables 
+   WHERE table_name LIKE ''hero_user_%'';
+
+   -- Check new columns
+   SELECT column_name FROM information_schema.columns 
+   WHERE table_name = ''hero_employees'' 
+   AND column_name IN (''deleted_at'', ''email_verified'', ''last_login_at'');
+
+   -- Check indexes
+   SELECT indexname FROM pg_indexes 
+   WHERE tablename IN (''hero_employees'', ''auth_user'') 
+   AND indexname LIKE ''%email%'';
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 WHAT WILL BE CREATED
+
+📊 New Tables (4):
+  • hero_user_import_history       - Track all imports
+  • hero_user_activity_log          - Track user activity
+  • hero_user_groups                - User groups/teams
+  • hero_user_group_memberships     - Group membership
+
+📝 New Columns on hero_employees (11):
+  • deleted_at                      - Soft delete timestamp
+  • email_verified                  - Email verification status
+  • email_verification_token        - Verification token
+  • email_verification_expires_at   - Token expiry
+  • password_reset_at               - Last password reset
+  • password_reset_by               - Who reset password
+  • last_login_at                   - Last login timestamp
+  • failed_login_attempts           - Failed login count
+  • locked_until                    - Account lockout expiry
+  • invitation_token                - Invitation token
+  • invitation_expires_at           - Invitation expiry
+  • invitation_accepted_at          - Invitation acceptance
+
+🔍 New Indexes (2):
+  • hero_employees_email_unique_idx - Unique email (case-insensitive)
+  • auth_user_email_unique_idx      - Unique auth email
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ EXPECTED WARNINGS (SAFE TO IGNORE)
+
+  • "relation already exists" - If tables/columns already exist
+  • "index already exists" - If indexes already created
+  • These are normal with IF NOT EXISTS clauses
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ AFTER MIGRATION SUCCESS
+
+1. Start dev server:
+   npm run dev
+
+2. Go to: http://localhost:3000/dashboard/security/users
+
+3. Test features:
+   ✓ Select users with checkboxes
+   ✓ Click "Bulk Actions" button
+   ✓ Try bulk activate/ban
+   ✓ Edit a user and reset password
+   ✓ Edit a user and change role
+   ✓ Check audit logs in database:
+     SELECT * FROM hero_audit_logs ORDER BY created_at DESC LIMIT 10;
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 TROUBLESHOOTING
+
+If migration fails:
+
+1. Check PostgreSQL is running:
+   pg_isready
+
+2. Check database exists:
+   psql -U postgres -l | findstr hero_db
+
+3. Check connection:
+   psql -U postgres -d hero_db -c "SELECT 1;"
+
+4. If duplicate email error:
+   - Migration will auto-rename duplicates
+   - Check renamed emails: SELECT email FROM hero_employees WHERE email LIKE ''%.dup%'';
+   - Manually fix duplicates later
+
+5. If permission error:
+   - Run as database owner
+   - Or grant permissions: GRANT ALL ON DATABASE hero_db TO your_user;
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📍 MIGRATION FILE LOCATION
+
+D:\[01] PROJECT\HERO\db\migrations\add_user_constraints.sql
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ READY TO RUN!
+
+Migration is 100% safe - no data will be deleted.
+Run the command above to complete the integration.
+

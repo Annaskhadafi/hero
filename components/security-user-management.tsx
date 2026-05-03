@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useActionState,
@@ -78,6 +78,8 @@ import {
 } from "@/lib/security-user-import";
 import { cn } from "@/lib/utils";
 
+import { SecurityUserBulkActions } from "@/components/security-user-bulk-actions";
+
 const INITIAL_IMPORT_STATE: ImportUsersActionState = {
   status: "idle",
   message: "",
@@ -91,7 +93,7 @@ function getUniqueOptions(values: string[]) {
 
 function toHeaderPreview(mapping: UserImportMapping) {
   return USER_IMPORT_FIELDS.map(
-    (field) => `${field.label}: ${mapping[field.key] || "belum dipilih"}`,
+    (field) => `${field.label}: ${mapping[field.key] || "belum dipilih"}`
   ).join("\n");
 }
 
@@ -148,6 +150,7 @@ function MultiSelectDropdown({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredOptions = options.filter((option) =>
@@ -513,7 +516,7 @@ export function SecurityUserManagement({
                                       key={`${index}-${header}`}
                                       className="text-xs"
                                     >
-                                      {record[header] || "—"}
+                                      {record[header] || "â€”"}
                                     </TableCell>
                                   ))}
                                 </TableRow>
@@ -756,7 +759,13 @@ export function SecurityUserManagement({
       ) : null}
 
       <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
-        <MinimalTableShell
+              <SecurityUserBulkActions
+        selectedIds={selectedIds}
+        onClearSelection={() => setSelectedIds([])}
+        roleOptions={roleOptions}
+      />
+
+      <MinimalTableShell
           title="Direktori Pengguna"
           description="Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
           label="users"
@@ -812,6 +821,14 @@ export function SecurityUserManagement({
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={selectedIds.length === filteredUsers.length && filteredUsers.length > 0}
+                      onCheckedChange={(checked) => {
+                        setSelectedIds(checked ? filteredUsers.map((u: any) => u.id) : []);
+                      }}
+                    />
+                  </TableHead>
                   <TableHead className="w-[320px]">Name</TableHead>
                   <TableHead>SN</TableHead>
                   <TableHead>Department</TableHead>
@@ -827,6 +844,17 @@ export function SecurityUserManagement({
                 {filteredUsers.length > 0 ? (
                   filteredUsers.map((user) => (
                     <TableRow key={user.id} className="hover:bg-white/55">
+                      <TableCell className="py-3.5">
+                        <Checkbox
+                          checked={selectedIds.includes(user.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedIds(checked 
+                              ? [...selectedIds, user.id]
+                              : selectedIds.filter((id: number) => id !== user.id)
+                            );
+                          }}
+                        />
+                      </TableCell>
                       <TableCell className="py-3.5">
                         <div className="flex items-center gap-3">
                           <Avatar className="size-11 rounded-xl shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
@@ -863,16 +891,16 @@ export function SecurityUserManagement({
                         </Badge>
                       </TableCell>
                       <TableCell className="py-3.5 text-sm text-foreground/85">
-                        {user.section || "—"}
+                        {user.section || "â€”"}
                       </TableCell>
                       <TableCell className="py-3.5 text-sm text-foreground/85">
-                        {user.employeeStatusType || "—"}
+                        {user.employeeStatusType || "â€”"}
                       </TableCell>
                       <TableCell className="py-3.5 text-sm text-foreground/85">
                         {user.accessRole}
                       </TableCell>
                       <TableCell className="py-3.5 text-sm text-foreground/85">
-                        {user.workLocation || "—"}
+                        {user.workLocation || "â€”"}
                       </TableCell>
                       <TableCell className="py-3.5">
                         <Badge
@@ -965,3 +993,8 @@ export function SecurityUserManagement({
     </AdminPageShell>
   );
 }
+
+
+
+
+

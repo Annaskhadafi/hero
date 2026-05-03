@@ -1,95 +1,131 @@
-# Codeguide Starter Fullstack
+# HERO - Hub for Employee Reporting & Operations
 
-A modern web application starter template built with Next.js 15, featuring authentication, database integration, and dark mode support.
+A modern, full-stack employee management and HR operations platform built with Next.js 15, TypeScript, and PostgreSQL.
 
-## Tech Stack
+## 🚀 Quick Start
 
-- **Framework:** [Next.js 15](https://nextjs.org/) (App Router with Turbopack)
-- **Language:** TypeScript
+```bash
+# Clone the repository
+git clone https://github.com/Annaskhadafi/hero.git
+cd hero
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+
+# Start database
+npm run db:up
+
+# Initialize database schema
+npm run db:push
+
+# Start development server
+npm run dev
+```
+
+Visit [http://localhost:3000](http://localhost:3000)
+
+## 📚 Documentation
+
+- **[Development Setup Guide](docs/DEVELOPMENT_SETUP.md)** - Complete onboarding guide for new engineers
+- **[Git Workflow](docs/GIT_WORKFLOW.md)** - Branching strategy, commit conventions, and PR process
+- **[Testing Strategy](docs/TESTING_STRATEGY.md)** - Testing philosophy, tools, and best practices
+- **[API Documentation](docs/)** - API endpoints and usage (coming soon)
+
+## 🛠️ Tech Stack
+
+### Core
+- **Framework:** [Next.js 15](https://nextjs.org/) with App Router and Turbopack
+- **Language:** TypeScript 5
+- **Database:** PostgreSQL with [Drizzle ORM](https://orm.drizzle.team/)
 - **Authentication:** [Better Auth](https://better-auth.com/)
-- **Database:** [Drizzle ORM](https://orm.drizzle.team/) with PostgreSQL
+
+### UI & Styling
 - **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
-- **UI Components:** [shadcn/ui](https://ui.shadcn.com/) (New York style)
-- **Theme System:** [next-themes](https://github.com/pacocoursey/next-themes)
-- **Icons:** [Lucide React](https://lucide.dev/)
+- **Components:** [shadcn/ui](https://ui.shadcn.com/) (40+ components)
+- **Icons:** [Lucide React](https://lucide.dev/), [Tabler Icons](https://tabler.io/icons)
+- **Theme:** Dark mode with [next-themes](https://github.com/pacocoursey/next-themes)
 
-## Prerequisites
+### Development Tools
+- **Linting:** ESLint with Next.js config
+- **Formatting:** Prettier with Tailwind plugin
+- **Testing:** Jest + React Testing Library
+- **Type Checking:** TypeScript strict mode
+- **Containerization:** Docker & Docker Compose
 
-Before you begin, ensure you have the following:
-- Node.js 18+ installed
-- Docker and Docker Compose (for database setup)
-- Generated project documents from [CodeGuide](https://codeguide.dev/) for best development experience
+## 📋 Available Scripts
 
-## Getting Started
+### Development
+```bash
+npm run dev              # Start development server
+npm run build            # Build for production
+npm start                # Start production server
+npm run lint             # Run ESLint
+npm run lint:fix         # Fix ESLint errors
+npm run format           # Format code with Prettier
+npm run type-check       # Run TypeScript type checking
+npm run validate         # Run all checks (format, lint, type-check, test)
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd codeguide-starter-fullstack
-   ```
+### Testing
+```bash
+npm test                 # Run tests
+npm run test:watch       # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   ```
+### Database
+```bash
+npm run db:up            # Start PostgreSQL container
+npm run db:down          # Stop PostgreSQL container
+npm run db:push          # Push schema changes
+npm run db:generate      # Generate migrations
+npm run db:migrate       # Run migrations
+npm run db:studio        # Open Drizzle Studio
+npm run db:reset         # Reset database
+```
 
-3. **Environment Variables Setup**
-   - Copy the `.env.example` file to `.env`:
-     ```bash
-     cp .env.example .env
-     ```
-   - The default values work with Docker setup, modify as needed
+### Docker
+```bash
+npm run docker:build     # Build Docker image
+npm run docker:up        # Start full stack
+npm run docker:down      # Stop containers
+npm run docker:logs      # View logs
+```
 
-4. **Start the development server**
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   # or
-   pnpm dev
-   ```
+## 🏗️ Project Structure
 
-5. **Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.**
+```
+hero/
+├── app/                    # Next.js app router
+│   ├── api/               # API routes
+│   ├── dashboard/         # Dashboard pages
+│   └── (auth)/            # Authentication pages
+├── components/            # React components
+│   └── ui/               # shadcn/ui components
+├── db/                    # Database configuration
+│   ├── schema/           # Drizzle schemas
+│   └── migrations/       # Database migrations
+├── lib/                   # Utility functions
+│   ├── auth.ts           # Authentication config
+│   └── utils.ts          # Helper functions
+├── hooks/                 # Custom React hooks
+├── public/               # Static assets
+├── scripts/              # Utility scripts
+├── tests/                # Test files
+├── docs/                 # Documentation
+└── docker/               # Docker configuration
+```
 
-## Configuration
+## 🔐 Environment Variables
 
-### Option 1: Docker Setup (Recommended)
-1. **Start PostgreSQL with Docker:**
-   ```bash
-   npm run db:up
-   ```
-   This starts PostgreSQL in a Docker container with default credentials.
-
-2. **Push database schema:**
-   ```bash
-   npm run db:push
-   ```
-
-### Option 2: Local Database Setup
-1. Create a PostgreSQL database locally
-2. Update your environment variables in `.env`:
-   ```env
-   DATABASE_URL=postgresql://username:password@localhost:5432/database_name
-   POSTGRES_DB=your_database_name
-   POSTGRES_USER=your_username
-   POSTGRES_PASSWORD=your_password
-   ```
-3. Run database migrations:
-   ```bash
-   npm run db:push
-   ```
-
-## Environment Variables
-
-Create a `.env` file in the root directory with the following variables:
+Create a `.env` file in the root directory:
 
 ```env
-# Database Configuration (defaults work with Docker)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
+# Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
 POSTGRES_DB=postgres
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
@@ -100,230 +136,158 @@ BETTER_AUTH_URL=http://localhost:3000
 NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 ```
 
-## Features
+See `.env.example` for all available options.
 
-- 🔐 Authentication with Better Auth (email/password)
-- 🗄️ PostgreSQL Database with Drizzle ORM
-- 🎨 40+ shadcn/ui components (New York style)
-- 🌙 Dark mode with system preference detection
-- 🚀 App Router with Server Components and Turbopack
-- 📱 Responsive design with TailwindCSS v4
-- 🎯 Type-safe database operations
-- 🔒 Modern authentication patterns
-- 🐳 Full Docker support with multi-stage builds
-- 🚀 Production-ready deployment configuration
+## 🧪 Testing
 
-## Project Structure
+We follow a comprehensive testing strategy:
 
-```
-codeguide-starter-fullstack/
-├── app/                        # Next.js app router pages
-│   ├── globals.css            # Global styles with dark mode
-│   ├── layout.tsx             # Root layout with providers
-│   └── page.tsx               # Main page
-├── components/                # React components
-│   └── ui/                    # shadcn/ui components (40+)
-├── db/                        # Database configuration
-│   ├── index.ts              # Database connection
-│   └── schema/               # Database schemas
-├── docker/                    # Docker configuration
-│   └── postgres/             # PostgreSQL initialization
-├── hooks/                     # Custom React hooks
-├── lib/                       # Utility functions
-│   ├── auth.ts               # Better Auth configuration
-│   └── utils.ts              # General utilities
-├── auth-schema.ts            # Authentication schema
-├── docker-compose.yml        # Docker services configuration
-├── Dockerfile                # Application container definition
-├── drizzle.config.ts         # Drizzle configuration
-└── components.json           # shadcn/ui configuration
-```
-
-## Database Integration
-
-This starter includes modern database integration:
-
-- **Drizzle ORM** for type-safe database operations
-- **PostgreSQL** as the database provider
-- **Better Auth** integration with Drizzle adapter
-- **Database migrations** with Drizzle Kit
-
-## Development Commands
-
-### Application
-- `npm run dev` - Start development server with Turbopack
-- `npm run build` - Build for production with Turbopack
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
-
-### Database
-- `npm run db:up` - Start PostgreSQL in Docker
-- `npm run db:down` - Stop PostgreSQL container
-- `npm run db:dev` - Start development PostgreSQL (port 5433)
-- `npm run db:dev-down` - Stop development PostgreSQL
-- `npm run db:push` - Push schema changes to database
-- `npm run db:generate` - Generate Drizzle migration files
-- `npm run db:studio` - Open Drizzle Studio (database GUI)
-- `npm run db:reset` - Reset database (drop all tables and recreate)
-
-### Styling with shadcn/ui
-- Pre-configured with 40+ shadcn/ui components in New York style
-- Components are fully customizable and use CSS variables for theming
-- Automatic dark mode support with next-themes integration
-- Add new components: `npx shadcn@latest add [component-name]`
-
-### Docker
-- `npm run docker:build` - Build application Docker image
-- `npm run docker:up` - Start full application stack (app + database)
-- `npm run docker:down` - Stop all containers
-- `npm run docker:logs` - View container logs
-- `npm run docker:clean` - Stop containers and clean up volumes
-
-## Docker Development
-
-### Quick Start with Docker
-```bash
-# Start the entire stack (recommended for new users)
-npm run docker:up
-
-# View logs
-npm run docker:logs
-
-# Stop everything
-npm run docker:down
-```
-
-### Development Workflow
-```bash
-# Option 1: Database only (develop app locally)
-npm run db:up          # Start PostgreSQL
-npm run dev            # Start Next.js development server
-
-# Option 2: Full Docker stack
-npm run docker:up      # Start both app and database
-```
-
-### Docker Services
-
-The `docker-compose.yml` includes:
-
-- **postgres**: Main PostgreSQL database (port 5432)
-- **postgres-dev**: Development database (port 5433) - use `--profile dev`
-- **app**: Next.js application container (port 3000)
-
-### Docker Profiles
+- **Unit Tests** - Functions, utilities, and components
+- **Integration Tests** - API routes and database operations
+- **Coverage Target** - 70% minimum, 90% for critical paths
 
 ```bash
-# Start development database on port 5433
-docker-compose --profile dev up postgres-dev -d
+# Run all tests
+npm test
 
-# Or use the npm script
-npm run db:dev
+# Watch mode for development
+npm run test:watch
+
+# Generate coverage report
+npm run test:coverage
 ```
 
-## Deployment
+See [Testing Strategy](docs/TESTING_STRATEGY.md) for detailed guidelines.
 
-### Production Deployment
+## 🔄 Git Workflow
 
-#### Option 1: Docker Compose (VPS/Server)
+We use a simplified Git Flow with conventional commits:
 
-1. **Clone and setup on your server:**
+### Branch Types
+- `main` - Production-ready code
+- `feature/*` - New features
+- `fix/*` - Bug fixes
+- `hotfix/*` - Urgent production fixes
+- `docs/*` - Documentation updates
+
+### Commit Convention
+```bash
+feat(scope): add new feature
+fix(scope): resolve bug
+docs: update documentation
+```
+
+See [Git Workflow](docs/GIT_WORKFLOW.md) for complete guidelines.
+
+## 🚢 Deployment
+
+### CI/CD Pipeline
+
+GitHub Actions automatically:
+- Runs linting and type checking
+- Executes test suite
+- Builds the application
+- Deploys to production (on merge to main)
+
+### Deployment Options
+
+1. **Vercel** (Recommended)
    ```bash
-   git clone <your-repo>
-   cd codeguide-starter-fullstack
-   cp .env.example .env
+   vercel
    ```
 
-2. **Configure environment variables:**
+2. **Docker**
    ```bash
-   # Edit .env with production values
-   DATABASE_URL=postgresql://postgres:your_secure_password@postgres:5432/postgres
-   POSTGRES_DB=postgres
-   POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=your_secure_password
-   BETTER_AUTH_SECRET=your-very-secure-secret-key
-   BETTER_AUTH_URL=https://yourdomain.com
-   NEXT_PUBLIC_BETTER_AUTH_URL=https://yourdomain.com
+   docker build -t hero .
+   docker run -p 3000:3000 hero
    ```
 
-3. **Deploy:**
+3. **VPS/Server**
    ```bash
    npm run docker:up
    ```
 
-#### Option 2: Container Registry (AWS/GCP/Azure)
+See [Development Setup](docs/DEVELOPMENT_SETUP.md) for detailed deployment instructions.
 
-1. **Build and push image:**
-   ```bash
-   # Build the image
-   docker build -t your-registry/codeguide-starter-fullstack:latest .
-   
-   # Push to registry
-   docker push your-registry/codeguide-starter-fullstack:latest
-   ```
+## 🤝 Contributing
 
-2. **Deploy using your cloud provider's container service**
+We welcome contributions! Please follow these steps:
 
-#### Option 3: Vercel + External Database
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run validation (`npm run validate`)
+5. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
-1. **Deploy to Vercel:**
-   ```bash
-   npm i -g vercel
-   vercel
-   ```
+See [Git Workflow](docs/GIT_WORKFLOW.md) for detailed contribution guidelines.
 
-2. **Add environment variables in Vercel dashboard:**
-   - `DATABASE_URL`: Your managed PostgreSQL connection string
-   - `BETTER_AUTH_SECRET`: Generate a secure secret
-   - `BETTER_AUTH_URL`: Your Vercel deployment URL
+## 📝 Code Quality
 
-3. **Setup database:**
-   ```bash
-   # Push schema to your managed database
-   npm run db:push
-   ```
+### Automated Checks
 
-### Environment Variables for Production
+All code must pass:
+- ✅ ESLint (no errors)
+- ✅ Prettier (formatted)
+- ✅ TypeScript (no type errors)
+- ✅ Tests (passing with coverage)
 
-```env
-# Required for production
-DATABASE_URL=postgresql://user:password@host:port/database
-BETTER_AUTH_SECRET=generate-a-very-secure-32-character-key
-BETTER_AUTH_URL=https://yourdomain.com
-
-# Optional optimizations
-NODE_ENV=production
+Run all checks:
+```bash
+npm run validate
 ```
 
-### Production Considerations
+### Pre-commit Checklist
 
-- **Database**: Use managed PostgreSQL (AWS RDS, Google Cloud SQL, etc.)
-- **Security**: Generate strong secrets, use HTTPS
-- **Performance**: Enable Next.js output: 'standalone' for smaller containers
-- **Monitoring**: Add logging and health checks
-- **Backup**: Regular database backups
-- **SSL**: Terminate SSL at load balancer or reverse proxy
+- [ ] Code is formatted
+- [ ] No linting errors
+- [ ] TypeScript compiles
+- [ ] Tests pass
+- [ ] No console.log statements
+- [ ] Documentation updated
 
-### Health Checks
+## 🔒 Security
 
-The application includes basic health checks. You can extend them:
+- Never commit `.env` files or secrets
+- Use environment variables for sensitive data
+- Keep dependencies updated (`npm audit`)
+- Follow security best practices
+- Report vulnerabilities privately
 
-```dockerfile
-# In Dockerfile, add health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
-```
+## 📄 License
 
-## AI Coding Agent Integration
+This project is private and proprietary.
 
-This starter is optimized for AI coding agents:
+## 👥 Team
 
-- **Clear file structure** and naming conventions
-- **TypeScript integration** with proper type definitions
-- **Modern authentication** patterns
-- **Database schema** examples
+- **Development Team** - Full-stack development
+- **QA Team** - Testing and quality assurance
+- **DevOps Team** - Infrastructure and deployment
 
-## Contributing
+## 📞 Support
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-# codeguide-starter-fullstack
+- **Documentation** - Check the [docs](docs/) folder
+- **Issues** - [GitHub Issues](https://github.com/Annaskhadafi/hero/issues)
+- **Discussions** - [GitHub Discussions](https://github.com/Annaskhadafi/hero/discussions)
+
+## 🗺️ Roadmap
+
+- [x] Core authentication system
+- [x] User management
+- [x] Department and organization structure
+- [x] Role-based access control
+- [ ] Advanced reporting
+- [ ] Mobile application
+- [ ] API v2
+- [ ] Internationalization
+
+## 📊 Project Status
+
+- **Version:** 0.1.0
+- **Status:** Active Development
+- **Last Updated:** 2026-05-03
+
+---
+
+Built with ❤️ by the HERO Team

@@ -1,0 +1,125 @@
+﻿
+export async function bulkUserActionsAction(
+  formData: FormData,
+): Promise<AdminMutationState> {
+  try {
+    const action = formData.get("action") as string;
+    const employeeIds = JSON.parse(formData.get("employeeIds") as string) as number[];
+
+    if (!employeeIds || employeeIds.length === 0) {
+      return { status: "error", message: "No users selected" };
+    }
+
+    const actorEmail = await getCurrentActorEmail();
+
+    if (action === "activate") {
+      await db
+        .update(employees)
+        .set({
+          isActive: true,
+          employmentStatus: "active",
+        })
+        .where(inArray(employees.id, employeeIds));
+
+      await logAuditEvent({
+        actorEmail,
+        action: "user.bulk_activated",
+        entityType: "user",
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk activated ${employeeIds.length} users: ${employeeIds.join(", ")}`,
+        severity: "info",
+      });
+
+      revalidateAdminSurfaces();
+      return {
+        status: "success",
+        message: `Successfully activated ${employeeIds.length} users`,
+      };
+    }
+
+    if (action === "ban") {
+      await db
+        .update(employees)
+        .set({
+          isActive: false,
+          employmentStatus: "inactive",
+        })
+        .where(inArray(employees.id, employeeIds));
+
+      // Kill sessions for banned users
+      const bannedUsers = await db
+        .select({ authUserId: employees.authUserId })
+        .from(employees)
+        .where(inArray(employees.id, employeeIds));
+
+      const authUserIds = bannedUsers
+        .map((u) => u.authUserId)
+        .filter((id): id is string => id !== null);
+
+      if (authUserIds.length > 0) {
+        await db.delete(session).where(inArray(session.userId, authUserIds));
+      }
+
+      await logAuditEvent({
+        actorEmail,
+        action: "user.bulk_banned",
+        entityType: "user",
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk banned ${employeeIds.length} users: ${employeeIds.join(", ")}`,
+        severity: "warning",
+      });
+
+      revalidateAdminSurfaces();
+      return {
+        status: "success",
+        message: `Successfully banned ${employeeIds.length} users`,
+      };
+    }
+
+    if (action === "delete") {
+      // Get auth user IDs before deleting
+      const usersToDelete = await db
+        .select({ authUserId: employees.authUserId })
+        .from(employees)
+        .where(inArray(employees.id, employeeIds));
+
+      const authUserIds = usersToDelete
+        .map((u) => u.authUserId)
+        .filter((id): id is string => id !== null);
+
+      // Delete auth users
+      if (authUserIds.length > 0) {
+        await db.delete(user).where(inArray(user.id, authUserIds));
+      }
+
+      // Delete employees
+      await db.delete(employees).where(inArray(employees.id, employeeIds));
+
+      await logAuditEvent({
+        actorEmail,
+        action: "user.bulk_deleted",
+        entityType: "user",
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk deleted ${employeeIds.length} users: ${employeeIds.join(", ")}`,
+        severity: "critical",
+      });
+
+      revalidateAdminSurfaces();
+      return {
+        status: "success",
+        message: `Successfully deleted ${employeeIds.length} users`,
+      };
+    }
+
+    return { status: "error", message: "Invalid bulk action" };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to perform bulk action",
+    };
+  }
+}
+

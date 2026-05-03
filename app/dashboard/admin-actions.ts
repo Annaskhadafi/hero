@@ -1,7 +1,25 @@
-"use server";
+﻿"use server";
+
+import { logAuditEvent } from "@/lib/audit-logger";
+import { 
+  notifyPasswordReset, 
+  notifyRoleChanged, 
+  notifyAccountBanned 
+} from "@/lib/user-notifications";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+
+async function getCurrentActorEmail(): Promise<string | undefined> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    return session?.user?.email ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
@@ -396,7 +414,7 @@ function getPointsForPriority(priority: string) {
 function getPeriodLabel(date: Date) {
   const month = date.toLocaleString("en-US", { month: "long" });
   const week = Math.max(1, Math.ceil(date.getDate() / 7));
-  return `${month} ${date.getFullYear()} • Week ${week}`;
+  return `${month} ${date.getFullYear()} â€¢ Week ${week}`;
 }
 
 function getPendingActivityStatus(level: number) {
@@ -821,7 +839,7 @@ async function applyApprovalDecision(params: {
             sourceType: "activity",
             sourceId: approval.activityId,
             category: "Daily Activity Approval",
-            label: `${approval.activityTitle} • Approved`,
+            label: `${approval.activityTitle} â€¢ Approved`,
             points: netPoints,
             balanceAfter: updatedBalance,
             metadata: JSON.stringify({
@@ -1224,7 +1242,7 @@ export async function createActivityAction(formData: FormData) {
     await tx.insert(pointEvents).values({
       employeeId: employee.id,
       category: "Activity Input",
-      label: `${payload.activityType} • ${payload.unitNumber}`,
+      label: `${payload.activityType} â€¢ ${payload.unitNumber}`,
       points,
     });
 
@@ -1853,6 +1871,7 @@ export async function manageSecurityUserAction(
         name: employees.name,
         email: employees.email,
         siteId: employees.siteId,
+        accessRole: employees.accessRole,
       })
       .from(employees)
       .where(eq(employees.id, payload.employeeId))
@@ -1961,6 +1980,24 @@ export async function manageSecurityUserAction(
         await db.delete(session).where(eq(session.userId, employee.authUserId));
       }
 
+      // Audit log
+      const actorEmail = await getCurrentActorEmail();
+      await logAuditEvent({
+        actorEmail,
+        action: "user.banned",
+        entityType: "user",
+        entityLabel: employee.name,
+        description: `Banned user ${employee.name} (${employee.email})`,
+        severity: "critical",
+      });
+
+      // Notify user
+      await notifyAccountBanned({
+        employeeId: employee.id,
+        employeeName: employee.name,
+        bannedByName: "Admin",
+      });
+
       revalidateAdminSurfaces();
       return { status: "success", message: "User banned successfully." };
     }
@@ -1971,6 +2008,17 @@ export async function manageSecurityUserAction(
       }
 
       await db.delete(employees).where(eq(employees.id, employee.id));
+
+      // Audit log
+      const actorEmail = await getCurrentActorEmail();
+      await logAuditEvent({
+        actorEmail,
+        action: "user.deleted",
+        entityType: "user",
+        entityLabel: employee.name,
+        description: `Deleted user ${employee.name} (${employee.email})`,
+        severity: "critical",
+      });
 
       revalidateAdminSurfaces();
       return { status: "success", message: "User deleted successfully." };
@@ -1995,6 +2043,31 @@ export async function manageSecurityUserAction(
         .update(employees)
         .set({ accessRole: role.name })
         .where(eq(employees.id, employee.id));
+
+      // Kill session so user must re-login with new role
+      if (employee.authUserId) {
+        await db.delete(session).where(eq(session.userId, employee.authUserId));
+      }
+
+      // Audit log
+      const actorEmail = await getCurrentActorEmail();
+      await logAuditEvent({
+        actorEmail,
+        action: "user.role_changed",
+        entityType: "user",
+        entityLabel: employee.name,
+        description: `Changed role from ${employee.accessRole} to ${role.name}`,
+        severity: "warning",
+      });
+
+      // Notify user
+      await notifyRoleChanged({
+        employeeId: employee.id,
+        employeeName: employee.name,
+        oldRole: employee.accessRole,
+        newRole: role.name,
+        changedByName: "Admin",
+      });
 
       revalidateAdminSurfaces();
       return { status: "success", message: "User role changed successfully." };
@@ -2046,6 +2119,24 @@ export async function manageSecurityUserAction(
       }
 
       await db.delete(session).where(eq(session.userId, authUserId));
+
+      // Audit log
+      const actorEmail = await getCurrentActorEmail();
+      await logAuditEvent({
+        actorEmail,
+        action: "user.password_reset",
+        entityType: "user",
+        entityLabel: employee.name,
+        description: `Reset password for ${employee.name} (${employee.email})`,
+        severity: "warning",
+      });
+
+      // Notify user
+      await notifyPasswordReset({
+        employeeId: employee.id,
+        employeeName: employee.name,
+        resetByName: "Admin",
+      });
 
       revalidateAdminSurfaces();
       return { status: "success", message: "User password changed successfully." };
@@ -2553,7 +2644,7 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
       await notifyEmployeesForHseAlert({
         siteId: payload.siteId,
         title: `Incident HSE: ${payload.title}`,
-        body: `${payload.type} · ${payload.impact.slice(0, 96)}`,
+        body: `${payload.type} Â· ${payload.impact.slice(0, 96)}`,
         eventType: "hse_incident_created",
       });
 
@@ -3180,7 +3271,7 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
       await notifyEmployeeForPointUpdate({
         employeeId: payload.employeeId,
         title: payload.points > 0 ? "Points added" : "Points adjusted",
-        body: `${payload.label} • ${payload.points > 0 ? "+" : ""}${payload.points} poin.`,
+        body: `${payload.label} â€¢ ${payload.points > 0 ? "+" : ""}${payload.points} poin.`,
       });
 
       revalidateOperationalPages("/dashboard/leaderboard");
@@ -3613,7 +3704,7 @@ const manageBadgeSchema = z.object({
   id: z.coerce.number().optional(),
   name: z.string().min(1, "Nama badge harus diisi"),
   description: z.string().optional().default(""),
-  iconUrl: z.string().optional().default("🏆"), // Support lucide/emoji text if no actual file
+  iconUrl: z.string().optional().default("ðŸ†"), // Support lucide/emoji text if no actual file
   colorCode: z.string().min(1, "Kode warna harus diisi"),
   autoAssignRule: z.enum(["none", "points_threshold"]).default("none"),
   autoAssignThreshold: z.coerce.number().default(0),
@@ -3683,3 +3774,129 @@ export async function manageBadgeAction(
     return { status: "error", message: "Gagal menyimpan badge." };
   }
 }
+
+
+
+
+
+
+export async function bulkUserActionsAction(
+  formData: FormData,
+): Promise<AdminMutationState> {
+  try {
+    const action = formData.get("action") as string;
+    const employeeIds = JSON.parse(formData.get("employeeIds") as string) as number[];
+
+    if (!employeeIds || employeeIds.length === 0) {
+      return { status: "error", message: "No users selected" };
+    }
+
+    const actorEmail = await getCurrentActorEmail();
+
+    if (action === "activate") {
+      await db
+        .update(employees)
+        .set({
+          isActive: true,
+          employmentStatus: "active",
+        })
+        .where(inArray(employees.id, employeeIds));
+
+      await logAuditEvent({
+        actorEmail,
+        action: "user.bulk_activated",
+        entityType: "user",
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk activated ${employeeIds.length} users: ${employeeIds.join(", ")}`,
+        severity: "info",
+      });
+
+      revalidateAdminSurfaces();
+      return {
+        status: "success",
+        message: `Successfully activated ${employeeIds.length} users`,
+      };
+    }
+
+    if (action === "ban") {
+      await db
+        .update(employees)
+        .set({
+          isActive: false,
+          employmentStatus: "inactive",
+        })
+        .where(inArray(employees.id, employeeIds));
+
+      const bannedUsers = await db
+        .select({ authUserId: employees.authUserId })
+        .from(employees)
+        .where(inArray(employees.id, employeeIds));
+
+      const authUserIds = bannedUsers
+        .map((u) => u.authUserId)
+        .filter((id): id is string => id !== null);
+
+      if (authUserIds.length > 0) {
+        await db.delete(session).where(inArray(session.userId, authUserIds));
+      }
+
+      await logAuditEvent({
+        actorEmail,
+        action: "user.bulk_banned",
+        entityType: "user",
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk banned ${employeeIds.length} users: ${employeeIds.join(", ")}`,
+        severity: "warning",
+      });
+
+      revalidateAdminSurfaces();
+      return {
+        status: "success",
+        message: `Successfully banned ${employeeIds.length} users`,
+      };
+    }
+
+    if (action === "delete") {
+      const usersToDelete = await db
+        .select({ authUserId: employees.authUserId })
+        .from(employees)
+        .where(inArray(employees.id, employeeIds));
+
+      const authUserIds = usersToDelete
+        .map((u) => u.authUserId)
+        .filter((id): id is string => id !== null);
+
+      if (authUserIds.length > 0) {
+        await db.delete(user).where(inArray(user.id, authUserIds));
+      }
+
+      await db.delete(employees).where(inArray(employees.id, employeeIds));
+
+      await logAuditEvent({
+        actorEmail,
+        action: "user.bulk_deleted",
+        entityType: "user",
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk deleted ${employeeIds.length} users: ${employeeIds.join(", ")}`,
+        severity: "critical",
+      });
+
+      revalidateAdminSurfaces();
+      return {
+        status: "success",
+        message: `Successfully deleted ${employeeIds.length} users`,
+      };
+    }
+
+    return { status: "error", message: "Invalid bulk action" };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to perform bulk action",
+    };
+  }
+}
+

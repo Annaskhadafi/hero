@@ -1,0 +1,18 @@
+﻿// Add these imports at the top of admin-actions.ts
+import { logAuditEvent } from "@/lib/audit-logger";
+import { 
+  notifyPasswordReset, 
+  notifyRoleChanged, 
+  notifyAccountBanned 
+} from "@/lib/user-notifications";
+import { auth } from "@/lib/auth";
+
+// Helper to get current actor email from session
+async function getCurrentActorEmail(): Promise<string | undefined> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    return session?.user?.email ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
