@@ -815,6 +815,8 @@ export function SecurityUserManagement({
                   <TableHead className="w-[320px]">Name</TableHead>
                   <TableHead>SN</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Section</TableHead>
+                  <TableHead>Sub Section</TableHead>
                   <TableHead>Peran</TableHead>
                   <TableHead>Lokasi Site</TableHead>
                   <TableHead>Tipe Status</TableHead>
@@ -859,6 +861,12 @@ export function SecurityUserManagement({
                         >
                           {user.department}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                        {user.section || "—"}
+                      </TableCell>
+                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                        {user.employeeStatusType || "—"}
                       </TableCell>
                       <TableCell className="py-3.5 text-sm text-foreground/85">
                         {user.accessRole}
