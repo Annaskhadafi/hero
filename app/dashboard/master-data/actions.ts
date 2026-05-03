@@ -214,6 +214,44 @@ function now() {
   return new Date();
 }
 
+export async function manageEmployeeAssignmentAction(
+  _state: MasterDataActionState,
+  formData: FormData
+): Promise<MasterDataActionState> {
+  const raw = Object.fromEntries(formData.entries());
+
+  const parsed = z.object({
+    employeeId: z.coerce.number().int().positive(),
+    departmentId: z.preprocess(
+      (v) => (v === "" || v === null || v === undefined ? null : Number(v)),
+      z.number().int().positive().nullable()
+    ),
+    sectionId: z.preprocess(
+      (v) => (v === "" || v === null || v === undefined ? null : Number(v)),
+      z.number().int().positive().nullable()
+    ),
+  }).safeParse(raw);
+
+  if (!parsed.success) {
+    return { status: "error", message: "Validation failed", errors: parsed.error.flatten().fieldErrors };
+  }
+
+  const { employeeId, departmentId, sectionId } = parsed.data;
+
+  try {
+    await db
+      .update(employees)
+      .set({ departmentId: departmentId || null, sectionId: sectionId || null })
+      .where(eq(employees.id, employeeId));
+
+    revalidatePath("/dashboard/master-data");
+    return { status: "success", message: "Employee assignment updated" };
+  } catch (error) {
+    console.error("Employee assignment error:", error);
+    return { status: "error", message: "An error occurred while processing your request" };
+  }
+}
+
 function parseOptionalTimestamp(value?: string | null) {
   if (!value?.trim()) {
     return null;

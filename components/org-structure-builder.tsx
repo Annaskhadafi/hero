@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Pencil, Plus, Search, Trash2, ChevronDown, ChevronRight, User, ChevronUp, ArrowUpToLine, Check } from "lucide-react";
 import { toast } from "sonner";
+import { DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from "@dnd-kit/core";
 import type { MasterDepartment, MasterPosition, MasterSite, OrgStructure } from "@/lib/master-data";
-import { manageOrgStructureAction, type MasterDataActionState } from "@/app/dashboard/master-data/actions";
+import { manageOrgStructureAction, manageEmployeeAssignmentAction, type MasterDataActionState } from "@/app/dashboard/master-data/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,15 +56,65 @@ type Props = {
   employees: any[];
 };
 
+function DraggableEmployee({ employee }: { employee: any }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `employee-${employee.id}`,
+    data: { type: "employee", employeeId: employee.id, employeeName: employee.name },
+  });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : "auto",
+  } : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={style}
+      className="flex cursor-grab items-center gap-2 rounded-lg bg-surface-container-lowest px-2 py-1.5 text-[12px] hover:bg-[#eff6ff] active:cursor-grabbing"
+    >
+      <User className="size-3 text-[#64748b]" />
+      <span className="truncate font-medium text-[#1e293b]">{employee.name}</span>
+      {employee.department && (
+        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{employee.department}</span>
+      )}
+    </div>
+  );
+}
+
+function DroppableNode({ node, children }: { node: any; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `node-${node.id}`,
+    data: { type: "node", nodeId: node.id },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-lg transition-colors ${isOver ? "bg-[#dbeafe] ring-2 ring-[#3b82f6]" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function OrgStructureBuilder({ orgStructures, positions, departments, sections, sites, employees }: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
+  // New: Section filter cascades from department
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"tree" | "department">("tree");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState<OrgStructure | null>(null);
   const [selectedStructureId, setSelectedStructureId] = useState(orgStructures[0]?.id.toString() ?? "");
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [draggedNodeId, setDraggedNodeId] = useState<number | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [collapsedNodes, setCollapsedNodes] = useState<Set<number>>(new Set());
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null);
   const [canvasNodes, setCanvasNodes] = useState<OrgStructure["nodes"]>(orgStructures[0]?.nodes ?? []);
@@ -90,6 +141,11 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
     isActive: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAssignmentDialogOpen, setIsAssignmentDialogOpen] = useState(false);
+  const [assignEmployeeId, setAssignEmployeeId] = useState<string>("");
+  const [assignDepartmentId, setAssignDepartmentId] = useState<string>("");
+  const [assignSectionId, setAssignSectionId] = useState<string>("");
+  const [assignmentState, assignmentFormAction] = useActionState(manageEmployeeAssignmentAction, INITIAL_ACTION_STATE);
 
   const selectedStructure = orgStructures.find((org) => org.id.toString() === selectedStructureId) ?? null;
 
@@ -100,6 +156,17 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
     }
   }, [orgStructures, selectedStructure]);
 
+  useEffect(() => {
+    if (assignmentState?.status === "success") {
+      toast.success(assignmentState.message);
+      setIsAssignmentDialogOpen(false);
+      setAssignEmployeeId("");
+      setAssignDepartmentId("");
+      setAssignSectionId("");
+      router.refresh();
+    }
+  }, [assignmentState]);
+
   const filteredOrgStructures = orgStructures.filter(
     (org) => org.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -108,11 +175,21 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
     ? employees 
     : employees.filter((emp) => emp.departmentId?.toString() === selectedDepartmentId);
 
+  // Cascading sections based on department selection
+  const filteredSections = selectedDepartmentId === "all" 
+    ? sections 
+    : sections.filter((sec: any) => sec.departmentId?.toString() === selectedDepartmentId);
+
   const filteredPositions = selectedDepartmentId === "all"
     ? positions
     : positions.filter((pos) => pos.departmentId?.toString() === selectedDepartmentId);
 
-  const masterSections = sections || [];
+  // Cascade: filter employees by section as well, when a section is selected
+  const sectionFilteredEmployees = selectedSectionId === "all"
+    ? filteredEmployees
+    : filteredEmployees.filter((emp: any) => emp.sectionId?.toString() === selectedSectionId);
+
+  const masterSections = (sections || []).filter(
     (org) =>
       org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       org.scopeType.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -255,6 +332,50 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
       router.refresh();
     } else {
       toast.error(result.message);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!selectedStructure) {
+      toast.error("Pilih struktur terlebih dahulu.");
+      return;
+    }
+    setIsExportingPdf(true);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const element = document.getElementById("org-chart-canvas");
+      if (!element) {
+        toast.error("Canvas tidak ditemukan");
+        return;
+      }
+      const canvas = await html2canvas(element, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const imageDataUrl = canvas.toDataURL("image/png");
+      const response = await fetch(`/api/org-structure/${selectedStructure.id}/pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl, structureName: selectedStructure.name }),
+      });
+      if (!response.ok) throw new Error("PDF generation failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedStructure.name}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("PDF exported");
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -454,6 +575,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
             </>
           )}
 
+          <DroppableNode node={node}>
           <div
             draggable={!isEditing}
             onDragStart={(e) => {
@@ -689,6 +811,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
               </div>
             )}
           </div>
+          </DroppableNode>
 
           {hasChildren && !isCollapsed && (
             <div className="relative mt-8 w-full">
@@ -705,8 +828,8 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
 
   const renderDepartmentView = () => {
     const deptGroups = departments.map((dept) => {
-      const deptSections = masterSections.filter((s) => s.departmentId === dept.id);
-      const deptEmployees = filteredEmployees.filter((e) => e.departmentId === dept.id);
+      const deptSections = filteredSections.filter((s) => s.departmentId === dept.id);
+      const deptEmployees = sectionFilteredEmployees.filter((e) => e.departmentId === dept.id);
       
       return (
         <div key={dept.id} className="mb-6 rounded-2xl border border-border bg-white p-4">
@@ -723,30 +846,33 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
           
           {deptSections.length > 0 && (
             <div className="space-y-3">
-              {deptSections.map((section) => {
-                const sectionEmployees = deptEmployees.filter((e) => e.sectionId === section.id);
-                return (
-                  <div key={section.id} className="rounded-xl border border-border/50 bg-surface-container-low p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <h4 className="font-medium text-sm">{section.name}</h4>
-                      <Badge variant="outline" className="text-xs">{sectionEmployees.length}</Badge>
-                    </div>
-                    {sectionEmployees.length > 0 && (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {sectionEmployees.map((emp) => (
-                          <div key={emp.id} className="flex items-center gap-2 rounded-lg bg-white p-2 text-xs">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium">{emp.name}</p>
-                              <p className="truncate text-muted-foreground">{emp.jobTitle || emp.role}</p>
-                            </div>
-                          </div>
-                        ))}
+              {(() => {
+                const visibleSections = selectedSectionId === "all" ? deptSections : deptSections.filter((sec: any) => sec.id?.toString() === selectedSectionId);
+                return visibleSections.map((section) => {
+                  const sectionEmployees = deptEmployees.filter((e) => e.sectionId === section.id);
+                  return (
+                    <div key={section.id} className="rounded-xl border border-border/50 bg-surface-container-low p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <h4 className="font-medium text-sm">{section.name}</h4>
+                        <Badge variant="outline" className="text-xs">{sectionEmployees.length}</Badge>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                      {sectionEmployees.length > 0 && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {sectionEmployees.map((emp) => (
+                            <div key={emp.id} className="flex items-center gap-2 rounded-lg bg-white p-2 text-xs">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-medium">{emp.name}</p>
+                                <p className="truncate text-muted-foreground">{emp.jobTitle || emp.role}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
             </div>
           )}
           
@@ -779,10 +905,19 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
             Susun struktur organisasi untuk site, departemen, atau kebutuhan operasional lain.
           </CardDescription>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-          <Plus className="mr-2 size-4" />
-          Tambah Struktur
-        </Button>
+      <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+        <Plus className="mr-2 size-4" />
+        Tambah Struktur
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleExportPdf}
+        disabled={isExportingPdf}
+        className="h-8 ml-2 text-xs"
+      >
+        {isExportingPdf ? "Exporting..." : "Export PDF"}
+      </Button>
       </CardHeader>
       <CardContent>
         <Alert className="mb-4 border-[#dbeafe] bg-[#eff6ff]">
@@ -792,82 +927,155 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
           </AlertDescription>
         </Alert>
 
-        <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
-              <Input placeholder="Cari struktur organisasi..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9" />
-            </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={(event) => setActiveDragId(event.active.id as string)}
+          onDragEnd={(event) => {
+            setActiveDragId(null);
+            const { active, over } = event;
+            if (!over || !active) return;
 
-            <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Filter by Department" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id.toString()}>
-                    {dept.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            const activeData = active.data.current;
+            const overData = over.data.current;
 
-            <div className="space-y-3 rounded-[1.2rem] bg-surface-container-low p-3">
-              <div className="mb-3 flex gap-2">
-                <Button
-                  variant={viewMode === "tree" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("tree")}
-                  className="flex-1"
-                >
-                  Tree View
-                </Button>
-                <Button
-                  variant={viewMode === "department" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("department")}
-                  className="flex-1"
-                >
-                  Department View
-                </Button>
+            if (activeData?.type === "employee" && overData?.type === "node") {
+              const employeeId = activeData.employeeId;
+              const employeeName = activeData.employeeName;
+              const nodeId = overData.nodeId;
+
+              setCanvasNodes((prev) =>
+                prev.map((n) =>
+                  n.id === nodeId
+                    ? {
+                        ...n,
+                        employeeId,
+                        employeeName,
+                        assignments: [
+                          ...n.assignments,
+                          {
+                            id: Date.now(),
+                            nodeId,
+                            employeeId,
+                            employeeName,
+                            assignmentType: "primary" as const,
+                            notes: "Penanggung jawab utama",
+                            effectiveFrom: new Date(),
+                            effectiveTo: null,
+                            isActive: true,
+                          },
+                        ],
+                      }
+                    : n
+                )
+              );
+              toast.success(`${employeeName} assigned to node`);
+            }
+          }}
+          onDragCancel={() => setActiveDragId(null)}
+        >
+          <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+                <Input placeholder="Cari struktur organisasi..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9" />
               </div>
-              {filteredOrgStructures.length > 0 ? filteredOrgStructures.map((org) => (
-                <div
-                  key={org.id}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") selectStructure(org.id.toString()); }}
-                  onClick={() => selectStructure(org.id.toString())}
-                  className={`w-full rounded-[1.05rem] px-4 py-4 text-left cursor-pointer transition ${selectedStructureId === org.id.toString() ? "bg-[#eff6ff]" : "bg-surface-container-lowest hover:bg-surface-container-highest"}`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-[#1e293b]">{org.name}</p>
-                      <p className="mt-1 text-xs text-[#64748b]">
-                        Versi {org.version} • {formatScopeType(org.scopeType)} {org.scopeValue ? `• ${org.scopeValue}` : ""}
-                      </p>
-                      <p className="mt-2 text-xs text-[#94a3b8]">{org.nodes.length} posisi</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenDialog(org); }} className="size-8 text-[#3b82f6] hover:bg-[#dbeafe]">
-                        <Pencil className="size-4" />
-                      </Button>
-                      <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDelete(org); }} className="size-8 text-[#ef4444] hover:bg-[#fee2e2]">
-                        <Trash2 className="size-4" />
-                      </Button>
+
+              <Select value={selectedDepartmentId} onValueChange={(val) => { setSelectedDepartmentId(val); setSelectedSectionId("all"); }}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter by Department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Departments</SelectItem>
+                  {departments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id.toString()}>
+                      {dept.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Section filter cascades from department */}
+              <Select value={selectedSectionId} onValueChange={setSelectedSectionId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter by Section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sections</SelectItem>
+                  {typeof filteredSections !== 'undefined' && filteredSections.map((sec: any) => (
+                    <SelectItem key={sec.id} value={sec.id.toString()}>
+                      {sec.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="space-y-3 rounded-[1.2rem] bg-surface-container-low p-3">
+                <div className="mb-3 flex gap-2">
+                  <Button
+                    variant={viewMode === "tree" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("tree")}
+                    className="flex-1"
+                  >
+                    Tree View
+                  </Button>
+                  <Button
+                    variant={viewMode === "department" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("department")}
+                    className="flex-1"
+                  >
+                    Department View
+                  </Button>
+                </div>
+                {filteredOrgStructures.length > 0 ? filteredOrgStructures.map((org) => (
+                  <div
+                    key={org.id}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") selectStructure(org.id.toString()); }}
+                    onClick={() => selectStructure(org.id.toString())}
+                    className={`w-full rounded-[1.05rem] px-4 py-4 text-left cursor-pointer transition ${selectedStructureId === org.id.toString() ? "bg-[#eff6ff]" : "bg-surface-container-lowest hover:bg-surface-container-highest"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-[#1e293b]">{org.name}</p>
+                        <p className="mt-1 text-xs text-[#64748b]">
+                          Versi {org.version} • {formatScopeType(org.scopeType)} {org.scopeValue ? `• ${org.scopeValue}` : ""}
+                        </p>
+                        <p className="mt-2 text-xs text-[#94a3b8]">{org.nodes.length} posisi</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleOpenDialog(org); }} className="size-8 text-[#3b82f6] hover:bg-[#dbeafe]">
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDelete(org); }} className="size-8 text-[#ef4444] hover:bg-[#fee2e2]">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )) : (
-                <div className="rounded-[1.05rem] bg-surface-container-lowest p-6 text-center text-sm text-muted-foreground">
-                  Belum ada struktur organisasi.
-                </div>
-              )}
-            </div>
-          </div>
+                )) : (
+                  <div className="rounded-[1.05rem] bg-surface-container-lowest p-6 text-center text-sm text-muted-foreground">
+                    Belum ada struktur organisasi.
+                  </div>
+                )}
+              </div>
 
-          <div className="rounded-[1.3rem] bg-surface-container-lowest p-4 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+              <div className="space-y-2 rounded-[1.2rem] bg-surface-container-low p-3 mt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Karyawan ({sectionFilteredEmployees.length})
+                </p>
+                <div className="max-h-[200px] space-y-1 overflow-y-auto">
+                  {sectionFilteredEmployees.map((emp: any) => (
+                    <DraggableEmployee key={emp.id} employee={emp} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.3rem] bg-surface-container-lowest p-4 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
             {selectedStructure ? (
               <div className="space-y-4">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -1003,8 +1211,19 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
                 Pilih atau buat struktur baru untuk mulai menyusun bagan organisasi.
               </div>
             )}
+            </div>
           </div>
-        </div>
+          <DragOverlay>
+            {activeDragId?.startsWith("employee-") ? (
+              <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 shadow-lg ring-1 ring-[#cbd5e1]">
+                <User className="size-4 text-[#3b82f6]" />
+                <span className="text-[13px] font-medium text-[#1e293b]">
+                  {sectionFilteredEmployees.find((e: any) => `employee-${e.id}` === activeDragId)?.name ?? ""}
+                </span>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </CardContent>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -1108,6 +1327,59 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
                 {isSubmitting ? "Menyimpan..." : editingOrg ? "Simpan Perubahan" : "Tambah Struktur"}
               </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isAssignmentDialogOpen} onOpenChange={setIsAssignmentDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Assign Employee</DialogTitle>
+            <DialogDescription>Assign karyawan ke department dan section.</DialogDescription>
+          </DialogHeader>
+          <form action={assignmentFormAction} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Karyawan</Label>
+              <Select name="employeeId" value={assignEmployeeId} onValueChange={setAssignEmployeeId}>
+                <SelectTrigger><SelectValue placeholder="Pilih karyawan" /></SelectTrigger>
+                <SelectContent>
+                  {employees.map((emp: typeof employees[number]) => (
+                    <SelectItem key={emp.id} value={emp.id.toString()}>{emp.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Department</Label>
+              <Select name="departmentId" value={assignDepartmentId} onValueChange={(v) => { setAssignDepartmentId(v); setAssignSectionId(""); }}>
+                <SelectTrigger><SelectValue placeholder="Pilih department" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {departments.map((dept: typeof departments[number]) => (
+                    <SelectItem key={dept.id} value={dept.id.toString()}>{dept.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Section</Label>
+              <Select name="sectionId" value={assignSectionId} onValueChange={setAssignSectionId}>
+                <SelectTrigger><SelectValue placeholder="Pilih section" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+              {sections
+                .filter((sec: typeof sections[number]) => (assignDepartmentId ? sec.departmentId?.toString() === assignDepartmentId : true))
+                .map((sec: typeof sections[number]) => (
+                      <SelectItem key={sec.id} value={sec.id.toString()}>{sec.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" type="button">Batal</Button>
+              </DialogClose>
+              <Button type="submit">Simpan</Button>
             </DialogFooter>
           </form>
         </DialogContent>
