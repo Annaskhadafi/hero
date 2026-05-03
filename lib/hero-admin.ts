@@ -57,6 +57,7 @@ import {
   ensureMasterCategoryTables,
   getActiveMasterCategoryOptionMap,
 } from "@/lib/master-categories";
+import { ensureDepartmentSectionSeedData } from "@/lib/org-seed-data";
 
 let seedPromise: Promise<void> | null = null;
 let governanceSeedPromise: Promise<void> | null = null;
@@ -1720,6 +1721,7 @@ export async function ensureHeroSeedData() {
     await ensureEmergencyIncidentColumns();
     await ensureTrainingRecordHistoryColumns();
     await ensureApprovalBlueprintSeedData();
+    await ensureDepartmentSectionSeedData();
   })().catch((error) => {
     seedPromise = null;
     throw error;

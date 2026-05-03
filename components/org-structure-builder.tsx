@@ -57,6 +57,8 @@ type Props = {
 export function OrgStructureBuilder({ orgStructures, positions, departments, sites, employees }: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"tree" | "department">("tree");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState<OrgStructure | null>(null);
   const [selectedStructureId, setSelectedStructureId] = useState(orgStructures[0]?.id.toString() ?? "");
@@ -98,6 +100,16 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
   }, [orgStructures, selectedStructure]);
 
   const filteredOrgStructures = orgStructures.filter(
+    (org) => org.name.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  const filteredEmployees = selectedDepartmentId === "all" 
+    ? employees 
+    : employees.filter((emp) => emp.departmentId?.toString() === selectedDepartmentId);
+
+  const filteredPositions = selectedDepartmentId === "all"
+    ? positions
+    : positions.filter((pos) => pos.departmentId?.toString() === selectedDepartmentId);
     (org) =>
       org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       org.scopeType.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -716,6 +728,20 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
               <Input placeholder="Cari struktur organisasi..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9" />
             </div>
+
+            <Select value={selectedDepartmentId} onValueChange={setSelectedDepartmentId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Filter by Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id.toString()}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <div className="space-y-3 rounded-[1.2rem] bg-surface-container-low p-3">
               {filteredOrgStructures.length > 0 ? filteredOrgStructures.map((org) => (
