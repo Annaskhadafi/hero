@@ -10,6 +10,7 @@ import {
   masterDepartments,
   masterPositions,
   masterSections,
+  masterSubSections,
   orgChartNodes,
   orgChartStructures,
   orgNodeAssignments,
@@ -34,6 +35,18 @@ export type MasterSection = {
   description: string;
   isActive: boolean;
   employeeCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MasterSubSection = {
+  id: number;
+  code: string;
+  name: string;
+  sectionId: number | null;
+  sectionName: string | null;
+  description: string;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -212,6 +225,7 @@ export async function getMasterDataPageData() {
 
   const [
     sections,
+    subSections,
     departments,
     sitesData,
     positions,
@@ -223,6 +237,7 @@ export async function getMasterDataPageData() {
   ] =
     await Promise.all([
       getMasterSections(),
+      getMasterSubSections(),
       getMasterDepartments(),
       getMasterSites(),
       getMasterPositions(),
@@ -247,6 +262,7 @@ export async function getMasterDataPageData() {
 
   return {
     sections,
+    subSections,
     departments,
     sites: sitesData,
     positions,
@@ -481,6 +497,38 @@ export async function getMasterSections(): Promise<MasterSection[]> {
     ...section,
     departmentName: section.departmentName ?? null,
     employeeCount: countMap.get(section.id) ?? 0,
+  }));
+}
+
+export async function getMasterSubSections(): Promise<MasterSubSection[]> {
+  await ensureHeroGovernanceSeedData();
+
+  const subSectionRows = await db
+    .select({
+      id: masterSubSections.id,
+      code: masterSubSections.code,
+      name: masterSubSections.name,
+      sectionId: masterSubSections.sectionId,
+      sectionName: masterSections.name,
+      departmentId: masterDepartments.id,
+      departmentName: masterDepartments.name,
+      description: masterSubSections.description,
+      isActive: masterSubSections.isActive,
+      employeeCount: sql<number>`0`,
+      createdAt: masterSubSections.createdAt,
+      updatedAt: masterSubSections.updatedAt,
+    })
+    .from(masterSubSections)
+    .leftJoin(masterSections, eq(masterSubSections.sectionId, masterSections.id))
+    .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
+    .orderBy(asc(masterSubSections.code));
+
+  return subSectionRows.map((ss) => ({
+    ...ss,
+    sectionName: ss.sectionName ?? null,
+    departmentId: ss.departmentId ?? null,
+    departmentName: ss.departmentName ?? null,
+    employeeCount: ss.employeeCount ?? 0,
   }));
 }
 

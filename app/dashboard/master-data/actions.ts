@@ -21,6 +21,7 @@ import {
   roleMenuPermissions,
   securityRoles,
   sites,
+  masterSubSections,
 } from "@/db/schema/hero";
 import { auth } from "@/lib/auth";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
@@ -62,6 +63,16 @@ const sectionSchema = z.object({
   code: z.string().trim().min(1).max(3),
   name: z.string().trim().min(1).max(100),
   departmentId: optionalPositiveIntField,
+  description: z.string().trim().max(500).optional(),
+  isActive: formBooleanField(true),
+});
+// SUB SECTION SCHEMA
+const subSectionSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveIntField,
+  code: z.string().trim().min(1).max(5),
+  name: z.string().trim().min(1).max(100),
+  sectionId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
   isActive: formBooleanField(true),
 });
@@ -843,6 +854,120 @@ export async function manageSectionAction(
     return { status: "error", message: "Invalid intent" };
   } catch (error) {
     console.error("Section action error:", error);
+    return { status: "error", message: "An error occurred while processing your request" };
+  }
+}
+
+// SUB SECTION ACTIONS
+export async function manageSubSectionAction(
+  _state: MasterDataActionState,
+  formData: FormData
+): Promise<MasterDataActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db.delete(masterSubSections).where(eq(masterSubSections.id, deletePayload.data.id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Sub section deleted successfully" };
+    } catch (error) {
+      console.error("Sub section action error:", error);
+      return { status: "error", message: "An error occurred while deleting the sub section" };
+    }
+  }
+
+  const parsed = subSectionSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Validation failed",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const { intent, id, code, name, sectionId, description, isActive } = parsed.data;
+  const normalizedCode = code.trim().toUpperCase();
+
+  try {
+    if (intent === "create") {
+      const existing = await db
+        .select({ id: masterSubSections.id })
+        .from(masterSubSections)
+        .where(eq(masterSubSections.code, normalizedCode))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return {
+          status: "error",
+          message: "Sub section code already exists",
+        };
+      }
+
+      await db.insert(masterSubSections).values({
+        code: normalizedCode,
+        name,
+        sectionId: sectionId || null,
+        description: description || "",
+        isActive,
+        createdAt: now(),
+        updatedAt: now(),
+      });
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Sub section created successfully" };
+    }
+
+    if (intent === "update") {
+      if (!id) {
+        return { status: "error", message: "ID is required for update" };
+      }
+
+      const existing = await db
+        .select({ id: masterSubSections.id })
+        .from(masterSubSections)
+        .where(and(eq(masterSubSections.code, normalizedCode), sql`${masterSubSections.id} != ${id}`))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return {
+          status: "error",
+          message: "Sub section code already exists",
+        };
+      }
+
+      await db
+        .update(masterSubSections)
+        .set({
+          code: normalizedCode,
+          name,
+          sectionId: sectionId || null,
+          description: description || "",
+          isActive,
+          updatedAt: now(),
+        })
+        .where(eq(masterSubSections.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Sub section updated successfully" };
+    }
+
+    return { status: "error", message: "Invalid intent" };
+  } catch (error) {
+    console.error("Sub section action error:", error);
     return { status: "error", message: "An error occurred while processing your request" };
   }
 }
@@ -1739,3 +1864,4 @@ export async function simulateApprovalRouteAction(formData: FormData) {
     };
   }
 }
+

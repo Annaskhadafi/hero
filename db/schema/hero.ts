@@ -33,6 +33,17 @@ export const sites = pgTable("hero_sites", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+// Sub Section belongs to a Section
+export const masterSubSections = pgTable("hero_master_sub_sections", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  sectionId: integer("section_id").references(() => masterSections.id, { onDelete: "set null" }),
+  description: text("description").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 export const employees = pgTable("hero_employees", {
   id: serial("id").primaryKey(),

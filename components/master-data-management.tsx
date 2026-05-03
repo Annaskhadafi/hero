@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3, Tags } from "lucide-react";
 import { toast } from "sonner";
-import type { ApprovalMatrix, MasterSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift, MasterCategoryOption } from "@/lib/master-data";
+import type { ApprovalMatrix, MasterSection, MasterSubSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift, MasterCategoryOption } from "@/lib/master-data";
 import {
   manageAttendanceShiftAction,
   manageMasterCategoryOptionAction,
   manageSectionAction,
+  manageSubSectionAction,
   manageDepartmentAction,
   manageSiteAction,
   managePositionAction,
@@ -55,6 +56,7 @@ import { ApprovalRouteSimulator } from "@/components/approval-route-simulator";
 
 interface MasterDataManagementProps {
   sections: MasterSection[];
+  subSections: MasterSubSection[];
   departments: MasterDepartment[];
   sites: MasterSite[];
   positions: MasterPosition[];
@@ -159,6 +161,7 @@ async function fetchIndonesiaRegionOptions(
 
 export function MasterDataManagement({
   sections,
+  subSections,
   departments,
   sites,
   positions,
@@ -190,6 +193,13 @@ export function MasterDataManagement({
             <span>Section</span>
             <Badge variant="secondary" className="ml-1 bg-[#eff6ff] text-[#3b82f6]">
               {sections.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="sub-sections" className="flex items-center gap-2">
+            <Layers className="size-4" />
+            <span>Sub Section</span>
+            <Badge variant="secondary" className="ml-1 bg-[#eff6ff] text-[#3b82f6]">
+              {subSections.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="departments" className="flex items-center gap-2">
@@ -249,6 +259,10 @@ export function MasterDataManagement({
 
         <TabsContent value="sections" className="space-y-4">
           <SectionManagement sections={sections} departments={departments} />
+        </TabsContent>
+
+        <TabsContent value="sub-sections" className="space-y-4">
+          <SubSectionManagement subSections={subSections} sections={sections} departments={departments} />
         </TabsContent>
 
         <TabsContent value="departments" className="space-y-4">
@@ -1784,6 +1798,301 @@ function SectionManagement({
               </DialogClose>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
                 {isSubmitting ? "Menyimpan..." : editingSection ? "Simpan Perubahan" : "Tambah Section"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+// SUB SECTION MANAGEMENT COMPONENT
+function SubSectionManagement({
+  subSections,
+  sections,
+  departments,
+}: {
+  subSections: MasterSubSection[];
+  sections: MasterSection[];
+  departments: MasterDepartment[];
+}) {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingSubSection, setEditingSubSection] = useState<MasterSubSection | null>(null);
+  const [formData, setFormData] = useState({
+    code: "",
+    name: "",
+    sectionId: "",
+    description: "",
+    isActive: true,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const filteredSubSections = subSections.filter(
+    (ss) =>
+      ss.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ss.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ss.sectionName ?? "").toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  const handleOpenDialog = (subSection?: MasterSubSection) => {
+    if (subSection) {
+      setEditingSubSection(subSection);
+      setFormData({
+        code: subSection.code,
+        name: subSection.name,
+        sectionId: subSection.sectionId?.toString() ?? "",
+        description: subSection.description,
+        isActive: subSection.isActive,
+      });
+    } else {
+      setEditingSubSection(null);
+      setFormData({ code: "", name: "", sectionId: "", description: "", isActive: true });
+    }
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    const form = new FormData();
+    form.append("intent", editingSubSection ? "update" : "create");
+    if (editingSubSection) form.append("id", editingSubSection.id.toString());
+    form.append("code", formData.code);
+    form.append("name", formData.name);
+    form.append("sectionId", formData.sectionId);
+    form.append("description", formData.description);
+    form.append("isActive", formData.isActive.toString());
+
+    const result = await manageSubSectionAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      setIsDialogOpen(false);
+      setEditingSubSection(null);
+      setFormData({ code: "", name: "", sectionId: "", description: "", isActive: true });
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const handleDelete = async (subSection: MasterSubSection) => {
+    if (!confirm(`Are you sure you want to delete sub section "${subSection.name}"?`)) {
+      return;
+    }
+
+    const form = new FormData();
+    form.append("intent", "delete");
+    form.append("id", subSection.id.toString());
+
+    const result = await manageSubSectionAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  return (
+    <Card className="border-[#e2e8f0]">
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Daftar Sub Section</CardTitle>
+          <CardDescription className="text-sm text-[#64748b]">
+            Sub-kelompok kerja di bawah section dalam organisasi
+          </CardDescription>
+        </div>
+        <Button
+          onClick={() => handleOpenDialog()}
+          className="bg-[#3b82f6] hover:bg-[#2563eb]"
+        >
+          <Plus className="mr-2 size-4" />
+          Tambah Sub Section
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+            <Input
+              placeholder="Cari sub section..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full max-w-sm pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-[#F5F7F9]">
+                <TableHead className="w-[100px]">Kode</TableHead>
+                <TableHead>Nama Sub Section</TableHead>
+                <TableHead>Section</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+                <TableHead className="w-[100px]">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredSubSections.length > 0 ? (
+                filteredSubSections.map((ss) => (
+                  <TableRow key={ss.id}>
+                    <TableCell className="font-mono text-sm font-medium">
+                      {ss.code}
+                    </TableCell>
+                    <TableCell className="font-medium">{ss.name}</TableCell>
+                    <TableCell>
+                      {ss.sectionName ? (
+                        <Badge variant="outline" className="bg-[#f1f5f9]">
+                          {ss.sectionName}
+                        </Badge>
+                      ) : (
+                        <span className="text-[#94a3b8]">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-[#64748b]">
+                      {ss.description || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={ss.isActive ? "default" : "secondary"}
+                        className={
+                          ss.isActive
+                            ? "bg-[#10b981] text-white"
+                            : "bg-[#cbd5e1] text-[#64748b]"
+                        }
+                      >
+                        {ss.isActive ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenDialog(ss)}
+                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(ss)}
+                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                    Tidak ada data sub section
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>{editingSubSection ? "Edit Sub Section" : "Tambah Sub Section"}</DialogTitle>
+            <DialogDescription>
+              {editingSubSection
+                ? "Ubah informasi sub section yang sudah ada"
+                : "Tambahkan sub section baru ke dalam sistem"}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="code">Kode Sub Section</Label>
+              <Input
+                id="code"
+                value={formData.code}
+                onChange={(e) =>
+                  setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 5) })
+                }
+                placeholder="e.g., HSEO, OPS1"
+                maxLength={5}
+                required
+              />
+              <p className="text-xs text-[#64748b]">Maksimal 5 karakter.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Nama Sub Section</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., HSE Officers, Operations Team A"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subsection-section">Section</Label>
+              <Select
+                value={formData.sectionId || "0"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, sectionId: value === "0" ? "" : value })
+                }
+              >
+                <SelectTrigger id="subsection-section">
+                  <SelectValue placeholder="Pilih section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">- Tidak ada -</SelectItem>
+                  {sections
+                    .filter((section) => section.isActive)
+                    .map((section) => (
+                      <SelectItem key={section.id} value={section.id.toString()}>
+                        {section.name} {section.departmentName ? `(${section.departmentName})` : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Short description of this sub section"
+                rows={3}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="isActive"
+                checked={formData.isActive}
+                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+              />
+              <Label htmlFor="isActive">Aktif</Label>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  Batal
+                </Button>
+              </DialogClose>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+                {isSubmitting ? "Menyimpan..." : editingSubSection ? "Simpan Perubahan" : "Tambah Sub Section"}
               </Button>
             </DialogFooter>
           </form>
