@@ -147,7 +147,7 @@ function RouteTemplateForm({
           defaultSectionId={template?.sectionId}
           selectClassName={selectClass}
         />
-        <FieldLabel label="Jabatan">
+        <FieldLabel label="Position">
           <select name="positionId" className={selectClass} defaultValue={template?.positionId ?? ""}>
             <option value="">Semua jabatan</option>
             {data.positions.map((position) => (
@@ -165,7 +165,7 @@ function RouteTemplateForm({
             name="description"
             defaultValue={template?.description ?? ""}
             rows={3}
-            placeholder="Deskripsi singkat route dan kapan dipakai."
+            placeholder="Short route description and when it is used."
           />
         </FieldLabel>
       </div>
@@ -199,7 +199,7 @@ function AddRouteDialog({ data }: { data: RouteBuilderData }) {
             Tambah Route Baru
           </DialogTitle>
           <DialogDescription>
-            Buat route per section, jabatan, dan shift. Setelah tersimpan, buka row route untuk tambah group dan item.
+            Create route per section, position, and shift. After saving, open route row to add group and item.
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-6 py-5">
@@ -220,7 +220,7 @@ function AddGroupDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button size="icon" className="size-11 rounded-xl" title="Tambah group">
+        <Button size="icon" className="size-11 rounded-xl" title="Add group">
           <GitBranch className="size-4" />
           <span className="sr-only">Tambah group</span>
         </Button>
@@ -304,7 +304,7 @@ function RouteGroupForm({
         <Input name="groupName" defaultValue={group?.groupName ?? ""} placeholder="Inspection / Night Shift" required />
       </FieldLabel>
       <FieldLabel label="Description">
-        <Textarea name="description" defaultValue={group?.description ?? ""} rows={3} placeholder="Deskripsi group." />
+        <Textarea name="description" defaultValue={group?.description ?? ""} rows={3} placeholder="Group description." />
       </FieldLabel>
       <CheckField name="isRequired" label="Required group" defaultChecked={group?.isRequired ?? true} />
       <Button type="submit" size="sm" className="rounded-xl">
@@ -352,7 +352,7 @@ function GroupBuilder({
             {group.groupKey}
           </span>
           <span className="mt-1 block font-display text-base font-black text-foreground">{group.groupName}</span>
-          <span className="mt-1 block text-xs text-muted-foreground">{group.description || "Tanpa deskripsi."}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{group.description || "No description."}</span>
         </span>
         <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low">
           Sort {group.sortOrder}
@@ -360,7 +360,7 @@ function GroupBuilder({
         <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low">
           {group.items.length} item
         </Badge>
-        <span className="text-sm font-semibold text-primary">Buka group</span>
+        <span className="text-sm font-semibold text-primary">Open group</span>
       </summary>
 
       <div className="space-y-4 bg-surface-container-low px-4 pb-4 pt-1">
@@ -375,7 +375,7 @@ function GroupBuilder({
                     </span>
                     <span className="mt-1 block font-semibold text-foreground">{item.itemLabel}</span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      {item.itemDescription || item.libraryName || "Tanpa deskripsi item."}
+                      {item.itemDescription || item.libraryName || "No item description."}
                     </span>
                   </span>
                   <span className="text-sm text-muted-foreground">{item.libraryCode ?? "Custom"}</span>
@@ -399,7 +399,7 @@ function GroupBuilder({
                     library={data.library}
                     selectClassName={selectClass}
                   />
-                  <DeleteForm action={manageActivityRouteItemAction} id={item.id} label="Hapus item" />
+                  <DeleteForm action={manageActivityRouteItemAction} id={item.id} label="Delete item" />
                 </div>
               </details>
             ))
@@ -430,7 +430,7 @@ function GroupBuilder({
           </summary>
           <div className="mt-4 space-y-3">
             <RouteGroupForm templateId={template.id} group={group} defaultSortOrder={group.sortOrder} />
-            <DeleteForm action={manageActivityRouteGroupAction} id={group.id} label="Hapus group" />
+            <DeleteForm action={manageActivityRouteGroupAction} id={group.id} label="Delete group" />
           </div>
         </details>
       </div>
@@ -452,7 +452,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
               </span>
               <span className="mt-1 block font-display text-lg font-black text-foreground">{template.routeName}</span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                {template.description || "Tanpa deskripsi route."}
+                {template.description || "No route description."}
               </span>
             </span>
             <span className="text-sm text-muted-foreground">{scopeText(template)}</span>
@@ -469,7 +469,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
               <Badge className={template.isActive ? "border-0 bg-emerald-100 text-emerald-900" : "border-0 bg-slate-100 text-slate-800"}>
                 {template.isActive ? "Aktif" : "Nonaktif"}
               </Badge>
-              <span className="text-sm font-semibold text-primary">Buka</span>
+              <span className="text-sm font-semibold text-primary">Open</span>
             </span>
           </summary>
 
@@ -477,7 +477,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
             <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
               <div className="space-y-3">
                 <div className="rounded-xl bg-white px-4 py-3 text-sm text-muted-foreground shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
-                  Nested route: buka group, lalu buka item untuk edit poin, unit, jam, remark, photo, evidence.
+                  Nested route: open group, then open item to edit points, unit, time, remark, photo, evidence.
                 </div>
                 {template.groups.length > 0 ? (
                   template.groups.map((group) => (
@@ -515,7 +515,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
                         <span className="font-semibold">{template.approvalRequired ? "Required" : "No"}</span>
                       </div>
                     </div>
-                    <DeleteForm action={manageActivityRouteTemplateAction} id={template.id} label="Hapus route" />
+                    <DeleteForm action={manageActivityRouteTemplateAction} id={template.id} label="Delete route" />
                   </CardContent>
                 </Card>
               </div>
@@ -556,7 +556,7 @@ function OverrideForm({ data }: { data: RouteBuilderData }) {
           sections={data.sections}
           selectClassName={selectClass}
         />
-        <FieldLabel label="Jabatan">
+        <FieldLabel label="Position">
           <select name="positionId" className={selectClass}>
             <option value="">Semua jabatan</option>
             {data.positions.map((position) => (
@@ -567,13 +567,13 @@ function OverrideForm({ data }: { data: RouteBuilderData }) {
           </select>
         </FieldLabel>
         <FieldLabel label="Override label">
-          <Input name="overrideLabel" placeholder="Opsional - nama item versi section" />
+          <Input name="overrideLabel" placeholder="Optional - section item name" />
         </FieldLabel>
         <FieldLabel label="Override points">
-          <Input name="overridePoints" type="number" placeholder="Kosong = pakai point default" />
+          <Input name="overridePoints" type="number" placeholder="Blank = use default points" />
         </FieldLabel>
         <FieldLabel label="Reason" className="lg:col-span-2">
-          <Textarea name="reason" rows={3} placeholder="Alasan perubahan label / point." />
+          <Textarea name="reason" rows={3} placeholder="Reason for label / point change." />
         </FieldLabel>
       </div>
       <CheckField name="isActive" label="Aktif" defaultChecked />
@@ -621,7 +621,7 @@ export default async function DailyActivityRoutesPage() {
                     Simple Nested Routes
                   </CardTitle>
                   <CardDescription>
-                    List route dulu. Klik route untuk buka group. Klik group untuk buka item.
+                    List route first. Click route to open group. Click group to open item.
                   </CardDescription>
                 </div>
                 <AddRouteDialog data={data} />
@@ -631,7 +631,7 @@ export default async function DailyActivityRoutesPage() {
               <MinimalTableShell
                 label="routes"
                 fileName="activity-routes"
-                searchPlaceholder="Cari route, section, jabatan, site, atau shift..."
+                searchPlaceholder="Search route, section, position, site, or shift..."
                 dateFilter={false}
               >
                 <Table>
@@ -677,7 +677,7 @@ export default async function DailyActivityRoutesPage() {
                     Section Point Overrides
                   </CardTitle>
                   <CardDescription>
-                    Section Head bisa override label dan poin default tanpa merusak library global.
+                    Section Head can override label and default points without breaking global library.
                   </CardDescription>
                 </div>
                 <details className="w-full rounded-2xl bg-surface-container-low p-4 lg:w-[420px]">
@@ -695,7 +695,7 @@ export default async function DailyActivityRoutesPage() {
               <MinimalTableShell
                 label="point overrides"
                 fileName="activity-point-overrides"
-                searchPlaceholder="Cari section, jabatan, library code, atau override..."
+                searchPlaceholder="Search section, position, library code, or override..."
                 dateFilter={false}
               >
                 <Table>

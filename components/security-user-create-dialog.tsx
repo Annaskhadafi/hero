@@ -233,7 +233,7 @@ export function SecurityUserCreateDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label>Jabatan</Label>
+              <Label>Position</Label>
               <Select
                 value={selectedJobTitle}
                 onValueChange={setSelectedJobTitle}
@@ -275,7 +275,7 @@ export function SecurityUserCreateDialog({
               <Input
                 name="workLocationDisplay"
                 value={resolvedWorkLocation}
-                placeholder="Otomatis dari jabatan"
+                placeholder="Auto from position"
                 readOnly
                 disabled
               />
@@ -287,7 +287,7 @@ export function SecurityUserCreateDialog({
             </label>
             <label className="grid gap-2">
               <Label>Email</Label>
-              <Input name="email" type="email" placeholder="nama@perusahaan.com" required />
+              <Input name="email" type="email" placeholder="name@company.com" required />
             </label>
             <div className="grid gap-2">
               <Label>Status</Label>

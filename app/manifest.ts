@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "HERO",
     short_name: "HERO",
-    description: "Hub for Employee Reporting & Operations untuk offline activity, attendance, HSE, dan emergency response.",
+    description: "Hub for Employee Reporting & Operations for offline activity, attendance, HSE, and emergency response.",
     start_url: "/mobile/dashboard",
     scope: "/",
     display: "standalone",
@@ -35,21 +35,21 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: "Daily Activity Input",
         short_name: "Activity",
-        description: "Buka input aktivitas lapangan",
+        description: "Open field activity input",
         url: "/mobile/activity/input",
         icons: [{ src: "/icon-192.png", sizes: "192x192" }],
       },
       {
         name: "Mobile Attendance",
         short_name: "Attendance",
-        description: "Check-in / check-out dengan GPS",
+        description: "Check-in / check-out with GPS",
         url: "/mobile/attendance",
         icons: [{ src: "/icon-192.png", sizes: "192x192" }],
       },
       {
         name: "Emergency Report",
         short_name: "Emergency",
-        description: "Laporkan emergency incident cepat",
+        description: "Report emergency incident quickly",
         url: "/mobile/hse?mode=emergency",
         icons: [{ src: "/icon-192.png", sizes: "192x192" }],
       },

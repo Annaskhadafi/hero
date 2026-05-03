@@ -57,7 +57,7 @@ function SignInContent() {
 
     useEffect(() => {
         if (searchParams.get("reset") === "success") {
-            setMessage("Password berhasil diperbarui. Silakan login dengan password baru.");
+            setMessage("Password updated successfully. Please log in with the new password.");
         }
     }, [searchParams]);
 
@@ -108,7 +108,7 @@ function SignInContent() {
             });
 
             if (result.error) {
-                setError(result.error.message || "Magic link gagal dikirim.");
+                setError(result.error.message || "Magic link failed to send.");
                 return;
             }
 

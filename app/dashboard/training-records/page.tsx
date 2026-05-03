@@ -94,7 +94,7 @@ export default async function TrainingRecordsPage({
   return (
     <AdminPageShell
       eyebrow="M7 • Training Intelligence"
-      title="Riwayat Training"
+      title="Training History"
       description="Riwayat sertifikasi dan pelatihan karyawan untuk audit expiry, koreksi data, dan sinkron tampilan mobile."
       badge="Sinkron Mobile"
     >
@@ -120,7 +120,7 @@ export default async function TrainingRecordsPage({
             </CardDescription>
           </div>
           <Button asChild className="h-10 rounded-xl">
-            <Link href="/mobile/training">Buka tampilan mobile</Link>
+            <Link href="/mobile/training">Open tampilan mobile</Link>
           </Button>
         </CardHeader>
       </Card>
@@ -139,7 +139,7 @@ export default async function TrainingRecordsPage({
           <MinimalTableShell
             label="training records"
             fileName="training-records"
-            searchPlaceholder="Cari karyawan, department, training, provider, atau status..."
+            searchPlaceholder="Search employee, department, training, provider, or status..."
             dateFilter={false}
             summaryClassName="bg-transparent px-1 py-0 shadow-none"
             filters={
@@ -154,11 +154,11 @@ export default async function TrainingRecordsPage({
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="min-w-[240px]">Karyawan</TableHead>
+                  <TableHead className="min-w-[240px]">Employee</TableHead>
                   <TableHead className="min-w-[170px]">Department</TableHead>
                   <TableHead className="min-w-[220px]">Training</TableHead>
                   <TableHead className="min-w-[160px]">Provider</TableHead>
-                  <TableHead className="min-w-[110px]">Tahun</TableHead>
+                  <TableHead className="min-w-[110px]">Year</TableHead>
                   <TableHead className="min-w-[160px]">Expiry</TableHead>
                   <TableHead className="min-w-[120px]">Status</TableHead>
                   <TableHead className="min-w-[240px]">Aksi</TableHead>

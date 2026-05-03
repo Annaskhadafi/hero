@@ -141,7 +141,7 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewD
               <TableRow>
                 <TableHead>Kriteria Approval</TableHead>
                 <TableHead>Kesiapan</TableHead>
-                <TableHead>Catatan</TableHead>
+                <TableHead>Notes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

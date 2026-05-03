@@ -256,7 +256,7 @@ function getNotificationActionLabel(item: NotificationRow) {
     return "Review";
   }
 
-  return "Buka";
+  return "Open";
 }
 
 function getNotificationIcon(item: NotificationRow) {

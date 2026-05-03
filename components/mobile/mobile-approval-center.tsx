@@ -186,7 +186,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
 
                 <div className="space-y-3 border-t border-[#eef4f8] px-4 py-4">
                   <div className="rounded-[0.95rem] bg-[#f6fbff] px-4 py-4">
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#486275]">Hasil</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-[#486275]">Result</p>
                     <p className="mt-2 text-sm text-[#082033]">{item.lastDecision}</p>
                     <p className="mt-2 text-xs font-semibold text-[#486275]">
                       Menunggu {item.pendingWith} • {item.currentStepLabel}

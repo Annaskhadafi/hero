@@ -287,7 +287,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
 
       clearDraft(HSE_OBSERVATION_DRAFT_STORAGE_KEY);
       if (queuedDraftKey) clearDraft(queuedDraftKey);
-      setMessage({ kind: "success", text: result.message || "Observasi HSE berhasil disimpan." });
+      setMessage({ kind: "success", text: result.message || "HSE observation saved successfully." });
       router.refresh();
     } catch (error) {
       setMessage({
@@ -472,7 +472,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               <Input
                 value={observationLocation}
                 onChange={(event) => setObservationLocation(event.target.value)}
-                placeholder="Lokasi observasi"
+                placeholder="Observation location"
                 className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
               />
             </Label>
@@ -579,7 +579,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               <Input
                 value={emergencyLocation}
                 onChange={(event) => setEmergencyLocation(event.target.value)}
-                placeholder="Lokasi insiden"
+                placeholder="Incident location"
                 className="h-12 rounded-2xl border-0 bg-[#fff1ea] px-4 text-sm font-semibold text-[#082033]"
               />
             </Label>

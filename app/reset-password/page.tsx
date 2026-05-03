@@ -25,7 +25,7 @@ function ResetPasswordContent() {
         setError("");
 
         if (!token) {
-            setError("Token reset password tidak ditemukan atau sudah tidak valid.");
+            setError("Reset password token not found or invalid.");
             return;
         }
 
@@ -57,7 +57,7 @@ function ResetPasswordContent() {
 
     return (
         <AuthShell
-            title="Buat password baru"
+            title="Create new password"
             description="Masukkan password baru untuk akun HERO Anda."
             panelClassName="max-w-[520px]"
             footer={
@@ -84,7 +84,7 @@ function ResetPasswordContent() {
                         <Input
                             id="password"
                             type="password"
-                            placeholder="Masukkan password baru"
+                            placeholder="Enter new password"
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
                             required
@@ -100,7 +100,7 @@ function ResetPasswordContent() {
                         <Input
                             id="confirmPassword"
                             type="password"
-                            placeholder="Ulangi password baru"
+                            placeholder="Repeat new password"
                             value={confirmPassword}
                             onChange={(event) => setConfirmPassword(event.target.value)}
                             required

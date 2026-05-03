@@ -976,7 +976,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="org-description">Deskripsi</Label>
+              <Label htmlFor="org-description">Description</Label>
               <Textarea id="org-description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Catatan singkat tentang struktur ini" rows={3} />
             </div>
             <div className="flex items-center space-x-2">
@@ -985,7 +985,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">Batal</Button>
+                <Button type="button" variant="outline">Cancel</Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
                 {isSubmitting ? "Menyimpan..." : editingOrg ? "Simpan Perubahan" : "Tambah Struktur"}

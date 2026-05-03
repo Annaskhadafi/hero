@@ -208,14 +208,14 @@ function formatOvertimeLabel(minutes: number) {
   const remainingMinutes = minutes % 60;
 
   if (hours > 0 && remainingMinutes > 0) {
-    return `${hours} jam ${remainingMinutes} menit`;
+    return `${hours}h ${remainingMinutes}m`;
   }
 
   if (hours > 0) {
-    return `${hours} jam`;
+    return `${hours}h`;
   }
 
-  return `${remainingMinutes} menit`;
+  return `${remainingMinutes}m`;
 }
 
 function getTrimmedFormValue(formData: FormData, key: string) {
@@ -237,11 +237,11 @@ function buildAttendanceNote(input: {
       ? `Shift: ${input.shiftLabel}${input.shiftWindow ? ` (${input.shiftWindow})` : ""}`
       : null,
     input.workMode ? `Mode: ${input.workMode}` : null,
-    input.attendanceContext ? `Kondisi: ${input.attendanceContext}` : null,
+    input.attendanceContext ? `Condition: ${input.attendanceContext}` : null,
     formatOvertimeLabel(input.overtimeMinutes)
-      ? `Lembur: ${formatOvertimeLabel(input.overtimeMinutes)}`
+      ? `Overtime: ${formatOvertimeLabel(input.overtimeMinutes)}`
       : null,
-    input.operationalNote ? `Catatan: ${input.operationalNote}` : null,
+    input.operationalNote ? `Note: ${input.operationalNote}` : null,
   ].filter(Boolean);
 
   return [input.locationNote, ...details].join(" | ");
@@ -274,9 +274,9 @@ async function getMobileAttendanceShiftOptions() {
     return [
       {
         value: "day",
-        label: "Shift Pagi",
+        label: "Morning Shift",
         window: "07:00 - 15:00",
-        helper: "Operasional reguler site pagi.",
+        helper: "Regular morning site operations.",
       },
     ];
   }
@@ -286,7 +286,7 @@ async function getMobileAttendanceShiftOptions() {
     label: shift.label,
     window:
       shift.windowLabel.trim() ||
-      (shift.startTime && shift.endTime ? `${shift.startTime} - ${shift.endTime}` : "Sesuai assignment"),
+      (shift.startTime && shift.endTime ? `${shift.startTime} - ${shift.endTime}` : "As per assignment"),
     helper: shift.helper,
   }));
 }
@@ -358,14 +358,14 @@ export async function submitAttendance(formData: FormData) {
     if (!photoUrlResult.success || !photoUrlResult.url) {
       return {
         success: false,
-        error: photoUrlResult.error || "Upload foto ke Object Storage gagal.",
+        error: photoUrlResult.error || "Photo upload to Object Storage failed.",
       };
     }
     const photoUrl = photoUrlResult.url;
 
     const eventType = formData.get("type") as string;
     if (eventType !== "checked-in" && eventType !== "checked-out") {
-      return { success: false, error: "Tipe attendance tidak valid." };
+      return { success: false, error: "Attendance type is invalid." };
     }
 
     const latitude = formData.get("latitude") as string | null;
@@ -378,7 +378,7 @@ export async function submitAttendance(formData: FormData) {
     const selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode);
 
     if (!selectedShift) {
-      return { success: false, error: "Pilihan shift tidak tersedia. Hubungi admin Master Data." };
+      return { success: false, error: "Shift option is not available. Contact Master Data admin." };
     }
 
     const locationNote = buildAttendanceNote({

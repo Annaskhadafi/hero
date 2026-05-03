@@ -37,7 +37,7 @@ const testCopy: Record<NotificationCategory, { title: string; body: string; url:
   },
   points_updates: {
     title: "Points update test",
-    body: "Poin HERO bertambah. Buka Point Arena untuk lihat leaderboard terbaru.",
+    body: "Poin HERO bertambah. Open Point Arena untuk lihat leaderboard terbaru.",
     url: "/mobile/gamification",
   },
 };

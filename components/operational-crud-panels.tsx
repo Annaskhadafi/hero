@@ -378,7 +378,7 @@ export function RowStatusDeleteActions({
       <form action={formAction}>
         <input type="hidden" name="intent" value="delete" />
         <input type="hidden" name="id" value={id} />
-        <Button type="submit" size="icon" variant="ghost" className="h-9 rounded-lg px-3 text-red-600" aria-label="Hapus">
+        <Button type="submit" size="icon" variant="ghost" className="h-9 rounded-lg px-3 text-red-600" aria-label="Delete">
           <Trash2 className="size-4" />
         </Button>
       </form>
@@ -429,13 +429,13 @@ function PointDeleteAction({ id }: { id: number }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-red-600" aria-label="Hapus">
+        <Button variant="ghost" size="icon" className="text-red-600" aria-label="Delete">
           <Trash2 className="size-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Hapus</DialogTitle>
+          <DialogTitle>Delete</DialogTitle>
         </DialogHeader>
         <form action={formAction} className="mt-3 grid gap-3">
           <input type="hidden" name="intent" value="delete" />
@@ -924,7 +924,7 @@ export function HseCrudForms({
               { code: "Critical", label: "Critical" },
             ]}
           />
-          <TextField name="title" label="Judul" placeholder="Temuan area kerja" />
+          <TextField name="title" label="Judul" placeholder="Work area finding" />
           <TextField name="location" label="Lokasi" placeholder="Workshop / pit / office" />
           <TextField name="observedAt" label="Waktu observasi" type="datetime-local" />
           <SelectField name="status" label="Status" defaultValue="open">
@@ -939,7 +939,7 @@ export function HseCrudForms({
             ))}
           </SelectField>
         </div>
-        <Textarea name="notes" placeholder="Catatan temuan dan tindakan awal" rows={3} />
+        <Textarea name="notes" placeholder="Finding notes and initial action" rows={3} />
       </CrudFormCard> : null}
 
       {mode !== "observation" ? <CrudFormCard

@@ -133,7 +133,7 @@ export function ActivityRouteItemForm({
             name="itemCode"
             value={itemCode}
             onChange={(event) => setItemCode(event.target.value)}
-            placeholder="Pilih library atau isi custom"
+            placeholder="Select library or enter custom"
           />
         </FieldLabel>
         <FieldLabel label="Sort">
@@ -146,7 +146,7 @@ export function ActivityRouteItemForm({
           name="itemLabel"
           value={itemLabel}
           onChange={(event) => setItemLabel(event.target.value)}
-          placeholder="Pilih library atau isi nama checklist"
+          placeholder="Select library or enter checklist name"
           required
         />
       </FieldLabel>
@@ -157,7 +157,7 @@ export function ActivityRouteItemForm({
           value={itemDescription}
           onChange={(event) => setItemDescription(event.target.value)}
           rows={3}
-          placeholder="Keterangan pekerjaan."
+          placeholder="Job description."
         />
       </FieldLabel>
 
@@ -172,13 +172,13 @@ export function ActivityRouteItemForm({
       </FieldLabel>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        <CheckField name="requiresUnit" label="Butuh unit" defaultChecked={item?.requiresUnit ?? false} />
-        <CheckField name="requiresTime" label="Butuh jam" defaultChecked={item?.requiresTime ?? true} />
-        <CheckField name="requiresRemark" label="Butuh remark" defaultChecked={item?.requiresRemark ?? false} />
-        <CheckField name="requiresPhoto" label="Butuh photo" defaultChecked={item?.requiresPhoto ?? false} />
+        <CheckField name="requiresUnit" label="Requires unit" defaultChecked={item?.requiresUnit ?? false} />
+        <CheckField name="requiresTime" label="Requires time" defaultChecked={item?.requiresTime ?? true} />
+        <CheckField name="requiresRemark" label="Requires remark" defaultChecked={item?.requiresRemark ?? false} />
+        <CheckField name="requiresPhoto" label="Requires photo" defaultChecked={item?.requiresPhoto ?? false} />
         <CheckField
           name="requiresChecklistEvidence"
-          label="Butuh evidence"
+          label="Requires evidence"
           defaultChecked={item?.requiresChecklistEvidence ?? false}
         />
         <CheckField name="isOptional" label="Optional" defaultChecked={item?.isOptional ?? false} />

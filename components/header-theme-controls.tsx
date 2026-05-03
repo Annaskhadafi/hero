@@ -19,10 +19,27 @@ import {
   Activity,
   Trash2,
 } from "lucide-react";
+import {
+  IconChartBar,
+  IconChecklist,
+  IconClockHour4,
+  IconDashboard,
+  IconDatabase,
+  IconFileWord,
+  IconFolder,
+  IconHelp,
+  IconListDetails,
+  IconMail,
+  IconReport,
+  IconSettings,
+  IconShieldHalfFilled,
+  IconUsers,
+} from "@tabler/icons-react";
 import { SimpleThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogoutButton } from "@/components/logout-button";
+import type { NavItem } from "@/components/site-header";
 import {
   CommandDialog,
   CommandEmpty,
@@ -67,7 +84,62 @@ function formatNotificationTime(value: string) {
   });
 }
 
-export function HeaderThemeControls() {
+const iconMap = {
+  "chart-bar": IconChartBar,
+  checklist: IconChecklist,
+  clock: IconClockHour4,
+  dashboard: IconDashboard,
+  database: IconDatabase,
+  "file-word": IconFileWord,
+  folder: IconFolder,
+  help: IconHelp,
+  "list-details": IconListDetails,
+  mail: IconMail,
+  report: IconReport,
+  settings: IconSettings,
+  shield: IconShieldHalfFilled,
+  users: IconUsers,
+} as const;
+
+const DESKTOP_MENU_ORDER = [
+  "Portal Chitra",
+  "Aktivitas Harian",
+  "Approval",
+  "Data Induk",
+  "HC",
+  "HSE",
+  "Laporan",
+  "Pengaturan",
+] as const;
+
+const desktopMenuIconMap = {
+  "Portal Chitra": IconDashboard,
+  "Aktivitas Harian": IconChecklist,
+  Approval: IconMail,
+  "Data Induk": IconDatabase,
+  HC: IconUsers,
+  HSE: IconShieldHalfFilled,
+  Laporan: IconReport,
+  Pengaturan: IconSettings,
+} as const;
+
+const sectionLabelMap: Record<string, string> = {
+  "Daily Activity": "Aktivitas Harian",
+  Approval: "Approval",
+  "Master Data": "Data Induk",
+  HR: "HC",
+  HSE: "HSE",
+  Report: "Laporan",
+  Setting: "Pengaturan",
+};
+
+export function HeaderThemeControls({
+  navMain = [],
+  navSecondary = [],
+}: {
+  navMain?: NavItem[];
+  navSecondary?: NavItem[];
+}) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [open, setOpen] = React.useState(false);
@@ -188,6 +260,37 @@ export function HeaderThemeControls() {
     command();
   }, []);
 
+  const desktopGroups = React.useMemo(() => {
+    const desktopItems = [...navMain, ...navSecondary].map((item) => ({
+      section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
+      title: item.title,
+      url: item.url,
+      sortOrder: item.sortOrder ?? 999,
+      icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
+    }));
+
+    const extraSections = Array.from(
+      new Set(
+        desktopItems
+          .map((item) => item.section)
+          .filter((section) => !DESKTOP_MENU_ORDER.includes(section as (typeof DESKTOP_MENU_ORDER)[number]))
+      )
+    );
+
+    const orderedSections = [...DESKTOP_MENU_ORDER, ...extraSections];
+
+    const groups = orderedSections
+      .map((section) => ({
+        title: section,
+        icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
+        items: desktopItems
+          .filter((item) => item.section === section)
+          .sort((left, right) => left.sortOrder - right.sortOrder),
+      }))
+      .filter((group) => group.items.length > 0);
+    return groups;
+  }, [navMain, navSecondary]);
+
   const isDark = resolvedTheme === "dark";
   const glassButtonClassName = isDark
     ? "bg-slate-900 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] hover:bg-slate-800 hover:text-white"
@@ -212,54 +315,79 @@ export function HeaderThemeControls() {
         </span>
       </button>
 
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => setOpen(true)}
+        className={cn("lg:hidden size-9 min-h-9 min-w-9 rounded-xl transition sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl", glassButtonClassName)}
+      >
+        <Search className="h-4 w-4" />
+        <span className="sr-only">Search</span>
+      </Button>
+
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput placeholder="Cari menu atau aksi..." />
         <CommandList>
           <CommandEmpty>Tidak ada hasil.</CommandEmpty>
-          <CommandGroup heading="Navigasi">
-            <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/analytics"))}>
-              <LayoutDashboard className="mr-2 h-4 w-4" />
-              <span>Ringkasan Analytics</span>
-            </CommandItem>
-            <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/users"))}>
-              <Users className="mr-2 h-4 w-4" />
-              <span>Manajemen Pengguna</span>
-            </CommandItem>
-            <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/roles"))}>
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              <span>Peran & Akses</span>
-            </CommandItem>
-            <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/hc"))}>
-              <Activity className="mr-2 h-4 w-4" />
-              <span>Pusat Performance</span>
-            </CommandItem>
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Aksi Cepat">
-            <CommandItem>
-              <FileText className="mr-2 h-4 w-4" />
-              <span>Buat Laporan Harian</span>
-            </CommandItem>
-            <CommandItem>
-              <Mail className="mr-2 h-4 w-4" />
-              <span>Lihat Riwayat Email</span>
-            </CommandItem>
-            <CommandItem>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Pengaturan Sistem</span>
-            </CommandItem>
-          </CommandGroup>
-          <CommandSeparator />
-          <CommandGroup heading="Sistem">
-            <CommandItem>
-              <History className="mr-2 h-4 w-4" />
-              <span>Catatan Aktivitas</span>
-            </CommandItem>
-            <CommandItem>
-              <HelpCircle className="mr-2 h-4 w-4" />
-              <span>Bantuan</span>
-            </CommandItem>
-          </CommandGroup>
+          {desktopGroups.length === 0 ? (
+            <>
+              <CommandGroup heading="Portal Chitra">
+                <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/analytics"))}>
+                  <IconDashboard className="mr-2 h-4 w-4" />
+                  <span>Analytics</span>
+                </CommandItem>
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Aktivitas Harian">
+                <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/my-day"))}>
+                  <IconChecklist className="mr-2 h-4 w-4" />
+                  <span>My Day</span>
+                </CommandItem>
+                <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/library"))}>
+                  <IconDatabase className="mr-2 h-4 w-4" />
+                  <span>Activity Library</span>
+                </CommandItem>
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Data Induk">
+                <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/master-data"))}>
+                  <IconDatabase className="mr-2 h-4 w-4" />
+                  <span>Master Data</span>
+                </CommandItem>
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Pengaturan">
+                <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/users"))}>
+                  <IconUsers className="mr-2 h-4 w-4" />
+                  <span>User Management</span>
+                </CommandItem>
+                <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/roles"))}>
+                  <IconShieldHalfFilled className="mr-2 h-4 w-4" />
+                  <span>Role Management</span>
+                </CommandItem>
+              </CommandGroup>
+            </>
+          ) : null}
+          {desktopGroups.map((group) => (
+            <React.Fragment key={group.title}>
+              <CommandGroup heading={group.title}>
+                {group.items.map((item) => {
+                  const IconComponent = item.icon;
+                  return (
+                    <CommandItem
+                      key={item.url}
+                      onSelect={() => runCommand(() => router.push(item.url))}
+                    >
+                      <IconComponent className="mr-2 h-4 w-4" />
+                      <span>{item.title}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+              <CommandSeparator />
+            </React.Fragment>
+          ))}
         </CommandList>
       </CommandDialog>
 

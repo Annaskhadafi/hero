@@ -84,7 +84,7 @@ export default async function MobileOvertimePage() {
         {data.canCreateRequests && data.team.length > 0 ? (
           <MobileOvertimeRequestForm
             action={manageOvertimeCommandLetterAction}
-            submitLabel="Simpan Pengajuan"
+            submitLabel="Save Request"
             libraryActivities={data.splOptions.libraryActivities}
             teamMembers={data.team.map((member) => ({
               id: member.id,

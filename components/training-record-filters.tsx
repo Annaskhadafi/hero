@@ -72,7 +72,7 @@ export function TrainingRecordFilters({
         label="karyawan"
         value={selectedEmployeeId}
         onValueChange={(value) => updateFilter("employeeId", value)}
-        placeholder="Semua karyawan"
+        placeholder="All employees"
         options={visibleEmployees.map((employee) => ({
           value: String(employee.id),
           label: `${employee.name}${employee.employeeSn ? ` (${employee.employeeSn})` : ""}`,
@@ -84,7 +84,7 @@ export function TrainingRecordFilters({
         label="department"
         value={selectedDepartment}
         onValueChange={(value) => updateFilter("department", value)}
-        placeholder="Semua department"
+        placeholder="All departments"
         options={departments.map((department) => ({ value: department, label: department }))}
         widthClassName="min-w-[200px]"
       />
@@ -93,7 +93,7 @@ export function TrainingRecordFilters({
         label="tahun"
         value={selectedYear}
         onValueChange={(value) => updateFilter("year", value)}
-        placeholder="Semua tahun"
+        placeholder="All years"
         options={years.map((year) => ({ value: String(year), label: String(year) }))}
         widthClassName="min-w-[150px]"
       />

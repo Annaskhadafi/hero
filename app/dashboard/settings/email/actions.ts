@@ -66,18 +66,18 @@ const pwaPushSettingsSchema = z.object({
 const emailTemplateSchema = z.object({
   intent: z.enum(["create", "update"]),
   id: z.coerce.number().int().positive().optional(),
-  name: z.string().trim().min(1, "Nama template wajib diisi.").max(120),
+  name: z.string().trim().min(1, "Template name is required.").max(120),
   templateCode: z
     .string()
     .trim()
-    .min(1, "Kode template wajib diisi.")
+    .min(1, "Template code is required.")
     .max(100)
     .regex(/^[a-z0-9_]+$/, "Kode template hanya boleh huruf kecil, angka, dan underscore."),
-  templateType: z.string().trim().min(1, "Tipe template wajib diisi.").max(50),
-  deliveryChannel: z.string().trim().min(1, "Channel pengiriman wajib diisi.").max(120),
-  recipientScope: z.string().trim().min(1, "Scope penerima wajib diisi.").max(120),
+  templateType: z.string().trim().min(1, "Template type is required.").max(50),
+  deliveryChannel: z.string().trim().min(1, "Delivery channel is required.").max(120),
+  recipientScope: z.string().trim().min(1, "Recipient scope is required.").max(120),
   ccEmail: z.string().trim().max(500).default(""),
-  subject: z.string().trim().min(1, "Subject email wajib diisi.").max(200),
+  subject: z.string().trim().min(1, "Email subject is required.").max(200),
   htmlContent: z.string().default(""),
   textContent: z.string().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
@@ -185,7 +185,7 @@ export async function saveEmailSmtpSettingsAction(
 
     return {
       status: "success",
-      message: "Konfigurasi SMTP berhasil disimpan.",
+      message: "SMTP configuration saved successfully.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gagal menyimpan konfigurasi SMTP.";
@@ -295,7 +295,7 @@ export async function savePwaPushSettingsAction(
 
     return {
       status: "success",
-      message: "Konfigurasi PWA Push berhasil disimpan.",
+      message: "PWA Push configuration saved successfully.",
     };
   } catch (error) {
     const message =
@@ -412,7 +412,7 @@ export async function saveEmailTemplateAction(
     if (existingWithCode.length > 0 && existingWithCode[0]?.id !== id) {
       return {
         status: "error",
-        message: "Kode template sudah dipakai template lain.",
+        message: "Template code is already used by another template.",
       };
     }
 
@@ -435,7 +435,7 @@ export async function saveEmailTemplateAction(
       revalidatePath("/dashboard/settings/email");
       return {
         status: "success",
-        message: "Template email berhasil dibuat.",
+        message: "Email template created successfully.",
       };
     }
 
@@ -466,7 +466,7 @@ export async function saveEmailTemplateAction(
     revalidatePath("/dashboard/settings/email");
     return {
       status: "success",
-      message: "Template email berhasil diperbarui.",
+      message: "Email template updated successfully.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gagal menyimpan template email.";
@@ -505,8 +505,8 @@ export async function toggleEmailTemplateActiveAction(
     return {
       status: "success",
       message: parsed.data.isActive
-        ? "Template email berhasil diaktifkan."
-        : "Template email berhasil dinonaktifkan.",
+        ? "Email template activated successfully."
+        : "Email template deactivated successfully.",
     };
   } catch (error) {
     const message =

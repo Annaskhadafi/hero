@@ -72,7 +72,7 @@ export function NavDocuments({
                 <DropdownMenuItem asChild>
                   <Link href={item.url}>
                     <IconFolder />
-                    <span>Buka</span>
+                    <span>Open</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
@@ -82,7 +82,7 @@ export function NavDocuments({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive">
                   <IconTrash />
-                  <span>Hapus</span>
+                  <span>Delete</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

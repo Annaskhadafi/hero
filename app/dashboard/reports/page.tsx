@@ -44,7 +44,7 @@ export default async function ReportsPage() {
         ]}
       />
       <AdminTableCard
-        title="Kontrol laporan harian"
+        title="Daily report control"
         description="Review kesiapan laporan customer, cari report yang belum lengkap, lalu tindak lanjuti dari tabel utama."
         columns={["Date", "Customer", "Sections", "Jobs", "Manpower", "HSE", "Status", "Action"]}
         actions={<DailyReportCrudForm sites={options.sites} categoryOptions={options.categoryOptions} />}

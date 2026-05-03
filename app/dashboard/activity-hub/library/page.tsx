@@ -51,7 +51,7 @@ function ActivityLibraryCreateForm({ data }: { data: DailyActivityLibraryData })
         </Label>
         <Label className="grid gap-2 sm:col-span-2">
           Activity name
-          <Input name="activityName" placeholder="Nama aktivitas resmi yang tampil ke karyawan" required />
+          <Input name="activityName" placeholder="Official activity name shown to employees" required />
         </Label>
         <Label className="grid gap-2 sm:col-span-2">
           Lokasi kerja / Site
@@ -68,8 +68,8 @@ function ActivityLibraryCreateForm({ data }: { data: DailyActivityLibraryData })
           departments={data.departments}
           sections={data.sections}
           selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-          departmentPlaceholder="Tanpa department spesifik"
-          sectionPlaceholder="Tanpa section spesifik"
+          departmentPlaceholder="No specific department"
+          sectionPlaceholder="No specific section"
         />
         <Label className="grid gap-2">
           Base points
@@ -175,14 +175,14 @@ export default async function DailyActivityLibraryPage({
               <MinimalTableShell
                 label="activity library"
                 fileName="activity-library"
-                searchPlaceholder="Cari activity, department, atribut, atau status..."
+                searchPlaceholder="Search activity, department, attribute, or status..."
                 summaryClassName="bg-transparent px-1 py-0 shadow-none"
                 dateFilter={false}
                 filters={<ActivityLibraryFilters departments={data.departments} sections={data.sections} />}
                 importAction={<ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} mode="import" />}
                 primaryAction={
                   <AdminCrudDialog
-                    title="Tambah Activity Library"
+                    title="Add Activity Library"
                     description="Tambah master activity yang dipakai Route Builder."
                     size="lg"
                   >
@@ -312,7 +312,7 @@ export default async function DailyActivityLibraryPage({
                   </Label>
                   <Label className="grid gap-2 sm:col-span-2">
                     Activity name
-                    <Input name="activityName" placeholder="Nama aktivitas resmi yang tampil ke karyawan" required />
+                    <Input name="activityName" placeholder="Official activity name shown to employees" required />
                   </Label>
                   <Label className="grid gap-2 sm:col-span-2">
                     Lokasi kerja / Site
@@ -329,8 +329,8 @@ export default async function DailyActivityLibraryPage({
                     departments={data.departments}
                     sections={data.sections}
                     selectClassName="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                    departmentPlaceholder="Tanpa department spesifik"
-                    sectionPlaceholder="Tanpa section spesifik"
+                    departmentPlaceholder="No specific department"
+                    sectionPlaceholder="No specific section"
                   />
                   <Label className="grid gap-2">
                     Base points

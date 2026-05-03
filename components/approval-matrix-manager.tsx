@@ -402,7 +402,7 @@ export function ApprovalMatrixManager({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
               <Input
-                placeholder="Cari jalur approval..."
+                placeholder="Search approval route..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="w-full pl-9"
@@ -466,7 +466,7 @@ export function ApprovalMatrixManager({
                 </div>
                 <div className="flex items-center gap-2">
                   {draftMatrix.id ? (
-                    <Button type="button" variant="ghost" size="icon" onClick={handleDelete} disabled={isSubmitting} aria-label="Hapus" className="text-red-600">
+                    <Button type="button" variant="ghost" size="icon" onClick={handleDelete} disabled={isSubmitting} aria-label="Delete" className="text-red-600">
                       <Trash2 className="size-4" />
                     </Button>
                   ) : null}
@@ -609,7 +609,7 @@ export function ApprovalMatrixManager({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Semua Jabatan" />
+                      <SelectValue placeholder="All Positions" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Semua Jabatan</SelectItem>
@@ -632,7 +632,7 @@ export function ApprovalMatrixManager({
                   />
                 </label>
                 <div className="grid gap-2">
-                  <Label>Prioritas</Label>
+                  <Label>Priority</Label>
                   <Select
                     value={draftMatrix.priority}
                     onValueChange={(value) => setDraftMatrix((current) => ({ ...current, priority: value }))}
@@ -701,14 +701,14 @@ export function ApprovalMatrixManager({
 
               <div className="mt-4 grid gap-3">
                 <label className="grid gap-2">
-                  <Label>Deskripsi</Label>
+                  <Label>Description</Label>
                   <Textarea
                     value={draftMatrix.description}
                     onChange={(event) =>
                       setDraftMatrix((current) => ({ ...current, description: event.target.value }))
                     }
                     rows={3}
-                    placeholder="Catatan untuk jalur approval ini"
+                    placeholder="Notes for this approval route"
                   />
                 </label>
                 <div className="flex items-center gap-3 rounded-[1.05rem] bg-surface-container-low px-4 py-4">
@@ -897,7 +897,7 @@ export function ApprovalMatrixManager({
 
               <div className="grid gap-4 lg:grid-cols-4">
                 <div className="grid gap-2 lg:col-span-2">
-                  <Label>Karyawan</Label>
+                  <Label>Employee</Label>
                   <Select
                     value={simulationForm.employeeId || "none"}
                     onValueChange={(value) =>
@@ -930,7 +930,7 @@ export function ApprovalMatrixManager({
                   />
                 </label>
                 <div className="grid gap-2">
-                  <Label>Prioritas</Label>
+                  <Label>Priority</Label>
                   <Select
                     value={simulationForm.priority}
                     onValueChange={(value) =>

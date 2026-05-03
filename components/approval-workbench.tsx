@@ -100,7 +100,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
               <TableRow>
                 <TableHead>Requester</TableHead>
                 <TableHead>Site</TableHead>
-                <TableHead>Aktivitas</TableHead>
+                <TableHead>Activity</TableHead>
                 <TableHead>Step</TableHead>
                 <TableHead>SLA</TableHead>
                 <TableHead>Aksi</TableHead>
@@ -249,7 +249,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData["historyGroups"] })
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Aktivitas</TableHead>
+                <TableHead>Activity</TableHead>
                 <TableHead>Site</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Menunggu</TableHead>

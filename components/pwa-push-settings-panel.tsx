@@ -118,7 +118,7 @@ export function PwaPushSettingsPanel({
                 name="vapidPublicKey"
                 rows={3}
                 defaultValue={settings.vapidPublicKey}
-                placeholder="Masukkan VAPID public key"
+                placeholder="Enter VAPID public key"
               />
             </Field>
             <Field label="VAPID Private Key">
@@ -126,7 +126,7 @@ export function PwaPushSettingsPanel({
                 name="vapidPrivateKey"
                 rows={3}
                 defaultValue={settings.vapidPrivateKey}
-                placeholder="Masukkan VAPID private key"
+                placeholder="Enter VAPID private key"
               />
             </Field>
             <Field

@@ -14,51 +14,51 @@ export default async function AnalyticsPage() {
   return (
     <AdminPageShell
       eyebrow="M8 • Dashboard & Analytics"
-      title="Ringkasan Operasi Site"
-      description="Ringkasan lintas modul untuk memantau kesehatan operasi site, antrian penting, dan fokus kerja harian manajemen."
+      title="Site Operations Overview"
+      description="Cross-module summary to monitor site operation health, critical queues, and daily management focus areas."
       badge={overview.site?.name}
     >
       <AdminMetricGrid items={overview.metrics} />
 
       <Tabs defaultValue="control" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="control">Pusat kendali</TabsTrigger>
-          <TabsTrigger value="highlights">Sorotan</TabsTrigger>
+          <TabsTrigger value="control">Control Center</TabsTrigger>
+          <TabsTrigger value="highlights">Highlights</TabsTrigger>
         </TabsList>
 
         <TabsContent value="control">
           <AdminTableCard
-            title="Pusat kendali"
-            description="Masuk cepat ke area kerja yang paling sering butuh tindakan pada shift berjalan."
+            title="Control Center"
+            description="Quick access to work areas that most often need action during the ongoing shift."
             columns={["Area", "Status", "Action"]}
             dateFilter={false}
             rows={[
               [
-                "Aktivitas lapangan",
-                "Pantau aktivitas masuk, progress, dan prioritas job site.",
+                "Field activity",
+                "Monitor incoming activities, progress, and job site priorities.",
                 <Link key="activities" href="/dashboard/activity-hub/my-day" className="text-sm font-semibold text-primary">
-                  Buka antrean
+                  Open queue
                 </Link>,
               ],
               [
-                "Approval tertahan",
-                "Cek approval yang tertahan sebelum mempengaruhi payroll dan report.",
+                "Pending approvals",
+                "Check pending approvals before they affect payroll and reports.",
                 <Link key="approvals" href="/dashboard/approval" className="text-sm font-semibold text-primary">
-                  Buka approval
+                  Open approvals
                 </Link>,
               ],
               [
                 "Timesheet",
-                "Review jam kerja, lembur, dan status payroll support.",
+                "Review work hours, overtime, and payroll support status.",
                 <Link key="timesheet" href="/dashboard/timesheet" className="text-sm font-semibold text-primary">
-                  Buka timesheet
+                  Open timesheet
                 </Link>,
               ],
               [
-                "Laporan harian",
-                "Pastikan daily report customer siap generate dan kirim.",
+                "Daily reports",
+                "Ensure customer daily reports are ready to generate and send.",
                 <Link key="reports" href="/dashboard/reports" className="text-sm font-semibold text-primary">
-                  Buka laporan
+                  Open reports
                 </Link>,
               ],
             ]}
@@ -67,30 +67,30 @@ export default async function AnalyticsPage() {
 
         <TabsContent value="highlights">
           <AdminTableCard
-            title="Sorotan operasi"
-            description="Sorotan cepat yang membantu membaca kondisi site tanpa membuka banyak modul."
+            title="Operation Highlights"
+            description="Quick highlights that help read site conditions without opening many modules."
             columns={["Metric", "Value"]}
             dateFilter={false}
             rows={[
               [
-                "Peraih poin tertinggi",
+                "Top performer",
                 highlights.topPerformer
-                  ? `${highlights.topPerformer.name} • ${highlights.topPerformer.totalPoints} poin`
-                  : "Belum ada data",
+                  ? `${highlights.topPerformer.name} • ${highlights.topPerformer.totalPoints} points`
+                  : "No data yet",
               ],
               [
-                "Laporan terbaru",
+                "Latest report",
                 highlights.report
-                  ? `${highlights.report.readySections}/${highlights.report.totalSections} section siap`
-                  : "Belum ada report",
+                  ? `${highlights.report.readySections}/${highlights.report.totalSections} sections ready`
+                  : "No report yet",
               ],
               [
-                "Customer aktif",
-                highlights.site?.customerName ?? "Belum ada customer",
+                "Active customer",
+                highlights.site?.customerName ?? "No customer yet",
               ],
               [
-                "Nomor kontrak",
-                highlights.site?.contractNumber ?? "Belum ada kontrak",
+                "Contract number",
+                highlights.site?.contractNumber ?? "No contract yet",
               ],
             ]}
           />

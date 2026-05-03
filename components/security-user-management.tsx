@@ -791,7 +791,7 @@ export function SecurityUserManagement({
                 options={statusTypeOptions}
                 selected={selectedStatusTypes}
                 onChange={setSelectedStatusTypes}
-                placeholder="Semua tipe status"
+                placeholder="All status types"
                 label="Tipe status"
               />
             </>
@@ -812,9 +812,9 @@ export function SecurityUserManagement({
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[320px]">Nama</TableHead>
+                  <TableHead className="w-[320px]">Name</TableHead>
                   <TableHead>SN</TableHead>
-                  <TableHead>Departemen</TableHead>
+                  <TableHead>Department</TableHead>
                   <TableHead>Peran</TableHead>
                   <TableHead>Lokasi Site</TableHead>
                   <TableHead>Tipe Status</TableHead>

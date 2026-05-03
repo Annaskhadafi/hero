@@ -272,7 +272,7 @@ export default async function EmailSettingsPage() {
               <MinimalTableShell
                 label="notification delivery logs"
                 fileName="notification-delivery-logs"
-                searchPlaceholder="Cari channel, recipient, status, atau error..."
+                searchPlaceholder="Search channel, recipient, status, or error..."
                 summaryClassName="bg-transparent px-1 py-0 shadow-none"
               >
                 <Table>

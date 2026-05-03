@@ -18,14 +18,14 @@ export async function POST(request: Request) {
 
     if (!file.type.startsWith("image/")) {
       return Response.json(
-        { error: "File harus berupa gambar." },
+        { error: "File must be an image." },
         { status: 400 },
       );
     }
 
     if (file.size > MAX_FILE_SIZE) {
       return Response.json(
-        { error: "Foto profile terlalu besar. Maksimal 2MB." },
+        { error: "Profile photo too large. Max 2MB." },
         { status: 400 },
       );
     }

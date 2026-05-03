@@ -1201,7 +1201,7 @@ export function MobileDailyActivityForm({
                 <Input
                   value={customActivityName}
                   onChange={(event) => setCustomActivityName(event.target.value)}
-                  placeholder="Nama aktivitas custom"
+                  placeholder="Custom activity name"
                   className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                 />
               </Label>
@@ -1292,7 +1292,7 @@ export function MobileDailyActivityForm({
                               onChange={(event) =>
                                 updateSelfInputEntry(libraryId, { equipmentNo: event.target.value })
                               }
-                              placeholder="Nomor unit / equipment"
+                              placeholder="Unit / equipment number"
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
@@ -1356,7 +1356,7 @@ export function MobileDailyActivityForm({
               </div>
             ) : (
               <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
-                Buka picker di atas, search activity, lalu pilih beberapa library.
+                Open picker di atas, search activity, lalu pilih beberapa library.
               </div>
             )}
           </section>
@@ -1453,7 +1453,7 @@ export function MobileDailyActivityForm({
                                     onChange={(event) =>
                                       updateRouteItem(item.id, { unitNumber: event.target.value })
                                     }
-                                    placeholder="Nomor unit"
+                                    placeholder="Unit number"
                                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                                   />
                                 </Label>
@@ -1495,7 +1495,7 @@ export function MobileDailyActivityForm({
                                     onChange={(event) =>
                                       updateRouteItem(item.id, { remark: event.target.value })
                                     }
-                                    placeholder="Catatan checklist"
+                                    placeholder="Checklist notes"
                                     className="rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
                                   />
                                 </Label>
@@ -1612,7 +1612,7 @@ export function MobileDailyActivityForm({
             <Input
               value={manualLocation}
               onChange={(event) => setManualLocation(event.target.value)}
-              placeholder="Isi lokasi manual bila GPS/akses lokasi gagal"
+              placeholder="Enter location manually if GPS/location access fails"
               className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
             />
           </Label>

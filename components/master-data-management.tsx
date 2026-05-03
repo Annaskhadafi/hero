@@ -201,7 +201,7 @@ export function MasterDataManagement({
           </TabsTrigger>
           <TabsTrigger value="positions" className="flex items-center gap-2">
             <Users className="size-4" />
-            <span>Jabatan</span>
+            <span>Position</span>
             <Badge variant="secondary" className="ml-1 bg-[#fef3c7] text-[#d97706]">
               {positions.length}
             </Badge>
@@ -222,7 +222,7 @@ export function MasterDataManagement({
           </TabsTrigger>
           <TabsTrigger value="categories" className="flex items-center gap-2">
             <Tags className="size-4" />
-            <span>Kategori</span>
+            <span>Category</span>
             <Badge variant="secondary" className="ml-1 bg-[#eef2ff] text-[#4f46e5]">
               {categoryOptions.length}
             </Badge>
@@ -310,7 +310,7 @@ function getAttendanceShiftWindowLabel(shift: Pick<MasterAttendanceShift, "start
     return `${shift.startTime} - ${shift.endTime}`;
   }
 
-  return "Sesuai assignment";
+  return "As per assignment";
 }
 
 function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCategoryOption[] }) {
@@ -467,7 +467,7 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
                     <TableRow className="bg-[#F5F7F9]">
                       <TableHead className="w-[180px]">Kode</TableHead>
                       <TableHead>Label</TableHead>
-                      <TableHead>Deskripsi</TableHead>
+                      <TableHead>Description</TableHead>
                       <TableHead className="w-[90px]">Urutan</TableHead>
                       <TableHead className="w-[100px]">Status</TableHead>
                       <TableHead className="w-[100px]">Aksi</TableHead>
@@ -566,7 +566,7 @@ function CategoryManagement({ categoryOptions }: { categoryOptions: MasterCatego
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="category-description">Deskripsi</Label>
+              <Label htmlFor="category-description">Description</Label>
               <Textarea
                 id="category-description"
                 value={formData.description}
@@ -859,7 +859,7 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
                 id="shift-window"
                 value={formData.windowLabel}
                 onChange={(e) => setFormData({ ...formData, windowLabel: e.target.value })}
-                placeholder="Kosongkan untuk otomatis dari jam mulai - selesai"
+                placeholder="Leave blank to auto-calculate from start - end time"
               />
             </div>
             <div className="space-y-2">
@@ -878,7 +878,7 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">Batal</Button>
+                <Button type="button" variant="outline">Cancel</Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
                 {isSubmitting ? "Menyimpan..." : editingShift ? "Simpan Perubahan" : "Tambah Shift"}
@@ -1200,7 +1200,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
             <TableHeader>
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead>Nama Site</TableHead>
-                <TableHead>Lokasi</TableHead>
+                <TableHead>Location</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>No. Kontrak</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
@@ -1475,7 +1475,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">Batal</Button>
+                <Button type="button" variant="outline">Cancel</Button>
               </DialogClose>
               <Button
                 type="submit"
@@ -1628,7 +1628,7 @@ function SectionManagement({
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Section</TableHead>
                 <TableHead>Department</TableHead>
-                <TableHead>Deskripsi</TableHead>
+                <TableHead>Description</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
@@ -1758,12 +1758,12 @@ function SectionManagement({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Deskripsi</Label>
+              <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Deskripsi singkat tentang section ini"
+                placeholder="Short description of this section"
                 rows={3}
               />
             </div>
@@ -1914,7 +1914,7 @@ function DepartmentManagement({
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Department</TableHead>
-                <TableHead>Deskripsi</TableHead>
+                <TableHead>Description</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
@@ -2010,12 +2010,12 @@ function DepartmentManagement({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dept-description">Deskripsi</Label>
+              <Label htmlFor="dept-description">Description</Label>
               <Textarea
                 id="dept-description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Deskripsi singkat tentang department ini"
+                placeholder="Short description of this department"
                 rows={3}
               />
             </div>
@@ -2432,12 +2432,12 @@ function PositionManagement({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pos-description">Deskripsi</Label>
+              <Label htmlFor="pos-description">Description</Label>
               <Textarea
                 id="pos-description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Deskripsi singkat tentang jabatan ini"
+                placeholder="Short description of this position"
                 rows={3}
               />
             </div>

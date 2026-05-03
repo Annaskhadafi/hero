@@ -179,8 +179,8 @@ export function EmailTemplateSettingsPanel({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Nama</TableHead>
-              <TableHead>Tipe</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Kode</TableHead>
               <TableHead>Channel</TableHead>
               <TableHead>Subject</TableHead>
@@ -275,7 +275,7 @@ export function EmailTemplateSettingsPanel({
                 />
               </div>
               <div className="space-y-2 xl:col-span-1">
-                <Label htmlFor="template-type">Tipe</Label>
+                <Label htmlFor="template-type">Type</Label>
                 <Input
                   id="template-type"
                   value={formData.templateType}
@@ -327,7 +327,7 @@ export function EmailTemplateSettingsPanel({
                   id="template-cc"
                   value={formData.ccEmail}
                   onChange={(event) => setFormData({ ...formData, ccEmail: event.target.value })}
-                  placeholder="opsional@contoh.com"
+                  placeholder="optional@example.com"
                 />
               </div>
             </div>

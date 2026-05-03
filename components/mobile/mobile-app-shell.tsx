@@ -41,7 +41,7 @@ const drawerItems = [
   { label: "Dashboard", href: "/mobile/dashboard", icon: Home },
   { label: "Daily Activity", href: "/mobile/activity", icon: ClipboardList },
   { label: "Approval", href: "/mobile/approval", icon: CheckCircle2 },
-  { label: "Lembur", href: "/mobile/overtime", icon: FileSignature },
+  { label: "Overtime", href: "/mobile/overtime", icon: FileSignature },
   { label: "Input Aktivitas", href: "/mobile/activity/input", icon: Grid3X3 },
   { label: "HSE Report", href: "/mobile/hse", icon: ShieldCheck },
   { label: "Daily Report", href: "/mobile/reports", icon: FileText },

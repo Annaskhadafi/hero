@@ -7,18 +7,35 @@ import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
+export type NavItem = {
+  title: string
+  url: string
+  section?: string
+  iconName?: string
+  sortOrder?: number
+  menuArea?: string
+  id?: number
+  resource?: string
+  isVisible?: boolean
+  openInNewTab?: boolean
+}
+
 export function SiteHeader({
   title,
   subtitle,
   eyebrow = "Desktop Workspace",
   backgroundColor = "#FFFFFF",
   textColor = "#1E293B",
+  navMain = [],
+  navSecondary = [],
 }: {
   title: string
   subtitle?: string
   eyebrow?: string
   backgroundColor?: string
   textColor?: string
+  navMain?: NavItem[]
+  navSecondary?: NavItem[]
 }) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -70,7 +87,7 @@ export function SiteHeader({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:min-w-[420px] lg:justify-end">
-            <HeaderThemeControls />
+            <HeaderThemeControls navMain={navMain} navSecondary={navSecondary} />
           </div>
         </div>
       </div>

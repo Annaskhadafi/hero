@@ -182,7 +182,7 @@ const createWorkflowConditionSchema = z.object({
 });
 
 const importUsersSchema = z.object({
-  rawCsv: z.string().trim().min(1, "File CSV wajib diisi."),
+  rawCsv: z.string().trim().min(1, "CSV file is required."),
   mappingJson: z.string().trim().min(2, "Mapping import belum lengkap."),
 });
 
@@ -213,7 +213,7 @@ const navbarThemeSchema = z.object({
   headerBackgroundColor: z
     .string()
     .trim()
-    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Warna header harus berupa hex color yang valid."),
+    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Header color must be a valid hex color."),
 });
 
 const manageSecurityUserSchema = z.object({
@@ -376,7 +376,7 @@ function parseDateTime(value: string) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    throw new Error("Tanggal aktivitas tidak valid.");
+    throw new Error("Activity date is invalid.");
   }
 
   return date;
@@ -497,7 +497,7 @@ async function applyApprovalDecision(params: {
   const trimmedNote = params.note.trim();
 
   if (params.decision === "rejected" && !trimmedNote) {
-    throw new Error("Komentar penolakan wajib diisi.");
+    throw new Error("Rejection comment is required.");
   }
 
   const [approval] = await db
@@ -528,7 +528,7 @@ async function applyApprovalDecision(params: {
     .limit(1);
 
   if (!approval) {
-    throw new Error("Approval tidak ditemukan.");
+    throw new Error("Approval not found.");
   }
 
   if (approval.status !== "pending") {
@@ -1028,7 +1028,7 @@ function normalizeProfileImageValue(value: string | undefined) {
 
   if (trimmedValue.startsWith("data:image/")) {
     if (trimmedValue.length > 3_000_000) {
-      throw new Error("Foto profile terlalu besar. Maksimal 2MB.");
+      throw new Error("Profile photo too large. Max 2MB.");
     }
 
     return trimmedValue;
@@ -1038,12 +1038,12 @@ function normalizeProfileImageValue(value: string | undefined) {
     const parsedUrl = new URL(trimmedValue);
 
     if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-      throw new Error("Protocol URL tidak didukung.");
+      throw new Error("URL protocol is not supported.");
     }
 
     return parsedUrl.toString();
   } catch {
-    throw new Error("Format foto profile tidak valid.");
+    throw new Error("Profile photo format is invalid.");
   }
 }
 
@@ -1156,7 +1156,7 @@ export async function createActivityAction(formData: FormData) {
   const endTime = parseDateTime(payload.endTime);
 
   if (endTime <= startTime) {
-    throw new Error("Waktu selesai harus lebih besar dari waktu mulai.");
+    throw new Error("End time must be greater than start time.");
   }
 
   const [employee] = await db
@@ -1171,7 +1171,7 @@ export async function createActivityAction(formData: FormData) {
     .limit(1);
 
   if (!employee) {
-    throw new Error("Karyawan tidak ditemukan.");
+    throw new Error("Employee not found.");
   }
 
   const approvalRoute = await resolveApprovalRouteForActivity({
@@ -1185,7 +1185,7 @@ export async function createActivityAction(formData: FormData) {
   const firstStep = approvalRoute.steps[0];
 
   if (!firstStep) {
-    throw new Error("Approval route untuk aktivitas ini tidak ditemukan.");
+    throw new Error("Approval route for this activity not found.");
   }
   const firstGroup = getRouteStepGroup(approvalRoute.steps, firstStep.stepOrder);
 
@@ -1322,7 +1322,7 @@ export async function addApprovalCommentAction(formData: FormData) {
     .limit(1);
 
   if (!approval) {
-    throw new Error("Approval tidak ditemukan untuk ditambahkan komentar.");
+    throw new Error("Approval not found to add comment.");
   }
 
   await db
@@ -1491,7 +1491,7 @@ export async function importSecurityUsersAction(
     if (records.length === 0) {
       return {
         status: "error",
-        message: "CSV tidak memiliki baris data yang bisa diimport.",
+        message: "CSV has no data rows to import.",
       };
     }
 
@@ -1652,7 +1652,7 @@ export async function importSecurityUsersAction(
 
     return {
       status: "success",
-      message: "Import user berhasil diproses.",
+      message: "User import processed successfully.",
       importedCount,
       updatedCount,
       skippedCount,
@@ -1663,7 +1663,7 @@ export async function importSecurityUsersAction(
       message:
         error instanceof Error
           ? error.message
-          : "Terjadi kendala saat import user.",
+          : "An issue occurred while importing users.",
     };
   }
 }
@@ -1721,14 +1721,14 @@ export async function manageSecurityUserAction(
       if (!fullName || !email || !payload.accessRole) {
         return {
           status: "error",
-          message: "Nama lengkap, email, dan role wajib diisi.",
+          message: "Full name, email, and role are required.",
         };
       }
 
       if (password.length < 8) {
         return {
           status: "error",
-          message: "Password awal minimal 8 karakter.",
+          message: "Initial password minimum 8 characters.",
         };
       }
 
@@ -1758,14 +1758,14 @@ export async function manageSecurityUserAction(
       if (existingEmployee || existingAuthUser) {
         return {
           status: "error",
-          message: "Email sudah dipakai oleh user lain.",
+          message: "Email is already used by another user.",
         };
       }
 
       if (!role) {
         return {
           status: "error",
-          message: "Role yang dipilih tidak valid.",
+          message: "Selected role is invalid.",
         };
       }
 
@@ -1839,11 +1839,11 @@ export async function manageSecurityUserAction(
       });
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "User baru berhasil dibuat." };
+      return { status: "success", message: "New user created successfully." };
     }
 
     if (!payload.employeeId) {
-      return { status: "error", message: "User tidak valid." };
+      return { status: "error", message: "Invalid user." };
     }
 
     const [employee] = await db
@@ -1859,7 +1859,7 @@ export async function manageSecurityUserAction(
       .limit(1);
 
     if (!employee) {
-      return { status: "error", message: "User tidak ditemukan." };
+      return { status: "error", message: "User not found." };
     }
 
     if (payload.intent === "update-profile") {
@@ -1886,7 +1886,7 @@ export async function manageSecurityUserAction(
       if (directManagerId === employee.id) {
         return {
           status: "error",
-          message: "Atasan langsung tidak boleh diri sendiri.",
+          message: "Direct supervisor cannot be yourself.",
         };
       }
 
@@ -1945,7 +1945,7 @@ export async function manageSecurityUserAction(
       }
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "Profil user berhasil diperbarui." };
+      return { status: "success", message: "User profile updated successfully." };
     }
 
     if (payload.intent === "ban-user") {
@@ -1962,7 +1962,7 @@ export async function manageSecurityUserAction(
       }
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "User berhasil diban." };
+      return { status: "success", message: "User banned successfully." };
     }
 
     if (payload.intent === "delete-user") {
@@ -1973,12 +1973,12 @@ export async function manageSecurityUserAction(
       await db.delete(employees).where(eq(employees.id, employee.id));
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "User berhasil dihapus." };
+      return { status: "success", message: "User deleted successfully." };
     }
 
     if (payload.intent === "change-role") {
       if (!payload.accessRole) {
-        return { status: "error", message: "Role baru wajib dipilih." };
+        return { status: "error", message: "New role must be selected." };
       }
 
       const [role] = await db
@@ -1988,7 +1988,7 @@ export async function manageSecurityUserAction(
         .limit(1);
 
       if (!role) {
-        return { status: "error", message: "Role yang dipilih tidak valid." };
+        return { status: "error", message: "Selected role is invalid." };
       }
 
       await db
@@ -1997,7 +1997,7 @@ export async function manageSecurityUserAction(
         .where(eq(employees.id, employee.id));
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "Role user berhasil diganti." };
+      return { status: "success", message: "User role changed successfully." };
     }
 
     if (payload.intent === "change-password") {
@@ -2048,17 +2048,17 @@ export async function manageSecurityUserAction(
       await db.delete(session).where(eq(session.userId, authUserId));
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "Password user berhasil diganti." };
+      return { status: "success", message: "User password changed successfully." };
     }
 
-    return { status: "error", message: "Intent user action tidak dikenali." };
+    return { status: "error", message: "User action intent not recognized." };
   } catch (error) {
     return {
       status: "error",
       message:
         error instanceof Error
           ? error.message
-          : "Terjadi kendala saat memproses user.",
+          : "An issue occurred while processing user.",
     };
   }
 }
@@ -2084,7 +2084,7 @@ export async function manageSecurityRoleAction(
       const roleName = payload.roleName?.trim() ?? "";
 
       if (!roleName) {
-        return { status: "error", message: "Nama role wajib diisi." };
+        return { status: "error", message: "Role name is required." };
       }
 
       const [existingRole] = await db
@@ -2094,7 +2094,7 @@ export async function manageSecurityRoleAction(
         .limit(1);
 
       if (existingRole) {
-        return { status: "error", message: "Nama role sudah dipakai." };
+        return { status: "error", message: "Role name is already taken." };
       }
 
       const [createdRole] = await db
@@ -2102,7 +2102,7 @@ export async function manageSecurityRoleAction(
         .values({
           name: roleName,
           description:
-            payload.description?.trim() || "Role baru dari halaman role management.",
+            payload.description?.trim() || "New role from role management page.",
           scope: payload.scope?.trim() || "site",
         })
         .returning();
@@ -2122,7 +2122,7 @@ export async function manageSecurityRoleAction(
       }
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "Role baru berhasil dibuat." };
+      return { status: "success", message: "New role created successfully." };
     }
 
     if (payload.intent === "duplicate-role") {
@@ -2132,7 +2132,7 @@ export async function manageSecurityRoleAction(
       if (!sourceRoleId || !roleName) {
         return {
           status: "error",
-          message: "Role sumber dan nama role duplikat wajib diisi.",
+          message: "Source role and duplicate role name are required.",
         };
       }
 
@@ -2150,11 +2150,11 @@ export async function manageSecurityRoleAction(
       ]);
 
       if (!sourceRole[0]) {
-        return { status: "error", message: "Role sumber tidak ditemukan." };
+        return { status: "error", message: "Source role not found." };
       }
 
       if (existingRole[0]) {
-        return { status: "error", message: "Nama role duplikat sudah dipakai." };
+        return { status: "error", message: "Duplicate role name is already taken." };
       }
 
       const [duplicatedRole] = await db
@@ -2201,14 +2201,14 @@ export async function manageSecurityRoleAction(
       }
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "Role berhasil diduplikasi." };
+      return { status: "success", message: "Role duplicated successfully." };
     }
 
     if (payload.intent === "delete-role") {
       const roleId = parseRoleId(payload.roleId);
 
       if (!roleId) {
-        return { status: "error", message: "Role tidak valid." };
+        return { status: "error", message: "Invalid role." };
       }
 
       const roles = await db.select().from(securityRoles);
@@ -2226,14 +2226,14 @@ export async function manageSecurityRoleAction(
         .limit(1);
 
       if (!role) {
-        return { status: "error", message: "Role tidak ditemukan." };
+        return { status: "error", message: "Role not found." };
       }
 
       const fallbackRole = roles.find((item) => item.id !== role.id);
       if (!fallbackRole) {
         return {
           status: "error",
-          message: "Role pengganti tidak tersedia.",
+          message: "Replacement role is not available.",
         };
       }
 
@@ -2317,7 +2317,7 @@ export async function manageSecurityRoleAction(
       message:
         error instanceof Error
           ? error.message
-          : "Terjadi kendala saat memproses role.",
+          : "An issue occurred while processing role.",
     };
   }
 }
@@ -2725,7 +2725,7 @@ export async function importTrainingRecordsAction(
     if (parsed.records.length === 0) {
       return {
         status: "error",
-        message: "CSV training kosong atau header tidak terbaca.",
+        message: "Training CSV is empty or header cannot be read.",
       };
     }
 

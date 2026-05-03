@@ -291,7 +291,7 @@ export function PortalChitraSettingsPanel({
                 />
               </label>
               <label className="grid gap-2">
-                <Label htmlFor="portal-category">Kategori</Label>
+                <Label htmlFor="portal-category">Category</Label>
                 <Input
                   id="portal-category"
                   name="category"
@@ -324,7 +324,7 @@ export function PortalChitraSettingsPanel({
                   value={draft.description}
                   onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
                   className="min-h-24"
-                  placeholder="Deskripsi singkat aplikasi"
+                  placeholder="Short app description"
                 />
               </label>
               <label className="grid gap-2">

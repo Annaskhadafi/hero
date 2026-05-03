@@ -145,7 +145,7 @@ export default async function MyDayPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <MetricPill label="Job list" value={`${data.summary.jobsCompleted}/${data.summary.jobsAssigned}`} />
-              <MetricPill label="Poin hari ini" value={data.summary.pointsToday} />
+              <MetricPill label="Points today" value={data.summary.pointsToday} />
               <MetricPill
                 label="Pending approval"
                 value={data.activities.filter((activity) => activity.statusLabel.toLowerCase().includes("pending")).length}
@@ -186,7 +186,7 @@ export default async function MyDayPage() {
             <Button asChild variant="outline" className="rounded-full">
               <Link href="/dashboard/leaderboard">
                 <Trophy className="size-4" />
-                Buka leaderboard
+                Open leaderboard
               </Link>
             </Button>
           </div>
@@ -285,7 +285,7 @@ export default async function MyDayPage() {
                             </p>
                             <p className="mt-1 font-semibold text-[#082033]">{item.itemLabel}</p>
                             <p className="mt-1 text-sm text-[#486275]">
-                              {item.itemDescription || item.libraryName || "Tanpa deskripsi item."}
+                              {item.itemDescription || item.libraryName || "No item description."}
                             </p>
                           </div>
                           <Badge variant="outline">{item.pointOverride ?? item.libraryPoints ?? 0} pts</Badge>
@@ -313,20 +313,20 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Antrean kerja hari ini"
+                title="Today's work queue"
                 description="Mulai dari assignment yang wajib diselesaikan lebih dulu, lalu susun prioritas kerja dari tabel utama."
                 label="assignments"
                 fileName="my-day-assignments"
-                searchPlaceholder="Cari assignment, activity, prioritas, atau PIC..."
-                filters={<><SelectFilter filterKey="status" placeholder="Semua status" options={assignmentStatuses} /><SelectFilter filterKey="priority" placeholder="Semua prioritas" options={assignmentPriorities} /><SelectFilter filterKey="mandatory" placeholder="Semua kewajiban" options={["ya", "opsional"]} /></>}
+                searchPlaceholder="Search assignment, activity, priority, or PIC..."
+                filters={<><SelectFilter filterKey="status" placeholder="All statuses" options={assignmentStatuses} /><SelectFilter filterKey="priority" placeholder="All priorities" options={assignmentPriorities} /><SelectFilter filterKey="mandatory" placeholder="All obligations" options={["yes", "optional"]} /></>}
                 presets={<TableFilterPresets presets={[{ label: "Prioritas tinggi", filters: { priority: "High" } }, { label: "Wajib", filters: { mandatory: "ya" } }]} />}
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Aktivitas</TableHead>
+                      <TableHead>Activity</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Prioritas</TableHead>
+                      <TableHead>Priority</TableHead>
                       <TableHead>Deadline</TableHead>
                       <TableHead>PIC</TableHead>
                       <TableHead>Mandatory</TableHead>
@@ -340,7 +340,7 @@ export default async function MyDayPage() {
                           data-date-value={(assignment.deadline ?? assignment.createdAt).toISOString()}
                           data-filter-status={assignment.statusLabel}
                           data-filter-priority={assignment.priority}
-                          data-filter-mandatory={assignment.isMandatory ? "ya" : "opsional"}
+                          data-filter-mandatory={assignment.isMandatory ? "yes" : "optional"}
                         >
                           <TableCell className="align-top">
                             <div className="space-y-1">
@@ -374,7 +374,7 @@ export default async function MyDayPage() {
                           </TableCell>
                           <TableCell className="align-top">{assignment.assignedByName}</TableCell>
                           <TableCell className="align-top">
-                            <Badge variant="outline">{assignment.isMandatory ? "Ya" : "Opsional"}</Badge>
+                            <Badge variant="outline">{assignment.isMandatory ? "Yes" : "Optional"}</Badge>
                           </TableCell>
                         </TableRow>
                       ))
@@ -398,13 +398,13 @@ export default async function MyDayPage() {
                 description="Pilihan aktivitas self-input ditampilkan sebagai table agar tidak memenuhi layar dengan card grid."
                 label="library activities"
                 fileName="my-day-library"
-                searchPlaceholder="Cari activity code, nama activity, kategori, atau requirement..."
+                searchPlaceholder="Search activity code, activity name, category, or requirement..."
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Activity</TableHead>
-                      <TableHead>Kategori</TableHead>
+                      <TableHead>Category</TableHead>
                       <TableHead>Points</TableHead>
                       <TableHead>Validasi</TableHead>
                       <TableHead>SLA</TableHead>
@@ -429,7 +429,7 @@ export default async function MyDayPage() {
                           </TableCell>
                           <TableCell className="align-top">
                             <div className="flex flex-wrap gap-2">
-                              {item.requiresPhoto ? <Badge variant="outline">Foto</Badge> : null}
+                              {item.requiresPhoto ? <Badge variant="outline">Photo</Badge> : null}
                               {item.requiresEquipmentNo ? <Badge variant="outline">Unit/alat</Badge> : null}
                               {item.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
                             </div>
@@ -455,22 +455,22 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Log aktivitas terkirim"
+                title="Sent activity log"
                 description="Pantau aktivitas yang sudah masuk, status approval, dan dampak poin tanpa pindah ke halaman lain."
                 label="activities"
                 fileName="my-day-activity-log"
-                searchPlaceholder="Cari aktivitas, status, submission, atau unit..."
-                filters={<><SelectFilter filterKey="status" placeholder="Semua status" options={activityStatuses} /><SelectFilter filterKey="source" placeholder="Semua sumber" options={activitySources} /></>}
+                searchPlaceholder="Search activity, status, submission, or unit..."
+                filters={<><SelectFilter filterKey="status" placeholder="All statuses" options={activityStatuses} /><SelectFilter filterKey="source" placeholder="All sources" options={activitySources} /></>}
                 presets={<TableFilterPresets presets={[{ label: "Pending approval", filters: { status: "Pending" } }, { label: "Self input", filters: { source: "self_input" } }]} />}
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Aktivitas</TableHead>
+                      <TableHead>Activity</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Durasi</TableHead>
                       <TableHead>Submission</TableHead>
-                      <TableHead>Poin</TableHead>
+                      <TableHead>Points</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -563,7 +563,7 @@ export default async function MyDayPage() {
                     </p>
                   </div>
                   <Button asChild variant="outline" className="rounded-full">
-                    <Link href="/dashboard/activity-hub/team-board">Buka Team Board</Link>
+                    <Link href="/dashboard/activity-hub/team-board">Open Team Board</Link>
                   </Button>
                 </div>
 
@@ -580,19 +580,19 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Feed poin"
+                title="Point feed"
                 description="Perubahan poin terbaru untuk akun Anda dalam bentuk audit table yang lebih mudah diurutkan."
                 label="point events"
                 fileName="my-day-point-feed"
-                searchPlaceholder="Cari label, kategori, atau perubahan poin..."
+                searchPlaceholder="Search label, category, or point change..."
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Event</TableHead>
-                      <TableHead>Kategori</TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Poin</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Points</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -628,20 +628,20 @@ export default async function MyDayPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Penalty dan dispute"
-                description="Audit penalty yang mempengaruhi poin hari ini, lalu ajukan dispute bila perlu klarifikasi."
+                title="Penalty and dispute"
+                description="Audit penalties affecting today's points, then submit a dispute if clarification is needed."
                 label="penalties"
                 fileName="my-day-penalties"
-                searchPlaceholder="Cari kode penalty, type, alasan, atau status dispute..."
-                filters={<SelectFilter filterKey="dispute" placeholder="Semua status dispute" options={penaltyStatuses} />}
+                searchPlaceholder="Search penalty code, type, reason, or dispute status..."
+                filters={<SelectFilter filterKey="dispute" placeholder="All dispute statuses" options={penaltyStatuses} />}
                 presets={<TableFilterPresets presets={[{ label: "Dispute aktif", filters: { dispute: "in_review" } }, { label: "Belum diajukan", filters: { dispute: "not_disputed" } }]} />}
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Penalty</TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Poin</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Points</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Aksi</TableHead>
                     </TableRow>
@@ -684,18 +684,18 @@ export default async function MyDayPage() {
                                   <DialogHeader>
                                     <DialogTitle>Ajukan Dispute Penalty</DialogTitle>
                                     <DialogDescription>
-                                      Jelaskan kronologi dan bukti pendukung agar audit penalty bisa direview.
+                                      Explain chronology and supporting evidence so penalty audit can be reviewed.
                                     </DialogDescription>
                                   </DialogHeader>
                                   <form action={submitPointDisputeAction} className="grid gap-4">
                                     <input type="hidden" name="penaltyEventId" value={penalty.id} />
                                     <input type="hidden" name="employeeId" value={data.employee.id} />
                                     <Label className="grid gap-2 text-sm">
-                                      Alasan keberatan
+                                      Dispute reason
                                       <Textarea
                                         name="reason"
                                         rows={4}
-                                        placeholder="Jelaskan kronologi, kendala sinyal/site, atau alasan kenapa penalty perlu direview."
+                                        placeholder="Explain chronology, signal/site issues, or reason why penalty needs review."
                                         required
                                         minLength={20}
                                       />
@@ -704,7 +704,7 @@ export default async function MyDayPage() {
                                       Bukti pendukung
                                       <Input
                                         name="evidenceUrls"
-                                        placeholder="URL foto/chat/berita acara, pisahkan dengan koma bila lebih dari satu."
+                                        placeholder="URL of photo/chat/event news, separate with commas if more than one."
                                       />
                                     </Label>
                                     <Button type="submit" className="w-full rounded-xl">

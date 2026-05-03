@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     if (payload.photo) {
       const matches = payload.photo.dataUrl.match(/^data:(.+);base64,(.+)$/);
       if (!matches) {
-        throw new Error("Payload foto activity tidak valid.");
+        throw new Error("Activity photo payload is invalid.");
       }
 
       const [, mimeType, base64] = matches;
@@ -65,10 +65,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Activity berhasil disinkronkan.",
+      message: "Activity synchronized successfully.",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Sync activity gagal.";
+    const message = error instanceof Error ? error.message : "Activity sync failed.";
 
     return NextResponse.json(
       {

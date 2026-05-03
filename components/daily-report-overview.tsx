@@ -64,13 +64,13 @@ export function DailyReportOverview() {
           icon={<Users className="h-4 w-4 text-sky-600" />}
         />
         <MetricCard
-          label="Pekerjaan selesai"
+          label="Completed jobs"
           value={`${dailyReportSummary.jobsCompleted}`}
           caption="Dari aktivitas approved"
           icon={<HardHat className="h-4 w-4 text-amber-600" />}
         />
         <MetricCard
-          label="Status HSE"
+          label="HSE status"
           value={dailyReportSummary.hseStatus}
           caption="Masuk ke report customer"
           icon={<ShieldCheck className="h-4 w-4 text-emerald-600" />}

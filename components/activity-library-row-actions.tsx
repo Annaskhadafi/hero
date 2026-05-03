@@ -254,7 +254,7 @@ export function ActivityLibraryRowActions({
                 defaultSectionId={row.sectionId}
                 selectClassName="h-12 rounded-lg border-0 bg-surface-container-low px-4 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)]"
                 departmentPlaceholder="Global"
-                sectionPlaceholder="Tanpa section"
+                sectionPlaceholder="No section"
               />
             </div>
 

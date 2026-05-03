@@ -54,7 +54,7 @@ export default async function HsePage() {
 
         <TabsContent value="observations">
           <AdminTableCard
-            title="Observasi lapangan"
+            title="Field observation"
             description="Temuan unsafe act dan unsafe condition yang perlu closure action atau eskalasi supervisor."
             columns={["Title", "Category", "Location", "Reporter", "Severity", "Status", "Action"]}
             dateFilter
@@ -93,7 +93,7 @@ export default async function HsePage() {
 
         <TabsContent value="incidents">
           <AdminTableCard
-            title="Insiden HSE"
+            title="HSE Incident"
             description="Antrian insiden untuk investigasi, update status, dan pelaporan manajemen per site."
             columns={["Title", "Type", "Unit", "Impact", "Reported", "Status", "Action"]}
             dateFilter

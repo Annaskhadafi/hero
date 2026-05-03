@@ -337,7 +337,7 @@ export default function AttendanceRecordsPage() {
         <MinimalTableShell
           label="attendance records"
           fileName="attendance-records"
-          searchPlaceholder="Cari user, site, tipe attendance, atau lokasi..."
+          searchPlaceholder="Search user, site, attendance type, or location..."
           summaryClassName="bg-transparent px-1 py-0 shadow-none"
           className="p-4"
         >
@@ -499,7 +499,7 @@ export default function AttendanceRecordsPage() {
                     rel="noopener noreferrer"
                     className="text-sm font-semibold text-sky-200 hover:underline"
                   >
-                    Buka URL asli
+                    Open URL asli
                   </a>
                 ) : null}
               </div>

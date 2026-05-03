@@ -80,7 +80,7 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Aktivitas</TableHead>
+                      <TableHead>Activity</TableHead>
                       <TableHead>Penerima</TableHead>
                       <TableHead>Kanal</TableHead>
                       <TableHead>Status</TableHead>

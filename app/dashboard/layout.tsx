@@ -64,11 +64,13 @@ export default async function DashboardLayout({
       />
       <SidebarInset data-admin-dashboard-shell>
         <SiteHeader
-          eyebrow="HERO Command Center"
-          title="Operasional desktop lintas modul"
-          subtitle="Navigasi global, notifikasi, tema, dan akses cepat ke seluruh workspace admin."
+          eyebrow="Chitra Hub"
+          title="Employee Reporting & Operational"
+          subtitle=""
           backgroundColor={navbarSettings.theme?.headerBackgroundColor ?? "#FFFFFF"}
           textColor={navbarSettings.theme?.textColor ?? "#0F172A"}
+          navMain={JSON.parse(JSON.stringify(sidebarData.navMain))}
+          navSecondary={JSON.parse(JSON.stringify(sidebarData.navSecondary))}
         />
         <div className="flex flex-1 flex-col">{children}</div>
       </SidebarInset>

@@ -115,7 +115,7 @@ export function MobileProfileSettings({ profile }: MobileProfileSettingsProps) {
             />
 
             <div className="grid gap-2">
-              <Label htmlFor="mobile-profile-name">Nama</Label>
+              <Label htmlFor="mobile-profile-name">Name</Label>
               <Input
                 id="mobile-profile-name"
                 name="name"

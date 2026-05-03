@@ -125,7 +125,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
         <CardContent>
           <form onSubmit={runSimulation} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="simulation-employee">Karyawan</Label>
+              <Label htmlFor="simulation-employee">Employee</Label>
               <Select value={employeeId} onValueChange={setEmployeeId}>
                 <SelectTrigger id="simulation-employee">
                   <SelectValue placeholder="Pilih karyawan" />
@@ -152,7 +152,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="simulation-priority">Prioritas</Label>
+              <Label htmlFor="simulation-priority">Priority</Label>
               <Select value={priority} onValueChange={setPriority}>
                 <SelectTrigger id="simulation-priority">
                   <SelectValue placeholder="Pilih prioritas" />
@@ -221,7 +221,7 @@ export function ApprovalRouteSimulator({ employees }: Props) {
           {state.route ? (
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-3">
-                <SummaryCard label="Alur approval" value={state.route.matrixName ?? "Alur standar"} />
+                <SummaryCard label="Approval flow" value={state.route.matrixName ?? "Alur standar"} />
                 <SummaryCard label="Template Struktur" value={state.route.structureName ?? "Tanpa template"} />
                 <SummaryCard label="Transaksi" value={state.route.transactionType} />
               </div>

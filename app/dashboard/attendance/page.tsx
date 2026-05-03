@@ -72,7 +72,7 @@ const workModeOptions = [
   "Area Customer",
   "Transit / Travel",
   "Remote Support",
-  "Pengganti Shift",
+  "Shift Replacement",
 ] as const;
 
 const attendanceContextOptions = [
@@ -83,8 +83,8 @@ const attendanceContextOptions = [
   },
   {
     value: "overtime",
-    label: "Lembur",
-    helper: "Ada pekerjaan tambahan di luar shift.",
+    label: "Overtime",
+    helper: "There is extra work outside the shift.",
   },
   {
     value: "handover",
@@ -133,14 +133,14 @@ function formatOvertimeLabel(minutes: number) {
   const remainingMinutes = minutes % 60;
 
   if (hours > 0 && remainingMinutes > 0) {
-    return `${hours} jam ${remainingMinutes} menit`;
+    return `${hours}h ${remainingMinutes}m`;
   }
 
   if (hours > 0) {
-    return `${hours} jam`;
+    return `${hours}h`;
   }
 
-  return `${remainingMinutes} menit`;
+  return `${remainingMinutes}m`;
 }
 
 function extractAreaLabel(result: NominatimReverseResponse) {
@@ -769,7 +769,7 @@ export default function AttendancePage() {
                         value={overtimeMinutes}
                         onChange={(event) => setOvertimeMinutes(Math.max(0, Number(event.target.value) || 0))}
                         className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
-                        placeholder="Masukkan menit lembur"
+                        placeholder="Enter overtime minutes"
                       />
                       <span className="text-xs text-slate-500">Tercatat sebagai {formatOvertimeLabel(overtimeMinutes)} untuk referensi approval/payroll.</span>
                     </label>
@@ -787,7 +787,7 @@ export default function AttendancePage() {
                       maxLength={160}
                       rows={3}
                       className="resize-none rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
-                      placeholder="Contoh: standby di workshop, pengganti shift B, atau pekerjaan emergency."
+                      placeholder="Example: standby in workshop, shift B replacement, or emergency work."
                     />
                     <span className="text-right text-[11px] text-slate-400">{operationalNote.length}/160</span>
                   </label>

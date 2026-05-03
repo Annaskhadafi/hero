@@ -340,7 +340,7 @@ async function getAuthenticatedEmployeeContext() {
   });
 
   if (!session?.user?.email) {
-    throw new Error("Sesi login tidak ditemukan.");
+    throw new Error("Login session not found.");
   }
 
   const [employeeByAuthUserId] =
@@ -509,7 +509,7 @@ async function assertOvertimeRequestCreationAccess(
     return permission;
   }
 
-  throw new Error("Anda belum diizinkan membuat pengajuan lembur. Aktifkan leader ini di pengaturan dulu.");
+  throw new Error("You are not allowed to create overtime requests. Enable this leader in settings first.");
 }
 
 async function uploadSignatureFile(file: FormDataEntryValue | null, prefix: string) {
@@ -518,11 +518,11 @@ async function uploadSignatureFile(file: FormDataEntryValue | null, prefix: stri
   }
 
   if (!file.type.startsWith("image/")) {
-    throw new Error("File tanda tangan harus berupa gambar.");
+    throw new Error("Signature file must be an image.");
   }
 
   if (file.size > MAX_SIGNATURE_FILE_SIZE) {
-    throw new Error("File tanda tangan terlalu besar. Maksimal 2MB.");
+    throw new Error("Signature file too large. Max 2MB.");
   }
 
   const uploaded = await uploadAnyFileToS3(file, prefix);
@@ -1229,7 +1229,7 @@ export async function importActivityLibraryAction(
     if (!rawCsv) {
       return {
         status: "error",
-        message: "CSV kosong. Upload file atau paste data example dulu.",
+        message: "CSV is empty. Upload a file or paste example data first.",
       };
     }
 
@@ -1422,7 +1422,7 @@ export async function manageJobAssignmentAction(formData: FormData) {
     .limit(1);
 
   if (!assignee?.isActive) {
-    throw new Error("Bawahan tujuan assignment tidak aktif atau tidak ditemukan.");
+    throw new Error("Target subordinate for assignment is inactive or not found.");
   }
 
   if (payload.libraryActivityId) {
@@ -1510,19 +1510,19 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
 
   const lineItems = parseOvertimeCommandLetterLines(payload.lineItemsJson);
   if (lineItems.length === 0) {
-    throw new Error("SPL minimal punya satu line pekerjaan.");
+    throw new Error("SPL must have at least one work line.");
   }
 
   const managedEmployeeIds = await getManagedEmployeeIdsForLead(currentEmployee.id);
   if (managedEmployeeIds.length === 0) {
-    throw new Error("Leader ini belum punya bawahan aktif untuk pengajuan lembur.");
+    throw new Error("This leader has no active subordinates for overtime requests.");
   }
 
   const managedEmployeeIdSet = new Set(managedEmployeeIds);
   const selectedEmployeeIds = Array.from(new Set(lineItems.map((item) => item.assignedEmployeeId)));
 
   if (selectedEmployeeIds.some((employeeId) => !managedEmployeeIdSet.has(employeeId))) {
-    throw new Error("Pengajuan lembur hanya boleh dibuat untuk bawahan leader ini.");
+    throw new Error("Overtime requests can only be made for this leader's subordinates.");
   }
 
   if (!payload.workDate) {
@@ -1679,7 +1679,7 @@ export async function manageOvertimeRequestLeaderPermissionAction(formData: Form
   const currentEmployee = await getAuthenticatedEmployeeContext();
 
   if (!canManageOvertimeRequestSettings(currentEmployee)) {
-    throw new Error("Anda tidak punya akses untuk mengubah setting leader lembur.");
+    throw new Error("You do not have access to change overtime leader settings.");
   }
 
   const [leader] = await db
@@ -1867,7 +1867,7 @@ export async function submitDailyActivityAction(formData: FormData) {
   }
 
   if (selectedAssignment && selectedAssignment.assignedToEmployeeId !== employeeId) {
-    throw new Error("Assignment tidak sesuai dengan karyawan login.");
+    throw new Error("Assignment does not match logged-in employee.");
   }
 
   const effectiveLibraryActivityId =
@@ -1887,7 +1887,7 @@ export async function submitDailyActivityAction(formData: FormData) {
           .limit(1);
 
   if (payload.sourceMode === "self_input" && !library) {
-    throw new Error("Aktivitas library belum dipilih.");
+    throw new Error("Library activity has not been selected.");
   }
 
   if (payload.sourceMode === "assigned" && selectedAssignment?.libraryActivityId && !library) {
@@ -1899,7 +1899,7 @@ export async function submitDailyActivityAction(formData: FormData) {
   }
 
   if (library?.siteId && library.siteId !== employee.siteId) {
-    throw new Error("Aktivitas library tidak tersedia untuk site user ini.");
+    throw new Error("Library activity is not available for this user's site.");
   }
 
   if (payload.sourceMode === "custom") {
@@ -1974,11 +1974,11 @@ export async function submitDailyActivityAction(formData: FormData) {
   let uploadedPhotoUrl = payload.photoUrl;
   if (photoFile instanceof File && photoFile.size > 0) {
     if (!photoFile.type.startsWith("image/")) {
-      throw new Error("File dokumentasi harus berupa gambar.");
+      throw new Error("Documentation file must be an image.");
     }
 
     if (photoFile.size > MAX_ACTIVITY_PHOTO_SIZE) {
-      throw new Error("Foto dokumentasi terlalu besar. Maksimal 5MB.");
+      throw new Error("Documentation photo too large. Max 5MB.");
     }
 
     const uploaded = await uploadAnyFileToS3(photoFile, "activity-photos");
@@ -2052,7 +2052,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       await tx.insert(activityPhotos).values({
         activityId: createdActivity.id,
         fileUrl: uploadedPhotoUrl,
-        caption: "Upload dokumentasi lapangan",
+        caption: "Upload field documentation",
         uploadedAt: submissionTime,
       });
     }
@@ -2141,7 +2141,7 @@ export async function submitDailyActivityAction(formData: FormData) {
   revalidateDailyActivitySurfaces();
 
   if (createdActivityId == null) {
-    throw new Error("Aktivitas gagal dibuat.");
+    throw new Error("Activity failed to create.");
   }
 }
 

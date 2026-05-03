@@ -273,10 +273,10 @@ export default async function TeamBoardPage() {
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Dokumen SPL"
-                description="Monitor dokumen Surat Perintah Lembur lengkap dengan line kerja, estimasi menit, dan planned point."
+                description="Monitor Overtime Command Letter documents complete with work lines, minute estimates, and planned points."
                 label="spl documents"
                 fileName="team-board-spl-docs"
-                searchPlaceholder="Cari nomor SPL, judul, status, section, atau line..."
+                searchPlaceholder="Search SPL number, title, status, section, or line..."
               >
                 <Table>
                   <TableHeader>
@@ -380,18 +380,18 @@ export default async function TeamBoardPage() {
           <Card className="rounded-[1.4rem]">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
-                title="Status Tim Lapangan"
-                description="Satu table untuk memantau anggota tim, pekerjaan aktif, progress, dan update terakhir."
+                title="Field Team Status"
+                description="One table to monitor team members, active jobs, progress, and latest updates."
                 label="team members"
                 fileName="team-board-members"
-                searchPlaceholder="Cari nama, role, status, atau pekerjaan aktif..."
+                searchPlaceholder="Search name, role, status, or active job..."
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Member</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Pekerjaan Aktif</TableHead>
+                      <TableHead>Active Job</TableHead>
                       <TableHead>Progress</TableHead>
                       <TableHead>Mandatory</TableHead>
                       <TableHead>Last Update</TableHead>
@@ -442,7 +442,7 @@ export default async function TeamBoardPage() {
 
               <ActivityTeamLogPanel
                 groups={data.activityGroups}
-                emptyMessage="Belum ada aktivitas dari bawahan Anda."
+                emptyMessage="No activities from your subordinates yet."
               />
             </CardContent>
           </Card>
@@ -456,13 +456,13 @@ export default async function TeamBoardPage() {
                 description="Approval yang menunggu tindak lanjut kini dipusatkan ke satu table audit."
                 label="pending approvals"
                 fileName="team-board-approvals"
-                searchPlaceholder="Cari requester, aktivitas, approver, atau risk..."
+                searchPlaceholder="Search requester, activity, approver, or risk..."
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Karyawan</TableHead>
-                      <TableHead>Aktivitas</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Activity</TableHead>
                       <TableHead>Risk</TableHead>
                       <TableHead>Submitted</TableHead>
                       <TableHead>Aksi</TableHead>
@@ -526,16 +526,16 @@ export default async function TeamBoardPage() {
                 description="Dispute penalty ditampilkan sebagai audit table agar lead lebih mudah menindaklanjuti."
                 label="disputes"
                 fileName="team-board-disputes"
-                searchPlaceholder="Cari karyawan, kode penalty, status, atau alasan..."
+                searchPlaceholder="Search employee, penalty code, status, or reason..."
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Karyawan</TableHead>
+                      <TableHead>Employee</TableHead>
                       <TableHead>Penalty</TableHead>
-                      <TableHead>Alasan</TableHead>
+                      <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Date</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

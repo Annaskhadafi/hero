@@ -79,7 +79,7 @@ export default async function MobileActivityPage() {
             prefetch={false}
             href="/mobile/activity/input"
             className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] active:scale-[0.98]"
-            aria-label="Tambah activity"
+            aria-label="Add activity"
           >
             <Plus className="size-5" />
           </Link>

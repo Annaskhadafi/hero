@@ -36,15 +36,15 @@ const formBooleanField = (defaultValue: boolean) =>
 const portalChitraAppSchema = z.object({
   intent: z.enum(["create", "update"]),
   id: z.coerce.number().int().positive().optional(),
-  name: z.string().trim().min(1, "Nama aplikasi wajib diisi.").max(120),
-  category: z.string().trim().min(1, "Kategori wajib diisi.").max(120),
+  name: z.string().trim().min(1, "App name is required.").max(120),
+  category: z.string().trim().min(1, "Category is required.").max(120),
   description: z.string().trim().max(500).optional().default(""),
-  url: z.string().trim().min(1, "URL wajib diisi.").max(500),
+  url: z.string().trim().min(1, "URL is required.").max(500),
   color: z
     .string()
     .trim()
     .regex(/^#([0-9a-fA-F]{6})$/, "Warna wajib format hex seperti #003461."),
-  iconName: z.string().trim().min(1, "Icon wajib diisi.").max(40),
+  iconName: z.string().trim().min(1, "Icon is required.").max(40),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
   isActive: formBooleanField(true),
   showOnMobile: formBooleanField(true),
@@ -89,7 +89,7 @@ function parseRoleIds(value: string, restrictedToRoles: boolean) {
   const parsed = z.array(z.coerce.number().int().positive()).safeParse(JSON.parse(value || "[]"));
 
   if (!parsed.success) {
-    throw new Error("Daftar role Portal Chitra tidak valid.");
+    throw new Error("Portal Chitra role list is invalid.");
   }
 
   const roleIds = Array.from(new Set(parsed.data));
@@ -165,7 +165,7 @@ export async function savePortalChitraAppAction(
       revalidatePortalChitraSurfaces();
       return {
         status: "success",
-        message: "Aplikasi Portal Chitra berhasil ditambahkan.",
+        message: "Portal Chitra app added successfully.",
       };
     }
 
@@ -185,7 +185,7 @@ export async function savePortalChitraAppAction(
     if (!existing) {
       return {
         status: "error",
-        message: "Aplikasi Portal Chitra tidak ditemukan.",
+        message: "Portal Chitra app not found.",
       };
     }
 
@@ -225,7 +225,7 @@ export async function savePortalChitraAppAction(
     revalidatePortalChitraSurfaces();
     return {
       status: "success",
-      message: "Aplikasi Portal Chitra berhasil diperbarui.",
+      message: "Portal Chitra app updated successfully.",
     };
   } catch (error) {
     return {
@@ -252,7 +252,7 @@ export async function deletePortalChitraAppAction(
     if (!parsed.success) {
       return {
         status: "error",
-        message: parsed.error.issues[0]?.message ?? "ID aplikasi tidak valid.",
+        message: parsed.error.issues[0]?.message ?? "Invalid app ID.",
       };
     }
 
@@ -261,7 +261,7 @@ export async function deletePortalChitraAppAction(
     revalidatePortalChitraSurfaces();
     return {
       status: "success",
-      message: "Aplikasi Portal Chitra berhasil dihapus.",
+      message: "Portal Chitra app deleted successfully.",
     };
   } catch (error) {
     return {

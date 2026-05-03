@@ -151,7 +151,7 @@ export default async function DailyActivityConfigurationPage() {
                 </Label>
                 <Label className="grid gap-2 sm:col-span-2">
                   Event name
-                  <Input name="eventName" placeholder="Contoh: Double Point Week" />
+                  <Input name="eventName" placeholder="Example: Double Point Week" />
                 </Label>
                 <Label className="grid gap-2">
                   Start date
@@ -164,7 +164,7 @@ export default async function DailyActivityConfigurationPage() {
               </div>
               <Label className="grid gap-2">
                 Description
-                <Textarea name="description" rows={3} placeholder="Tujuan event modifier dan batasan penerapannya." />
+                <Textarea name="description" rows={3} placeholder="Purpose of the event modifier and its application limits." />
               </Label>
               <Label className="flex items-center gap-3 rounded-xl border border-border/70 bg-background px-3 py-3 text-sm">
                 <input type="checkbox" name="isActive" defaultChecked />
@@ -213,7 +213,7 @@ export default async function DailyActivityConfigurationPage() {
                           <input type="checkbox" name="isActive" defaultChecked={modifier.isActive} />
                           Aktif
                         </Label>
-                        <Button type="submit" size="sm">Simpan</Button>
+                        <Button type="submit" size="sm">Save</Button>
                       </form>
                     </details>
                     <form action={manageActivityModifierAction}>
@@ -244,9 +244,9 @@ export default async function DailyActivityConfigurationPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Karyawan</TableHead>
+                  <TableHead>Employee</TableHead>
                   <TableHead>Penalty</TableHead>
-                  <TableHead>Poin</TableHead>
+                  <TableHead>Points</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -320,7 +320,7 @@ export default async function DailyActivityConfigurationPage() {
                         <Textarea
                           name="resolutionNotes"
                           rows={3}
-                          placeholder="Tulis alasan approval/reject agar jejak audit tetap jelas."
+                          placeholder="Write approval/reject reason so audit trail remains clear."
                           required
                           minLength={5}
                         />

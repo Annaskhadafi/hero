@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       ...result,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Sync emergency report gagal.";
+    const message = error instanceof Error ? error.message : "Emergency report sync failed.";
 
     return NextResponse.json(
       {

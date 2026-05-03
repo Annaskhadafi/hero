@@ -62,9 +62,9 @@ export function SecurityAuditLogTable({ logs }: { logs: AuditLogRow[] }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Aktivitas</TableHead>
+              <TableHead>Activity</TableHead>
               <TableHead>Area</TableHead>
-              <TableHead>Deskripsi</TableHead>
+              <TableHead>Description</TableHead>
               <TableHead>Pengguna</TableHead>
               <TableHead>Risiko</TableHead>
               <TableHead>Waktu</TableHead>

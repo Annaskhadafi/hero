@@ -120,7 +120,7 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
               </CardDescription>
             </div>
             <Button asChild variant="outline" className="rounded-full">
-              <Link href="/dashboard/workflow-studio">Buka Workflow Studio</Link>
+              <Link href="/dashboard/workflow-studio">Open Workflow Studio</Link>
             </Button>
           </div>
         </CardHeader>
@@ -130,7 +130,7 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
               <TableRow>
                 <TableHead>Area</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Catatan</TableHead>
+                <TableHead>Notes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

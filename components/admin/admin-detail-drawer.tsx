@@ -36,7 +36,7 @@ export function AdminDetailDrawer({
     <Sheet>
       <SheetTrigger asChild>
         {trigger ?? (
-          <Button type="button" variant="ghost" size="denseIcon" aria-label={`Buka detail ${title}`}>
+          <Button type="button" variant="ghost" size="denseIcon" aria-label={`Open detail ${title}`}>
             <PanelRightOpen className="size-4" />
           </Button>
         )}

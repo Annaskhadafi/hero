@@ -127,7 +127,7 @@ export function HeroAuthButtons() {
         <Button asChild size="lg" className="text-base px-8 py-3">
           <Link href="/dashboard">
             <User className="mr-2 h-5 w-5" />
-            Buka Dashboard
+            Open Dashboard
           </Link>
         </Button>
       </div>

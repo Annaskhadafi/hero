@@ -189,7 +189,7 @@ export function SecurityUserRowActions({
                 </Badge>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Jabatan</p>
+                <p className="text-xs text-muted-foreground">Position</p>
                 <p>{user.jobTitle}</p>
               </div>
               <div>
@@ -370,7 +370,7 @@ export function SecurityUserRowActions({
                   <input type="hidden" name="section" value={selectedSectionName} />
                 </div>
                 <div className="grid gap-2">
-                  <Label>Jabatan</Label>
+                  <Label>Position</Label>
                   <Select
                     name="jobTitle"
                     value={selectedJobTitle}

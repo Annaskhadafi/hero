@@ -417,7 +417,7 @@ export function DailyActivitySubmitForm({
                                 onChange={(event) =>
                                   updateRouteItemState(item.id, { unitNumber: event.target.value })
                                 }
-                                placeholder="Nomor unit"
+                                placeholder="Unit number"
                                 className={fieldClass}
                               />
                             </Label>
@@ -460,7 +460,7 @@ export function DailyActivitySubmitForm({
                                   updateRouteItemState(item.id, { remark: event.target.value })
                                 }
                                 className={textareaClass}
-                                placeholder="Catatan checklist"
+                                placeholder="Checklist notes"
                               />
                             </Label>
                           ) : null}
@@ -562,7 +562,7 @@ export function DailyActivitySubmitForm({
           <span className={labelTextClass}>Custom activity name</span>
           <Input
             name="customActivityName"
-            placeholder="Nama aktivitas custom"
+            placeholder="Custom activity name"
             className={fieldClass}
             required
           />

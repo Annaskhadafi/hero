@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     const matches = payload.photo.dataUrl.match(/^data:(.+);base64,(.+)$/);
     if (!matches) {
-      throw new Error("Payload foto attendance tidak valid.");
+      throw new Error("Attendance photo payload is invalid.");
     }
 
     const [, mimeType, base64] = matches;
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: result.error || "Sync attendance gagal.",
+          message: result.error || "Attendance sync failed.",
         },
         { status: 400 },
       );
@@ -57,11 +57,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Attendance berhasil disinkronkan.",
+      message: "Attendance synchronized successfully.",
       record: result.record ?? null,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Sync attendance gagal.";
+    const message = error instanceof Error ? error.message : "Attendance sync failed.";
 
     return NextResponse.json(
       {

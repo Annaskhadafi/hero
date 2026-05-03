@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       ...result,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Sync observasi HSE gagal.";
+    const message = error instanceof Error ? error.message : "HSE observation sync failed.";
 
     return NextResponse.json(
       {

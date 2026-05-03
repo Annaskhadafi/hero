@@ -133,7 +133,7 @@ export function DailyActivitySessionDocumentPanel({
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[1rem] bg-surface-container-low px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Karyawan</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">Employee</p>
             <p className="mt-2 text-sm font-semibold text-foreground">{data.employee.name}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               {data.employee.department} • {data.employee.section || data.employee.jobTitle}
@@ -179,7 +179,7 @@ export function DailyActivitySessionDocumentPanel({
                 <Input name="employeeSignatureFile" type="file" accept="image/*" />
               </Label>
               <SignoffStatus
-                label="Status karyawan"
+                label="Employee status"
                 signedAt={data.signoff.employeeSignedAt}
                 signatureUrl={data.signoff.employeeSignatureUrl}
               />
@@ -240,7 +240,7 @@ export function DailyActivitySessionDocumentPanel({
                 <Input name="hrSignatureFile" type="file" accept="image/*" />
               </Label>
               <SignoffStatus
-                label="Status HR"
+                label="HR status"
                 signedAt={data.signoff.hrCheckedAt}
                 signatureUrl={data.signoff.hrSignatureUrl}
               />

@@ -406,7 +406,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     });
 
     if (!blob) {
-      throw new Error("Capture foto gagal.");
+      throw new Error("Photo capture failed.");
     }
 
     const file = new File([blob], `mobile-attendance-${Date.now()}.jpg`, {
@@ -425,7 +425,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       await captureFrame();
       setSubmitMessage("Face capture ready.");
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Capture foto gagal.");
+      setSubmitError(error instanceof Error ? error.message : "Photo capture failed.");
     }
   }
 
@@ -494,7 +494,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       };
 
       if (!response.ok || !result.success) {
-        setSubmitError(result.error || result.message || "Attendance gagal dicatat.");
+        setSubmitError(result.error || result.message || "Attendance recording failed.");
         return;
       }
 
@@ -521,7 +521,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       setSubmitMessage(`${getEventLabel(nextType)} recorded. Website attendance record akan refresh.`);
       startTransition(() => router.refresh());
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Attendance gagal dicatat.");
+      setSubmitError(error instanceof Error ? error.message : "Attendance recording failed.");
     } finally {
       setIsSubmitting(false);
     }

@@ -31,7 +31,7 @@ async function getAuthenticatedEmployee() {
   });
 
   if (!session?.user?.email) {
-    throw new Error("Sesi login tidak ditemukan.");
+    throw new Error("Login session not found.");
   }
 
   const [employee] = await db
@@ -49,7 +49,7 @@ async function getAuthenticatedEmployee() {
     .limit(1);
 
   if (!employee) {
-    throw new Error("Profil employee tidak ditemukan.");
+    throw new Error("Employee profile not found.");
   }
 
   return employee;
@@ -60,18 +60,18 @@ const MAX_OFFLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 function dataUrlToFile(file: QueuedFilePayload, fallbackName: string) {
   const matches = file.dataUrl.match(/^data:(.+);base64,(.+)$/);
   if (!matches) {
-    throw new Error("Payload foto offline tidak valid.");
+    throw new Error("Offline photo payload is invalid.");
   }
 
   const [, mimeType, base64] = matches;
   const resolvedType = (file.type || mimeType).trim();
 
   if (!resolvedType.startsWith("image/")) {
-    throw new Error("File emergency harus berupa gambar.");
+    throw new Error("Emergency file must be an image.");
   }
 
   if (file.size > MAX_OFFLINE_IMAGE_BYTES) {
-    throw new Error("Ukuran foto emergency maksimal 5MB.");
+    throw new Error("Emergency photo size max 5MB.");
   }
 
   const buffer = Buffer.from(base64, "base64");
@@ -256,7 +256,7 @@ async function sendEmergencyAlerts(input: {
         eventType: "emergency_incident_reported",
         payloadSnapshot,
         status: "failed",
-        errorMessage: error instanceof Error ? error.message : "Email alert gagal.",
+        errorMessage: error instanceof Error ? error.message : "Email alert failed.",
       });
     }
   }
@@ -301,7 +301,7 @@ export async function submitHseObservationFromPayload(payload: HseObservationSyn
 
   return {
     id: record.id,
-    message: "Observasi HSE berhasil disimpan.",
+    message: "HSE observation saved successfully.",
   };
 }
 

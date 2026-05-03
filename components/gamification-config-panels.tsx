@@ -143,7 +143,7 @@ export function LevelConfigPanel({ levels }: { levels: any[] }) {
               <Input name="colorCode" type="color" defaultValue={editingLevel?.colorCode || "#000000"} required />
             </div>
             <div className="space-y-2">
-              <Label>Deskripsi</Label>
+              <Label>Description</Label>
               <Textarea name="description" defaultValue={editingLevel?.description} />
             </div>
             <div className="flex items-center space-x-2 pt-2">
@@ -152,7 +152,7 @@ export function LevelConfigPanel({ levels }: { levels: any[] }) {
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">Batal</Button>
+                <Button type="button" variant="outline">Cancel</Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Menyimpan..." : "Simpan"}</Button>
             </DialogFooter>
@@ -309,7 +309,7 @@ export function BadgeConfigPanel({ badges }: { badges: any[] }) {
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">Batal</Button>
+                <Button type="button" variant="outline">Cancel</Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Menyimpan..." : "Simpan"}</Button>
             </DialogFooter>

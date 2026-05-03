@@ -293,7 +293,7 @@ export function MobileOvertimeRequestForm({
             <Input
               name="title"
               required
-              placeholder="Contoh: SPL Support Breakdown Unit Malam"
+              placeholder="Example: SPL Support Breakdown Unit Night"
               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
             />
           </Label>
@@ -501,13 +501,13 @@ export function MobileOvertimeRequestForm({
                               onChange={(event) =>
                                 updateCustomJob(`${member.id}`, job.key, { lineLabel: event.target.value })
                               }
-                              placeholder="Contoh: Support cleaning area breakdown"
+                              placeholder="Example: Support cleaning area breakdown"
                               className="h-12 rounded-2xl border-0 bg-[#f6fbff] px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
 
                           <Label className="block space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Deskripsi</span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Description</span>
                             <Textarea
                               rows={3}
                               value={job.lineDescription}
@@ -628,7 +628,7 @@ export function MobileOvertimeRequestForm({
               <Input
                 value={jobSearch}
                 onChange={(event) => setJobSearch(event.target.value)}
-                placeholder="Cari kode / nama pekerjaan"
+                placeholder="Search code / job name"
                 className="h-12 rounded-2xl border-0 bg-[#f6fbff] pl-11 text-sm font-semibold text-[#082033]"
               />
             </div>

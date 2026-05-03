@@ -30,7 +30,7 @@ export default function ForgotPasswordPage() {
             });
 
             if (result.error) {
-                setError(result.error.message || "Permintaan reset password gagal.");
+                setError(result.error.message || "Reset password request failed.");
                 return;
             }
 

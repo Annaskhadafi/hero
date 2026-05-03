@@ -249,7 +249,7 @@ function PendingApprovalDetailDialog({
 
         <div className="flex justify-end">
           <Button asChild className="rounded-full">
-            <Link href="/dashboard/approval">Buka workspace approval</Link>
+            <Link href="/dashboard/approval">Open workspace approval</Link>
           </Button>
         </div>
       </DialogContent>

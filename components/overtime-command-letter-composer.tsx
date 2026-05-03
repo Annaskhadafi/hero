@@ -351,7 +351,7 @@ export function OvertimeCommandLetterComposer({
                     name={`lineLabel-${line.key}`}
                     value={line.lineLabel}
                     onChange={(event) => updateLine(line.key, { lineLabel: event.target.value })}
-                    placeholder="Nama pekerjaan lembur"
+                    placeholder="Overtime job name"
                   />
                 </Label>
 
