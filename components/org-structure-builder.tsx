@@ -50,11 +50,12 @@ type Props = {
   orgStructures: OrgStructure[];
   positions: MasterPosition[];
   departments: MasterDepartment[];
+  sections: any[];
   sites: MasterSite[];
   employees: any[];
 };
 
-export function OrgStructureBuilder({ orgStructures, positions, departments, sites, employees }: Props) {
+export function OrgStructureBuilder({ orgStructures, positions, departments, sections, sites, employees }: Props) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
@@ -110,6 +111,8 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
   const filteredPositions = selectedDepartmentId === "all"
     ? positions
     : positions.filter((pos) => pos.departmentId?.toString() === selectedDepartmentId);
+
+  const masterSections = sections || [];
     (org) =>
       org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       org.scopeType.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -700,6 +703,73 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
     });
   };
 
+  const renderDepartmentView = () => {
+    const deptGroups = departments.map((dept) => {
+      const deptSections = masterSections.filter((s) => s.departmentId === dept.id);
+      const deptEmployees = filteredEmployees.filter((e) => e.departmentId === dept.id);
+      
+      return (
+        <div key={dept.id} className="mb-6 rounded-2xl border border-border bg-white p-4">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="rounded-xl bg-primary/10 p-3">
+              <User className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">{dept.name}</h3>
+              <p className="text-sm text-muted-foreground">{dept.description}</p>
+            </div>
+            <Badge variant="secondary" className="ml-auto">{deptEmployees.length} employees</Badge>
+          </div>
+          
+          {deptSections.length > 0 && (
+            <div className="space-y-3">
+              {deptSections.map((section) => {
+                const sectionEmployees = deptEmployees.filter((e) => e.sectionId === section.id);
+                return (
+                  <div key={section.id} className="rounded-xl border border-border/50 bg-surface-container-low p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h4 className="font-medium text-sm">{section.name}</h4>
+                      <Badge variant="outline" className="text-xs">{sectionEmployees.length}</Badge>
+                    </div>
+                    {sectionEmployees.length > 0 && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {sectionEmployees.map((emp) => (
+                          <div key={emp.id} className="flex items-center gap-2 rounded-lg bg-white p-2 text-xs">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium">{emp.name}</p>
+                              <p className="truncate text-muted-foreground">{emp.jobTitle || emp.role}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          
+          {deptSections.length === 0 && deptEmployees.length > 0 && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {deptEmployees.map((emp) => (
+                <div key={emp.id} className="flex items-center gap-2 rounded-lg border border-border/50 bg-surface-container-low p-2 text-xs">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{emp.name}</p>
+                    <p className="truncate text-muted-foreground">{emp.jobTitle || emp.role}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    });
+    
+    return <div className="space-y-4">{deptGroups}</div>;
+  };
+
   return (
     <Card className="border-[#e2e8f0]">
       <CardHeader className="flex flex-row items-center justify-between pb-4">
@@ -744,6 +814,24 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
             </Select>
 
             <div className="space-y-3 rounded-[1.2rem] bg-surface-container-low p-3">
+              <div className="mb-3 flex gap-2">
+                <Button
+                  variant={viewMode === "tree" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("tree")}
+                  className="flex-1"
+                >
+                  Tree View
+                </Button>
+                <Button
+                  variant={viewMode === "department" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("department")}
+                  className="flex-1"
+                >
+                  Department View
+                </Button>
+              </div>
               {filteredOrgStructures.length > 0 ? filteredOrgStructures.map((org) => (
                 <div
                   key={org.id}
@@ -895,7 +983,11 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sit
                     <p className="text-[13px] font-semibold tracking-wide text-[#334155] uppercase">Bagan Struktur</p>
                     <Badge variant="outline" className="bg-surface-container-lowest">{canvasNodes.length} posisi</Badge>
                   </div>
-                  {canvasNodes.length > 0 ? (
+                  {viewMode === "department" ? (
+                    <div className="pb-16 pt-4 px-4">
+                      {renderDepartmentView()}
+                    </div>
+                  ) : canvasNodes.length > 0 ? (
                     <div className="flex flex-row items-start gap-12 min-w-max pb-16 pt-4 px-4 overflow-visible">
                       {renderTree()}
                     </div>

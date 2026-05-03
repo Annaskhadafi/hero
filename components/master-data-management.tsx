@@ -276,6 +276,7 @@ export function MasterDataManagement({
             orgStructures={orgStructures}
             positions={positions}
             departments={departments}
+            sections={sections}
             sites={sites}
             employees={employees}
           />
