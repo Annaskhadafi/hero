@@ -582,6 +582,18 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  // Logistik
+  {
+    menuArea: "main",
+    section: "Logistik",
+    title: "Cargo Manifest",
+    url: "/dashboard/cargo-manifest",
+    iconName: "folder",
+    resource: "cargo_manifest",
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Report
   {
     menuArea: "main",

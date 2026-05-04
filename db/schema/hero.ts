@@ -1702,3 +1702,35 @@ export const hrEmployees = pgTable("hero_hr_employees", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ─── Cargo Manifest ───────────────────────────────────────────────────────────
+
+export const cargoManifests = pgTable("hero_cargo_manifests", {
+  id: serial("id").primaryKey(),
+  manifestNumber: text("manifest_number").notNull().unique(),
+  date: date("date").notNull(),
+  attention: text("attention").notNull().default(""),
+  transportVia: text("transport_via").notNull().default(""),
+  shippedVia: text("shipped_via").notNull().default(""),
+  finalDestination: text("final_destination").notNull().default(""),
+  status: text("status").notNull().default("draft"),
+  createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const cargoManifestItems = pgTable("hero_cargo_manifest_items", {
+  id: serial("id").primaryKey(),
+  manifestId: integer("manifest_id")
+    .notNull()
+    .references(() => cargoManifests.id, { onDelete: "cascade" }),
+  no: integer("no").notNull().default(1),
+  description: text("description").notNull().default(""),
+  serialNumber: text("serial_number").notNull().default(""),
+  qty: integer("qty").notNull().default(1),
+  brand: text("brand").notNull().default(""),
+  remark: text("remark").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
