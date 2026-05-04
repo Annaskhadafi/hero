@@ -341,6 +341,7 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
     const win = window.open("", "_blank");
     if (!win) return;
     win.document.write(`<!DOCTYPE html><html><head>
+      <base href="${window.location.origin}" />
       <title>Cargo Manifest ${row.manifestNumber}</title>
       <style>
         @page { size: A4; margin: 10mm; }
@@ -351,8 +352,11 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
     </head><body>${content.innerHTML}</body></html>`);
     win.document.close();
     win.focus();
-    win.print();
-    win.close();
+    // Beri sedikit waktu untuk memuat gambar sebelum print
+    setTimeout(() => {
+      win.print();
+      win.close();
+    }, 250);
   };
 
   return (
@@ -383,14 +387,13 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
   return (
-    <div style={{ fontFamily: "Arial, sans-serif", fontSize: "10pt", color: "#111" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "260mm", fontFamily: "Arial, sans-serif", fontSize: "10pt", color: "#111" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
         <div style={{ display: "flex", alignItems: "center" }}>
-          {/* Official Chitra Paratama logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="https://www.chitraparatama.co.id/wp-content/uploads/2024/08/cp_logo-removebg-preview.png"
+            src="/logo.png"
             alt="Chitra Paratama"
             style={{ height: "52px", width: "auto", objectFit: "contain" }}
           />
@@ -453,7 +456,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
       </table>
 
       {/* Signatures */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginTop: "32px", fontSize: "9pt" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginTop: "auto", paddingTop: "32px", fontSize: "9pt" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ marginBottom: "48px" }}>Delivered by,</div>
           <div style={{ fontWeight: 600 }}>PT. Chitra Paratama,</div>
