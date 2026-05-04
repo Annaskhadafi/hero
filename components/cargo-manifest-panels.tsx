@@ -389,7 +389,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "260mm", fontFamily: "Arial, sans-serif", fontSize: "10pt", color: "#111" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", marginTop: "16px" }}>
         <div style={{ display: "flex", alignItems: "center" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -457,19 +457,26 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
 
       {/* Signatures */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginTop: "auto", paddingTop: "32px", fontSize: "9pt" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ marginBottom: "48px" }}>Delivered by,</div>
-          <div style={{ fontWeight: 600 }}>PT. Chitra Paratama,</div>
-          <div style={{ marginTop: "4px" }}>( ............................... )</div>
+        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100px" }}>
+          <div>Delivered by,</div>
+          <div>
+            <div style={{ fontWeight: 600 }}>PT. Chitra Paratama,</div>
+            <div style={{ marginTop: "4px" }}>( ............................... )</div>
+          </div>
         </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ marginBottom: "48px" }}>Forwarder</div>
-          <div style={{ marginTop: "4px" }}>( ............................... )</div>
+        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100px" }}>
+          <div>Forwarder</div>
+          <div>
+            <div style={{ fontWeight: 600, visibility: "hidden" }}>Hidden</div>
+            <div style={{ marginTop: "4px" }}>( ............................... )</div>
+          </div>
         </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ marginBottom: "48px" }}>Received by,</div>
-          <div style={{ fontWeight: 600 }}>Customer</div>
-          <div style={{ marginTop: "4px" }}>( ............................... )</div>
+        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100px" }}>
+          <div>Received by,</div>
+          <div>
+            <div style={{ fontWeight: 600 }}>Customer</div>
+            <div style={{ marginTop: "4px" }}>( ............................... )</div>
+          </div>
         </div>
       </div>
     </div>
