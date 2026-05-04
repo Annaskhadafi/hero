@@ -1,4 +1,4 @@
-import { AdminPageShell } from "@/components/admin-page-shell";
+﻿import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminTableCard } from "@/components/admin-table-card";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -26,7 +26,7 @@ export default async function CargoManifestPage() {
 
   return (
     <AdminPageShell
-      eyebrow="Logistik • Cargo"
+      eyebrow="Logistik â€¢ Cargo"
       title="Cargo Manifest"
       description="Daftar pengiriman barang / cargo manifest PT. Chitra Paratama."
       actions={
@@ -52,7 +52,7 @@ export default async function CargoManifestPage() {
           <TabsTrigger value="master">Master Data Manifest</TabsTrigger>
         </TabsList>
 
-        {/* ─── List Tab ─── */}
+        {/* â”€â”€â”€ List Tab â”€â”€â”€ */}
         <TabsContent value="list">
           <AdminTableCard
             title="Cargo Manifest"
@@ -88,9 +88,9 @@ export default async function CargoManifestPage() {
                 {m.manifestNumber}
               </span>,
               m.date,
-              m.attention || "—",
-              m.transportVia || "—",
-              m.finalDestination || "—",
+              m.attention || "â€”",
+              m.transportVia || "â€”",
+              m.finalDestination || "â€”",
               <span key={`items-${idx}`} className="text-xs text-muted-foreground">
                 {m.items.length} item
               </span>,
@@ -105,25 +105,45 @@ export default async function CargoManifestPage() {
           />
         </TabsContent>
 
-        {/* ─── Master Data Tab ─── */}
-        <TabsContent value="master">
-          <AdminTableCard
-            title="Master Data Manifest"
-            description="Data master seluruh cargo manifest untuk referensi dan update status inline."
-            columns={["No. Manifest", "Tanggal", "Transport Via", "Kiriman Via", "Tujuan Akhir", "Status", "Ubah Status"]}
-            showImport={false}
-            rows={manifests.map((m, idx) => [
-              <span key={`mn2-${idx}`} className="font-mono text-xs font-semibold">
-                {m.manifestNumber}
-              </span>,
-              m.date,
-              m.transportVia || "—",
-              m.shippedVia || "—",
-              m.finalDestination || "—",
-              <AdminStatusBadge key={`s2-${idx}`} value={m.status} />,
-              <CargoManifestStatusAction key={`sa-${idx}`} id={m.id} currentStatus={m.status} />,
-            ])}
-          />
+        {/* === Master Data Tab === */}
+        <TabsContent value="master" className="space-y-4">
+          <Tabs defaultValue="items" className="space-y-4">
+            <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+              <TabsTrigger value="items">Master Data Item</TabsTrigger>
+              <TabsTrigger value="locations">Master Data Lokasi</TabsTrigger>
+              <TabsTrigger value="recipients">Master Data Penerima</TabsTrigger>
+            </TabsList>
+
+            {/* Master Data Item */}
+            <TabsContent value="items">
+              <AdminTableCard
+                title="Master Data Item / Barang"
+                description="Data master barang untuk referensi saat membuat cargo manifest."
+                columns={["Nama Barang", "Kategori", "Brand", "Unit", "Berat", "Dimensi", "Aksi"]}
+                rows={[]}
+              />
+            </TabsContent>
+
+            {/* Master Data Lokasi */}
+            <TabsContent value="locations">
+              <AdminTableCard
+                title="Master Data Lokasi"
+                description="Data master lokasi tujuan untuk referensi saat membuat cargo manifest."
+                columns={["Nama Lokasi", "Alamat", "Kota", "Provinsi", "Contact Person", "Phone", "Aksi"]}
+                rows={[]}
+              />
+            </TabsContent>
+
+            {/* Master Data Penerima */}
+            <TabsContent value="recipients">
+              <AdminTableCard
+                title="Master Data Penerima"
+                description="Data master penerima barang untuk referensi saat membuat cargo manifest."
+                columns={["Nama Penerima", "Perusahaan", "Contact Person", "Phone", "Email", "Kota", "Aksi"]}
+                rows={[]}
+              />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </AdminPageShell>

@@ -1,4 +1,4 @@
-import {
+﻿import {
   type AnyPgColumn,
   boolean,
   integer,
@@ -1703,7 +1703,7 @@ export const hrEmployees = pgTable("hero_hr_employees", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-// ─── Cargo Manifest ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Cargo Manifest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const cargoManifests = pgTable("hero_cargo_manifests", {
   id: serial("id").primaryKey(),
@@ -1733,4 +1733,53 @@ export const cargoManifestItems = pgTable("hero_cargo_manifest_items", {
   brand: text("brand").notNull().default(""),
   remark: text("remark").notNull().default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const cargoMasterLocations = pgTable("hero_cargo_master_locations", {
+  id: serial("id").primaryKey(),
+  locationName: text("location_name").notNull().unique(),
+  address: text("address").notNull().default(""),
+  city: text("city").notNull().default(""),
+  province: text("province").notNull().default(""),
+  country: text("country").notNull().default("Indonesia"),
+  postalCode: text("postal_code").notNull().default(""),
+  contactPerson: text("contact_person").notNull().default(""),
+  contactPhone: text("contact_phone").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const cargoMasterGoods = pgTable("hero_cargo_master_goods", {
+  id: serial("id").primaryKey(),
+  goodsName: text("goods_name").notNull(),
+  category: text("category").notNull().default(""),
+  brand: text("brand").notNull().default(""),
+  unit: text("unit").notNull().default("pcs"),
+  weight: text("weight").notNull().default(""),
+  dimensions: text("dimensions").notNull().default(""),
+  hsCode: text("hs_code").notNull().default(""),
+  description: text("description").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const cargoMasterRecipients = pgTable("hero_cargo_master_recipients", {
+  id: serial("id").primaryKey(),
+  recipientName: text("recipient_name").notNull().unique(),
+  companyName: text("company_name").notNull().default(""),
+  contactPerson: text("contact_person").notNull().default(""),
+  contactPhone: text("contact_phone").notNull().default(""),
+  contactEmail: text("contact_email").notNull().default(""),
+  address: text("address").notNull().default(""),
+  city: text("city").notNull().default(""),
+  province: text("province").notNull().default(""),
+  postalCode: text("postal_code").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

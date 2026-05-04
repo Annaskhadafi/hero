@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useActionState, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import {
   type CargoImportState,
 } from "@/app/actions/cargo-manifest";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ItemRow = {
   no: number;
@@ -37,7 +37,7 @@ const INITIAL_IMPORT: CargoImportState = { status: "idle", message: "" };
 
 const STATUS_OPTIONS = ["draft", "sent", "delivered", "cancelled"];
 
-// ─── Item Row Editor ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Item Row Editor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ItemRowEditor({
   items,
@@ -83,7 +83,7 @@ function ItemRowEditor({
             {items.length === 0 && (
               <tr>
                 <td colSpan={7} className="py-4 text-center text-muted-foreground text-xs">
-                  Belum ada item — klik &quot;Tambah Baris&quot;
+                  Belum ada item â€” klik &quot;Tambah Baris&quot;
                 </td>
               </tr>
             )}
@@ -106,7 +106,7 @@ function ItemRowEditor({
                 <td className="px-1 py-1">
                   <input className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary/50" value={row.brand} onChange={(e) => updateRow(idx, "brand", e.target.value)} placeholder="Brand..." />
                 </td>
-                {/* Remark — free text */}
+                {/* Remark â€” free text */}
                 <td className="px-1 py-1">
                   <input className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary/50" type="text" value={row.remark} onChange={(e) => updateRow(idx, "remark", e.target.value)} placeholder="Catatan bebas..." />
                 </td>
@@ -124,7 +124,7 @@ function ItemRowEditor({
   );
 }
 
-// ─── Manifest Form Fields ─────────────────────────────────────────────────────
+// â”€â”€â”€ Manifest Form Fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ManifestFormFields({
   defaultValues,
@@ -170,7 +170,7 @@ function ManifestFormFields({
   );
 }
 
-// ─── Create Dialog ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Create Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestCreateDialog() {
   const action = manageCargoManifestAction as (
@@ -226,7 +226,7 @@ export function CargoManifestCreateDialog() {
   );
 }
 
-// ─── Edit Dialog ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Edit Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestEditDialog({ row }: { row: CargoManifestRecord }) {
   const action = manageCargoManifestAction as (
@@ -273,7 +273,7 @@ export function CargoManifestEditDialog({ row }: { row: CargoManifestRecord }) {
   );
 }
 
-// ─── Delete Action ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Delete Action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestDeleteAction({ id }: { id: number }) {
   const action = manageCargoManifestAction as (
@@ -300,7 +300,7 @@ export function CargoManifestDeleteAction({ id }: { id: number }) {
   );
 }
 
-// ─── Status Inline Update ─────────────────────────────────────────────────────
+// â”€â”€â”€ Status Inline Update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestStatusAction({ id, currentStatus }: { id: number; currentStatus: string }) {
   const action = manageCargoManifestAction as (
@@ -330,33 +330,49 @@ export function CargoManifestStatusAction({ id, currentStatus }: { id: number; c
   );
 }
 
-// ─── PDF Preview Dialog ───────────────────────────────────────────────────────
+// â”€â”€â”€ PDF Preview Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
   const [open, setOpen] = useState(false);
 
-  const handlePrint = () => {
+  const handleDownloadPdf = () => {
     const content = document.getElementById("cargo-pdf-content");
     if (!content) return;
-    const win = window.open("", "_blank");
+    
+    // Create new window with proper A4 dimensions
+    const win = window.open("", "_blank", "width=794,height=1123");
     if (!win) return;
+    
     win.document.write(`<!DOCTYPE html><html><head>
       <base href="${window.location.origin}" />
       <title>Cargo Manifest ${row.manifestNumber}</title>
       <style>
-        @page { size: A4; margin: 10mm; }
-        body { font-family: Arial, sans-serif; font-size: 10pt; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        @page { 
+          size: A4; 
+          margin: 0; 
+        }
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body { 
+          margin: 0; 
+          padding: 0;
+          -webkit-print-color-adjust: exact; 
+          print-color-adjust: exact;
+          background: white;
+        }
         .no-print { display: none !important; }
-        ${content.getAttribute("data-print-styles") ?? ""}
       </style>
     </head><body>${content.innerHTML}</body></html>`);
     win.document.close();
-    win.focus();
-    // Beri sedikit waktu untuk memuat gambar sebelum print
+    
+    // Wait for images to load
     setTimeout(() => {
+      win.focus();
       win.print();
-      win.close();
-    }, 250);
+    }, 800);
   };
 
   return (
@@ -368,8 +384,8 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-[1.4rem] border-0 bg-white p-0">
         <DialogHeader className="flex flex-row items-center justify-between px-6 pt-4 pb-2 no-print">
-          <DialogTitle className="font-display text-lg">Preview — {row.manifestNumber}</DialogTitle>
-          <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={handlePrint}>
+          <DialogTitle className="font-display text-lg">Preview â€” {row.manifestNumber}</DialogTitle>
+          <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={handleDownloadPdf}>
             <Printer className="size-4" /> Cetak / Download PDF
           </Button>
         </DialogHeader>
@@ -385,105 +401,171 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
   );
 }
 
+export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord }) {
+  const handleDirectExport = () => {
+    const tempDiv = document.createElement("div");
+    tempDiv.style.position = "absolute";
+    tempDiv.style.left = "-9999px";
+    document.body.appendChild(tempDiv);
+    
+    const root = document.createElement("div");
+    tempDiv.appendChild(root);
+    
+    // Render PdfContent ke temporary div
+    import("react-dom/client").then(({ createRoot }) => {
+      const reactRoot = createRoot(root);
+      reactRoot.render(<PdfContent row={row} />);
+      
+      setTimeout(() => {
+        const win = window.open("", "_blank");
+        if (!win) {
+          document.body.removeChild(tempDiv);
+          return;
+        }
+        
+        win.document.write(`<!DOCTYPE html><html><head>
+          <base href="${window.location.origin}" />
+          <title>Cargo Manifest ${row.manifestNumber}</title>
+          <style>
+            @page { size: A4; margin: 0; }
+            body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          </style>
+        </head><body>${root.innerHTML}</body></html>`);
+        win.document.close();
+        win.focus();
+        
+        setTimeout(() => {
+          win.print();
+          win.close();
+          document.body.removeChild(tempDiv);
+        }, 500);
+      }, 100);
+    });
+  };
+
+  return (
+    <Button variant="ghost" size="icon" aria-label="Export PDF" onClick={handleDirectExport}>
+      <Printer className="size-4" />
+    </Button>
+  );
+}
+
 function PdfContent({ row }: { row: CargoManifestRecord }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "260mm", fontFamily: "Arial, sans-serif", fontSize: "10pt", color: "#111" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", marginTop: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo.png"
-            alt="Chitra Paratama"
-            style={{ height: "52px", width: "auto", objectFit: "contain" }}
-          />
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: 700, fontSize: "14pt", letterSpacing: "1px" }}>CARGO MANIFEST</div>
-          <div style={{ fontSize: "8pt", color: "#666" }}>Daftar Pengiriman Barang</div>
-          <div style={{ marginTop: "6px", fontSize: "9pt" }}>
-            <strong>No Pengiriman :</strong>{" "}
-            <span style={{ color: "#c0392b", fontWeight: 700 }}>{row.manifestNumber}</span>
+    <div style={{ 
+      fontFamily: "Arial, sans-serif", 
+      fontSize: "10pt", 
+      color: "#000", 
+      minHeight: "297mm",
+      width: "210mm",
+      backgroundImage: "url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      padding: "50mm 20mm 70mm 20mm",
+      position: "relative"
+    }}>
+      {/* Header - Title Only (Logo sudah di background) */}
+      <div style={{ textAlign: "right", marginBottom: "20px" }}>
+        <div style={{ fontWeight: 700, fontSize: "18pt", color: "#003366", letterSpacing: "1.5px" }}>CARGO MANIFEST</div>
+        <div style={{ fontSize: "9pt", color: "#666", marginTop: "4px" }}>Shipping Document</div>
+      </div>
+
+      {/* Document Info */}
+      <div style={{ marginBottom: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+          <div style={{ fontSize: "10pt" }}>
+            <strong>Manifest No:</strong>{" "}
+            <span style={{ color: "#c0392b", fontWeight: 700, fontSize: "11pt" }}>{row.manifestNumber}</span>
+          </div>
+          <div style={{ fontSize: "10pt" }}>
+            <strong>Date:</strong> {row.date}
           </div>
         </div>
       </div>
 
-      {/* Meta info */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", marginBottom: "12px", fontSize: "9pt" }}>
-        <div><strong>Date / Tanggal</strong> : {row.date}</div>
-        <div><strong>Transport Via</strong> : {row.transportVia}</div>
-        <div><strong>Attention</strong> : {row.attention}</div>
-        <div><strong>Kiriman Via</strong> : {row.shippedVia}</div>
-      </div>
-      <div style={{ marginBottom: "12px", fontSize: "9pt" }}>
-        <strong>Final Destination</strong> : <u>{row.finalDestination}</u>
+      {/* Shipping Details */}
+      <div style={{ border: "1px solid #003366", borderRadius: "4px", padding: "12px", marginBottom: "20px", backgroundColor: "rgba(248, 249, 250, 0.95)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "9.5pt" }}>
+          <div>
+            <strong>Attention:</strong> {row.attention || "-"}
+          </div>
+          <div>
+            <strong>Transport Via:</strong> {row.transportVia || "-"}
+          </div>
+          <div>
+            <strong>Shipped Via:</strong> {row.shippedVia || "-"}
+          </div>
+          <div>
+            <strong>Final Destination:</strong> <span style={{ fontWeight: 600 }}>{row.finalDestination || "-"}</span>
+          </div>
+        </div>
       </div>
 
       {/* Items table */}
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt", marginBottom: "30px", backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
         <thead>
-          <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #bbb", padding: "4px 6px", width: "28px" }}>No</th>
-            <th style={{ border: "1px solid #bbb", padding: "4px 6px" }}>Description</th>
-            <th style={{ border: "1px solid #bbb", padding: "4px 6px", width: "120px" }}>Serial Number</th>
-            <th style={{ border: "1px solid #bbb", padding: "4px 6px", width: "40px" }}>Qty</th>
-            <th style={{ border: "1px solid #bbb", padding: "4px 6px", width: "80px" }}>Brand</th>
-            <th style={{ border: "1px solid #bbb", padding: "4px 6px", width: "100px" }}>Remark</th>
+          <tr style={{ backgroundColor: "#003366", color: "#fff" }}>
+            <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "35px", textAlign: "center" }}>No</th>
+            <th style={{ border: "1px solid #003366", padding: "8px 6px", textAlign: "left" }}>Description of Goods</th>
+            <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "110px", textAlign: "left" }}>Serial Number</th>
+            <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "45px", textAlign: "center" }}>Qty</th>
+            <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "90px", textAlign: "left" }}>Brand</th>
+            <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "110px", textAlign: "left" }}>Remark</th>
           </tr>
         </thead>
         <tbody>
           {row.items.length === 0 ? (
-            Array.from({ length: 8 }).map((_, i) => (
+            Array.from({ length: 10 }).map((_, i) => (
               <tr key={i}>
-                {Array.from({ length: 6 }).map((__, j) => (
-                  <td key={j} style={{ border: "1px solid #bbb", padding: "6px", height: "22px" }} />
-                ))}
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px", textAlign: "center", height: "28px" }}>{i + 1}</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px", textAlign: "center" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>&nbsp;</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>&nbsp;</td>
               </tr>
             ))
           ) : (
             row.items.map((item, i) => (
-              <tr key={i}>
-                <td style={{ border: "1px solid #bbb", padding: "4px 6px", textAlign: "center" }}>{item.no}</td>
-                <td style={{ border: "1px solid #bbb", padding: "4px 6px" }}>{item.description}</td>
-                <td style={{ border: "1px solid #bbb", padding: "4px 6px" }}>{item.serialNumber}</td>
-                <td style={{ border: "1px solid #bbb", padding: "4px 6px", textAlign: "center" }}>{item.qty}</td>
-                <td style={{ border: "1px solid #bbb", padding: "4px 6px" }}>{item.brand}</td>
-                <td style={{ border: "1px solid #bbb", padding: "4px 6px" }}>{item.remark}</td>
+              <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "rgba(255, 255, 255, 0.95)" : "rgba(249, 249, 249, 0.95)" }}>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px", textAlign: "center" }}>{item.no}</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>{item.description}</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>{item.serialNumber}</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px", textAlign: "center" }}>{item.qty}</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>{item.brand}</td>
+                <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>{item.remark}</td>
               </tr>
             ))
           )}
         </tbody>
       </table>
 
-      {/* Signatures */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginTop: "auto", paddingTop: "32px", fontSize: "9pt" }}>
-        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100px" }}>
-          <div>Delivered by,</div>
-          <div>
-            <div style={{ fontWeight: 600 }}>PT. Chitra Paratama,</div>
-            <div style={{ marginTop: "4px" }}>( ............................... )</div>
+      {/* Signatures - Positioned above footer background */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", marginTop: "200px", fontSize: "9.5pt", padding: "20px" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ marginBottom: "90px", fontWeight: 600 }}>Delivered by</div>
+          <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
+            <div style={{ fontWeight: 600 }}>PT. Chitra Paratama</div>
           </div>
         </div>
-        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100px" }}>
-          <div>Forwarder</div>
-          <div>
-            <div style={{ fontWeight: 600, visibility: "hidden" }}>Hidden</div>
-            <div style={{ marginTop: "4px" }}>( ............................... )</div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ marginBottom: "90px", fontWeight: 600 }}>Forwarder</div>
+          <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
+            <div>&nbsp;</div>
           </div>
         </div>
-        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: "100px" }}>
-          <div>Received by,</div>
-          <div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ marginBottom: "90px", fontWeight: 600 }}>Received by</div>
+          <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
             <div style={{ fontWeight: 600 }}>Customer</div>
-            <div style={{ marginTop: "4px" }}>( ............................... )</div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-// ─── Import Dialog ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Import Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestImportDialog() {
   const action = importCargoManifestsAction as (
@@ -548,7 +630,7 @@ export function CargoManifestImportDialog() {
   );
 }
 
-// ─── Row Actions (combined) ───────────────────────────────────────────────────
+// â”€â”€â”€ Row Actions (combined) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function CargoManifestRowActions({ row }: { row: CargoManifestRecord }) {
   return (
@@ -559,3 +641,4 @@ export function CargoManifestRowActions({ row }: { row: CargoManifestRecord }) {
     </div>
   );
 }
+

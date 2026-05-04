@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+﻿import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   activities,
@@ -864,7 +864,37 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
 
   if (normalizedEmail) {
     const [matchedEmployee] = await db
-      .select()
+      .select({
+        id: employees.id,
+        authUserId: employees.authUserId,
+        siteId: employees.siteId,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        joinYear: employees.joinYear,
+        birthPlaceDate: employees.birthPlaceDate,
+        domicile: employees.domicile,
+        directManagerId: employees.directManagerId,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
+        section: employees.section,
+        role: employees.role,
+        department: employees.department,
+        jobTitle: employees.jobTitle,
+        workLocation: employees.workLocation,
+        phoneNumber: employees.phoneNumber,
+        employmentStatus: employees.employmentStatus,
+        employeeStatusType: employees.employeeStatusType,
+        accessRole: employees.accessRole,
+        levelName: employees.levelName,
+        totalPoints: employees.totalPoints,
+        fitStatus: employees.fitStatus,
+        isActive: employees.isActive,
+        emailVerified: employees.emailVerified,
+        createdAt: employees.createdAt,
+      })
       .from(employees)
       .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
       .limit(1);
@@ -875,7 +905,37 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
   }
 
   const [fallbackEmployee] = await db
-    .select()
+    .select({
+      id: employees.id,
+      authUserId: employees.authUserId,
+      siteId: employees.siteId,
+      name: employees.name,
+      email: employees.email,
+      employeeSn: employees.employeeSn,
+      joinYear: employees.joinYear,
+      birthPlaceDate: employees.birthPlaceDate,
+      domicile: employees.domicile,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      positionId: employees.positionId,
+      orgNodeId: employees.orgNodeId,
+      section: employees.section,
+      role: employees.role,
+      department: employees.department,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      phoneNumber: employees.phoneNumber,
+      employmentStatus: employees.employmentStatus,
+      employeeStatusType: employees.employeeStatusType,
+      accessRole: employees.accessRole,
+      levelName: employees.levelName,
+      totalPoints: employees.totalPoints,
+      fitStatus: employees.fitStatus,
+      isActive: employees.isActive,
+      emailVerified: employees.emailVerified,
+      createdAt: employees.createdAt,
+    })
     .from(employees)
     .where(eq(employees.isActive, true))
     .orderBy(asc(employees.id))
@@ -886,7 +946,37 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
 
 async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inferSelect) {
   const directReports = await db
-    .select()
+    .select({
+      id: employees.id,
+      authUserId: employees.authUserId,
+      siteId: employees.siteId,
+      name: employees.name,
+      email: employees.email,
+      employeeSn: employees.employeeSn,
+      joinYear: employees.joinYear,
+      birthPlaceDate: employees.birthPlaceDate,
+      domicile: employees.domicile,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      positionId: employees.positionId,
+      orgNodeId: employees.orgNodeId,
+      section: employees.section,
+      role: employees.role,
+      department: employees.department,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      phoneNumber: employees.phoneNumber,
+      employmentStatus: employees.employmentStatus,
+      employeeStatusType: employees.employeeStatusType,
+      accessRole: employees.accessRole,
+      levelName: employees.levelName,
+      totalPoints: employees.totalPoints,
+      fitStatus: employees.fitStatus,
+      isActive: employees.isActive,
+      emailVerified: employees.emailVerified,
+      createdAt: employees.createdAt,
+    })
     .from(employees)
     .where(
       and(
@@ -1886,7 +1976,7 @@ async function seedDailyActivityReferenceData() {
           sourceType: "activity",
           sourceId: createdActivity.id,
           category: "Daily Activity",
-          label: `${library.activityName} • Approved`,
+          label: `${library.activityName} â€¢ Approved`,
           points: points - penalty,
           balanceAfter: currentBalance,
           metadata: JSON.stringify({
