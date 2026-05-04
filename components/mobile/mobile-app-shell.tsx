@@ -14,6 +14,7 @@ import {
   Grid3X3,
   Home,
   Menu,
+  Package,
   ShieldAlert,
   ShieldCheck,
   Timer,
@@ -50,6 +51,7 @@ const drawerItems = [
   { label: "Wellness", href: "/mobile/wellness", icon: Dumbbell },
   { label: "Gamification", href: "/mobile/gamification", icon: Trophy },
   { label: "Executive", href: "/mobile/executive", icon: BarChart3 },
+  { label: "Cargo Manifest", href: "/mobile/cargo-manifest", icon: Package },
   { label: "Profile", href: "/mobile/profile", icon: UserRound },
 ];
 
