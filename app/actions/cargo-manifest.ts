@@ -225,7 +225,7 @@ export async function manageCargoManifestAction(
 
   const parsed = manageCargoManifestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { status: "error", message: parsed.error.errors[0]?.message ?? "Validasi gagal." };
+    return { status: "error", message: parsed.error.issues[0]?.message ?? "Validasi gagal." };
   }
 
   const data = parsed.data;

@@ -4,7 +4,7 @@
 # ============================================
 
 # Stage 1: Base image
-FROM node:20-alpine AS base
+FROM node:20.19-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -26,7 +26,7 @@ ENV NEXT_PUBLIC_BETTER_AUTH_URL=$NEXT_PUBLIC_BETTER_AUTH_URL
 RUN npm run build
 
 # Stage 4: Production runner
-FROM node:20-alpine AS runner
+FROM node:20.19-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
