@@ -21,12 +21,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   ACTIVITY_LIBRARY_EXAMPLE_CSV,
+  ACTIVITY_LIBRARY_IMPORT_FIELDS,
   buildActivityLibraryCsv,
   getActivityLibraryImportValue,
   INITIAL_ACTIVITY_LIBRARY_IMPORT_STATE,
   parseActivityLibraryCsv,
   type ActivityLibraryCsvRow,
 } from "@/lib/activity-library-import";
+import { parseCsvToRecords } from "@/lib/security-user-import";
 
 type ActivityLibraryRow = {
   id: number;

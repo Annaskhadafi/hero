@@ -48,16 +48,16 @@ export async function importUsersWithDetailedErrors(params: {
       };
     }
 
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
+    const [headerRow, ...dataRows] = rows;
+    const headers = headerRow;
 
     for (let i = 0; i < dataRows.length; i++) {
       const rowIndex = i + 2;
       const row = dataRows[i];
 
       try {
-        const email = getMappedValue(row, headers, params.mapping, "email");
-        const fullName = getMappedValue(row, headers, params.mapping, "fullName");
+        const email = getMappedValue(row, headers, params.mapping, "email") || "";
+        const fullName = getMappedValue(row, headers, params.mapping, "fullName") || "";
 
         if (!email || !email.trim()) {
           errors.push({

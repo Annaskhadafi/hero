@@ -7,11 +7,11 @@ export async function notifyPasswordReset(params: {
 }) {
   await createNotificationEventForEmployee({
     employeeId: params.employeeId,
+    eventType: "password_reset",
     title: "Password Direset",
     body: `Password Anda telah direset oleh ${params.resetByName}. Silakan login dengan password baru.`,
     category: "security",
-    priority: "high",
-    actionUrl: "/auth/login",
+    url: "/auth/login",
   });
 }
 
@@ -24,11 +24,11 @@ export async function notifyRoleChanged(params: {
 }) {
   await createNotificationEventForEmployee({
     employeeId: params.employeeId,
+    eventType: "role_changed",
     title: "Peran Akses Diubah",
     body: `Peran akses Anda diubah dari ${params.oldRole} ke ${params.newRole} oleh ${params.changedByName}.`,
     category: "security",
-    priority: "high",
-    actionUrl: "/dashboard",
+    url: "/dashboard",
   });
 }
 
@@ -39,11 +39,11 @@ export async function notifyAccountBanned(params: {
 }) {
   await createNotificationEventForEmployee({
     employeeId: params.employeeId,
+    eventType: "account_banned",
     title: "Akun Dinonaktifkan",
     body: `Akun Anda telah dinonaktifkan oleh ${params.bannedByName}. Hubungi admin untuk informasi lebih lanjut.`,
     category: "security",
-    priority: "critical",
-    actionUrl: "/",
+    url: "/",
   });
 }
 
@@ -54,11 +54,11 @@ export async function notifyUserInvitation(params: {
 }) {
   await createNotificationEventForEmployee({
     employeeId: params.employeeId,
+    eventType: "user_invitation",
     title: "Undangan Akun HERO",
-    body: `Selamat datang ${params.inviteName}! Klik untuk mengatur password dan mengaktifkan akun Anda.`,
+    body: `Selamat datang ${params.employeeName}! Klik untuk mengatur password dan mengaktifkan akun Anda.`,
     category: "info",
-    priority: "high",
-    actionUrl: params.invitationUrl,
+    url: params.invitationUrl,
   });
 }
 
@@ -69,10 +69,10 @@ export async function notifyEmailVerification(params: {
 }) {
   await createNotificationEventForEmployee({
     employeeId: params.employeeId,
+    eventType: "email_verification",
     title: "Verifikasi Email",
     body: "Silakan verifikasi email Anda untuk mengaktifkan semua fitur akun.",
     category: "info",
-    priority: "normal",
-    actionUrl: params.verificationUrl,
+    url: params.verificationUrl,
   });
 }

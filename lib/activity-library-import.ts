@@ -1,4 +1,4 @@
-import { parseCsv } from "@/lib/security-user-import";
+import { parseCsvToRecords } from "@/lib/security-user-import";
 
 export const ACTIVITY_LIBRARY_IMPORT_FIELDS = [
   { key: "activityCode", label: "activityCode", required: true, aliases: ["activity code", "activity_code", "kode", "kode aktivitas"] },
@@ -113,7 +113,7 @@ export function buildActivityLibraryCsv(rows: ActivityLibraryCsvRow[]) {
 }
 
 export function parseActivityLibraryCsv(raw: string) {
-  return parseCsv(raw);
+  return parseCsvToRecords(raw);
 }
 
 export function getActivityLibraryImportValue(

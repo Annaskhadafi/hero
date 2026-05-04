@@ -13,6 +13,8 @@ const testPushCategories = [
   "shift_reminders",
   "hse_alerts",
   "points_updates",
+  "security",
+  "info",
 ] as const;
 
 const testPushSchema = z.object({
@@ -39,6 +41,16 @@ const testCopy: Record<NotificationCategory, { title: string; body: string; url:
     title: "Points update test",
     body: "Poin HERO bertambah. Open Point Arena untuk lihat leaderboard terbaru.",
     url: "/mobile/gamification",
+  },
+  security: {
+    title: "Security alert test",
+    body: "Ada perubahan keamanan pada akun Anda.",
+    url: "/mobile/notifications",
+  },
+  info: {
+    title: "Info notification test",
+    body: "Ada informasi penting untuk Anda.",
+    url: "/mobile/notifications",
   },
 };
 

@@ -17,7 +17,9 @@ export type NotificationCategory =
   | "approval_requests"
   | "shift_reminders"
   | "hse_alerts"
-  | "points_updates";
+  | "points_updates"
+  | "security"
+  | "info";
 
 export type NotificationPreferenceSnapshot = {
   pushEnabled: boolean;
@@ -69,7 +71,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferenceSnapshot = {
   pointsUpdatesEnabled: true,
 };
 
-function getCategoryPreferenceKey(category: NotificationCategory) {
+function getCategoryPreferenceKey(category: NotificationCategory): keyof NotificationPreferenceSnapshot | undefined {
   switch (category) {
     case "approval_requests":
       return "approvalRequestsEnabled";
@@ -79,6 +81,11 @@ function getCategoryPreferenceKey(category: NotificationCategory) {
       return "hseAlertsEnabled";
     case "points_updates":
       return "pointsUpdatesEnabled";
+    case "security":
+    case "info":
+      return undefined;
+    default:
+      return undefined;
   }
 }
 
@@ -394,7 +401,7 @@ export async function sendPushNotification(input: PushDispatchInput) {
 
   if (input.requirePreference !== false) {
     const categoryPreferenceKey = getCategoryPreferenceKey(input.category);
-    if (!preferences.pushEnabled || !preferences[categoryPreferenceKey]) {
+    if (categoryPreferenceKey && (!preferences.pushEnabled || !preferences[categoryPreferenceKey])) {
       return {
         status: "skipped" as const,
         reason: "preference_disabled",

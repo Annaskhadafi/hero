@@ -68,6 +68,10 @@ export async function acceptInvitation(params: {
     throw new Error(`Invitation ${verification.reason}`);
   }
 
+  if (!verification.employee) {
+    throw new Error("Employee not found");
+  }
+
   await db
     .update(employees)
     .set({

@@ -77,6 +77,12 @@ export const employees = pgTable("hero_employees", {
   totalPoints: integer("total_points").notNull().default(0),
   fitStatus: text("fit_status").notNull().default("fit"),
   isActive: boolean("is_active").notNull().default(true),
+  invitationToken: text("invitation_token"),
+  invitationExpiresAt: timestamp("invitation_expires_at"),
+  invitationAcceptedAt: timestamp("invitation_accepted_at"),
+  emailVerificationToken: text("email_verification_token"),
+  emailVerificationExpiresAt: timestamp("email_verification_expires_at"),
+  emailVerified: boolean("email_verified").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

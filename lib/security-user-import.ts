@@ -131,10 +131,19 @@ export function parseCsv(raw: string) {
     rows.push(currentRow);
   }
 
+  return rows;
+}
+
+export function parseCsvToRecords(raw: string): {
+  headers: string[];
+  records: Record<string, string>[];
+} {
+  const rows = parseCsv(raw);
+  
   if (rows.length === 0) {
     return {
-      headers: [] as string[],
-      records: [] as Record<string, string>[],
+      headers: [],
+      records: [],
     };
   }
 
@@ -170,14 +179,20 @@ export function autoMapHeaders(headers: string[]): UserImportMapping {
 }
 
 export function getMappedValue(
-  row: Record<string, string>,
+  row: string[] | Record<string, string>,
+  headers: string[],
   mapping: UserImportMapping,
   key: UserImportFieldKey,
-) {
+): string {
   const header = mapping[key];
 
   if (!header) {
     return "";
+  }
+
+  if (Array.isArray(row)) {
+    const index = headers.indexOf(header);
+    return index >= 0 ? (row[index] ?? "").trim() : "";
   }
 
   return (row[header] ?? "").trim();

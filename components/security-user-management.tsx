@@ -73,7 +73,7 @@ import type { SecurityUserRecord } from "@/lib/hero-admin";
 import {
   USER_IMPORT_FIELDS,
   autoMapHeaders,
-  parseCsv,
+  parseCsvToRecords,
   type UserImportMapping,
 } from "@/lib/security-user-import";
 import { cn } from "@/lib/utils";
@@ -150,7 +150,6 @@ function MultiSelectDropdown({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredOptions = options.filter((option) =>
@@ -258,6 +257,7 @@ export function SecurityUserManagement({
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [rawCsv, setRawCsv] = useState("");
   const [mapping, setMapping] = useState<UserImportMapping>({});
@@ -266,7 +266,7 @@ export function SecurityUserManagement({
     INITIAL_IMPORT_STATE,
   );
 
-  const parsedImport = useMemo(() => parseCsv(rawCsv), [rawCsv]);
+  const parsedImport = useMemo(() => parseCsvToRecords(rawCsv), [rawCsv]);
   const managerOptions = useMemo(
     () => users.map((user) => ({ id: user.id, name: user.name })),
     [users],

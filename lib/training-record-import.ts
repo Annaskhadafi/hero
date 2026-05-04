@@ -1,4 +1,4 @@
-import { parseCsv } from "@/lib/security-user-import";
+import { parseCsvToRecords } from "@/lib/security-user-import";
 
 export const TRAINING_RECORD_IMPORT_FIELDS = [
   {
@@ -85,7 +85,7 @@ function normalizeHeader(value: string) {
 }
 
 export function parseTrainingRecordCsv(raw: string) {
-  return parseCsv(raw);
+  return parseCsvToRecords(raw);
 }
 
 export function autoMapTrainingRecordHeaders(headers: string[]): TrainingRecordImportMapping {

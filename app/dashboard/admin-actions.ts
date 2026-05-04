@@ -65,7 +65,7 @@ import {
 } from "@/lib/push-notifications";
 import {
   getMappedValue,
-  parseCsv,
+  parseCsvToRecords,
   type UserImportMapping,
 } from "@/lib/security-user-import";
 import {
@@ -1504,7 +1504,7 @@ export async function importSecurityUsersAction(
     });
 
     const mapping = JSON.parse(payload.mappingJson) as UserImportMapping;
-    const { records } = parseCsv(payload.rawCsv);
+    const { records, headers } = parseCsvToRecords(payload.rawCsv);
 
     if (records.length === 0) {
       return {
@@ -1541,23 +1541,23 @@ export async function importSecurityUsersAction(
     let skippedCount = 0;
     const managerAssignments: { employeeId: number; managerLabel: string }[] = [];
 
-    for (const record of records) {
-      const fullName = getMappedValue(record, mapping, "fullName");
-      const email = normalizeEmail(getMappedValue(record, mapping, "email"));
+     for (const record of records) {
+       const fullName = getMappedValue(record, headers, mapping, "fullName");
+       const email = normalizeEmail(getMappedValue(record, headers, mapping, "email"));
 
-      if (!fullName || !email) {
-        skippedCount += 1;
-        continue;
-      }
+       if (!fullName || !email) {
+         skippedCount += 1;
+         continue;
+       }
 
-      const managerLabel = getMappedValue(record, mapping, "directManager");
-      const department = getMappedValue(record, mapping, "department") || "General";
-      const section = getMappedValue(record, mapping, "section") || department;
-      const jobTitle = getMappedValue(record, mapping, "jobTitle") || "Staff";
-      const normalizedStatus = normalizeEmploymentStatus(
-        getMappedValue(record, mapping, "status"),
-      );
-      const employeeStatusType = getMappedValue(record, mapping, "employeeStatusType") || "Permanen | Staff";
+       const managerLabel = getMappedValue(record, headers, mapping, "directManager");
+       const department = getMappedValue(record, headers, mapping, "department") || "General";
+       const section = getMappedValue(record, headers, mapping, "section") || department;
+       const jobTitle = getMappedValue(record, headers, mapping, "jobTitle") || "Staff";
+       const normalizedStatus = normalizeEmploymentStatus(
+         getMappedValue(record, headers, mapping, "status"),
+       );
+       const employeeStatusType = getMappedValue(record, headers, mapping, "employeeStatusType") || "Permanen | Staff";
       const governanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
@@ -1570,10 +1570,10 @@ export async function importSecurityUsersAction(
         siteId: defaultSite.id,
         name: fullName,
         email,
-        employeeSn: getMappedValue(record, mapping, "employeeSn"),
-        joinYear: parseJoinYear(getMappedValue(record, mapping, "joinYear")),
-        birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, mapping, "ttl")),
-        domicile: getMappedValue(record, mapping, "domicile") || "Belum diisi",
+        employeeSn: getMappedValue(record, headers, mapping, "employeeSn"),
+        joinYear: parseJoinYear(getMappedValue(record, headers, mapping, "joinYear")),
+        birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, "ttl")),
+        domicile: getMappedValue(record, headers, mapping, "domicile") || "Belum diisi",
         sectionId: governanceIds.sectionId,
         section,
         departmentId: governanceIds.departmentId,
@@ -1583,8 +1583,8 @@ export async function importSecurityUsersAction(
         role: jobTitle,
         jobTitle,
         workLocation:
-          getMappedValue(record, mapping, "workLocation") || defaultSite.name,
-        phoneNumber: getMappedValue(record, mapping, "phoneNumber"),
+          getMappedValue(record, headers, mapping, "workLocation") || defaultSite.name,
+        phoneNumber: getMappedValue(record, headers, mapping, "phoneNumber"),
         employmentStatus: normalizedStatus.status,
         employeeStatusType: employeeStatusType,
         isActive: normalizedStatus.isActive,
