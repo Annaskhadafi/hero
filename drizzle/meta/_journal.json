@@ -120,6 +120,20 @@
       "when": 1777937361119,
       "tag": "0016_amusing_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1777950250697,
+      "tag": "0017_superb_johnny_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1777951647909,
+      "tag": "0018_woozy_jackal",
+      "breakpoints": true
     }
   ]
 }

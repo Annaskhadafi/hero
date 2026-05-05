@@ -74,7 +74,6 @@ type SidebarUser = {
 const DESKTOP_MENU_ORDER = [
   "Portal Chitra",
   "Aktivitas Harian",
-  "Central Service",
   "Approval",
   "Data Induk",
   "HC",
@@ -86,7 +85,6 @@ const DESKTOP_MENU_ORDER = [
 const desktopMenuIconMap = {
   "Portal Chitra": IconDashboard,
   "Aktivitas Harian": IconChecklist,
-  "Central Service": IconDatabase,
   Approval: IconMail,
   "Data Induk": IconDatabase,
   HC: IconUsers,
@@ -97,7 +95,6 @@ const desktopMenuIconMap = {
 
 const sectionLabelMap: Record<string, string> = {
   "Daily Activity": "Aktivitas Harian",
-  "Central Service": "Central Service",
   Approval: "Approval",
   "Master Data": "Data Induk",
   HR: "HC",

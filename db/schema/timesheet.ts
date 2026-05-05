@@ -1,0 +1,161 @@
+﻿import {
+  boolean,
+  integer,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  date,
+  decimal,
+  jsonb,
+} from "drizzle-orm/pg-core";
+import { sites, employees } from "@/db/schema/hero";
+import { user } from "@/db/schema/auth";
+
+// Site-specific allowance rates configuration
+export const timesheetSiteConfigs = pgTable("hero_timesheet_site_configs", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  siteCode: text("site_code").notNull(), // PPA BIB, AMM MIFA, VALE, etc
+  siteName: text("site_name").notNull(),
+  
+  // Allowance rates (in Rupiah)
+  msaRate: integer("msa_rate").notNull().default(0), // Mine Site Allowance
+  mealsRate: integer("meals_rate").notNull().default(0),
+  tlkRate: integer("tlk_rate").notNull().default(0), // Tunjangan Lokasi Khusus
+  
+  // OT calculation settings
+  otDecimalMode: boolean("ot_decimal_mode").notNull().default(false), // true for VALE (4.5, 12.5), false for others (integer)
+  
+  // Summary output settings
+  hasMsaSummary: boolean("has_msa_summary").notNull().default(true),
+  hasMealsSummary: boolean("has_meals_summary").notNull().default(false),
+  hasTlkSummary: boolean("has_tlk_summary").notNull().default(false),
+  
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Import batch tracking
+export const timesheetImports = pgTable("hero_timesheet_imports", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  
+  // Period
+  periodMonth: integer("period_month").notNull(), // 1-12
+  periodYear: integer("period_year").notNull(),
+  
+  // Import metadata
+  importType: text("import_type").notNull(), // "ot_record" | "spl_record"
+  originalFilename: text("original_filename").notNull(),
+  fileStoragePath: text("file_storage_path").notNull(),
+  
+  // Processing status
+  status: text("status").notNull().default("pending"), // pending | processing | completed | failed
+  totalSheets: integer("total_sheets").notNull().default(0),
+  processedSheets: integer("processed_sheets").notNull().default(0),
+  totalRecords: integer("total_records").notNull().default(0),
+  errorCount: integer("error_count").notNull().default(0),
+  errorLog: jsonb("error_log"), // Array of error messages
+  
+  uploadedByUserId: text("uploaded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  processedAt: timestamp("processed_at"),
+});
+
+// Daily timesheet records (normalized from Excel)
+export const timesheetDailyRecords = pgTable("hero_timesheet_daily_records", {
+  id: serial("id").primaryKey(),
+  
+  importId: integer("import_id")
+    .notNull()
+    .references(() => timesheetImports.id, { onDelete: "cascade" }),
+  
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  
+  // Employee identification
+  employeeSn: text("employee_sn").notNull(), // Primary key for matching
+  employeeName: text("employee_name").notNull(),
+  department: text("department").notNull().default(""),
+  
+  // Date
+  recordDate: date("record_date").notNull(),
+  dayOfMonth: integer("day_of_month").notNull(), // 1-31
+  
+  // OT data
+  otHours: decimal("ot_hours", { precision: 5, scale: 2 }), // null if status day
+  otStatus: text("ot_status"), // OFF | FB | SICK | IZIN | ALPA | LIBUR | etc
+  otRemark: text("ot_remark").notNull().default(""),
+  
+  // Allowance data
+  msaAmount: integer("msa_amount"), // null if not applicable
+  mealsAmount: integer("meals_amount"),
+  tlkAmount: integer("tlk_amount"),
+  allowanceStatus: text("allowance_status"), // FB | SICK | IZIN | ALPA | etc (if no allowance given)
+  
+  // Transfer detection
+  transferredToSite: text("transferred_to_site"), // Site code if employee transferred
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Summary output generation tracking
+export const timesheetSummaryOutputs = pgTable("hero_timesheet_summary_outputs", {
+  id: serial("id").primaryKey(),
+  
+  // Period
+  periodMonth: integer("period_month").notNull(),
+  periodYear: integer("period_year").notNull(),
+  
+  // Output metadata
+  outputFilename: text("output_filename").notNull(),
+  fileStoragePath: text("file_storage_path").notNull(),
+  
+  // Generation status
+  status: text("status").notNull().default("draft"), // draft | finalized
+  totalSites: integer("total_sites").notNull().default(0),
+  totalEmployees: integer("total_employees").notNull().default(0),
+  
+  // Approval tracking
+  preparedBy: text("prepared_by"),
+  acknowledgedBy: text("acknowledged_by"),
+  approvedBy: text("approved_by"),
+  checkedBy: text("checked_by"),
+  
+  generatedByUserId: text("generated_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  finalizedAt: timestamp("finalized_at"),
+});
+
+// Validation warnings/errors for review
+export const timesheetValidationIssues = pgTable("hero_timesheet_validation_issues", {
+  id: serial("id").primaryKey(),
+  
+  importId: integer("import_id")
+    .notNull()
+    .references(() => timesheetImports.id, { onDelete: "cascade" }),
+  
+  issueType: text("issue_type").notNull(), // "warning" | "error"
+  severity: text("severity").notNull(), // "low" | "medium" | "high"
+  
+  employeeSn: text("employee_sn"),
+  employeeName: text("employee_name"),
+  recordDate: date("record_date"),
+  
+  message: text("message").notNull(),
+  details: jsonb("details"),
+  
+  isResolved: boolean("is_resolved").notNull().default(false),
+  resolvedByUserId: text("resolved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at"),
+  resolutionNote: text("resolution_note"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

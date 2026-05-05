@@ -1,0 +1,55 @@
+﻿const fs = require("fs");
+const path = require("path");
+
+const filePath = path.join(__dirname, "..", "components", "app-sidebar.tsx");
+let content = fs.readFileSync(filePath, "utf8");
+
+// Add Central Service to DESKTOP_MENU_ORDER
+content = content.replace(
+  /const DESKTOP_MENU_ORDER = \[[\s\S]*?\] as const/,
+  `const DESKTOP_MENU_ORDER = [
+  "Portal Chitra",
+  "Aktivitas Harian",
+  "Central Service",
+  "Approval",
+  "Data Induk",
+  "HC",
+  "HSE",
+  "Laporan",
+  "Pengaturan",
+] as const`
+);
+
+// Add Central Service to desktopMenuIconMap
+content = content.replace(
+  /const desktopMenuIconMap = \{[\s\S]*?\} as const/,
+  `const desktopMenuIconMap = {
+  "Portal Chitra": IconDashboard,
+  "Aktivitas Harian": IconChecklist,
+  "Central Service": IconDatabase,
+  Approval: IconMail,
+  "Data Induk": IconDatabase,
+  HC: IconUsers,
+  HSE: IconShieldHalfFilled,
+  Laporan: IconReport,
+  Pengaturan: IconSettings,
+} as const`
+);
+
+// Add Central Service to sectionLabelMap
+content = content.replace(
+  /const sectionLabelMap: Record<string, string> = \{[\s\S]*?\}/,
+  `const sectionLabelMap: Record<string, string> = {
+  "Daily Activity": "Aktivitas Harian",
+  "Central Service": "Central Service",
+  Approval: "Approval",
+  "Master Data": "Data Induk",
+  HR: "HC",
+  HSE: "HSE",
+  Report: "Laporan",
+  Setting: "Pengaturan",
+}`
+);
+
+fs.writeFileSync(filePath, content, "utf8");
+console.log("Updated app-sidebar.tsx with Central Service");
