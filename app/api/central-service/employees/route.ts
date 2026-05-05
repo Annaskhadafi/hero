@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { employees as heroEmployees } from "@/db/schema/hero";
-import { eq, ilike, or, desc } from "drizzle-orm";
+import { and, eq, ilike, or, desc } from "drizzle-orm";
 
 /**
  * GET /api/central-service/employees
@@ -18,9 +18,6 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
 
-    let query = db.select().from(centralServiceEmployees);
-
-    // Apply filters
     const conditions = [];
 
     // Always filter by Central Service department (with variations)
@@ -52,17 +49,20 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(centralServiceEmployees.isSyncedToUserManagement, false));
     }
 
-    if (conditions.length > 0) {
-      query = query.where(conditions.length === 1 ? conditions[0] : or(...conditions));
-    }
-
     // Get total count
-    const allResults = await query;
-    const total = allResults.length;
+    const totalResults = await db
+      .select()
+      .from(centralServiceEmployees)
+      .where(and(...conditions));
+    
+    const total = totalResults.length;
 
     // Apply pagination
     const offset = (page - 1) * limit;
-    const employees = await query
+    const employees = await db
+      .select()
+      .from(centralServiceEmployees)
+      .where(and(...conditions))
       .orderBy(desc(centralServiceEmployees.createdAt))
       .limit(limit)
       .offset(offset);

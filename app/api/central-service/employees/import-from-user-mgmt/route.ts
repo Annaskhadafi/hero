@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { employees } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 /**
  * POST /api/central-service/employees/import-from-user-mgmt
@@ -13,15 +13,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { department } = body;
 
-    // Get all employees from User Management
-    let query = db.select().from(employees).where(eq(employees.isActive, true));
-    
-    // Filter by department if provided
+    const conditions = [eq(employees.isActive, true)];
     if (department) {
-      query = query.where(eq(employees.department, department));
+      conditions.push(eq(employees.department, department));
     }
 
-    const userMgmtEmployees = await query;
+    const userMgmtEmployees = await db
+      .select()
+      .from(employees)
+      .where(and(...conditions));
 
     let importedCount = 0;
     let skippedCount = 0;
