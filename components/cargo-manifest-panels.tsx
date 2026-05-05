@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useActionState, useState, useRef } from "react";
+import { useActionState, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,16 @@ import {
   type CargoManifestMutationState,
   type CargoImportState,
 } from "@/app/actions/cargo-manifest";
+import {
+  getMasterGoods,
+  getMasterLocations,
+  getMasterRecipients,
+  createMasterGoods,
+  type MasterGoodsRecord,
+  type MasterLocationRecord,
+  type MasterRecipientRecord,
+} from "@/app/actions/cargo-master";
+import { Combobox } from "@/components/ui/combobox";
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -46,6 +56,14 @@ function ItemRowEditor({
   items: ItemRow[];
   onChange: (items: ItemRow[]) => void;
 }) {
+  const [goodsOptions, setGoodsOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    getMasterGoods().then((data) => {
+      setGoodsOptions(data.map(g => g.goodsName));
+    });
+  }, []);
+
   const addRow = () =>
     onChange([
       ...items,
@@ -55,8 +73,27 @@ function ItemRowEditor({
   const removeRow = (idx: number) =>
     onChange(items.filter((_, i) => i !== idx).map((r, i) => ({ ...r, no: i + 1 })));
 
-  const updateRow = (idx: number, field: keyof ItemRow, value: string | number) =>
+  const updateRow = (idx: number, field: keyof ItemRow, value: string | number) => {
     onChange(items.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+    
+    // Auto-add to master goods if description is new
+    if (field === "description" && typeof value === "string" && value.trim() && !goodsOptions.includes(value.trim())) {
+      createMasterGoods({
+        goodsName: value.trim(),
+        category: "",
+        brand: "",
+        unit: "pcs",
+        weight: "",
+        dimensions: "",
+        hsCode: "",
+        description: "",
+        notes: "",
+        isActive: true,
+      }).then(() => {
+        setGoodsOptions(prev => [...prev, value.trim()]);
+      });
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -92,7 +129,14 @@ function ItemRowEditor({
                 <td className="px-2 py-1.5 text-center text-muted-foreground">{row.no}</td>
                 {/* Description */}
                 <td className="px-1 py-1">
-                  <input className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary/50" value={row.description} onChange={(e) => updateRow(idx, "description", e.target.value)} placeholder="Deskripsi barang..." />
+                  <Combobox
+                    value={row.description}
+                    onChange={(val) => updateRow(idx, "description", val)}
+                    options={goodsOptions}
+                    placeholder="Deskripsi barang..."
+                    allowCustom
+                    className="h-7 text-xs border-0 bg-transparent"
+                  />
                 </td>
                 {/* Serial Number */}
                 <td className="px-1 py-1">
@@ -135,8 +179,47 @@ function ManifestFormFields({
   items: ItemRow[];
   onItemsChange: (items: ItemRow[]) => void;
 }) {
+  const [recipients, setRecipients] = useState<string[]>([]);
+  const [locations, setLocations] = useState<string[]>([]);
+  const [transportHistory, setTransportHistory] = useState<string[]>([]);
+  const [attention, setAttention] = useState(defaultValues?.attention || "");
+  const [finalDestination, setFinalDestination] = useState(defaultValues?.finalDestination || "");
+  const [transportVia, setTransportVia] = useState(defaultValues?.transportVia || "");
+
+  useEffect(() => {
+    // Load master data
+    Promise.all([
+      getMasterRecipients(),
+      getMasterLocations(),
+    ]).then(([recipientsData, locationsData]) => {
+      setRecipients(recipientsData.map(r => r.recipientName));
+      setLocations(locationsData.map(l => l.locationName));
+    });
+
+    // Load transport history from localStorage
+    const saved = localStorage.getItem("cargo_transport_history");
+    if (saved) {
+      try {
+        setTransportHistory(JSON.parse(saved));
+      } catch {}
+    }
+  }, []);
+
+  const handleTransportChange = (value: string) => {
+    setTransportVia(value);
+    // Save to history
+    if (value && !transportHistory.includes(value)) {
+      const newHistory = [value, ...transportHistory].slice(0, 20);
+      setTransportHistory(newHistory);
+      localStorage.setItem("cargo_transport_history", JSON.stringify(newHistory));
+    }
+  };
+
   return (
     <div className="grid gap-4">
+      <input type="hidden" name="attention" value={attention} />
+      <input type="hidden" name="finalDestination" value={finalDestination} />
+      <input type="hidden" name="transportVia" value={transportVia} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Label className="grid gap-1.5 text-sm font-medium">
           Tanggal (Date)
@@ -150,15 +233,33 @@ function ManifestFormFields({
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Attention <span className="text-xs font-normal text-muted-foreground">(penerima / ditujukan kepada)</span>
-          <Input name="attention" defaultValue={defaultValues?.attention} placeholder="Nama penerima..." className="h-9" />
+          <Combobox
+            value={attention}
+            onChange={setAttention}
+            options={recipients}
+            placeholder="Nama penerima..."
+            allowCustom
+          />
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Final Destination
-          <Input name="finalDestination" defaultValue={defaultValues?.finalDestination} placeholder="Tujuan akhir pengiriman..." className="h-9" />
+          <Combobox
+            value={finalDestination}
+            onChange={setFinalDestination}
+            options={locations}
+            placeholder="Tujuan akhir pengiriman..."
+            allowCustom
+          />
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Transport Via
-          <Input name="transportVia" defaultValue={defaultValues?.transportVia} placeholder="Nama ekspedisi / moda..." className="h-9" />
+          <Combobox
+            value={transportVia}
+            onChange={handleTransportChange}
+            options={transportHistory}
+            placeholder="Nama ekspedisi / moda..."
+            allowCustom
+          />
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Kiriman Via
