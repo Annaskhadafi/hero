@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
+import { employees as heroEmployees } from "@/db/schema/hero";
 import { eq, ilike, or, desc } from "drizzle-orm";
 
 /**
  * GET /api/central-service/employees
- * List all Central Service employees with filters
+ * List all Central Service employees with filters.
+ * Section is enriched from hero_employees (User Management) matched by email.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,8 +23,7 @@ export async function GET(request: NextRequest) {
     // Apply filters
     const conditions = [];
 
-    // Always filter by Central Service department
-    // Filter by Central Services department (with variations)
+    // Always filter by Central Service department (with variations)
     conditions.push(
       or(
         eq(centralServiceEmployees.department, "Central Services"),
@@ -70,9 +71,32 @@ export async function GET(request: NextRequest) {
     const syncedCount = employees.filter((e) => e.isSyncedToUserManagement).length;
     const unsyncedCount = employees.filter((e) => !e.isSyncedToUserManagement).length;
 
+    // Enrich section from User Management (hero_employees) matched by employeeSn.
+    // hero_employees may store SN as "EMP-51468" while centralServiceEmployees stores "51468" — try both.
+    const snList = employees.map((e) => e.employeeSn).filter(Boolean);
+    const sectionBySn: Record<string, string> = {};
+    if (snList.length > 0) {
+      const snVariants = snList.flatMap((sn) => [sn, `EMP-${sn}`, sn.replace(/^EMP-/i, "")]);
+      const uniqueVariants = [...new Set(snVariants)];
+      const heroRows = await db
+        .select({ employeeSn: heroEmployees.employeeSn, section: heroEmployees.section })
+        .from(heroEmployees)
+        .where(or(...uniqueVariants.map((sn) => eq(heroEmployees.employeeSn, sn))));
+      for (const row of heroRows) {
+        const plainSn = row.employeeSn.replace(/^EMP-/i, "");
+        sectionBySn[row.employeeSn] = row.section;
+        sectionBySn[plainSn] = row.section;
+      }
+    }
+
+    const enriched = employees.map((emp) => ({
+      ...emp,
+      section: sectionBySn[emp.employeeSn] ?? sectionBySn[`EMP-${emp.employeeSn}`] ?? "",
+    }));
+
     return NextResponse.json({
       success: true,
-      data: employees,
+      data: enriched,
       pagination: {
         page,
         limit,
@@ -93,6 +117,7 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
 
 /**
  * POST /api/central-service/employees
