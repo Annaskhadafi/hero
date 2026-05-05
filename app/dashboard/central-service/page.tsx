@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,9 @@ type Employee = {
   email: string | null;
   phoneNumber: string | null;
   siteName: string;
+  workLocation: string;
+  section: string;
+  site: string;
   department: string;
   position: string;
   employmentStatus: string;
@@ -45,7 +48,23 @@ export default function CentralServicePage() {
       if (syncFilter !== "all") params.append("syncStatus", syncFilter);
       const response = await fetch(`/api/central-service/employees?${params}`);
       const data = await response.json();
-      if (data.success) { setEmployees(data.data); setStats(data.stats); }
+      if (data.success) {
+          const parsed = data.data.map((emp: Employee) => {
+            // section is now a dedicated DB column.
+            // Fallback: if still empty and siteName has "Section - Site" format, split it.
+            if (!emp.section && emp.siteName.includes(" - ")) {
+              const sepIdx = emp.siteName.indexOf(" - ");
+              return {
+                ...emp,
+                section: emp.siteName.slice(0, sepIdx).trim(),
+                site: emp.siteName.slice(sepIdx + 3).trim(),
+              };
+            }
+            return { ...emp, site: emp.siteName };
+          });
+          setEmployees(parsed);
+          setStats(data.stats);
+        }
     } catch (error) { console.error(error); }
     finally { setLoading(false); }
   };
@@ -140,6 +159,7 @@ export default function CentralServicePage() {
                   <TableHead>SN</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Section</TableHead>
                   <TableHead>Site</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Position</TableHead>
@@ -150,16 +170,17 @@ export default function CentralServicePage() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={9} className="text-center">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center">Loading...</TableCell></TableRow>
                 ) : employees.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center">No employees found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center">No employees found</TableCell></TableRow>
                 ) : (
                   employees.map((emp) => (
                     <TableRow key={emp.id}>
                       <TableCell className="font-mono text-sm">{emp.employeeSn}</TableCell>
                       <TableCell className="font-medium">{emp.fullName}</TableCell>
                       <TableCell>{emp.email || <Badge variant="outline" className="text-xs">No Email</Badge>}</TableCell>
-                      <TableCell>{emp.siteName}</TableCell>
+                      <TableCell>{emp.section || <Badge variant="outline" className="text-xs">-</Badge>}</TableCell>
+                      <TableCell>{emp.site || <Badge variant="outline" className="text-xs">-</Badge>}</TableCell>
                       <TableCell>{emp.department}</TableCell>
                       <TableCell>{emp.position}</TableCell>
                       <TableCell>
@@ -207,7 +228,8 @@ export default function CentralServicePage() {
               <div><Label className="text-xs text-muted-foreground">Full Name</Label><p className="font-medium">{viewEmployee.fullName}</p></div>
               <div><Label className="text-xs text-muted-foreground">Email</Label><p>{viewEmployee.email || "-"}</p></div>
               <div><Label className="text-xs text-muted-foreground">Phone</Label><p>{viewEmployee.phoneNumber || "-"}</p></div>
-              <div><Label className="text-xs text-muted-foreground">Site</Label><p>{viewEmployee.siteName}</p></div>
+              <div><Label className="text-xs text-muted-foreground">Section</Label><p>{viewEmployee.section || "-"}</p></div>
+              <div><Label className="text-xs text-muted-foreground">Site</Label><p>{viewEmployee.site || "-"}</p></div>
               <div><Label className="text-xs text-muted-foreground">Department</Label><p>{viewEmployee.department}</p></div>
               <div><Label className="text-xs text-muted-foreground">Position</Label><p>{viewEmployee.position}</p></div>
               <div><Label className="text-xs text-muted-foreground">Status</Label><Badge variant={viewEmployee.employmentStatus === "active" ? "default" : "secondary"}>{viewEmployee.employmentStatus}</Badge></div>
@@ -256,12 +278,18 @@ export default function CentralServicePage() {
                 <Input value={editEmployee.phoneNumber || ""} onChange={(e) => setEditEmployee({ ...editEmployee, phoneNumber: e.target.value })} />
               </div>
               <div>
-                <Label>Site Name</Label>
-                <Input value={editEmployee.siteName} onChange={(e) => setEditEmployee({ ...editEmployee, siteName: e.target.value })} />
+                <Label>Section</Label>
+                <Input
+                  value={editEmployee.section}
+                  onChange={(e) => setEditEmployee({ ...editEmployee, section: e.target.value, siteName: `${e.target.value} - ${editEmployee.site}` })}
+                />
               </div>
               <div>
-                <Label>Department</Label>
-                <Input value={editEmployee.department} onChange={(e) => setEditEmployee({ ...editEmployee, department: e.target.value })} />
+                <Label>Site</Label>
+                <Input
+                  value={editEmployee.site}
+                  onChange={(e) => setEditEmployee({ ...editEmployee, site: e.target.value, siteName: `${editEmployee.section} - ${e.target.value}` })}
+                />
               </div>
               <div>
                 <Label>Position</Label>

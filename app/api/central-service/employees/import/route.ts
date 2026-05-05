@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees, centralServiceEmployeeImports } from "@/db/schema/central-service";
 import * as XLSX from "xlsx";
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
           email: String(row["Email"] || "").trim() || null,
           phoneNumber: String(row["Phone"] || row["Phone Number"] || row["No HP"] || "").trim() || null,
           siteName: String(row["Site"] || row["Site Name"] || row["Lokasi"] || "").trim(),
+          section: String(row["Section"] || row["Seksi"] || "").trim(),
           department: String(row["Department"] || row["Departemen"] || "").trim(),
           position: String(row["Position"] || row["Jabatan"] || "").trim(),
           employmentStatus: String(row["Status"] || row["Employment Status"] || "active").toLowerCase(),

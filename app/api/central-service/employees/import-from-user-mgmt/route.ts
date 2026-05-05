@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { employees } from "@/db/schema/hero";
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
           phoneNumber: emp.phoneNumber,
           siteId: emp.siteId,
           siteName: emp.workLocation,
+          section: emp.section,
           department: emp.department,
           position: emp.jobTitle,
           employmentStatus: emp.employmentStatus,

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Central Service Employee Management Schema
  * Stores all employees (with or without email)
  * Links to user management when email is added
@@ -33,6 +33,7 @@ export const centralServiceEmployees = pgTable(
     // Employment
     siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
     siteName: text("site_name").notNull().default(""),
+    section: text("section").notNull().default(""),
     department: text("department").notNull().default(""),
     position: text("position").notNull().default(""),
     employmentStatus: text("employment_status").notNull().default("active"), // active, inactive, resigned

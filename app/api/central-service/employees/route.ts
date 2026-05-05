@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { eq, ilike, or, desc } from "drizzle-orm";
