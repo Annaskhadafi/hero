@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
     // Apply filters
     const conditions = [];
 
+    // Always filter by Central Service department
+    conditions.push(eq(centralServiceEmployees.department, "Central Service"));
+
     if (search) {
       conditions.push(
         or(
