@@ -337,9 +337,17 @@ export function CargoManifestCreateDialog() {
     dispatch(fd);
   };
 
-  if (state.status === "success") {
-    setTimeout(() => { setOpen(false); setItems([]); formRef.current?.reset(); }, 1000);
-  }
+  useEffect(() => {
+    if (state.status === "success" && open) {
+      const timer = setTimeout(() => {
+        setOpen(false);
+        setItems([]);
+        formRef.current?.reset();
+        window.location.reload();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [state.status, open]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -394,7 +402,15 @@ export function CargoManifestEditDialog({ row }: { row: CargoManifestRecord }) {
     dispatch(fd);
   };
 
-  if (state.status === "success") setTimeout(() => setOpen(false), 1000);
+  useEffect(() => {
+    if (state.status === "success" && open) {
+      const timer = setTimeout(() => {
+        setOpen(false);
+        window.location.reload();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [state.status, open]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
