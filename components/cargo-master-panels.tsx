@@ -84,9 +84,9 @@ export function MasterGoodsDialog({ mode, data, trigger }: MasterGoodsDialogProp
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Barang
+          <Button size="sm" variant="default">
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Tambah
           </Button>
         )}
       </DialogTrigger>
@@ -204,9 +204,9 @@ export function MasterLocationDialog({ mode, data, trigger }: MasterLocationDial
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Lokasi
+          <Button size="sm" variant="default">
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Tambah
           </Button>
         )}
       </DialogTrigger>
@@ -325,9 +325,9 @@ export function MasterRecipientDialog({ mode, data, trigger }: MasterRecipientDi
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Penerima
+          <Button size="sm" variant="default">
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Tambah
           </Button>
         )}
       </DialogTrigger>
