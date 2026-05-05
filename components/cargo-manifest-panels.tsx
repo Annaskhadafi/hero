@@ -730,7 +730,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
 
           {/* Signatures - Only on last page */}
           {pageIndex === pages.length - 1 && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", marginTop: "auto", fontSize: "9.5pt", padding: "20px" }}>
+            <div style={{ position: "absolute", bottom: "70mm", left: "20mm", right: "20mm", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", fontSize: "9.5pt" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ marginBottom: "90px", fontWeight: 600 }}>Delivered by</div>
           <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
