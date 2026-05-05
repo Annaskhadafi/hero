@@ -57,9 +57,11 @@ function ItemRowEditor({
   onChange: (items: ItemRow[]) => void;
 }) {
   const [goodsOptions, setGoodsOptions] = useState<string[]>([]);
+  const [goodsData, setGoodsData] = useState<MasterGoodsRecord[]>([]);
 
   useEffect(() => {
     getMasterGoods().then((data) => {
+      setGoodsData(data);
       setGoodsOptions(data.map(g => g.goodsName));
     });
   }, []);
@@ -74,24 +76,39 @@ function ItemRowEditor({
     onChange(items.filter((_, i) => i !== idx).map((r, i) => ({ ...r, no: i + 1 })));
 
   const updateRow = (idx: number, field: keyof ItemRow, value: string | number) => {
-    onChange(items.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
-    
-    // Auto-add to master goods if description is new
-    if (field === "description" && typeof value === "string" && value.trim() && !goodsOptions.includes(value.trim())) {
-      createMasterGoods({
-        goodsName: value.trim(),
-        category: "",
-        brand: "",
-        unit: "pcs",
-        weight: "",
-        dimensions: "",
-        hsCode: "",
-        description: "",
-        notes: "",
-        isActive: true,
-      }).then(() => {
-        setGoodsOptions(prev => [...prev, value.trim()]);
-      });
+    // If description changed, auto-fill brand from master data
+    if (field === "description" && typeof value === "string") {
+      const matchedGoods = goodsData.find(g => g.goodsName === value.trim());
+      if (matchedGoods && matchedGoods.brand) {
+        onChange(items.map((r, i) => (i === idx ? { ...r, description: value, brand: matchedGoods.brand } : r)));
+      } else {
+        onChange(items.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+      }
+      
+      // Auto-add to master goods if description is new
+      if (value.trim() && !goodsOptions.includes(value.trim())) {
+        createMasterGoods({
+          goodsName: value.trim(),
+          category: "",
+          brand: "",
+          unit: "pcs",
+          weight: "",
+          dimensions: "",
+          hsCode: "",
+          description: "",
+          notes: "",
+          isActive: true,
+        }).then((result) => {
+          if (result.status === "success") {
+            getMasterGoods().then((data) => {
+              setGoodsData(data);
+              setGoodsOptions(data.map(g => g.goodsName));
+            });
+          }
+        });
+      }
+    } else {
+      onChange(items.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
     }
   };
 
