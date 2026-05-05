@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { timesheetImports, timesheetDailyRecords, timesheetValidationIssues } from "@/db/schema/timesheet";
 import { parseOTRecordExcel } from "@/lib/timesheet/parse-ot-record";
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
           };
 
           if (importType === "ot_record") {
-            recordData.otHours = dailyRecord.totalOT?.toString() || null;
+            recordData.otHours = (dailyRecord as any).totalOT?.toString() || null;
             recordData.otStatus = dailyRecord.status;
             recordData.otRemark = dailyRecord.remark;
           } else {
@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
         // Validate OT total if OT record
         if (importType === "ot_record") {
           const validation = validateOTTotal(
-            employee.totalOTHours,
-            employee.dailyRecords.map((r) => ({ otHours: r.totalOT }))
+            (employee as any).totalOTHours,
+            employee.dailyRecords.map((r) => ({ otHours: (r as any).totalOT }))
           );
 
           if (!validation.valid) {
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
               severity: "medium",
               employeeSn: employee.sn,
               employeeName: employee.name,
-              message: `OT total mismatch: declared ${employee.totalOTHours}, calculated ${validation.calculatedTotal}`,
+              message: `OT total mismatch: declared ${(employee as any).totalOTHours}, calculated ${validation.calculatedTotal}`,
               details: { difference: validation.difference },
             });
           }

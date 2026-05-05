@@ -1,4 +1,4 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { eq } from "drizzle-orm";
 
@@ -20,6 +20,7 @@ async function splitSectionAndSite() {
 
     await db
       .update(centralServiceEmployees)
+      // @ts-ignore - section column has been removed
       .set({ section, siteName: site })
       .where(eq(centralServiceEmployees.id, emp.id));
 

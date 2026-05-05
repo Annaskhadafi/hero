@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Create mock OT Record Excel file for testing
  * Based on VALE data from SUMMARY LEMBURAN.xlsx
  */
@@ -101,9 +101,9 @@ async function createMockOTRecord() {
   await writeFile("test_ot_record_vale.xlsx", buffer);
 
   console.log("✓ Created test_ot_record_vale.xlsx");
-  console.log(`  - ${employees.length} employee sheets");
-  console.log(`  - Period: April 2026");
-  console.log(`  - Site: VALE\n");
+  console.log(`  - ${employees.length} employee sheets`);
+  console.log(`  - Period: April 2026`);
+  console.log(`  - Site: VALE\n`);
 }
 
 createMockOTRecord()

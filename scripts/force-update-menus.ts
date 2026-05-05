@@ -1,4 +1,4 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { navbarMenuItems } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 
@@ -10,8 +10,7 @@ async function forceUpdateMenus() {
     .update(navbarMenuItems)
     .set({ 
       section: "Central Service",
-      sortOrder: 1,
-      updatedAt: new Date()
+      sortOrder: 1
     })
     .where(eq(navbarMenuItems.id, 61));
   console.log("✓ Updated Timesheet (ID: 61)");
@@ -21,8 +20,7 @@ async function forceUpdateMenus() {
     .update(navbarMenuItems)
     .set({ 
       section: "Central Service",
-      sortOrder: 2,
-      updatedAt: new Date()
+      sortOrder: 2
     })
     .where(eq(navbarMenuItems.id, 62));
   console.log("✓ Updated Cargo Manifest (ID: 62)");

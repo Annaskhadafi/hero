@@ -41,7 +41,7 @@ export async function GET(
     const fileBuffer = await readFile(output.fileStoragePath);
 
     // Return file
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(fileBuffer as any, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${output.outputFilename}"`,

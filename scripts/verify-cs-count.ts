@@ -1,11 +1,11 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 
 async function verifyCount() {
   const all = await db.select().from(centralServiceEmployees);
   console.log("Total employees in Central Service table: " + all.length);
   
-  const deptCounts = {};
+  const deptCounts: any = {};
   all.forEach((emp) => {
     deptCounts[emp.department] = (deptCounts[emp.department] || 0) + 1;
   });

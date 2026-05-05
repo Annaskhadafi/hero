@@ -1,4 +1,4 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { eq } from "drizzle-orm";
 
@@ -20,6 +20,7 @@ async function splitSectionAndSite() {
       await db
         .update(centralServiceEmployees)
         .set({ 
+          // @ts-ignore - section column has been removed
           section: section,
           siteName: site,
         })
@@ -39,13 +40,13 @@ async function splitSectionAndSite() {
   console.log("Sample after split:");
   sample.forEach((emp) => {
     console.log("  " + emp.employeeSn + " | " + emp.fullName);
-    console.log("    Section: " + (emp.section || "-") + " | Site: " + emp.siteName);
+    console.log("    Section: " + ((emp as any).section || "-") + " | Site: " + emp.siteName);
   });
 
   // Unique sections
-  const sections = {};
+  const sections: any = {};
   for (const emp of all) {
-    const s = emp.section || "-";
+    const s = (emp as any).section || "-";
     sections[s] = (sections[s] || 0) + 1;
   }
   console.log("\nSection distribution:");

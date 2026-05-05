@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Summary Lemburan Excel Generator
  * Generates multi-sheet Excel output matching the template format
  */
@@ -248,7 +248,7 @@ export function formatDailyValue(
 export function calculateTotal(
   dailyValues: Array<string | number | null>
 ): number {
-  return dailyValues.reduce((sum, val) => {
+  return dailyValues.reduce<number>((sum, val) => {
     if (typeof val === "number") {
       return sum + val;
     }

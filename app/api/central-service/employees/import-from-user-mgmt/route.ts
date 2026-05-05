@@ -49,7 +49,6 @@ export async function POST(request: NextRequest) {
           phoneNumber: emp.phoneNumber,
           siteId: emp.siteId,
           siteName: emp.workLocation,
-          section: emp.section,
           department: emp.department,
           position: emp.jobTitle,
           employmentStatus: emp.employmentStatus,
