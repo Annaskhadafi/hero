@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
           name: csEmployee.fullName,
           email: email,
           phoneNumber: csEmployee.phoneNumber || "",
-          department: "Central Service",  // Always set to Central Service
+          department: csEmployee.department || "Central Services",  // Keep original or default
           jobTitle: csEmployee.position,
           workLocation: csEmployee.siteName,
           employmentStatus: csEmployee.employmentStatus,
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
           email: email,
           employeeSn: csEmployee.employeeSn,
           phoneNumber: csEmployee.phoneNumber || "",
-          department: "Central Service",  // Always set to Central Service
+          department: csEmployee.department || "Central Services",  // Keep original or default
           section: "",
           role: "employee",
           jobTitle: csEmployee.position,

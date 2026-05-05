@@ -22,7 +22,14 @@ export async function GET(request: NextRequest) {
     const conditions = [];
 
     // Always filter by Central Service department
-    conditions.push(eq(centralServiceEmployees.department, "Central Service"));
+    // Filter by Central Services department (with variations)
+    conditions.push(
+      or(
+        eq(centralServiceEmployees.department, "Central Services"),
+        eq(centralServiceEmployees.department, "CENTRAL SERVICES"),
+        eq(centralServiceEmployees.department, "Central Service")
+      )
+    );
 
     if (search) {
       conditions.push(
