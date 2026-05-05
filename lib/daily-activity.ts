@@ -1,4 +1,4 @@
-﻿import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   activities,
@@ -892,6 +892,11 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
         totalPoints: employees.totalPoints,
         fitStatus: employees.fitStatus,
         isActive: employees.isActive,
+        invitationToken: employees.invitationToken,
+        invitationExpiresAt: employees.invitationExpiresAt,
+        invitationAcceptedAt: employees.invitationAcceptedAt,
+        emailVerificationToken: employees.emailVerificationToken,
+        emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
         emailVerified: employees.emailVerified,
         createdAt: employees.createdAt,
       })
@@ -933,6 +938,11 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
       totalPoints: employees.totalPoints,
       fitStatus: employees.fitStatus,
       isActive: employees.isActive,
+        invitationToken: employees.invitationToken,
+        invitationExpiresAt: employees.invitationExpiresAt,
+        invitationAcceptedAt: employees.invitationAcceptedAt,
+        emailVerificationToken: employees.emailVerificationToken,
+        emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
       emailVerified: employees.emailVerified,
       createdAt: employees.createdAt,
     })
@@ -974,6 +984,11 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
       totalPoints: employees.totalPoints,
       fitStatus: employees.fitStatus,
       isActive: employees.isActive,
+        invitationToken: employees.invitationToken,
+        invitationExpiresAt: employees.invitationExpiresAt,
+        invitationAcceptedAt: employees.invitationAcceptedAt,
+        emailVerificationToken: employees.emailVerificationToken,
+        emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
       emailVerified: employees.emailVerified,
       createdAt: employees.createdAt,
     })
@@ -1976,7 +1991,7 @@ async function seedDailyActivityReferenceData() {
           sourceType: "activity",
           sourceId: createdActivity.id,
           category: "Daily Activity",
-          label: `${library.activityName} â€¢ Approved`,
+          label: `${library.activityName} • Approved`,
           points: points - penalty,
           balanceAfter: currentBalance,
           metadata: JSON.stringify({
