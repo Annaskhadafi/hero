@@ -1,4 +1,4 @@
-﻿import { AdminPageShell } from "@/components/admin-page-shell";
+import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminTableCard } from "@/components/admin-table-card";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -11,10 +11,24 @@ import {
   CargoManifestStatusAction,
   CargoManifestImportDialog,
 } from "@/components/cargo-manifest-panels";
+import {
+  MasterGoodsDialog,
+  MasterGoodsRowActions,
+  MasterLocationDialog,
+  MasterLocationRowActions,
+  MasterRecipientDialog,
+  MasterRecipientRowActions,
+} from "@/components/cargo-master-panels";
 import { getCargoManifests } from "@/app/actions/cargo-manifest";
+import { getMasterGoods, getMasterLocations, getMasterRecipients } from "@/app/actions/cargo-master";
 
 export default async function CargoManifestPage() {
-  const manifests = await getCargoManifests();
+  const [manifests, masterGoods, masterLocations, masterRecipients] = await Promise.all([
+    getCargoManifests(),
+    getMasterGoods(),
+    getMasterLocations(),
+    getMasterRecipients(),
+  ]);
 
   const totalItems = manifests.reduce((sum, m) => sum + m.items.length, 0);
   const sent = manifests.filter((m) => m.status === "sent").length;
@@ -26,7 +40,7 @@ export default async function CargoManifestPage() {
 
   return (
     <AdminPageShell
-      eyebrow="Logistik â€¢ Cargo"
+      eyebrow="Logistik ? Cargo"
       title="Cargo Manifest"
       description="Daftar pengiriman barang / cargo manifest PT. Chitra Paratama."
       actions={
@@ -52,7 +66,7 @@ export default async function CargoManifestPage() {
           <TabsTrigger value="master">Master Data Manifest</TabsTrigger>
         </TabsList>
 
-        {/* â”€â”€â”€ List Tab â”€â”€â”€ */}
+        {/* ??? List Tab ??? */}
         <TabsContent value="list">
           <AdminTableCard
             title="Cargo Manifest"
@@ -88,9 +102,9 @@ export default async function CargoManifestPage() {
                 {m.manifestNumber}
               </span>,
               m.date,
-              m.attention || "â€”",
-              m.transportVia || "â€”",
-              m.finalDestination || "â€”",
+              m.attention || "?",
+              m.transportVia || "?",
+              m.finalDestination || "?",
               <span key={`items-${idx}`} className="text-xs text-muted-foreground">
                 {m.items.length} item
               </span>,
@@ -120,7 +134,18 @@ export default async function CargoManifestPage() {
                 title="Master Data Item / Barang"
                 description="Data master barang untuk referensi saat membuat cargo manifest."
                 columns={["Nama Barang", "Kategori", "Brand", "Unit", "Berat", "Dimensi", "Aksi"]}
-                rows={[]}
+                actions={<MasterGoodsDialog mode="create" />}
+                rows={masterGoods.map((item, idx) => [
+                  <span key={`goods-${idx}`} className="font-medium">
+                    {item.goodsName}
+                  </span>,
+                  item.category || "?",
+                  item.brand || "?",
+                  item.unit || "?",
+                  item.weight || "?",
+                  item.dimensions || "?",
+                  <MasterGoodsRowActions key={`actions-${idx}`} row={item} />,
+                ])}
               />
             </TabsContent>
 
@@ -130,7 +155,20 @@ export default async function CargoManifestPage() {
                 title="Master Data Lokasi"
                 description="Data master lokasi tujuan untuk referensi saat membuat cargo manifest."
                 columns={["Nama Lokasi", "Alamat", "Kota", "Provinsi", "Contact Person", "Phone", "Aksi"]}
-                rows={[]}
+                actions={<MasterLocationDialog mode="create" />}
+                rows={masterLocations.map((loc, idx) => [
+                  <span key={`loc-${idx}`} className="font-medium">
+                    {loc.locationName}
+                  </span>,
+                  <span key={`addr-${idx}`} className="text-xs text-muted-foreground">
+                    {loc.address || "?"}
+                  </span>,
+                  loc.city || "?",
+                  loc.province || "?",
+                  loc.contactPerson || "?",
+                  loc.contactPhone || "?",
+                  <MasterLocationRowActions key={`actions-${idx}`} row={loc} />,
+                ])}
               />
             </TabsContent>
 
@@ -140,7 +178,18 @@ export default async function CargoManifestPage() {
                 title="Master Data Penerima"
                 description="Data master penerima barang untuk referensi saat membuat cargo manifest."
                 columns={["Nama Penerima", "Perusahaan", "Contact Person", "Phone", "Email", "Kota", "Aksi"]}
-                rows={[]}
+                actions={<MasterRecipientDialog mode="create" />}
+                rows={masterRecipients.map((rec, idx) => [
+                  <span key={`rec-${idx}`} className="font-medium">
+                    {rec.recipientName}
+                  </span>,
+                  rec.companyName || "?",
+                  rec.contactPerson || "?",
+                  rec.contactPhone || "?",
+                  rec.contactEmail || "?",
+                  rec.city || "?",
+                  <MasterRecipientRowActions key={`actions-${idx}`} row={rec} />,
+                ])}
               />
             </TabsContent>
           </Tabs>
