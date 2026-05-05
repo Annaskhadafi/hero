@@ -1,14 +1,15 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { eq } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr);
     const [employee] = await db.select().from(centralServiceEmployees).where(eq(centralServiceEmployees.id, id)).limit(1);
     if (!employee) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: employee });
@@ -19,10 +20,11 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr);
     const body = await request.json();
     const [employee] = await db.update(centralServiceEmployees).set({ ...body, updatedAt: new Date() }).where(eq(centralServiceEmployees.id, id)).returning();
     if (!employee) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
@@ -34,10 +36,11 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr);
     const [employee] = await db.delete(centralServiceEmployees).where(eq(centralServiceEmployees.id, id)).returning();
     if (!employee) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     return NextResponse.json({ success: true, message: "Employee deleted successfully" });

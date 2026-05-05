@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { timesheetSummaryOutputs } from "@/db/schema/timesheet";
 import { eq } from "drizzle-orm";
@@ -10,10 +10,11 @@ import { readFile } from "fs/promises";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const outputId = parseInt(params.id);
+    const { id: idStr } = await params;
+    const outputId = parseInt(idStr);
 
     if (!outputId) {
       return NextResponse.json(
