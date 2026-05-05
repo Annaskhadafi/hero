@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
           name: csEmployee.fullName,
           email: email,
           phoneNumber: csEmployee.phoneNumber || "",
-          department: csEmployee.department,
+          department: "Central Service",  // Always set to Central Service
           jobTitle: csEmployee.position,
           workLocation: csEmployee.siteName,
           employmentStatus: csEmployee.employmentStatus,
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
           email: email,
           employeeSn: csEmployee.employeeSn,
           phoneNumber: csEmployee.phoneNumber || "",
-          department: csEmployee.department,
+          department: "Central Service",  // Always set to Central Service
           section: "",
           role: "employee",
           jobTitle: csEmployee.position,
