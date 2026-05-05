@@ -11,6 +11,7 @@ import {
   CargoManifestStatusAction,
   CargoManifestImportDialog,
 } from "@/components/cargo-manifest-panels";
+import { CargoManifestTable } from "@/components/cargo-manifest-table";
 import {
   MasterGoodsDialog,
   MasterGoodsRowActions,
@@ -68,55 +69,21 @@ export default async function CargoManifestPage() {
 
         {/* ??? List Tab ??? */}
         <TabsContent value="list">
-          <AdminTableCard
-            title="Cargo Manifest"
-            description="Daftar seluruh dokumen cargo manifest dengan detail item dan status pengiriman."
-            columns={["No. Manifest", "Tanggal", "Attention", "Transport Via", "Tujuan", "Items", "Status", "Aksi"]}
-            dateFilter
-            actions={<CargoManifestCreateDialog />}
-            presets={
-              <TableFilterPresets
-                presets={[
-                  { label: "Draft", filters: { status: "draft" } },
-                  { label: "Sent", filters: { status: "sent" } },
-                  { label: "Delivered", filters: { status: "delivered" } },
-                ]}
-              />
-            }
-            filters={
-              <>
-                <TableMultiFilter
-                  label="status"
-                  filterKey="status"
-                  options={statuses.map((s) => ({ value: s, label: s }))}
-                />
-                <TableMultiFilter
-                  label="tujuan"
-                  filterKey="destination"
-                  options={destinations.map((d) => ({ value: d, label: d }))}
-                />
-              </>
-            }
-            rows={manifests.map((m, idx) => [
-              <span key={`mn-${idx}`} className="font-mono text-xs font-semibold text-primary">
-                {m.manifestNumber}
-              </span>,
-              m.date,
-              m.attention || "?",
-              m.transportVia || "?",
-              m.finalDestination || "?",
-              <span key={`items-${idx}`} className="text-xs text-muted-foreground">
-                {m.items.length} item
-              </span>,
-              <AdminStatusBadge key={`status-${idx}`} value={m.status} />,
-              <CargoManifestRowActions key={`actions-${idx}`} row={m} />,
-            ])}
-            rowAttributes={manifests.map((m) => ({
-              "data-date-value": m.createdAt?.toISOString?.() ?? "",
-              "data-filter-status": m.status,
-              "data-filter-destination": m.finalDestination,
-            }))}
-          />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Cargo Manifest</h3>
+                <p className="text-sm text-muted-foreground">
+                  Daftar seluruh dokumen cargo manifest dengan detail item dan status pengiriman.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <CargoManifestImportDialog />
+                <CargoManifestCreateDialog />
+              </div>
+            </div>
+            <CargoManifestTable manifests={manifests} />
+          </div>
         </TabsContent>
 
         {/* === Master Data Tab === */}
