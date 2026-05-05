@@ -614,56 +614,80 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
 }
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
+  // Split items into pages (max 15 items per page to avoid overflow)
+  const itemsPerPage = 15;
+  const pages: typeof row.items[] = [];
+  
+  if (row.items.length === 0) {
+    pages.push([]);
+  } else {
+    for (let i = 0; i < row.items.length; i += itemsPerPage) {
+      pages.push(row.items.slice(i, i + itemsPerPage));
+    }
+  }
+
   return (
-    <div style={{ 
-      fontFamily: "Arial, sans-serif", 
-      fontSize: "10pt", 
-      color: "#000", 
-      minHeight: "297mm",
-      width: "210mm",
-      backgroundImage: "url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      backgroundRepeat: "no-repeat",
-      padding: "50mm 20mm 70mm 20mm",
-      position: "relative"
-    }}>
-      {/* Header - Title Only (Logo sudah di background) */}
-      <div style={{ textAlign: "right", marginBottom: "20px" }}>
-        <div style={{ fontWeight: 700, fontSize: "18pt", color: "#003366", letterSpacing: "1.5px" }}>CARGO MANIFEST</div>
-        <div style={{ fontSize: "9pt", color: "#666", marginTop: "4px" }}>Shipping Document</div>
-      </div>
+    <>
+      {pages.map((pageItems, pageIndex) => (
+        <div
+          key={pageIndex}
+          style={{ 
+            fontFamily: "Arial, sans-serif", 
+            fontSize: "10pt", 
+            color: "#000", 
+            minHeight: "297mm",
+            height: "297mm",
+            width: "210mm",
+            backgroundImage: "url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            padding: "50mm 20mm 70mm 20mm",
+            position: "relative",
+            pageBreakAfter: pageIndex < pages.length - 1 ? "always" : "auto",
+            pageBreakInside: "avoid"
+          }}
+        >
+          {/* Header - Title Only (Logo sudah di background) */}
+          <div style={{ textAlign: "right", marginBottom: "20px" }}>
+            <div style={{ fontWeight: 700, fontSize: "18pt", color: "#003366", letterSpacing: "1.5px" }}>CARGO MANIFEST</div>
+            <div style={{ fontSize: "9pt", color: "#666", marginTop: "4px" }}>
+              Shipping Document {pages.length > 1 && `- Page ${pageIndex + 1} of ${pages.length}`}
+            </div>
+          </div>
 
-      {/* Document Info */}
-      <div style={{ marginBottom: "20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-          <div style={{ fontSize: "10pt" }}>
-            <strong>Manifest No:</strong>{" "}
-            <span style={{ color: "#c0392b", fontWeight: 700, fontSize: "11pt" }}>{row.manifestNumber}</span>
+          {/* Document Info */}
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+              <div style={{ fontSize: "10pt" }}>
+                <strong>Manifest No:</strong>{" "}
+                <span style={{ color: "#c0392b", fontWeight: 700, fontSize: "11pt" }}>{row.manifestNumber}</span>
+              </div>
+              <div style={{ fontSize: "10pt" }}>
+                <strong>Date:</strong> {row.date}
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: "10pt" }}>
-            <strong>Date:</strong> {row.date}
-          </div>
-        </div>
-      </div>
 
-      {/* Shipping Details */}
-      <div style={{ border: "1px solid #003366", borderRadius: "4px", padding: "12px", marginBottom: "20px", backgroundColor: "rgba(248, 249, 250, 0.95)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "9.5pt" }}>
-          <div>
-            <strong>Attention:</strong> {row.attention || "-"}
-          </div>
-          <div>
-            <strong>Transport Via:</strong> {row.transportVia || "-"}
-          </div>
-          <div>
-            <strong>Shipped Via:</strong> {row.shippedVia || "-"}
-          </div>
-          <div>
-            <strong>Final Destination:</strong> <span style={{ fontWeight: 600 }}>{row.finalDestination || "-"}</span>
-          </div>
-        </div>
-      </div>
+          {/* Shipping Details - Only on first page */}
+          {pageIndex === 0 && (
+            <div style={{ border: "1px solid #003366", borderRadius: "4px", padding: "12px", marginBottom: "20px", backgroundColor: "rgba(248, 249, 250, 0.95)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "9.5pt" }}>
+                <div>
+                  <strong>Attention:</strong> {row.attention || "-"}
+                </div>
+                <div>
+                  <strong>Transport Via:</strong> {row.transportVia || "-"}
+                </div>
+                <div>
+                  <strong>Shipped Via:</strong> {row.shippedVia || "-"}
+                </div>
+                <div>
+                  <strong>Final Destination:</strong> <span style={{ fontWeight: 600 }}>{row.finalDestination || "-"}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
       {/* Items table */}
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt", marginBottom: "30px", backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
@@ -678,7 +702,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
           </tr>
         </thead>
         <tbody>
-          {row.items.length === 0 ? (
+          {pageItems.length === 0 ? (
             Array.from({ length: 10 }).map((_, i) => (
               <tr key={i}>
                 <td style={{ border: "1px solid #ccc", padding: "8px 6px", textAlign: "center", height: "28px" }}>{i + 1}</td>
@@ -690,7 +714,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
               </tr>
             ))
           ) : (
-            row.items.map((item, i) => (
+            pageItems.map((item, i) => (
               <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "rgba(255, 255, 255, 0.95)" : "rgba(249, 249, 249, 0.95)" }}>
                 <td style={{ border: "1px solid #ccc", padding: "8px 6px", textAlign: "center" }}>{item.no}</td>
                 <td style={{ border: "1px solid #ccc", padding: "8px 6px" }}>{item.description}</td>
@@ -704,8 +728,9 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
         </tbody>
       </table>
 
-      {/* Signatures - Positioned above footer background */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", marginTop: "200px", fontSize: "9.5pt", padding: "20px" }}>
+          {/* Signatures - Only on last page */}
+          {pageIndex === pages.length - 1 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", marginTop: "auto", fontSize: "9.5pt", padding: "20px" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ marginBottom: "90px", fontWeight: 600 }}>Delivered by</div>
           <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
@@ -724,8 +749,11 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
             <div style={{ fontWeight: 600 }}>Customer</div>
           </div>
         </div>
-      </div>
-    </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </>
   );
 }
 // â”€â”€â”€ Import Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
