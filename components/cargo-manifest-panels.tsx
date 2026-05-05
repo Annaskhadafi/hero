@@ -614,8 +614,8 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
 }
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
-  // Split items into pages (max 15 items per page to avoid overflow)
-  const itemsPerPage = 15;
+  // Split items into pages (max 13 items per page to avoid overflow)
+  const itemsPerPage = 13;
   const pages: typeof row.items[] = [];
   
   if (row.items.length === 0) {
