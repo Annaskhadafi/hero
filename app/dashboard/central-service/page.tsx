@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, UserPlus, Mail, CheckCircle, AlertCircle, Edit, Trash2, Download } from "lucide-react";
+import { Upload, UserPlus, Mail, CheckCircle, AlertCircle, Edit, Trash2, Download, Eye } from "lucide-react";
 
 type Employee = {
   id: number;
@@ -34,6 +34,7 @@ export default function CentralServicePage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
   const [syncingId, setSyncingId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -301,7 +302,10 @@ export default function CentralServicePage() {
                               <Mail className="h-4 w-4" />
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => setEditingEmployee(emp)}>
+                          <Button size="sm" variant="ghost" onClick={() => setViewingEmployee(emp)} title="View Details">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingEmployee(emp)} title="Edit">
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(emp.id)}>
