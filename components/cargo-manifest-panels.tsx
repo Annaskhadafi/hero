@@ -332,6 +332,8 @@ export function CargoManifestCreateDialog() {
     const fd = new FormData(formRef.current!);
     fd.set("intent", "create");
     fd.set("itemsJson", JSON.stringify(items));
+    console.log("Submitting items:", items);
+    console.log("Items JSON:", JSON.stringify(items));
     dispatch(fd);
   };
 
