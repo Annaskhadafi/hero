@@ -199,9 +199,11 @@ function ManifestFormFields({
   const [recipients, setRecipients] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const [transportHistory, setTransportHistory] = useState<string[]>([]);
+  const [shippedViaHistory, setShippedViaHistory] = useState<string[]>([]);
   const [attention, setAttention] = useState(defaultValues?.attention || "");
   const [finalDestination, setFinalDestination] = useState(defaultValues?.finalDestination || "");
   const [transportVia, setTransportVia] = useState(defaultValues?.transportVia || "");
+  const [shippedVia, setShippedVia] = useState(defaultValues?.shippedVia || "");
 
   useEffect(() => {
     // Load master data
@@ -220,6 +222,14 @@ function ManifestFormFields({
         setTransportHistory(JSON.parse(saved));
       } catch {}
     }
+    
+    // Load shipped via history from localStorage
+    const savedShipped = localStorage.getItem("cargo_shipped_via_history");
+    if (savedShipped) {
+      try {
+        setShippedViaHistory(JSON.parse(savedShipped));
+      } catch {}
+    }
   }, []);
 
   const handleTransportChange = (value: string) => {
@@ -232,11 +242,22 @@ function ManifestFormFields({
     }
   };
 
+  const handleShippedViaChange = (value: string) => {
+    setShippedVia(value);
+    // Save to history
+    if (value && !shippedViaHistory.includes(value)) {
+      const newHistory = [value, ...shippedViaHistory].slice(0, 20);
+      setShippedViaHistory(newHistory);
+      localStorage.setItem("cargo_shipped_via_history", JSON.stringify(newHistory));
+    }
+  };
+
   return (
     <div className="grid gap-4">
       <input type="hidden" name="attention" value={attention} />
       <input type="hidden" name="finalDestination" value={finalDestination} />
       <input type="hidden" name="transportVia" value={transportVia} />
+      <input type="hidden" name="shippedVia" value={shippedVia} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Label className="grid gap-1.5 text-sm font-medium">
           Tanggal (Date)
@@ -279,8 +300,14 @@ function ManifestFormFields({
           />
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
-          Kiriman Via
-          <Input name="shippedVia" defaultValue={defaultValues?.shippedVia} placeholder="Misal: Darat, Udara, Laut..." className="h-9" />
+          Note / Catatan
+          <Combobox
+            value={shippedVia}
+            onChange={handleShippedViaChange}
+            options={shippedViaHistory}
+            placeholder="Catatan pengiriman..."
+            allowCustom
+          />
         </Label>
       </div>
       <ItemRowEditor items={items} onChange={onItemsChange} />
