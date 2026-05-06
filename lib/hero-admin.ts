@@ -435,6 +435,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: "main",
+    section: "HR",
+    title: "Scheduling Time Sheet",
+    url: "/dashboard/scheduling-timesheet",
+    iconName: "clock",
+    resource: "scheduling_timesheet",
+    sortOrder: 8,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Approval
   {
     menuArea: "main",
@@ -2554,6 +2565,35 @@ export async function getOperationalCrudOptions() {
     employees: employeeRows,
     sites: siteRows,
     categoryOptions,
+  };
+}
+
+export async function getSchedulingTimesheetOptions() {
+  const users = await getSecurityUsersData();
+  const activeUsers = users.filter((user) => user.isActive);
+  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
+
+  for (const user of activeUsers) {
+    const siteName = user.siteName || "Belum diisi";
+    if (!siteByKey.has(siteName)) {
+      siteByKey.set(siteName, {
+        id: user.siteId ?? -siteByKey.size - 1,
+        name: siteName,
+        customerName: siteName,
+      });
+    }
+  }
+
+  return {
+    employees: activeUsers.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.jobTitle || user.role,
+      siteId: user.siteId ?? null,
+      locationName: user.siteName,
+    })),
+    sites: Array.from(siteByKey.values()).sort((left, right) => left.name.localeCompare(right.name, "id-ID")),
   };
 }
 
