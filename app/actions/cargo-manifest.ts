@@ -4,7 +4,14 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { cargoManifests, cargoManifestItems, employees } from "@/db/schema/hero";
+import {
+  cargoManifests,
+  cargoManifestItems,
+  cargoMasterGoods,
+  cargoMasterLocations,
+  cargoMasterRecipients,
+  employees,
+} from "@/db/schema/hero";
 
 // ─── Ensure tables exist ──────────────────────────────────────────────────────
 
@@ -18,6 +25,8 @@ async function ensureCargoManifestTables() {
       transport_via text not null default '',
       shipped_via text not null default '',
       final_destination text not null default '',
+      signature_name text not null default '',
+      signature_data_url text not null default '',
       status text not null default 'draft',
       created_by_employee_id integer references hero_employees(id) on delete set null,
       created_at timestamptz not null default now(),
@@ -37,6 +46,11 @@ async function ensureCargoManifestTables() {
       created_at timestamptz not null default now()
     )
   `);
+  await db.execute(sql`
+    alter table hero_cargo_manifests
+      add column if not exists signature_name text not null default '',
+      add column if not exists signature_data_url text not null default ''
+  `);
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +63,8 @@ export type CargoManifestRecord = {
   transportVia: string;
   shippedVia: string;
   finalDestination: string;
+  signatureName: string;
+  signatureDataUrl: string;
   status: string;
   createdByEmployeeId: number | null;
   createdByName: string | null;
@@ -88,6 +104,8 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
       finalDestination: cargoManifests.finalDestination,
+      signatureName: cargoManifests.signatureName,
+      signatureDataUrl: cargoManifests.signatureDataUrl,
       status: cargoManifests.status,
       createdByEmployeeId: cargoManifests.createdByEmployeeId,
       createdByName: employees.name,
@@ -138,6 +156,8 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
       finalDestination: cargoManifests.finalDestination,
+      signatureName: cargoManifests.signatureName,
+      signatureDataUrl: cargoManifests.signatureDataUrl,
       status: cargoManifests.status,
       createdByEmployeeId: cargoManifests.createdByEmployeeId,
       createdByName: employees.name,
@@ -200,6 +220,48 @@ function parseItemsJson(raw: string): Array<Omit<CargoManifestItemRecord, "id" |
   }
 }
 
+async function syncCargoMasterData(data: z.infer<typeof manageCargoManifestSchema>) {
+  const items = parseItemsJson(data.itemsJson ?? "[]");
+  const attention = data.attention.trim();
+  const finalDestination = data.finalDestination.trim();
+
+  if (attention) {
+    await db
+      .insert(cargoMasterRecipients)
+      .values({ recipientName: attention })
+      .onConflictDoNothing({ target: cargoMasterRecipients.recipientName });
+  }
+
+  if (finalDestination) {
+    await db
+      .insert(cargoMasterLocations)
+      .values({ locationName: finalDestination })
+      .onConflictDoNothing({ target: cargoMasterLocations.locationName });
+  }
+
+  const uniqueItems = Array.from(
+    new Map(items.filter((item) => item.description.trim()).map((item) => [item.description.trim(), item])).values(),
+  );
+
+  for (const item of uniqueItems) {
+    const goodsName = item.description.trim();
+    const existing = await db
+      .select({ id: cargoMasterGoods.id, brand: cargoMasterGoods.brand })
+      .from(cargoMasterGoods)
+      .where(eq(cargoMasterGoods.goodsName, goodsName))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(cargoMasterGoods).values({ goodsName, brand: item.brand.trim() });
+    } else if (!existing[0].brand && item.brand.trim()) {
+      await db
+        .update(cargoMasterGoods)
+        .set({ brand: item.brand.trim(), updatedAt: new Date() })
+        .where(eq(cargoMasterGoods.id, existing[0].id));
+    }
+  }
+}
+
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 const manageCargoManifestSchema = z.object({
@@ -213,6 +275,8 @@ const manageCargoManifestSchema = z.object({
   transportVia: z.string().trim().max(200).optional().default(""),
   shippedVia: z.string().trim().max(200).optional().default(""),
   finalDestination: z.string().trim().max(200).optional().default(""),
+  signatureName: z.string().trim().max(200).optional().default(""),
+  signatureDataUrl: z.string().trim().max(250_000).optional().default(""),
   status: z.string().trim().max(50).optional().default("draft"),
   itemsJson: z.string().trim().optional().default("[]"),
 });
@@ -244,6 +308,8 @@ export async function manageCargoManifestAction(
           transportVia: data.transportVia ?? "",
           shippedVia: data.shippedVia ?? "",
           finalDestination: data.finalDestination ?? "",
+          signatureName: data.signatureName ?? "",
+          signatureDataUrl: data.signatureDataUrl ?? "",
           status: data.status ?? "draft",
           updatedAt: now,
         })
@@ -255,6 +321,7 @@ export async function manageCargoManifestAction(
           items.map((item) => ({ ...item, manifestId: inserted.id })),
         );
       }
+      await syncCargoMasterData(data);
 
       revalidatePath("/dashboard/cargo-manifest");
       return { status: "success", message: `Cargo Manifest ${manifestNumber} berhasil dibuat.`, manifestId: inserted.id };
@@ -271,6 +338,8 @@ export async function manageCargoManifestAction(
           transportVia: data.transportVia ?? "",
           shippedVia: data.shippedVia ?? "",
           finalDestination: data.finalDestination ?? "",
+          signatureName: data.signatureName ?? "",
+          signatureDataUrl: data.signatureDataUrl ?? "",
           status: data.status ?? "draft",
           updatedAt: now,
         })
@@ -284,6 +353,7 @@ export async function manageCargoManifestAction(
           items.map((item) => ({ ...item, manifestId: data.id! })),
         );
       }
+      await syncCargoMasterData(data);
 
       revalidatePath("/dashboard/cargo-manifest");
       return { status: "success", message: "Cargo Manifest berhasil diperbarui." };

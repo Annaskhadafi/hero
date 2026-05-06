@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useActionState, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,112 @@ import {
 } from "@/app/actions/cargo-master";
 import { Combobox } from "@/components/ui/combobox";
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function OnlineSignatureInput({
+  defaultName = "",
+  defaultSignature = "",
+}: {
+  defaultName?: string;
+  defaultSignature?: string;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [signatureDataUrl, setSignatureDataUrl] = useState(defaultSignature);
+  const isDrawingRef = useRef(false);
+
+  const getPoint = (event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const point = "touches" in event ? event.touches[0] ?? event.changedTouches[0] : event;
+    return {
+      x: ((point.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((point.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const startDrawing = (event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const context = canvasRef.current?.getContext("2d");
+    if (!context) return;
+    const point = getPoint(event);
+    isDrawingRef.current = true;
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+  };
+
+  const draw = (event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current) return;
+    event.preventDefault();
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    const point = getPoint(event);
+    context.lineWidth = 2.5;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#0f172a";
+    context.lineTo(point.x, point.y);
+    context.stroke();
+  };
+
+  const stopDrawing = () => {
+    const canvas = canvasRef.current;
+    if (!isDrawingRef.current || !canvas) return;
+    isDrawingRef.current = false;
+    setSignatureDataUrl(canvas.toDataURL("image/png"));
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    setSignatureDataUrl("");
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context || !defaultSignature) return;
+    const image = new Image();
+    image.onload = () => context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.src = defaultSignature;
+  }, [defaultSignature]);
+
+  return (
+    <div className="rounded-2xl bg-surface-container-low p-3 ring-1 ring-border/40">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Label className="grid gap-1.5 text-sm font-medium">
+          Nama Signature
+          <Input name="signatureName" defaultValue={defaultName} placeholder="Nama penandatangan..." className="h-9" />
+        </Label>
+        <div className="grid gap-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <Label className="text-sm font-medium">TTD Online</Label>
+            <Button type="button" variant="ghost" size="sm" onClick={clearSignature} className="h-8 rounded-lg px-3 text-xs">
+              Clear
+            </Button>
+          </div>
+          <input type="hidden" name="signatureDataUrl" value={signatureDataUrl} />
+          <canvas
+            ref={canvasRef}
+            width={520}
+            height={160}
+            className="h-36 w-full touch-none rounded-xl bg-white shadow-inner ring-1 ring-border/60"
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing}
+            onTouchMove={draw}
+            onTouchEnd={stopDrawing}
+          />
+          <p className="text-xs text-muted-foreground">Tulis tanda tangan langsung di area putih.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ItemRow = {
   no: number;
@@ -47,7 +152,7 @@ const INITIAL_IMPORT: CargoImportState = { status: "idle", message: "" };
 
 const STATUS_OPTIONS = ["draft", "sent", "delivered", "cancelled"];
 
-// â”€â”€â”€ Item Row Editor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Item Row Editor ──────────────────────────────────────────────────────────
 
 function ItemRowEditor({
   items,
@@ -137,7 +242,7 @@ function ItemRowEditor({
             {items.length === 0 && (
               <tr>
                 <td colSpan={7} className="py-4 text-center text-muted-foreground text-xs">
-                  Belum ada item â€” klik &quot;Tambah Baris&quot;
+                  Belum ada item — klik &quot;Tambah Baris&quot;
                 </td>
               </tr>
             )}
@@ -167,7 +272,7 @@ function ItemRowEditor({
                 <td className="px-1 py-1">
                   <input className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary/50" value={row.brand} onChange={(e) => updateRow(idx, "brand", e.target.value)} placeholder="Brand..." />
                 </td>
-                {/* Remark â€” free text */}
+                {/* Remark — free text */}
                 <td className="px-1 py-1">
                   <input className="w-full rounded border-0 bg-transparent px-1 py-0.5 text-xs outline-none focus:ring-1 focus:ring-primary/50" type="text" value={row.remark} onChange={(e) => updateRow(idx, "remark", e.target.value)} placeholder="Catatan bebas..." />
                 </td>
@@ -185,7 +290,7 @@ function ItemRowEditor({
   );
 }
 
-// â”€â”€â”€ Manifest Form Fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Manifest Form Fields ─────────────────────────────────────────────────────
 
 function ManifestFormFields({
   defaultValues,
@@ -311,11 +416,12 @@ function ManifestFormFields({
         </Label>
       </div>
       <ItemRowEditor items={items} onChange={onItemsChange} />
+      <OnlineSignatureInput defaultName={defaultValues?.signatureName} defaultSignature={defaultValues?.signatureDataUrl} />
     </div>
   );
 }
 
-// â”€â”€â”€ Create Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Create Dialog ────────────────────────────────────────────────────────────
 
 export function CargoManifestCreateDialog() {
   const action = manageCargoManifestAction as (
@@ -381,7 +487,7 @@ export function CargoManifestCreateDialog() {
   );
 }
 
-// â”€â”€â”€ Edit Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Edit Dialog ──────────────────────────────────────────────────────────────
 
 export function CargoManifestEditDialog({ row }: { row: CargoManifestRecord }) {
   const action = manageCargoManifestAction as (
@@ -436,7 +542,7 @@ export function CargoManifestEditDialog({ row }: { row: CargoManifestRecord }) {
   );
 }
 
-// â”€â”€â”€ Delete Action â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Delete Action ────────────────────────────────────────────────────────────
 
 export function CargoManifestDeleteAction({ id }: { id: number }) {
   const action = manageCargoManifestAction as (
@@ -463,7 +569,7 @@ export function CargoManifestDeleteAction({ id }: { id: number }) {
   );
 }
 
-// â”€â”€â”€ Status Inline Update â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Status Inline Update ─────────────────────────────────────────────────────
 
 export function CargoManifestStatusAction({ id, currentStatus }: { id: number; currentStatus: string }) {
   const action = manageCargoManifestAction as (
@@ -493,7 +599,7 @@ export function CargoManifestStatusAction({ id, currentStatus }: { id: number; c
   );
 }
 
-// â”€â”€â”€ PDF Preview Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── PDF Preview Dialog ───────────────────────────────────────────────────────
 
 export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
   const [open, setOpen] = useState(false);
@@ -547,7 +653,7 @@ export function CargoManifestPdfDialog({ row }: { row: CargoManifestRecord }) {
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-[1.4rem] border-0 bg-white p-0">
         <DialogHeader className="flex flex-row items-center justify-between px-6 pt-4 pb-2 no-print">
-          <DialogTitle className="font-display text-lg">Preview â€” {row.manifestNumber}</DialogTitle>
+          <DialogTitle className="font-display text-lg">Preview — {row.manifestNumber}</DialogTitle>
           <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={handleDownloadPdf}>
             <Printer className="size-4" /> Cetak / Download PDF
           </Button>
@@ -690,7 +796,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
           )}
 
       {/* Items table */}
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt", marginBottom: "30px", backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt", marginBottom: "55px", backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
         <thead>
           <tr style={{ backgroundColor: "#003366", color: "#fff" }}>
             <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "35px", textAlign: "center" }}>No</th>
@@ -730,22 +836,32 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
 
           {/* Signatures - Only on last page */}
           {pageIndex === pages.length - 1 && (
-            <div style={{ position: "absolute", bottom: "70mm", left: "20mm", right: "20mm", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", fontSize: "9.5pt" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ marginBottom: "90px", fontWeight: 600 }}>Delivered by</div>
-          <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
-            <div style={{ fontWeight: 600 }}>PT. Chitra Paratama</div>
+            <div style={{ position: "absolute", bottom: "48mm", left: "20mm", right: "20mm", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", fontSize: "9.5pt" }}>
+        <div style={{ position: "relative", minHeight: "118px", textAlign: "center" }}>
+          <div style={{ marginBottom: row.signatureDataUrl ? "18px" : "86px", fontWeight: 600 }}>
+            <div>Delivered By</div>
+            <div>PT Chitra Paratama</div>
+          </div>
+          {row.signatureDataUrl && (
+            <img
+              src={row.signatureDataUrl}
+              alt="Signature"
+              style={{ height: "62px", maxWidth: "100%", objectFit: "contain", margin: "0 auto 6px" }}
+            />
+          )}
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderTop: "1px solid #000", paddingTop: "6px" }}>
+            <div style={{ fontWeight: 600 }}>{row.signatureName || "\u00a0"}</div>
           </div>
         </div>
-        <div style={{ textAlign: "center" }}>
+        <div style={{ position: "relative", minHeight: "118px", textAlign: "center" }}>
           <div style={{ marginBottom: "90px", fontWeight: 600 }}>Forwarder</div>
-          <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderTop: "1px solid #000", paddingTop: "6px" }}>
             <div>&nbsp;</div>
           </div>
         </div>
-        <div style={{ textAlign: "center" }}>
+        <div style={{ position: "relative", minHeight: "118px", textAlign: "center" }}>
           <div style={{ marginBottom: "90px", fontWeight: 600 }}>Received by</div>
-          <div style={{ borderTop: "1px solid #000", paddingTop: "6px" }}>
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, borderTop: "1px solid #000", paddingTop: "6px" }}>
             <div style={{ fontWeight: 600 }}>Customer</div>
           </div>
         </div>
@@ -756,7 +872,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
     </>
   );
 }
-// â”€â”€â”€ Import Dialog â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Import Dialog ────────────────────────────────────────────────────────────
 
 export function CargoManifestImportDialog() {
   const action = importCargoManifestsAction as (
@@ -821,7 +937,7 @@ export function CargoManifestImportDialog() {
   );
 }
 
-// â”€â”€â”€ Row Actions (combined) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Row Actions (combined) ───────────────────────────────────────────────────
 
 export function CargoManifestRowActions({ row }: { row: CargoManifestRecord }) {
   return (
@@ -832,4 +948,3 @@ export function CargoManifestRowActions({ row }: { row: CargoManifestRecord }) {
     </div>
   );
 }
-

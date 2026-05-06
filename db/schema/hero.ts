@@ -1713,6 +1713,8 @@ export const cargoManifests = pgTable("hero_cargo_manifests", {
   transportVia: text("transport_via").notNull().default(""),
   shippedVia: text("shipped_via").notNull().default(""),
   finalDestination: text("final_destination").notNull().default(""),
+  signatureName: text("signature_name").notNull().default(""),
+  signatureDataUrl: text("signature_data_url").notNull().default(""),
   status: text("status").notNull().default("draft"),
   createdByEmployeeId: integer("created_by_employee_id").references(() => employees.id, {
     onDelete: "set null",
