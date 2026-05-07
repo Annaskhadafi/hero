@@ -317,6 +317,7 @@ function ManifestFormFields({
   const [siteId, setSiteId] = useState<string>(defaultValues?.siteId?.toString() || "");
   const [sections, setSections] = useState<Array<{id: number; name: string; code: string}>>([]);
   const [sectionId, setSectionId] = useState<string>(defaultValues?.sectionId?.toString() || "");
+  const [sectionName, setSectionName] = useState<string>(defaultValues?.sectionName || "");
 
   useEffect(() => {
     // Load master data
@@ -330,6 +331,10 @@ function ManifestFormFields({
       setLocations(locationsData.map(l => l.locationName));
       setSites(sitesData);
       setSections(sectionsData);
+      if (defaultValues?.sectionId) {
+        const section = sectionsData.find(s => s.id === defaultValues.sectionId);
+        if (section) setSectionName(section.name);
+      }
     });
 
     // Load transport history from localStorage
@@ -451,12 +456,18 @@ function ManifestFormFields({
         <Label className="grid gap-1.5 text-sm font-medium">
           Category Section
           <Combobox
-            options={sections.map(s => ({ value: s.id.toString(), label: s.name }))}
-            value={sectionId}
-            onValueChange={setSectionId}
+            options={sections.map(s => s.name)}
+            value={sectionName}
+            onChange={(name) => {
+              const section = sections.find(s => s.name === name);
+              if (section) {
+                setSectionId(section.id.toString());
+                setSectionName(section.name);
+              }
+            }}
             placeholder="Pilih section..."
-            searchPlaceholder="Cari section..."
             emptyText="Section tidak ditemukan"
+            allowCustom={false}
           />
         </Label>
       </div>
