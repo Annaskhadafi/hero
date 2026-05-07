@@ -103,19 +103,6 @@ export type CargoManifestMutationState = {
 export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
   await ensureCargoManifestTables();
 
-export async function getMasterSections() {
-  const sections = await db
-    .select({
-      id: masterSections.id,
-      name: masterSections.name,
-      code: masterSections.code,
-    })
-    .from(masterSections)
-    .where(eq(masterSections.isActive, true))
-    .orderBy(asc(masterSections.name));
-  return sections;
-}
-
   const rows = await db
     .select({
       id: cargoManifests.id,
@@ -169,6 +156,19 @@ export async function getMasterSections() {
     ...row,
     items: itemsByManifest.get(row.id) ?? [],
   }));
+}
+
+export async function getMasterSections() {
+  const sections = await db
+    .select({
+      id: masterSections.id,
+      name: masterSections.name,
+      code: masterSections.code,
+    })
+    .from(masterSections)
+    .where(eq(masterSections.isActive, true))
+    .orderBy(asc(masterSections.name));
+  return sections;
 }
 
 export async function getCargoManifestById(id: number): Promise<CargoManifestRecord | null> {
