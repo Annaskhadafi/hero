@@ -228,11 +228,13 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function generateManifestNumber(): Promise<string> {
-  const result = await db.execute(
-    sql`select count(*) as cnt from hero_cargo_manifests`
-  );
-  const count = Number((result.rows[0] as { cnt: string }).cnt ?? 0) + 1;
-  const padded = String(count).padStart(6, "0");
+  const result = await db.execute(sql`
+    select coalesce(max(nullif(regexp_replace(manifest_number, '[^0-9]', '', 'g'), '')::integer), 0) + 1 as next_number
+    from hero_cargo_manifests
+    where manifest_number ~ '^CM-[0-9]+$'
+  `);
+  const nextNumber = Number((result.rows[0] as { next_number: string | number }).next_number ?? 1);
+  const padded = String(nextNumber).padStart(6, "0");
   return `CM-${padded}`;
 }
 

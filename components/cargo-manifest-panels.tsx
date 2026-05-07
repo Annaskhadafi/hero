@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useRef, useEffect } from "react";
+import { startTransition, useActionState, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -506,7 +506,7 @@ export function CargoManifestCreateDialog() {
     fd.set("itemsJson", JSON.stringify(items));
     console.log("Submitting items:", items);
     console.log("Items JSON:", JSON.stringify(items));
-    dispatch(fd);
+    startTransition(() => dispatch(fd));
   };
 
   useEffect(() => {
@@ -571,7 +571,7 @@ export function CargoManifestEditDialog({ row }: { row: CargoManifestRecord }) {
     fd.set("intent", "update");
     fd.set("id", String(row.id));
     fd.set("itemsJson", JSON.stringify(items));
-    dispatch(fd);
+    startTransition(() => dispatch(fd));
   };
 
   useEffect(() => {
@@ -625,7 +625,7 @@ export function CargoManifestDeleteAction({ id }: { id: number }) {
         const fd = new FormData();
         fd.set("intent", "delete");
         fd.set("id", String(id));
-        dispatch(fd);
+        startTransition(() => dispatch(fd));
       }}
     >
       <Button type="submit" variant="ghost" size="icon" className="text-red-500 hover:text-red-700" aria-label="Hapus">
@@ -652,7 +652,7 @@ export function CargoManifestStatusAction({ id, currentStatus }: { id: number; c
         const fd = new FormData(e.currentTarget);
         fd.set("intent", "update-status");
         fd.set("id", String(id));
-        dispatch(fd);
+        startTransition(() => dispatch(fd));
       }}
     >
       <select name="status" defaultValue={currentStatus} className="h-8 rounded-lg border border-input bg-background px-2 text-xs">
@@ -958,7 +958,7 @@ export function CargoManifestImportDialog() {
     const rawCsv = await file.text();
     const fd = new FormData();
     fd.set("rawCsv", rawCsv);
-    dispatch(fd);
+    startTransition(() => dispatch(fd));
   };
 
   const downloadTemplate = () => {
