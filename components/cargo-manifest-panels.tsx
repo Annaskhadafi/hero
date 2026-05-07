@@ -450,14 +450,14 @@ function ManifestFormFields({
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Category Section
-          <select
+          <Combobox
+            options={sections.map(s => ({ value: s.id.toString(), label: s.name }))}
             value={sectionId}
-            onChange={(e) => setSectionId(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Pilih section...</option>
-            {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+            onValueChange={setSectionId}
+            placeholder="Pilih section..."
+            searchPlaceholder="Cari section..."
+            emptyText="Section tidak ditemukan"
+          />
         </Label>
       </div>
       <ItemRowEditor items={items} onChange={onItemsChange} />
