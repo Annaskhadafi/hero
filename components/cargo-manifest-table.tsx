@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Fragment } from "react";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -121,7 +122,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
               </tr>
             ) : (
               filteredManifests.map((m) => (
-                <>
+                <Fragment key={m.id}>
                   <tr key={m.id} className="border-b border-border hover:bg-muted/20">
                     <td className="px-3 py-3">
                       <button
@@ -197,7 +198,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))
             )}
           </tbody>
