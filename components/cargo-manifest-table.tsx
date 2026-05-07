@@ -69,7 +69,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
               className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
             >
               <option value="">Semua Site</option>
-              {uniqueSites.map(site => <option key={site} value={site}>{site}</option>)}
+              {uniqueSites.map((site, idx) => <option key={`site-${idx}`} value={site}>{site}</option>)}
             </select>
           </div>
           <div className="grid gap-1.5">

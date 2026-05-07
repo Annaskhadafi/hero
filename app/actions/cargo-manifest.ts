@@ -159,6 +159,8 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
       id: cargoManifests.id,
       manifestNumber: cargoManifests.manifestNumber,
       date: cargoManifests.date,
+      siteId: cargoManifests.siteId,
+      siteName: cargoMasterSites.siteName,
       attention: cargoManifests.attention,
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
@@ -173,6 +175,7 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
     })
     .from(cargoManifests)
     .leftJoin(employees, eq(cargoManifests.createdByEmployeeId, employees.id))
+    .leftJoin(cargoMasterSites, eq(cargoManifests.siteId, cargoMasterSites.id))
     .where(eq(cargoManifests.id, id))
     .limit(1);
 
