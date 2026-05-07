@@ -315,6 +315,7 @@ function ManifestFormFields({
   const [transportVia, setTransportVia] = useState(defaultValues?.transportVia || "");
   const [shippedVia, setShippedVia] = useState(defaultValues?.shippedVia || "");
   const [siteId, setSiteId] = useState<string>(defaultValues?.siteId?.toString() || "");
+  const [siteName, setSiteName] = useState<string>(defaultValues?.siteName || "");
   const [sections, setSections] = useState<Array<{id: number; name: string; code: string}>>([]);
   const [sectionId, setSectionId] = useState<string>(defaultValues?.sectionId?.toString() || "");
   const [sectionName, setSectionName] = useState<string>(defaultValues?.sectionName || "");
@@ -334,6 +335,10 @@ function ManifestFormFields({
       if (defaultValues?.sectionId) {
         const section = sectionsData.find(s => s.id === defaultValues.sectionId);
         if (section) setSectionName(section.name);
+      }
+      if (defaultValues?.siteId) {
+        const site = sitesData.find(s => s.id === defaultValues.siteId);
+        if (site) setSiteName(site.siteName);
       }
     });
 
@@ -436,21 +441,27 @@ function ManifestFormFields({
         <Label className="grid gap-1.5 text-sm font-medium">
           Site
           <Combobox
-            options={sites.map(s => ({ value: s.id.toString(), label: s.siteName }))}
-            value={siteId}
-            onValueChange={setSiteId}
-            placeholder="Pilih site..."
-            searchPlaceholder="Cari site..."
-            emptyText="Site tidak ditemukan"
-            allowCustom={true}
-            onCustomValue={async (customValue) => {
-              const result = await createMasterSite({ siteName: customValue, location: "", notes: "", isActive: true });
-              if (result.status === "success" && result.id) {
-                const newSites = await getMasterSites();
-                setSites(newSites);
-                setSiteId(result.id.toString());
+            options={sites.map(s => s.siteName)}
+            value={siteName}
+            onChange={async (name) => {
+              const site = sites.find(s => s.siteName === name);
+              if (site) {
+                setSiteId(site.id.toString());
+                setSiteName(site.siteName);
+              } else if (name) {
+                // Create new site
+                const result = await createMasterSite({ siteName: name, location: "", notes: "", isActive: true });
+                if (result.status === "success" && result.id) {
+                  const newSites = await getMasterSites();
+                  setSites(newSites);
+                  setSiteId(result.id.toString());
+                  setSiteName(name);
+                }
               }
             }}
+            placeholder="Pilih site..."
+            emptyText="Site tidak ditemukan"
+            allowCustom={true}
           />
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
