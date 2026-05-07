@@ -456,14 +456,13 @@ function ManifestFormFields({
         <Label className="grid gap-1.5 text-sm font-medium">
           Category Section
           <Combobox
-            options={sections.map(s => s.name)}
-            value={sectionName}
-            onChange={(name) => {
-              const section = sections.find(s => s.name === name);
-              if (section) {
-                setSectionId(section.id.toString());
-                setSectionName(section.name);
-              }
+            options={sections.map(s => `${s.id}:${s.name}`)}
+            value={sectionId ? `${sectionId}:${sectionName}` : ""}
+            onChange={(value) => {
+              const [id, ...nameParts] = value.split(':');
+              const name = nameParts.join(':');
+              setSectionId(id);
+              setSectionName(name);
             }}
             placeholder="Pilih section..."
             emptyText="Section tidak ditemukan"
