@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -25,7 +24,9 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
     return true;
   });
 
-  const uniqueSites = Array.from(new Set(manifests.map(m => m.siteName).filter(Boolean))).sort();
+  const uniqueSites = Array.from(
+    new Set(manifests.map(m => m.siteName).filter((site): site is string => Boolean(site)))
+  ).sort();
 
   const handleExportCSV = () => {
     const headers = ["No. Manifest", "Tanggal", "Site", "Attention", "Transport Via", "Tujuan", "Items", "Status", "Created At"];
