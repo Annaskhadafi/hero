@@ -29,11 +29,12 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
   ).sort();
 
   const handleExportCSV = () => {
-    const headers = ["No. Manifest", "Tanggal", "Site", "Attention", "Transport Via", "Tujuan", "Items", "Status", "Created At"];
+    const headers = ["No. Manifest", "Tanggal", "Site", "Section", "Attention", "Transport Via", "Tujuan", "Items", "Status", "Created At"];
     const rows = filteredManifests.map(m => [
       m.manifestNumber,
       m.date,
       m.siteName || "-",
+      m.sectionName || "-",
       m.attention || "-",
       m.transportVia || "-",
       m.finalDestination || "-",
@@ -106,6 +107,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
               <th className="px-3 py-3 text-left font-medium">No. Manifest</th>
               <th className="px-3 py-3 text-left font-medium">Tanggal</th>
               <th className="px-3 py-3 text-left font-medium">Site</th>
+              <th className="px-3 py-3 text-left font-medium">Section</th>
               <th className="px-3 py-3 text-left font-medium">Attention</th>
               <th className="px-3 py-3 text-left font-medium">Transport Via</th>
               <th className="px-3 py-3 text-left font-medium">Tujuan</th>
@@ -117,7 +119,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
           <tbody>
             {filteredManifests.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-8 text-center text-muted-foreground">
+                <td colSpan={11} className="py-8 text-center text-muted-foreground">
                   Belum ada data manifest
                 </td>
               </tr>
@@ -145,6 +147,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
                     </td>
                       <td className="px-3 py-3">{m.date}</td>
                       <td className="px-3 py-3">{m.siteName || "-"}</td>
+                      <td className="px-3 py-3">{m.sectionName || "-"}</td>
                       <td className="px-3 py-3">{m.attention || "?"}</td>
                     <td className="px-3 py-3">{m.transportVia || "?"}</td>
                     <td className="px-3 py-3">{m.finalDestination || "?"}</td>
@@ -162,7 +165,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
                   </tr>
                   {expandedRows.has(m.id) && (
                     <tr key={`${m.id}-details`} className="border-b border-border bg-muted/10">
-                      <td colSpan={10} className="px-3 py-4">
+                      <td colSpan={11} className="px-3 py-4">
                         <div className="ml-8">
                           <h4 className="mb-2 text-sm font-semibold">Detail Barang:</h4>
                           {m.items.length === 0 ? (

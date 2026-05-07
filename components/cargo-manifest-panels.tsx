@@ -786,8 +786,8 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
 }
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
-  // Split items into pages (max 13 items per page to avoid overflow)
-  const itemsPerPage = 13;
+  // Split items into pages with enough reserved space for signatures on the last page.
+  const itemsPerPage = 9;
   const pages: typeof row.items[] = [];
   
   if (row.items.length === 0) {
@@ -862,7 +862,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
           )}
 
       {/* Items table */}
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt", marginBottom: "55px", backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "9pt", marginBottom: pageIndex === pages.length - 1 ? "92px" : "24px", backgroundColor: "rgba(255, 255, 255, 0.95)" }}>
         <thead>
           <tr style={{ backgroundColor: "#003366", color: "#fff" }}>
             <th style={{ border: "1px solid #003366", padding: "8px 6px", width: "35px", textAlign: "center" }}>No</th>
@@ -902,7 +902,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
 
           {/* Signatures - Only on last page */}
           {pageIndex === pages.length - 1 && (
-            <div style={{ position: "absolute", bottom: "48mm", left: "20mm", right: "20mm", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", fontSize: "9.5pt" }}>
+            <div style={{ position: "absolute", bottom: "48mm", left: "20mm", right: "20mm", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "30px", fontSize: "9.5pt", backgroundColor: "rgba(255, 255, 255, 0.86)", paddingTop: "8px" }}>
         <div style={{ position: "relative", minHeight: "118px", textAlign: "center" }}>
           <div style={{ marginBottom: row.signatureDataUrl ? "18px" : "86px", fontWeight: 600 }}>
             <div>Delivered By</div>
