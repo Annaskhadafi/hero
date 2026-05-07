@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { CargoManifestRowActions } from "@/components/cargo-manifest-panels";
 import type { CargoManifestRecord } from "@/app/actions/cargo-manifest";
@@ -12,6 +13,39 @@ type CargoManifestTableProps = {
 
 export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [filterSite, setFilterSite] = useState<string>("");
+  const [filterDateFrom, setFilterDateFrom] = useState<string>("");
+  const [filterDateTo, setFilterDateTo] = useState<string>("");
+
+  const filteredManifests = manifests.filter(m => {
+    if (filterSite && m.siteName !== filterSite) return false;
+    if (filterDateFrom && new Date(m.createdAt) < new Date(filterDateFrom)) return false;
+    if (filterDateTo && new Date(m.createdAt) > new Date(filterDateTo + "T23:59:59")) return false;
+    return true;
+  });
+
+  const uniqueSites = Array.from(new Set(manifests.map(m => m.siteName).filter(Boolean))).sort();
+
+  const handleExportCSV = () => {
+    const headers = ["No. Manifest", "Tanggal", "Site", "Attention", "Transport Via", "Tujuan", "Items", "Status", "Created At"];
+    const rows = filteredManifests.map(m => [
+      m.manifestNumber,
+      m.date,
+      m.siteName || "-",
+      m.attention || "-",
+      m.transportVia || "-",
+      m.finalDestination || "-",
+      m.items.length.toString(),
+      m.status,
+      new Date(m.createdAt).toLocaleString("id-ID")
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `cargo-manifest-${new Date().toISOString().split("T")[0]}.csv`;
+    link.click();
+  };
 
   const toggleRow = (id: number) => {
     const newExpanded = new Set(expandedRows);
@@ -24,7 +58,44 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
   };
 
   return (
-    <div className="rounded-lg border border-border bg-white">
+    <div className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex gap-3">
+          <div className="grid gap-1.5">
+            <label className="text-xs font-medium">Filter Site</label>
+            <select
+              value={filterSite}
+              onChange={(e) => setFilterSite(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Semua Site</option>
+              {uniqueSites.map(site => <option key={site} value={site}>{site}</option>)}
+            </select>
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-xs font-medium">Dari Tanggal</label>
+            <input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <label className="text-xs font-medium">Sampai Tanggal</label>
+            <input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
+            />
+          </div>
+        </div>
+        <Button onClick={handleExportCSV} variant="outline" size="sm" className="gap-2">
+          <Download className="h-4 w-4" /> Export CSV
+        </Button>
+      </div>
+      <div className="rounded-lg border border-border bg-white">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -32,6 +103,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
               <th className="w-10 px-3 py-3 text-left font-medium"></th>
               <th className="px-3 py-3 text-left font-medium">No. Manifest</th>
               <th className="px-3 py-3 text-left font-medium">Tanggal</th>
+              <th className="px-3 py-3 text-left font-medium">Site</th>
               <th className="px-3 py-3 text-left font-medium">Attention</th>
               <th className="px-3 py-3 text-left font-medium">Transport Via</th>
               <th className="px-3 py-3 text-left font-medium">Tujuan</th>
@@ -41,14 +113,14 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
             </tr>
           </thead>
           <tbody>
-            {manifests.length === 0 ? (
+            {filteredManifests.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                <td colSpan={10} className="py-8 text-center text-muted-foreground">
                   Belum ada data manifest
                 </td>
               </tr>
             ) : (
-              manifests.map((m) => (
+              filteredManifests.map((m) => (
                 <>
                   <tr key={m.id} className="border-b border-border hover:bg-muted/20">
                     <td className="px-3 py-3">
@@ -69,8 +141,9 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
                         {m.manifestNumber}
                       </span>
                     </td>
-                    <td className="px-3 py-3">{m.date}</td>
-                    <td className="px-3 py-3">{m.attention || "?"}</td>
+                      <td className="px-3 py-3">{m.date}</td>
+                      <td className="px-3 py-3">{m.siteName || "-"}</td>
+                      <td className="px-3 py-3">{m.attention || "?"}</td>
                     <td className="px-3 py-3">{m.transportVia || "?"}</td>
                     <td className="px-3 py-3">{m.finalDestination || "?"}</td>
                     <td className="px-3 py-3">
@@ -87,7 +160,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
                   </tr>
                   {expandedRows.has(m.id) && (
                     <tr key={`${m.id}-details`} className="border-b border-border bg-muted/10">
-                      <td colSpan={9} className="px-3 py-4">
+                      <td colSpan={10} className="px-3 py-4">
                         <div className="ml-8">
                           <h4 className="mb-2 text-sm font-semibold">Detail Barang:</h4>
                           {m.items.length === 0 ? (
@@ -130,6 +203,7 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
           </tbody>
         </table>
       </div>
+    </div>
     </div>
   );
 }

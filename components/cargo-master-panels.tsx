@@ -31,9 +31,13 @@ import {
   createMasterRecipient,
   updateMasterRecipient,
   deleteMasterRecipient,
+  createMasterSite,
+  updateMasterSite,
+  deleteMasterSite,
   type MasterGoodsRecord,
   type MasterLocationRecord,
   type MasterRecipientRecord,
+  type MasterSiteRecord,
 } from "@/app/actions/cargo-master";
 
 // === Master Goods Dialog ===
@@ -427,6 +431,130 @@ export function MasterGoodsRowActions({ row }: MasterGoodsRowActionsProps) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <MasterGoodsDialog
+          mode="edit"
+          data={row}
+          trigger={
+            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
+          }
+        />
+        <DropdownMenuItem onClick={handleDelete} className="text-destructive">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Hapus
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// === Master Site Dialog ===
+type MasterSiteDialogProps = {
+  mode: "create" | "edit";
+  data?: MasterSiteRecord;
+  trigger?: React.ReactNode;
+};
+
+export function MasterSiteDialog({ mode, data, trigger }: MasterSiteDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const formData = new FormData(e.currentTarget);
+    const payload = {
+      siteName: formData.get("siteName") as string,
+      location: formData.get("location") as string,
+      notes: formData.get("notes") as string,
+      isActive: true,
+    };
+
+    const result = mode === "create" 
+      ? await createMasterSite(payload)
+      : await updateMasterSite(data!.id, payload);
+
+    setLoading(false);
+
+    if (result.status === "success") {
+      alert(result.message);
+      setOpen(false);
+      window.location.reload();
+    } else {
+      alert(result.message);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button size="sm" variant="default" className="h-8 px-2.5 text-xs">
+            <Plus className="mr-1 h-3 w-3" />
+            Tambah
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{mode === "create" ? "Tambah" : "Edit"} Master Data Site</DialogTitle>
+          <DialogDescription>
+            {mode === "create" ? "Tambahkan" : "Edit"} data site untuk referensi cargo manifest.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="siteName">Nama Site *</Label>
+              <Input id="siteName" name="siteName" defaultValue={data?.siteName} required />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="location">Lokasi</Label>
+              <Input id="location" name="location" defaultValue={data?.location} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea id="notes" name="notes" defaultValue={data?.notes} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type MasterSiteRowActionsProps = {
+  row: MasterSiteRecord;
+};
+
+export function MasterSiteRowActions({ row }: MasterSiteRowActionsProps) {
+  const handleDelete = async () => {
+    if (!confirm("Yakin hapus site ini?")) return;
+    const result = await deleteMasterSite(row.id);
+    if (result.status === "success") {
+      alert(result.message);
+      window.location.reload();
+    } else {
+      alert(result.message);
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <MasterSiteDialog
           mode="edit"
           data={row}
           trigger={

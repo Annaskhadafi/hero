@@ -10,6 +10,7 @@ import {
   cargoMasterGoods,
   cargoMasterLocations,
   cargoMasterRecipients,
+  cargoMasterSites,
   employees,
 } from "@/db/schema/hero";
 
@@ -49,7 +50,8 @@ async function ensureCargoManifestTables() {
   await db.execute(sql`
     alter table hero_cargo_manifests
       add column if not exists signature_name text not null default '',
-      add column if not exists signature_data_url text not null default ''
+      add column if not exists signature_data_url text not null default '',
+      add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null
   `);
 }
 
@@ -59,6 +61,8 @@ export type CargoManifestRecord = {
   id: number;
   manifestNumber: string;
   date: string;
+  siteId: number | null;
+  siteName: string | null;
   attention: string;
   transportVia: string;
   shippedVia: string;
@@ -100,6 +104,8 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
       id: cargoManifests.id,
       manifestNumber: cargoManifests.manifestNumber,
       date: cargoManifests.date,
+      siteId: cargoManifests.siteId,
+      siteName: cargoMasterSites.siteName,
       attention: cargoManifests.attention,
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
@@ -114,6 +120,7 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
     })
     .from(cargoManifests)
     .leftJoin(employees, eq(cargoManifests.createdByEmployeeId, employees.id))
+    .leftJoin(cargoMasterSites, eq(cargoManifests.siteId, cargoMasterSites.id))
     .orderBy(desc(cargoManifests.createdAt));
 
   const items = await db
@@ -271,6 +278,10 @@ const manageCargoManifestSchema = z.object({
     z.coerce.number().int().positive().optional(),
   ),
   date: z.string().trim().optional().default(""),
+  siteId: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
   attention: z.string().trim().max(200).optional().default(""),
   transportVia: z.string().trim().max(200).optional().default(""),
   shippedVia: z.string().trim().max(200).optional().default(""),
@@ -304,6 +315,7 @@ export async function manageCargoManifestAction(
         .values({
           manifestNumber,
           date: dateValue,
+          siteId: data.siteId ?? null,
           attention: data.attention ?? "",
           transportVia: data.transportVia ?? "",
           shippedVia: data.shippedVia ?? "",
@@ -334,6 +346,7 @@ export async function manageCargoManifestAction(
         .update(cargoManifests)
         .set({
           date: data.date || new Date().toISOString().split("T")[0],
+          siteId: data.siteId ?? null,
           attention: data.attention ?? "",
           transportVia: data.transportVia ?? "",
           shippedVia: data.shippedVia ?? "",

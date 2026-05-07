@@ -24,10 +24,13 @@ import {
   getMasterGoods,
   getMasterLocations,
   getMasterRecipients,
+  getMasterSites,
   createMasterGoods,
+  createMasterSite,
   type MasterGoodsRecord,
   type MasterLocationRecord,
   type MasterRecipientRecord,
+  type MasterSiteRecord,
 } from "@/app/actions/cargo-master";
 import { Combobox } from "@/components/ui/combobox";
 
@@ -303,21 +306,25 @@ function ManifestFormFields({
 }) {
   const [recipients, setRecipients] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
+  const [sites, setSites] = useState<MasterSiteRecord[]>([]);
   const [transportHistory, setTransportHistory] = useState<string[]>([]);
   const [shippedViaHistory, setShippedViaHistory] = useState<string[]>([]);
   const [attention, setAttention] = useState(defaultValues?.attention || "");
   const [finalDestination, setFinalDestination] = useState(defaultValues?.finalDestination || "");
   const [transportVia, setTransportVia] = useState(defaultValues?.transportVia || "");
   const [shippedVia, setShippedVia] = useState(defaultValues?.shippedVia || "");
+  const [siteId, setSiteId] = useState<string>(defaultValues?.siteId?.toString() || "");
 
   useEffect(() => {
     // Load master data
     Promise.all([
       getMasterRecipients(),
       getMasterLocations(),
-    ]).then(([recipientsData, locationsData]) => {
+      getMasterSites(),
+    ]).then(([recipientsData, locationsData, sitesData]) => {
       setRecipients(recipientsData.map(r => r.recipientName));
       setLocations(locationsData.map(l => l.locationName));
+      setSites(sitesData);
     });
 
     // Load transport history from localStorage
@@ -363,6 +370,7 @@ function ManifestFormFields({
       <input type="hidden" name="finalDestination" value={finalDestination} />
       <input type="hidden" name="transportVia" value={transportVia} />
       <input type="hidden" name="shippedVia" value={shippedVia} />
+      <input type="hidden" name="siteId" value={siteId} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Label className="grid gap-1.5 text-sm font-medium">
           Tanggal (Date)
@@ -412,6 +420,26 @@ function ManifestFormFields({
             options={shippedViaHistory}
             placeholder="Catatan pengiriman..."
             allowCustom
+          />
+        </Label>
+        <Label className="grid gap-1.5 text-sm font-medium">
+          Site
+          <Combobox
+            options={sites.map(s => ({ value: s.id.toString(), label: s.siteName }))}
+            value={siteId}
+            onValueChange={setSiteId}
+            placeholder="Pilih site..."
+            searchPlaceholder="Cari site..."
+            emptyText="Site tidak ditemukan"
+            allowCustom={true}
+            onCustomValue={async (customValue) => {
+              const result = await createMasterSite({ siteName: customValue, location: "", notes: "", isActive: true });
+              if (result.status === "success" && result.id) {
+                const newSites = await getMasterSites();
+                setSites(newSites);
+                setSiteId(result.id.toString());
+              }
+            }}
           />
         </Label>
       </div>

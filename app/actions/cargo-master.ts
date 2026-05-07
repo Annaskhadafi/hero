@@ -1,9 +1,23 @@
 ﻿"use server";
 
 import { db } from "@/db";
-import { cargoMasterLocations, cargoMasterGoods, cargoMasterRecipients } from "@/db/schema/hero";
-import { eq, ilike, or, desc } from "drizzle-orm";
+import { cargoMasterLocations, cargoMasterGoods, cargoMasterRecipients, cargoMasterSites } from "@/db/schema/hero";
+import { eq, ilike, or, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+
+async function ensureCargoMasterTables() {
+  await db.execute(sql`
+    create table if not exists hero_cargo_master_sites (
+      id serial primary key,
+      site_name text not null unique,
+      location text not null default '',
+      notes text not null default '',
+      is_active boolean not null default true,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `);
+}
 
 export type MasterLocationRecord = {
   id: number;
@@ -192,5 +206,60 @@ export async function deleteMasterRecipient(id: number): Promise<MasterDataMutat
     return { status: "success", message: "Penerima berhasil dihapus" };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Gagal hapus penerima" };
+  }
+}
+
+// === Master Sites ===
+export type MasterSiteRecord = {
+  id: number;
+  siteName: string;
+  location: string;
+  notes: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export async function getMasterSites(search?: string): Promise<MasterSiteRecord[]> {
+  await ensureCargoMasterTables();
+  const query = db.select().from(cargoMasterSites).orderBy(desc(cargoMasterSites.createdAt));
+  if (search) {
+    return query.where(
+      or(
+        ilike(cargoMasterSites.siteName, `%${search}%`),
+        ilike(cargoMasterSites.location, `%${search}%`)
+      )
+    );
+  }
+  return query;
+}
+
+export async function createMasterSite(data: Omit<MasterSiteRecord, "id" | "createdAt" | "updatedAt">): Promise<MasterDataMutationState> {
+  try {
+    const [result] = await db.insert(cargoMasterSites).values(data).returning();
+    revalidatePath("/dashboard/cargo-manifest");
+    return { status: "success", message: "Site berhasil ditambahkan", id: result.id };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Gagal menambahkan site" };
+  }
+}
+
+export async function updateMasterSite(id: number, data: Partial<Omit<MasterSiteRecord, "id" | "createdAt" | "updatedAt">>): Promise<MasterDataMutationState> {
+  try {
+    await db.update(cargoMasterSites).set({ ...data, updatedAt: new Date() }).where(eq(cargoMasterSites.id, id));
+    revalidatePath("/dashboard/cargo-manifest");
+    return { status: "success", message: "Site berhasil diupdate" };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Gagal update site" };
+  }
+}
+
+export async function deleteMasterSite(id: number): Promise<MasterDataMutationState> {
+  try {
+    await db.delete(cargoMasterSites).where(eq(cargoMasterSites.id, id));
+    revalidatePath("/dashboard/cargo-manifest");
+    return { status: "success", message: "Site berhasil dihapus" };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Gagal hapus site" };
   }
 }

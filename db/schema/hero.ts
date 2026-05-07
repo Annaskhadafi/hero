@@ -1709,6 +1709,7 @@ export const cargoManifests = pgTable("hero_cargo_manifests", {
   id: serial("id").primaryKey(),
   manifestNumber: text("manifest_number").notNull().unique(),
   date: date("date").notNull(),
+  siteId: integer("site_id").references(() => cargoMasterSites.id, { onDelete: "set null" }),
   attention: text("attention").notNull().default(""),
   transportVia: text("transport_via").notNull().default(""),
   shippedVia: text("shipped_via").notNull().default(""),
@@ -1780,6 +1781,16 @@ export const cargoMasterRecipients = pgTable("hero_cargo_master_recipients", {
   city: text("city").notNull().default(""),
   province: text("province").notNull().default(""),
   postalCode: text("postal_code").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const cargoMasterSites = pgTable("hero_cargo_master_sites", {
+  id: serial("id").primaryKey(),
+  siteName: text("site_name").notNull().unique(),
+  location: text("location").notNull().default(""),
   notes: text("notes").notNull().default(""),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -19,16 +19,19 @@ import {
   MasterLocationRowActions,
   MasterRecipientDialog,
   MasterRecipientRowActions,
+  MasterSiteDialog,
+  MasterSiteRowActions,
 } from "@/components/cargo-master-panels";
 import { getCargoManifests } from "@/app/actions/cargo-manifest";
-import { getMasterGoods, getMasterLocations, getMasterRecipients } from "@/app/actions/cargo-master";
+import { getMasterGoods, getMasterLocations, getMasterRecipients, getMasterSites } from "@/app/actions/cargo-master";
 
 export default async function CargoManifestPage() {
-  const [manifests, masterGoods, masterLocations, masterRecipients] = await Promise.all([
+  const [manifests, masterGoods, masterLocations, masterRecipients, masterSites] = await Promise.all([
     getCargoManifests(),
     getMasterGoods(),
     getMasterLocations(),
     getMasterRecipients(),
+    getMasterSites(),
   ]);
 
   const totalItems = manifests.reduce((sum, m) => sum + m.items.length, 0);
@@ -38,6 +41,7 @@ export default async function CargoManifestPage() {
 
   const destinations = Array.from(new Set(manifests.map((m) => m.finalDestination).filter(Boolean))).sort();
   const statuses = Array.from(new Set(manifests.map((m) => m.status))).sort();
+  const empty = (value: string | null | undefined) => value?.trim() || "-";
 
   return (
     <AdminPageShell
@@ -93,6 +97,7 @@ export default async function CargoManifestPage() {
               <TabsTrigger value="items">Master Data Item</TabsTrigger>
               <TabsTrigger value="locations">Master Data Lokasi</TabsTrigger>
               <TabsTrigger value="recipients">Master Data Penerima</TabsTrigger>
+              <TabsTrigger value="sites">Master Data Site</TabsTrigger>
             </TabsList>
 
             {/* Master Data Item */}
@@ -106,11 +111,11 @@ export default async function CargoManifestPage() {
                   <span key={`goods-${idx}`} className="font-medium">
                     {item.goodsName}
                   </span>,
-                  item.category || "?",
-                  item.brand || "?",
-                  item.unit || "?",
-                  item.weight || "?",
-                  item.dimensions || "?",
+                  empty(item.category),
+                  empty(item.brand),
+                  empty(item.unit),
+                  empty(item.weight),
+                  empty(item.dimensions),
                   <MasterGoodsRowActions key={`actions-${idx}`} row={item} />,
                 ])}
               />
@@ -128,12 +133,12 @@ export default async function CargoManifestPage() {
                     {loc.locationName}
                   </span>,
                   <span key={`addr-${idx}`} className="text-xs text-muted-foreground">
-                    {loc.address || "?"}
+                    {empty(loc.address)}
                   </span>,
-                  loc.city || "?",
-                  loc.province || "?",
-                  loc.contactPerson || "?",
-                  loc.contactPhone || "?",
+                  empty(loc.city),
+                  empty(loc.province),
+                  empty(loc.contactPerson),
+                  empty(loc.contactPhone),
                   <MasterLocationRowActions key={`actions-${idx}`} row={loc} />,
                 ])}
               />
@@ -150,12 +155,28 @@ export default async function CargoManifestPage() {
                   <span key={`rec-${idx}`} className="font-medium">
                     {rec.recipientName}
                   </span>,
-                  rec.companyName || "?",
-                  rec.contactPerson || "?",
-                  rec.contactPhone || "?",
-                  rec.contactEmail || "?",
-                  rec.city || "?",
+                  empty(rec.companyName),
+                  empty(rec.contactPerson),
+                  empty(rec.contactPhone),
+                  empty(rec.contactEmail),
+                  empty(rec.city),
                   <MasterRecipientRowActions key={`actions-${idx}`} row={rec} />,
+                ])}
+              />
+            </TabsContent>
+            <TabsContent value="sites">
+              <AdminTableCard
+                title="Master Data Site"
+                description="Data master site untuk referensi saat membuat cargo manifest."
+                columns={["Nama Site", "Lokasi", "Notes", "Aksi"]}
+                actions={<MasterSiteDialog mode="create" />}
+                rows={masterSites.map((site, idx) => [
+                  <span key={`site-${idx}`} className="font-medium">
+                    {site.siteName}
+                  </span>,
+                  empty(site.location),
+                  empty(site.notes),
+                  <MasterSiteRowActions key={`actions-${idx}`} row={site} />,
                 ])}
               />
             </TabsContent>
