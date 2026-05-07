@@ -11,6 +11,7 @@ import {
   cargoMasterLocations,
   cargoMasterRecipients,
   cargoMasterSites,
+  masterSections,
   employees,
 } from "@/db/schema/hero";
 
@@ -51,7 +52,8 @@ async function ensureCargoManifestTables() {
     alter table hero_cargo_manifests
       add column if not exists signature_name text not null default '',
       add column if not exists signature_data_url text not null default '',
-      add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null
+      add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null,
+      add column if not exists section_id integer references hero_master_sections(id) on delete set null
   `);
 }
 
@@ -63,6 +65,8 @@ export type CargoManifestRecord = {
   date: string;
   siteId: number | null;
   siteName: string | null;
+  sectionId: number | null;
+  sectionName: string | null;
   attention: string;
   transportVia: string;
   shippedVia: string;
@@ -99,6 +103,19 @@ export type CargoManifestMutationState = {
 export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
   await ensureCargoManifestTables();
 
+export async function getMasterSections() {
+  const sections = await db
+    .select({
+      id: masterSections.id,
+      name: masterSections.name,
+      code: masterSections.code,
+    })
+    .from(masterSections)
+    .where(eq(masterSections.isActive, true))
+    .orderBy(asc(masterSections.name));
+  return sections;
+}
+
   const rows = await db
     .select({
       id: cargoManifests.id,
@@ -106,6 +123,8 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
       date: cargoManifests.date,
       siteId: cargoManifests.siteId,
       siteName: cargoMasterSites.siteName,
+      sectionId: cargoManifests.sectionId,
+      sectionName: masterSections.name,
       attention: cargoManifests.attention,
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
@@ -121,6 +140,7 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
     .from(cargoManifests)
     .leftJoin(employees, eq(cargoManifests.createdByEmployeeId, employees.id))
     .leftJoin(cargoMasterSites, eq(cargoManifests.siteId, cargoMasterSites.id))
+    .leftJoin(masterSections, eq(cargoManifests.sectionId, masterSections.id))
     .orderBy(desc(cargoManifests.createdAt));
 
   const items = await db
@@ -161,6 +181,8 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
       date: cargoManifests.date,
       siteId: cargoManifests.siteId,
       siteName: cargoMasterSites.siteName,
+      sectionId: cargoManifests.sectionId,
+      sectionName: masterSections.name,
       attention: cargoManifests.attention,
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
@@ -176,6 +198,7 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
     .from(cargoManifests)
     .leftJoin(employees, eq(cargoManifests.createdByEmployeeId, employees.id))
     .leftJoin(cargoMasterSites, eq(cargoManifests.siteId, cargoMasterSites.id))
+    .leftJoin(masterSections, eq(cargoManifests.sectionId, masterSections.id))
     .where(eq(cargoManifests.id, id))
     .limit(1);
 
@@ -285,6 +308,10 @@ const manageCargoManifestSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().int().positive().optional(),
   ),
+  sectionId: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
   attention: z.string().trim().max(200).optional().default(""),
   transportVia: z.string().trim().max(200).optional().default(""),
   shippedVia: z.string().trim().max(200).optional().default(""),
@@ -319,6 +346,7 @@ export async function manageCargoManifestAction(
           manifestNumber,
           date: dateValue,
           siteId: data.siteId ?? null,
+          sectionId: data.sectionId ?? null,
           attention: data.attention ?? "",
           transportVia: data.transportVia ?? "",
           shippedVia: data.shippedVia ?? "",
@@ -350,6 +378,7 @@ export async function manageCargoManifestAction(
         .set({
           date: data.date || new Date().toISOString().split("T")[0],
           siteId: data.siteId ?? null,
+          sectionId: data.sectionId ?? null,
           attention: data.attention ?? "",
           transportVia: data.transportVia ?? "",
           shippedVia: data.shippedVia ?? "",

@@ -1710,6 +1710,7 @@ export const cargoManifests = pgTable("hero_cargo_manifests", {
   manifestNumber: text("manifest_number").notNull().unique(),
   date: date("date").notNull(),
   siteId: integer("site_id").references(() => cargoMasterSites.id, { onDelete: "set null" }),
+  sectionId: integer("section_id").references(() => masterSections.id, { onDelete: "set null" }),
   attention: text("attention").notNull().default(""),
   transportVia: text("transport_via").notNull().default(""),
   shippedVia: text("shipped_via").notNull().default(""),

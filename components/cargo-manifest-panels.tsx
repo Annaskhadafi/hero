@@ -16,6 +16,7 @@ import { Plus, Pencil, Trash2, FileText, Upload, Check, X, Printer } from "lucid
 import {
   manageCargoManifestAction,
   importCargoManifestsAction,
+  getMasterSections,
   type CargoManifestRecord,
   type CargoManifestMutationState,
   type CargoImportState,
@@ -314,6 +315,8 @@ function ManifestFormFields({
   const [transportVia, setTransportVia] = useState(defaultValues?.transportVia || "");
   const [shippedVia, setShippedVia] = useState(defaultValues?.shippedVia || "");
   const [siteId, setSiteId] = useState<string>(defaultValues?.siteId?.toString() || "");
+  const [sections, setSections] = useState<Array<{id: number; name: string; code: string}>>([]);
+  const [sectionId, setSectionId] = useState<string>(defaultValues?.sectionId?.toString() || "");
 
   useEffect(() => {
     // Load master data
@@ -321,10 +324,12 @@ function ManifestFormFields({
       getMasterRecipients(),
       getMasterLocations(),
       getMasterSites(),
-    ]).then(([recipientsData, locationsData, sitesData]) => {
+      getMasterSections(),
+    ]).then(([recipientsData, locationsData, sitesData, sectionsData]) => {
       setRecipients(recipientsData.map(r => r.recipientName));
       setLocations(locationsData.map(l => l.locationName));
       setSites(sitesData);
+      setSections(sectionsData);
     });
 
     // Load transport history from localStorage
@@ -371,6 +376,7 @@ function ManifestFormFields({
       <input type="hidden" name="transportVia" value={transportVia} />
       <input type="hidden" name="shippedVia" value={shippedVia} />
       <input type="hidden" name="siteId" value={siteId} />
+      <input type="hidden" name="sectionId" value={sectionId} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Label className="grid gap-1.5 text-sm font-medium">
           Tanggal (Date)
@@ -441,6 +447,17 @@ function ManifestFormFields({
               }
             }}
           />
+        </Label>
+        <Label className="grid gap-1.5 text-sm font-medium">
+          Category Section
+          <select
+            value={sectionId}
+            onChange={(e) => setSectionId(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Pilih section...</option>
+            {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </Label>
       </div>
       <ItemRowEditor items={items} onChange={onItemsChange} />
