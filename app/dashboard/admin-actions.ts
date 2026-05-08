@@ -54,6 +54,7 @@ import {
   trainingRecords,
   wellnessRecords,
 } from "@/db/schema/hero";
+import { timesheetSchedulingPlans } from "@/db/schema/timesheet";
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
@@ -108,6 +109,69 @@ const createActivitySchema = z.object({
   overtimeMinutes: z.coerce.number().int().min(0).max(720),
   remarks: z.string().trim().min(3),
 });
+
+const scheduleCodeSchema = z.enum(["IN", "DS", "NS", "OFF", "FB", "Libur", "Sakit", "Emergency"]);
+const schedulingPlanRowSchema = z.object({
+  employeeId: z.number().int(),
+  schedule: z.array(scheduleCodeSchema),
+});
+const schedulingEmployeeProfileSchema = z.object({
+  employeeId: z.number().int(),
+  section: z.string().max(80),
+  positionOnSite: z.string().max(120),
+  kimperLv: z.boolean(),
+  kimperTh: z.boolean(),
+});
+
+const saveSchedulingTimesheetPlanSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  siteScheduleType: z.enum(["office", "shift"]),
+  draftSchedule: z.array(schedulingPlanRowSchema),
+  fixedSchedule: z.array(schedulingPlanRowSchema),
+  employeeProfiles: z.array(schedulingEmployeeProfileSchema),
+  fieldBreakConfig: z.object({
+    workWeeks: z.number().int().min(1),
+    breakWeeks: z.number().int().min(1),
+  }).nullable(),
+});
+
+export async function saveSchedulingTimesheetPlanAction(input: z.infer<typeof saveSchedulingTimesheetPlanSchema>) {
+  const payload = saveSchedulingTimesheetPlanSchema.parse(input);
+  const actorEmail = await getCurrentActorEmail();
+  const actor = actorEmail ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1) : [];
+  const savedByUserId = actor[0]?.id ?? null;
+
+  await db
+    .insert(timesheetSchedulingPlans)
+    .values({
+      siteId: payload.siteId,
+      period: payload.period,
+      siteScheduleType: payload.siteScheduleType,
+      draftSchedule: payload.draftSchedule,
+      fixedSchedule: payload.fixedSchedule,
+      employeeProfiles: payload.employeeProfiles,
+      fieldBreakConfig: payload.fieldBreakConfig,
+      savedByUserId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [timesheetSchedulingPlans.siteId, timesheetSchedulingPlans.period],
+      set: {
+        siteScheduleType: payload.siteScheduleType,
+        draftSchedule: payload.draftSchedule,
+        fixedSchedule: payload.fixedSchedule,
+        employeeProfiles: payload.employeeProfiles,
+        fieldBreakConfig: payload.fieldBreakConfig,
+        savedByUserId,
+        updatedAt: new Date(),
+      },
+    });
+
+  revalidatePath("/dashboard/scheduling-timesheet");
+
+  return { ok: true };
+}
 
 const saveActivityDraftSchema = z.object({
   employeeId: z.coerce.number().int().positive(),
@@ -3899,4 +3963,3 @@ export async function bulkUserActionsAction(
     };
   }
 }
-

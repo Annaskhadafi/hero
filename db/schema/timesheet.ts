@@ -8,6 +8,7 @@
   date,
   decimal,
   jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sites, employees } from "@/db/schema/hero";
 import { user } from "@/db/schema/auth";
@@ -159,3 +160,21 @@ export const timesheetValidationIssues = pgTable("hero_timesheet_validation_issu
   
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const timesheetSchedulingPlans = pgTable("hero_timesheet_scheduling_plans", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  siteScheduleType: text("site_schedule_type").notNull().default("office"),
+  draftSchedule: jsonb("draft_schedule").notNull().default([]),
+  fixedSchedule: jsonb("fixed_schedule").notNull().default([]),
+  employeeProfiles: jsonb("employee_profiles").notNull().default([]),
+  fieldBreakConfig: jsonb("field_break_config"),
+  savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sitePeriodUnique: uniqueIndex("hero_timesheet_scheduling_plans_site_period_uidx").on(table.siteId, table.period),
+}));

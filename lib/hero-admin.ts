@@ -52,6 +52,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { session, user as authUser } from "@/db/schema/auth";
+import { timesheetSchedulingPlans } from "@/db/schema/timesheet";
 import { ensureApprovalBlueprintSeedData } from "@/lib/approval-blueprint";
 import {
   ensureMasterCategoryTables,
@@ -2570,6 +2571,7 @@ export async function getOperationalCrudOptions() {
 
 export async function getSchedulingTimesheetOptions() {
   const users = await getSecurityUsersData();
+  const savedPlans = await db.select().from(timesheetSchedulingPlans).catch(() => []);
   const activeUsers = users.filter((user) => user.isActive);
   const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
 
@@ -2590,10 +2592,21 @@ export async function getSchedulingTimesheetOptions() {
       name: user.name,
       email: user.email,
       role: user.jobTitle || user.role,
+      section: user.section,
       siteId: user.siteId ?? null,
       locationName: user.siteName,
     })),
     sites: Array.from(siteByKey.values()).sort((left, right) => left.name.localeCompare(right.name, "id-ID")),
+    savedPlans: savedPlans.map((plan) => ({
+      siteId: plan.siteId,
+      period: plan.period,
+      siteScheduleType: plan.siteScheduleType,
+      draftSchedule: plan.draftSchedule as Array<{ employeeId: number; schedule: string[] }>,
+      fixedSchedule: plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
+      employeeProfiles: plan.employeeProfiles as Array<{ employeeId: number; section: string; positionOnSite: string; kimperLv: boolean; kimperTh: boolean }>,
+      fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
+      updatedAt: plan.updatedAt.toISOString(),
+    })),
   };
 }
 
