@@ -69,7 +69,14 @@ type FieldBreakConfig = {
   breakWeeks: number;
 };
 
-const sectionOptions = ["Service Operation", "Repair/Retread", "Crew Office"];
+const sectionOptions = ["Service Operation", "Repair Retread", "Crew Office"];
+const employmentPositionLabels = ["permanent", "contract", "kontrak", "permanen", "staff", "non staff", "non-staff", "outsource"];
+const defaultPositionLabels = ["REPAIRMAN", "TYREMAN", "Operation"];
+const rosterSectionStyles: Record<string, { title: string; head: string; day: string; total: string }> = {
+  "Service Operation": { title: "ROSTER CREW SERVICEMAN", head: "bg-sky-100 text-slate-950", day: "bg-cyan-200 text-slate-950", total: "bg-sky-50 text-slate-950" },
+  "Repair Retread": { title: "ROSTER CREW REPAIRMAN", head: "bg-emerald-100 text-slate-950", day: "bg-emerald-200 text-slate-950", total: "bg-rose-100 text-rose-950" },
+  "Crew Office": { title: "ROSTER CREW OFFICE", head: "bg-orange-100 text-slate-950", day: "bg-orange-100 text-slate-950", total: "bg-orange-50 text-slate-950" },
+};
 
 const codeCycle: ScheduleCode[] = ["IN", "DS", "NS", "OFF", "FB", "Libur", "Sakit", "Emergency"];
 
@@ -92,10 +99,47 @@ function normalizeLocation(value: string) {
 
 function normalizeRosterSection(value?: string | null) {
   const normalized = normalizeLocation(value ?? "");
-  if (normalized.includes("service") || normalized.includes("serviceman") || normalized.includes("operation")) return "Service Operation";
-  if (normalized.includes("repair") || normalized.includes("retread")) return "Repair/Retread";
+  if (normalized.includes("repair") || normalized.includes("retread")) return "Repair Retread";
+  if (normalized.includes("technical")) return "Crew Office";
+  if (normalized.includes("servicemvc") || normalized.includes("serviceoperationmvc") || normalized.includes("serviceoperationother") || normalized.includes("serviceoperationothers")) return "Service Operation";
 
   return "Crew Office";
+}
+
+function isEmploymentPositionLabel(value?: string | null) {
+  const normalized = normalizeLocation(value ?? "");
+  if (!normalized) return true;
+
+  return employmentPositionLabels.some((label) => normalized.includes(normalizeLocation(label)));
+}
+
+function resolvePositionOnSite(position?: string | null, fallback?: string | null) {
+  if (!isEmploymentPositionLabel(position)) return position ?? "";
+  if (!isEmploymentPositionLabel(fallback)) return fallback ?? "";
+
+  return "Jabatan belum diisi";
+}
+
+function defaultPositionOnSite(section?: string | null) {
+  const normalized = normalizeLocation(section ?? "");
+  if (normalized.includes("repair") || normalized.includes("retread")) return "REPAIRMAN";
+  if (normalized.includes("service")) return "TYREMAN";
+  if (normalized.includes("technical")) return "Operation";
+
+  return "Operation";
+}
+
+function isDefaultPositionOnSite(value?: string | null) {
+  return defaultPositionLabels.some((label) => normalizeLocation(label) === normalizeLocation(value ?? ""));
+}
+
+function positionOptionsForSection(section?: string | null) {
+  return Array.from(new Set([defaultPositionOnSite(section), "Leader", "Sub Leader"]));
+}
+
+function isLeadershipPosition(value?: string | null) {
+  const normalized = normalizeLocation(value ?? "");
+  return normalized === "leader" || normalized === "subleader";
 }
 
 function daysInMonth(period: string) {
@@ -222,7 +266,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     setEmployeeProfiles(Object.fromEntries((savedPlan.employeeProfiles ?? []).map((profile) => {
       const employee = employees.find((item) => item.id === profile.employeeId);
       const detectedSection = normalizeRosterSection(employee?.section || employee?.role);
-      const section = profile.section === "Crew Office" && detectedSection !== "Crew Office" ? detectedSection : profile.section;
+      const section = detectedSection || profile.section;
 
       return [profile.employeeId, { ...profile, section }];
     })));
@@ -273,14 +317,117 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     const profile = employeeProfiles[employee.id] ?? {
       employeeId: employee.id,
       section: normalizeRosterSection(employee.section || employee.role),
-      positionOnSite: employee.role || "Crew",
+      positionOnSite: defaultPositionOnSite(employee.section || employee.role),
       kimperLv: false,
       kimperTh: false,
     };
     const sectionLabel = employee.section || profile.section;
     const rosterSection = normalizeRosterSection(sectionLabel);
-    return { employee, schedule, workDays, fieldBreakDays, totalHours, staff, msa, meals, overtime, profile, sectionLabel, rosterSection };
+    const positionOnSite = isLeadershipPosition(profile.positionOnSite) ? profile.positionOnSite : defaultPositionOnSite(sectionLabel);
+    return { employee, schedule, workDays, fieldBreakDays, totalHours, staff, msa, meals, overtime, profile: { ...profile, section: rosterSection, positionOnSite }, sectionLabel, rosterSection };
   });
+
+  function renderRosterTable(
+    tableRows: typeof rows,
+    section: string,
+    keyPrefix: string,
+    onCellClick: (employeeId: number, day: number) => void,
+  ) {
+    const sectionRows = tableRows.filter((row) => row.rosterSection === section);
+    if (sectionRows.length === 0) return null;
+
+    const styles = rosterSectionStyles[section] ?? rosterSectionStyles["Crew Office"];
+    const showOperatorTotals = section === "Service Operation" || section === "Repair Retread";
+    const sectionTotals = days.map((day, index) => ({
+      day,
+      ds: sectionRows.filter((row) => row.schedule[index] === "DS").length,
+      ns: sectionRows.filter((row) => row.schedule[index] === "NS").length,
+      dayOperator: sectionRows.filter((row) => row.schedule[index] === "DS" && row.profile.kimperLv && row.profile.kimperTh).length,
+      nightOperator: sectionRows.filter((row) => row.schedule[index] === "NS" && row.profile.kimperLv && row.profile.kimperTh).length,
+      off: sectionRows.filter((row) => row.schedule[index] === "OFF").length,
+      manpower: sectionRows.filter((row) => row.schedule[index] === "DS" || row.schedule[index] === "NS" || row.schedule[index] === "IN").length,
+    }));
+
+    return (
+      <Card key={`${keyPrefix}-${section}`} className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
+        <div className="overflow-auto">
+          <table className="min-w-max border-collapse text-xs">
+            <thead>
+              <tr className={styles.head}>
+                <th colSpan={days.length + 7} className="px-3 py-2 text-left text-base font-bold uppercase tracking-tight">{styles.title} {period}</th>
+              </tr>
+              <tr className={styles.head}>
+                <th className="sticky left-0 z-20 min-w-44 px-3 py-2 text-left">Nama</th>
+                <th className="min-w-16 px-3 py-2">LV</th>
+                <th className="min-w-16 px-3 py-2">TH</th>
+                <th className="min-w-24 px-3 py-2">SN</th>
+                <th className="min-w-36 px-3 py-2">Section</th>
+                <th className="min-w-36 px-3 py-2">Posisi On Site</th>
+                {days.map((day) => <th key={day} className={`min-w-12 border-l border-slate-400 px-2 py-2 ${styles.day}`}><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div></th>)}
+                <th className="min-w-20 px-3 py-2">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sectionRows.map((row) => (
+                <tr key={`${keyPrefix}-${row.employee.id}`} className="border-b border-slate-200">
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold"><button className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline" onClick={() => openEmployeeForm(row.employee.id)}>{row.employee.name}</button></td>
+                  <td className="px-3 py-2 text-center">{row.profile.kimperLv ? "✓" : ""}</td>
+                  <td className="px-3 py-2 text-center">{row.profile.kimperTh ? "✓" : ""}</td>
+                  <td className="px-3 py-2 text-center">{row.employee.id}</td>
+                  <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
+                  <td className="px-3 py-2 text-center font-semibold uppercase">{row.profile.positionOnSite}</td>
+                  {row.schedule.map((code, index) => <td key={`${keyPrefix}-${row.employee.id}-${index}`} className="border-l border-slate-200 p-0 text-center"><button className={`h-8 w-full px-2 font-medium ${codeClass(code)}`} onClick={() => onCellClick(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>)}
+                  <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className={`border-t-2 border-slate-300 font-semibold ${styles.total}`}>
+                <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left">Dayshift</td>
+                <td colSpan={5} className="px-3 py-2 text-center">Day Shift</td>
+                {sectionTotals.map((item) => <td key={`${keyPrefix}-${section}-ds-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ds}</td>)}
+                <td className="px-3 py-2 text-center">{sectionTotals.reduce((sum, item) => sum + item.ds, 0)}</td>
+              </tr>
+              <tr className={`border-t border-slate-200 font-semibold ${styles.total}`}>
+                <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left">Nightshift</td>
+                <td colSpan={5} className="px-3 py-2 text-center">Night Shift</td>
+                {sectionTotals.map((item) => <td key={`${keyPrefix}-${section}-ns-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ns}</td>)}
+                <td className="px-3 py-2 text-center">{sectionTotals.reduce((sum, item) => sum + item.ns, 0)}</td>
+              </tr>
+              {showOperatorTotals ? (
+                <tr className="border-t border-slate-300 bg-white font-semibold text-slate-950">
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2 text-left">Day Operator</td>
+                  <td colSpan={5} className="px-3 py-2 text-center">KIMPER LV + TH</td>
+                  {sectionTotals.map((item) => <td key={`${keyPrefix}-${section}-day-operator-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.dayOperator}</td>)}
+                  <td className="px-3 py-2 text-center">{sectionTotals.reduce((sum, item) => sum + item.dayOperator, 0)}</td>
+                </tr>
+              ) : null}
+              {showOperatorTotals ? (
+                <tr className="border-t border-slate-300 bg-slate-300 font-semibold text-slate-950">
+                  <td className="sticky left-0 z-10 bg-slate-300 px-3 py-2 text-left">Night Operator</td>
+                  <td colSpan={5} className="px-3 py-2 text-center">KIMPER LV + TH</td>
+                  {sectionTotals.map((item) => <td key={`${keyPrefix}-${section}-night-operator-${item.day}`} className="border-l border-slate-400 px-2 py-2 text-center">{item.nightOperator}</td>)}
+                  <td className="px-3 py-2 text-center">{sectionTotals.reduce((sum, item) => sum + item.nightOperator, 0)}</td>
+                </tr>
+              ) : null}
+              <tr className={`border-t border-slate-200 font-semibold text-red-700 ${styles.total}`}>
+                <td className="sticky left-0 z-10 bg-inherit px-3 py-2 text-left">OFF</td>
+                <td colSpan={5} className="px-3 py-2 text-center">OFF</td>
+                {sectionTotals.map((item) => <td key={`${keyPrefix}-${section}-off-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.off}</td>)}
+                <td className="px-3 py-2 text-center">{sectionTotals.reduce((sum, item) => sum + item.off, 0)}</td>
+              </tr>
+              <tr className="border-t-2 border-slate-400 bg-white font-bold text-slate-950">
+                <td className="sticky left-0 z-10 bg-white px-3 py-2 text-left">TOTAL MAN POWER</td>
+                <td colSpan={5} className="px-3 py-2 text-center">Aktif</td>
+                {sectionTotals.map((item) => <td key={`${keyPrefix}-${section}-mp-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.manpower}</td>)}
+                <td className="px-3 py-2 text-center">{sectionRows.length}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </Card>
+    );
+  }
 
   const permanentRows = rows.map((row) => ({
     ...row,
@@ -291,17 +438,6 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     fieldBreakDays: row.schedule.filter((code) => code === "FB").length,
     totalHours: row.schedule.reduce((sum, code) => sum + hoursFromCode(code), 0),
   }));
-  const dailyShiftTotals = days.map((day, index) => ({
-    day,
-    ds: rows.filter((row) => row.schedule[index] === "DS").length,
-    ns: rows.filter((row) => row.schedule[index] === "NS").length,
-  }));
-  const permanentDailyShiftTotals = days.map((day, index) => ({
-    day,
-    ds: permanentRows.filter((row) => row.schedule[index] === "DS").length,
-    ns: permanentRows.filter((row) => row.schedule[index] === "NS").length,
-  }));
-
   const selectedEmployee = visibleEmployees.find((employee) => employee.id === selectedEmployeeId) ?? null;
   const selectedCode = selectedCell ? overrides[`${selectedCell.employeeId}-${selectedCell.day}`] ?? rows.find((row) => row.employee.id === selectedCell.employeeId)?.schedule[selectedCell.day - 1] : undefined;
 
@@ -395,12 +531,19 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     setOverrides((currentOverrides) => ({ ...currentOverrides, [`${selectedCell.employeeId}-${selectedCell.day}`]: code }));
   }
 
+  function handleProfileSectionChange(section: string) {
+    setProfileSection(section);
+    if (isDefaultPositionOnSite(profilePositionOnSite) || isEmploymentPositionLabel(profilePositionOnSite)) {
+      setProfilePositionOnSite(defaultPositionOnSite(section));
+    }
+  }
+
   function openEmployeeForm(employeeId: number) {
     const employee = visibleEmployees.find((item) => item.id === employeeId);
     const profile = employeeProfiles[employeeId];
     setSelectedEmployeeId(employeeId);
-    setProfileSection(profile?.section ?? "Crew Office");
-    setProfilePositionOnSite(profile?.positionOnSite ?? employee?.role ?? "Crew");
+    setProfileSection(normalizeRosterSection(employee?.section || profile?.section || employee?.role));
+    setProfilePositionOnSite(isLeadershipPosition(profile?.positionOnSite) ? profile?.positionOnSite ?? "Leader" : defaultPositionOnSite(employee?.section || profile?.section || employee?.role));
     setProfileKimperLv(profile?.kimperLv ?? false);
     setProfileKimperTh(profile?.kimperTh ?? false);
     setLeaveFrom("");
@@ -410,9 +553,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     setBackupEmployeeId("");
   }
 
-  function exportPdf() {
-    const title = `Scheduling Time Sheet - ${site?.name ?? "Semua Site"} - ${period}`;
-    const scheduleRows = rows.map((row) => `
+  function exportPdf(tabTitle = "Schedule", tableRows = rows) {
+    const title = `${tabTitle} - ${site?.name ?? "Semua Site"} - ${period}`;
+    const scheduleRows = tableRows.map((row) => `
       <tr>
         <td>${row.employee.name}</td>
         <td>${row.employee.id}</td>
@@ -454,7 +597,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         </head>
         <body>
           <h1>${title}</h1>
-          <p>Roster: ${roster} • Karyawan: ${rows.length} • Total jam: ${rows.reduce((sum, row) => sum + row.totalHours, 0)}</p>
+          <p>Roster: ${roster} • Karyawan: ${tableRows.length} • Total jam: ${tableRows.reduce((sum, row) => sum + row.totalHours, 0)}</p>
           <table>
             <thead><tr><th>Name</th><th>SN</th><th>LOC</th>${dayHeaders}<th>Total</th></tr></thead>
             <tbody>${scheduleRows}</tbody>
@@ -469,6 +612,65 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     `);
     printable.document.close();
   }
+
+  function exportExcel(tabTitle: string, columns: string[], exportRows: Array<Array<string | number>>) {
+    const csv = [columns, ...exportRows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${tabTitle}-${site?.name ?? "Semua Site"}-${period}.csv`.replace(/[^a-z0-9._-]+/gi, "-");
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportSummaryPdf(tabTitle: string, columns: string[], exportRows: Array<Array<string | number>>) {
+    const title = `${tabTitle} - ${site?.name ?? "Semua Site"} - ${period}`;
+    const printable = window.open("", "_blank", "width=1200,height=800");
+    if (!printable) return;
+
+    printable.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>@page { size: A4 landscape; margin: 10mm; } body { font-family: Arial, sans-serif; color: #0f172a; } h1 { font-size: 18px; } table { width: 100%; border-collapse: collapse; font-size: 10px; } th { background: #1e293b; color: white; } th, td { border: 1px solid #94a3b8; padding: 6px; text-align: left; }</style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <table>
+            <thead><tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr></thead>
+            <tbody>${exportRows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody>
+          </table>
+          <script>window.onload = () => { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    printable.document.close();
+  }
+
+  function scheduleExportRows(tableRows = rows) {
+    return tableRows.map((row) => [row.employee.name, row.employee.id, row.sectionLabel, row.profile.positionOnSite, ...row.schedule, row.totalHours]);
+  }
+
+  function TabExportActions({ tabTitle, tableRows = rows, columns, exportRows }: { tabTitle: string; tableRows?: typeof rows; columns?: string[]; exportRows?: Array<Array<string | number>> }) {
+    const excelColumns = columns ?? ["Nama", "SN", "Section", "Posisi On Site", ...days.map(String), "Total"];
+    const excelRows = exportRows ?? scheduleExportRows(tableRows);
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={tableRows.length === 0 && excelRows.length === 0} onClick={() => (columns && exportRows ? exportSummaryPdf(tabTitle, excelColumns, excelRows) : exportPdf(tabTitle, tableRows))}>
+          <Download className="mr-2 size-4" /> Export PDF
+        </Button>
+        <Button size="sm" variant="outline" disabled={excelRows.length === 0} onClick={() => exportExcel(tabTitle, excelColumns, excelRows)}>
+          <Download className="mr-2 size-4" /> Export Excel
+        </Button>
+      </div>
+    );
+  }
+
   function applyEmployeeEdit() {
     if (!selectedEmployee) return;
     const backup = visibleEmployees.find((employee) => String(employee.id) === backupEmployeeId) ?? null;
@@ -488,7 +690,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
       [selectedEmployee.id]: {
         employeeId: selectedEmployee.id,
         section: profileSection,
-        positionOnSite: profilePositionOnSite || selectedEmployee.role || "Crew",
+        positionOnSite: profilePositionOnSite || defaultPositionOnSite(profileSection),
         kimperLv: profileKimperLv,
         kimperTh: profileKimperTh,
       },
@@ -560,9 +762,6 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
             <Button className="h-10" disabled={siteId === "all"} onClick={() => { setOverrides({}); setPermanentOverrides({}); setSelectedCell(null); setIsGenerated(true); }}>
               <RefreshCw className="mr-2 size-4" /> Generate Auto Scheduling
             </Button>
-            <Button className="h-10" variant="outline" disabled={rows.length === 0} onClick={exportPdf}>
-              <Download className="mr-2 size-4" /> Export PDF
-            </Button>
           </div>
         </div>
       </Card>
@@ -620,9 +819,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               <p className="font-semibold text-foreground">Save Schedule ke Schedule Tetap</p>
               <p className="text-sm text-muted-foreground">Generate/edit draft dulu, lalu save agar jadi baseline Schedule Tetap.</p>
             </div>
-            <Button disabled={rows.length === 0 || isSavingSchedule} onClick={saveScheduleToPermanent}>
-              <Save className="mr-2 size-4" /> {isSavingSchedule ? "Menyimpan..." : "Save ke Schedule Tetap"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <TabExportActions tabTitle="Schedule" tableRows={rows} />
+              <Button disabled={rows.length === 0 || isSavingSchedule} onClick={saveScheduleToPermanent}>
+                <Save className="mr-2 size-4" /> {isSavingSchedule ? "Menyimpan..." : "Save ke Schedule Tetap"}
+              </Button>
+            </div>
           </Card>
           {selectedCell ? (
             <Card className="surface-module-card flex flex-wrap items-center gap-3 rounded-[1rem] border-0 p-3">
@@ -634,60 +836,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               <p className="text-sm text-muted-foreground">Shift pakai DS/NS. Office pakai ✓, weekend OFF; weekend lembur bisa diedit manual ke ✓/DS/NS.</p>
             </Card>
           ) : null}
-          <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
-            <div className="overflow-auto">
-              <table className="min-w-max border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-800 text-white">
-                    <th className="sticky left-0 z-20 min-w-44 bg-slate-800 px-3 py-2 text-left">Name</th>
-                    <th className="min-w-16 px-3 py-2">LV</th>
-                    <th className="min-w-16 px-3 py-2">TH</th>
-                    <th className="min-w-24 px-3 py-2">SN</th>
-                    <th className="min-w-36 px-3 py-2">Section</th>
-                    <th className="min-w-36 px-3 py-2">Posisi On Site</th>
-                    {days.map((day) => <th key={day} className="min-w-12 border-l border-slate-600 bg-lime-500 px-2 py-2 text-slate-950"><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div></th>)}
-                    <th className="min-w-20 px-3 py-2">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sectionOptions.map((section) => {
-                    const sectionRows = rows.filter((row) => row.rosterSection === section);
-                    if (sectionRows.length === 0) return null;
-
-                    return [
-                      <tr key={`${section}-header`} className="bg-slate-950 text-white"><td colSpan={days.length + 7} className="px-3 py-2 font-semibold uppercase tracking-[0.14em]">ROSTER CREW {section} {period}</td></tr>,
-                      ...sectionRows.map((row) => (
-                        <tr key={row.employee.id} className="border-b border-slate-200">
-                          <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold"><button className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline" onClick={() => openEmployeeForm(row.employee.id)}>{row.employee.name}</button></td>
-                          <td className="px-3 py-2 text-center">{row.profile.kimperLv ? "✓" : ""}</td>
-                          <td className="px-3 py-2 text-center">{row.profile.kimperTh ? "✓" : ""}</td>
-                          <td className="px-3 py-2 text-center">{row.employee.id}</td>
-                          <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
-                          <td className="px-3 py-2 text-center">{row.profile.positionOnSite}</td>
-                          {row.schedule.map((code, index) => <td key={`${row.employee.id}-${index}`} className="border-l border-slate-200 p-0 text-center"><button className={`h-8 w-full px-2 font-medium ${codeClass(code)}`} onClick={() => cycleCell(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>)}
-                          <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
-                        </tr>
-                      )),
-                    ];
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-slate-300 bg-sky-50 font-semibold text-sky-900">
-                    <td className="sticky left-0 z-10 bg-sky-50 px-3 py-2 text-left">Total DS</td>
-                    <td colSpan={5} className="px-3 py-2 text-center">Day Shift</td>
-                    {dailyShiftTotals.map((item) => <td key={`ds-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ds}</td>)}
-                    <td className="px-3 py-2 text-center">{dailyShiftTotals.reduce((sum, item) => sum + item.ds, 0)}</td>
-                  </tr>
-                  <tr className="border-t border-slate-200 bg-indigo-50 font-semibold text-indigo-900">
-                    <td className="sticky left-0 z-10 bg-indigo-50 px-3 py-2 text-left">Total NS</td>
-                    <td colSpan={5} className="px-3 py-2 text-center">Night Shift</td>
-                    {dailyShiftTotals.map((item) => <td key={`ns-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ns}</td>)}
-                    <td className="px-3 py-2 text-center">{dailyShiftTotals.reduce((sum, item) => sum + item.ns, 0)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </Card>
+          <div className="space-y-5">
+            {sectionOptions.map((section) => renderRosterTable(rows, section, "draft", cycleCell))}
+          </div>
         </TabsContent>
 
         <TabsContent value="permanent" className="space-y-3">
@@ -698,68 +849,24 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 <p className="mt-1 text-sm text-muted-foreground">Generated dari tab Schedule. Klik cell untuk edit, lalu save di sini sebagai final tetap.</p>
                 {scheduleSavedAt ? <p className="mt-1 text-xs text-muted-foreground">Terakhir save: {scheduleSavedAt}</p> : null}
               </div>
-              <Button disabled={permanentRows.length === 0 || isSavingSchedule} onClick={savePermanentSchedule}>
-                <Save className="mr-2 size-4" /> {isSavingSchedule ? "Menyimpan..." : "Save Schedule Tetap"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <TabExportActions tabTitle="Schedule Tetap" tableRows={permanentRows} />
+                <Button disabled={permanentRows.length === 0 || isSavingSchedule} onClick={savePermanentSchedule}>
+                  <Save className="mr-2 size-4" /> {isSavingSchedule ? "Menyimpan..." : "Save Schedule Tetap"}
+                </Button>
+              </div>
             </div>
           </Card>
-          <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
-            <div className="overflow-auto">
-              <table className="min-w-max border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-800 text-white">
-                    <th className="sticky left-0 z-20 min-w-44 bg-slate-800 px-3 py-2 text-left">Name</th>
-                    <th className="min-w-16 px-3 py-2">LV</th>
-                    <th className="min-w-16 px-3 py-2">TH</th>
-                    <th className="min-w-24 px-3 py-2">SN</th>
-                    <th className="min-w-36 px-3 py-2">Section</th>
-                    <th className="min-w-36 px-3 py-2">Posisi On Site</th>
-                    {days.map((day) => <th key={day} className="min-w-12 border-l border-slate-600 bg-lime-500 px-2 py-2 text-slate-950"><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div></th>)}
-                    <th className="min-w-20 px-3 py-2">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sectionOptions.map((section) => {
-                    const sectionRows = permanentRows.filter((row) => row.rosterSection === section);
-                    if (sectionRows.length === 0) return null;
-
-                    return [
-                      <tr key={`${section}-fixed-header`} className="bg-slate-950 text-white"><td colSpan={days.length + 7} className="px-3 py-2 font-semibold uppercase tracking-[0.14em]">ROSTER CREW {section} {period}</td></tr>,
-                      ...sectionRows.map((row) => (
-                        <tr key={row.employee.id} className="border-b border-slate-200">
-                          <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold"><button className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline" onClick={() => openEmployeeForm(row.employee.id)}>{row.employee.name}</button></td>
-                          <td className="px-3 py-2 text-center">{row.profile.kimperLv ? "✓" : ""}</td>
-                          <td className="px-3 py-2 text-center">{row.profile.kimperTh ? "✓" : ""}</td>
-                          <td className="px-3 py-2 text-center">{row.employee.id}</td>
-                          <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
-                          <td className="px-3 py-2 text-center">{row.profile.positionOnSite}</td>
-                          {row.schedule.map((code, index) => <td key={`${row.employee.id}-fixed-${index}`} className="border-l border-slate-200 p-0 text-center"><button className={`h-8 w-full px-2 font-medium ${codeClass(code)}`} onClick={() => cyclePermanentCell(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>)}
-                          <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
-                        </tr>
-                      )),
-                    ];
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-slate-300 bg-sky-50 font-semibold text-sky-900">
-                    <td className="sticky left-0 z-10 bg-sky-50 px-3 py-2 text-left">Total DS</td>
-                    <td colSpan={5} className="px-3 py-2 text-center">Day Shift</td>
-                    {permanentDailyShiftTotals.map((item) => <td key={`fixed-ds-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ds}</td>)}
-                    <td className="px-3 py-2 text-center">{permanentDailyShiftTotals.reduce((sum, item) => sum + item.ds, 0)}</td>
-                  </tr>
-                  <tr className="border-t border-slate-200 bg-indigo-50 font-semibold text-indigo-900">
-                    <td className="sticky left-0 z-10 bg-indigo-50 px-3 py-2 text-left">Total NS</td>
-                    <td colSpan={5} className="px-3 py-2 text-center">Night Shift</td>
-                    {permanentDailyShiftTotals.map((item) => <td key={`fixed-ns-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ns}</td>)}
-                    <td className="px-3 py-2 text-center">{permanentDailyShiftTotals.reduce((sum, item) => sum + item.ns, 0)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </Card>
+          <div className="space-y-5">
+            {sectionOptions.map((section) => renderRosterTable(permanentRows, section, "fixed", cyclePermanentCell))}
+          </div>
         </TabsContent>
 
         <TabsContent value="field-break" className="space-y-4">
+          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
+            <div><p className="font-semibold text-foreground">Export Schedule Field Break</p><p className="text-sm text-muted-foreground">Export khusus tab Field Break.</p></div>
+            <TabExportActions tabTitle="Schedule Field Break" columns={["Site", "Minggu Masuk", "Minggu Libur", "Status"]} exportRows={Object.values(fieldBreakConfigs).map((config) => [sites.find((item) => String(item.id) === config.siteId)?.name ?? config.siteId, config.workWeeks, config.breakWeeks, "Sync ke Schedule + Schedule Tetap"])} />
+          </Card>
           <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
             <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_auto] lg:items-end">
               <div className="space-y-2">
@@ -783,11 +890,19 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           <SummaryTable columns={["Site", "Minggu Masuk", "Minggu Libur", "Status"]} rows={Object.values(fieldBreakConfigs).map((config) => [sites.find((item) => String(item.id) === config.siteId)?.name ?? config.siteId, config.workWeeks, config.breakWeeks, "Sync ke Schedule + Schedule Tetap"])} />
         </TabsContent>
 
-        <TabsContent value="allowance">
+        <TabsContent value="allowance" className="space-y-4">
+          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
+            <div><p className="font-semibold text-foreground">Export MSA + Meals</p><p className="text-sm text-muted-foreground">Export khusus tab allowance.</p></div>
+            <TabExportActions tabTitle="MSA Meals" columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} exportRows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.workDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
+          </Card>
           <SummaryTable columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} rows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.workDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
         </TabsContent>
 
         <TabsContent value="overtime" className="space-y-4">
+          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
+            <div><p className="font-semibold text-foreground">Export Overtime</p><p className="text-sm text-muted-foreground">Export khusus tab overtime.</p></div>
+            <TabExportActions tabTitle="Overtime" columns={["Employee", "Jabatan", "Total Jam", "Jam Dasar", "Overtime", "Roster"]} exportRows={rows.map((row) => [row.employee.name, row.employee.role, row.totalHours, row.workDays * 5, row.overtime, roster])} />
+          </Card>
           <SummaryTable columns={["Employee", "Jabatan", "Total Jam", "Jam Dasar", "Overtime", "Roster"]} rows={rows.map((row) => [row.employee.name, row.employee.role, row.totalHours, row.workDays * 5, row.overtime, roster])} />
           <div className="grid gap-3 lg:grid-cols-3">
             {overtimeRules.map((rule) => <Card key={rule.roster} className="surface-module-card rounded-[1rem] border-0 p-4"><p className="font-semibold">{rule.roster}</p><p className="mt-2 text-sm text-muted-foreground">Hari kerja: {rule.work}</p><p className="text-sm text-muted-foreground">Hari libur: {rule.off}</p></Card>)}
@@ -807,14 +922,17 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Section Roster</Label>
-                <Select value={profileSection} onValueChange={setProfileSection}>
+                <Select value={profileSection} onValueChange={handleProfileSectionChange}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{sectionOptions.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Posisi On Site</Label>
-                <Input value={profilePositionOnSite} onChange={(event) => setProfilePositionOnSite(event.target.value)} placeholder="Foreman, Operator, Admin, dll" />
+                <Select value={profilePositionOnSite} onValueChange={setProfilePositionOnSite}>
+                  <SelectTrigger><SelectValue placeholder="Pilih posisi on site" /></SelectTrigger>
+                  <SelectContent>{positionOptionsForSection(profileSection).map((position) => <SelectItem key={position} value={position}>{position}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>KIMPER LV</Label>
