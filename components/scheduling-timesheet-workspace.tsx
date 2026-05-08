@@ -277,7 +277,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
       kimperLv: false,
       kimperTh: false,
     };
-    return { employee, schedule, workDays, fieldBreakDays, totalHours, staff, msa, meals, overtime, profile };
+    const sectionLabel = employee.section || profile.section;
+    const rosterSection = normalizeRosterSection(sectionLabel);
+    return { employee, schedule, workDays, fieldBreakDays, totalHours, staff, msa, meals, overtime, profile, sectionLabel, rosterSection };
   });
 
   const permanentRows = rows.map((row) => ({
@@ -641,6 +643,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                     <th className="min-w-16 px-3 py-2">LV</th>
                     <th className="min-w-16 px-3 py-2">TH</th>
                     <th className="min-w-24 px-3 py-2">SN</th>
+                    <th className="min-w-36 px-3 py-2">Section</th>
                     <th className="min-w-36 px-3 py-2">Posisi On Site</th>
                     {days.map((day) => <th key={day} className="min-w-12 border-l border-slate-600 bg-lime-500 px-2 py-2 text-slate-950"><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div></th>)}
                     <th className="min-w-20 px-3 py-2">Total</th>
@@ -648,17 +651,18 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 </thead>
                 <tbody>
                   {sectionOptions.map((section) => {
-                    const sectionRows = rows.filter((row) => row.profile.section === section);
+                    const sectionRows = rows.filter((row) => row.rosterSection === section);
                     if (sectionRows.length === 0) return null;
 
                     return [
-                      <tr key={`${section}-header`} className="bg-slate-950 text-white"><td colSpan={days.length + 6} className="px-3 py-2 font-semibold uppercase tracking-[0.14em]">ROSTER CREW {section} {period}</td></tr>,
+                      <tr key={`${section}-header`} className="bg-slate-950 text-white"><td colSpan={days.length + 7} className="px-3 py-2 font-semibold uppercase tracking-[0.14em]">ROSTER CREW {section} {period}</td></tr>,
                       ...sectionRows.map((row) => (
                         <tr key={row.employee.id} className="border-b border-slate-200">
                           <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold"><button className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline" onClick={() => openEmployeeForm(row.employee.id)}>{row.employee.name}</button></td>
                           <td className="px-3 py-2 text-center">{row.profile.kimperLv ? "✓" : ""}</td>
                           <td className="px-3 py-2 text-center">{row.profile.kimperTh ? "✓" : ""}</td>
                           <td className="px-3 py-2 text-center">{row.employee.id}</td>
+                          <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
                           <td className="px-3 py-2 text-center">{row.profile.positionOnSite}</td>
                           {row.schedule.map((code, index) => <td key={`${row.employee.id}-${index}`} className="border-l border-slate-200 p-0 text-center"><button className={`h-8 w-full px-2 font-medium ${codeClass(code)}`} onClick={() => cycleCell(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>)}
                           <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
@@ -670,13 +674,13 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 bg-sky-50 font-semibold text-sky-900">
                     <td className="sticky left-0 z-10 bg-sky-50 px-3 py-2 text-left">Total DS</td>
-                    <td colSpan={4} className="px-3 py-2 text-center">Day Shift</td>
+                    <td colSpan={5} className="px-3 py-2 text-center">Day Shift</td>
                     {dailyShiftTotals.map((item) => <td key={`ds-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ds}</td>)}
                     <td className="px-3 py-2 text-center">{dailyShiftTotals.reduce((sum, item) => sum + item.ds, 0)}</td>
                   </tr>
                   <tr className="border-t border-slate-200 bg-indigo-50 font-semibold text-indigo-900">
                     <td className="sticky left-0 z-10 bg-indigo-50 px-3 py-2 text-left">Total NS</td>
-                    <td colSpan={4} className="px-3 py-2 text-center">Night Shift</td>
+                    <td colSpan={5} className="px-3 py-2 text-center">Night Shift</td>
                     {dailyShiftTotals.map((item) => <td key={`ns-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ns}</td>)}
                     <td className="px-3 py-2 text-center">{dailyShiftTotals.reduce((sum, item) => sum + item.ns, 0)}</td>
                   </tr>
@@ -708,6 +712,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                     <th className="min-w-16 px-3 py-2">LV</th>
                     <th className="min-w-16 px-3 py-2">TH</th>
                     <th className="min-w-24 px-3 py-2">SN</th>
+                    <th className="min-w-36 px-3 py-2">Section</th>
                     <th className="min-w-36 px-3 py-2">Posisi On Site</th>
                     {days.map((day) => <th key={day} className="min-w-12 border-l border-slate-600 bg-lime-500 px-2 py-2 text-slate-950"><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div></th>)}
                     <th className="min-w-20 px-3 py-2">Total</th>
@@ -715,17 +720,18 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 </thead>
                 <tbody>
                   {sectionOptions.map((section) => {
-                    const sectionRows = permanentRows.filter((row) => row.profile.section === section);
+                    const sectionRows = permanentRows.filter((row) => row.rosterSection === section);
                     if (sectionRows.length === 0) return null;
 
                     return [
-                      <tr key={`${section}-fixed-header`} className="bg-slate-950 text-white"><td colSpan={days.length + 6} className="px-3 py-2 font-semibold uppercase tracking-[0.14em]">ROSTER CREW {section} {period}</td></tr>,
+                      <tr key={`${section}-fixed-header`} className="bg-slate-950 text-white"><td colSpan={days.length + 7} className="px-3 py-2 font-semibold uppercase tracking-[0.14em]">ROSTER CREW {section} {period}</td></tr>,
                       ...sectionRows.map((row) => (
                         <tr key={row.employee.id} className="border-b border-slate-200">
                           <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold"><button className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline" onClick={() => openEmployeeForm(row.employee.id)}>{row.employee.name}</button></td>
                           <td className="px-3 py-2 text-center">{row.profile.kimperLv ? "✓" : ""}</td>
                           <td className="px-3 py-2 text-center">{row.profile.kimperTh ? "✓" : ""}</td>
                           <td className="px-3 py-2 text-center">{row.employee.id}</td>
+                          <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
                           <td className="px-3 py-2 text-center">{row.profile.positionOnSite}</td>
                           {row.schedule.map((code, index) => <td key={`${row.employee.id}-fixed-${index}`} className="border-l border-slate-200 p-0 text-center"><button className={`h-8 w-full px-2 font-medium ${codeClass(code)}`} onClick={() => cyclePermanentCell(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>)}
                           <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
@@ -737,13 +743,13 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 <tfoot>
                   <tr className="border-t-2 border-slate-300 bg-sky-50 font-semibold text-sky-900">
                     <td className="sticky left-0 z-10 bg-sky-50 px-3 py-2 text-left">Total DS</td>
-                    <td colSpan={4} className="px-3 py-2 text-center">Day Shift</td>
+                    <td colSpan={5} className="px-3 py-2 text-center">Day Shift</td>
                     {permanentDailyShiftTotals.map((item) => <td key={`fixed-ds-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ds}</td>)}
                     <td className="px-3 py-2 text-center">{permanentDailyShiftTotals.reduce((sum, item) => sum + item.ds, 0)}</td>
                   </tr>
                   <tr className="border-t border-slate-200 bg-indigo-50 font-semibold text-indigo-900">
                     <td className="sticky left-0 z-10 bg-indigo-50 px-3 py-2 text-left">Total NS</td>
-                    <td colSpan={4} className="px-3 py-2 text-center">Night Shift</td>
+                    <td colSpan={5} className="px-3 py-2 text-center">Night Shift</td>
                     {permanentDailyShiftTotals.map((item) => <td key={`fixed-ns-${item.day}`} className="border-l border-slate-200 px-2 py-2 text-center">{item.ns}</td>)}
                     <td className="px-3 py-2 text-center">{permanentDailyShiftTotals.reduce((sum, item) => sum + item.ns, 0)}</td>
                   </tr>
