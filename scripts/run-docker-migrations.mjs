@@ -11,6 +11,10 @@ const migrationsSchemaName = "drizzle";
 const migrationsTableName = "__drizzle_migrations";
 
 function logOutput(result) {
+  if (result.error) {
+    console.error(result.error);
+  }
+
   if (result.stdout) {
     process.stdout.write(result.stdout);
   }
@@ -25,6 +29,7 @@ function runDrizzleMigrate() {
     cwd: migrationRoot,
     encoding: "utf8",
     env: process.env,
+    shell: process.platform === "win32",
   });
 
   logOutput(result);
@@ -54,7 +59,7 @@ function getMigrationEntries() {
     );
     const addedColumns = Array.from(
       sql.matchAll(
-        /ALTER TABLE\s+"([^"]+)"\s+ADD COLUMN\s+"([^"]+)"/g,
+        /ALTER TABLE\s+"([^"]+)"\s+ADD COLUMN\s+(?:IF NOT EXISTS\s+)?"([^"]+)"/g,
       ),
       (match) => ({
         tableName: match[1],
