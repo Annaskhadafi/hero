@@ -1,0 +1,79 @@
+
+> hero@0.1.0 dev
+> next dev --turbopack
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://100.89.6.97:3000
+- Environments: .env.local, .env
+✓ Ready in 686ms
+
+○ Compiling /dashboard/scheduling-timesheet ...
+ GET /dashboard/scheduling-timesheet 307 in 10.5s (next.js: 8.9s, application-code: 1692ms)
+ GET /sign-in 200 in 1261ms (next.js: 961ms, application-code: 300ms)
+ GET / 307 in 1018ms (next.js: 673ms, application-code: 345ms)
+ GET / 307 in 345ms (next.js: 7ms, application-code: 338ms)
+ GET /sign-in 200 in 246ms (next.js: 13ms, application-code: 233ms)
+ GET /sign-in 200 in 135ms (next.js: 9ms, application-code: 125ms)
+ GET /manifest.webmanifest 200 in 774ms (next.js: 731ms, application-code: 43ms)
+ GET /manifest.webmanifest 200 in 21ms (next.js: 11ms, application-code: 10ms)
+ GET /api/auth/get-session 200 in 3.9s (next.js: 3.3s, application-code: 609ms)
+ POST /api/auth/sign-in/email 200 in 4.0s (next.js: 20ms, application-code: 4.0s)
+ GET /dashboard 200 in 66ms (next.js: 6ms, application-code: 60ms)
+ GET /api/auth/get-session 200 in 190ms (next.js: 15ms, application-code: 175ms)
+ GET /dashboard 200 in 55ms (next.js: 6ms, application-code: 49ms)
+ GET /dashboard/scheduling-timesheet 200 in 1147ms (next.js: 3ms, application-code: 1143ms)
+⨯ Error: timeout exceeded when trying to connect
+    at async getSidebarDataForUser (lib\hero-admin.ts:2928:22)
+    at async DashboardLayout (app\dashboard\layout.tsx:37:79)
+  2926 |   await ensureHeroGovernanceSeedData();
+  2927 |
+> 2928 |   const [employee] = await db
+       |                      ^
+  2929 |     .select({
+  2930 |       accessRole: employees.accessRole,
+  2931 |     }) {
+  digest: '73453691'
+}
+ GET /dashboard 200 in 105s (next.js: 1004ms, application-code: 104s)
+ GET /dashboard/scheduling-timesheet 500 in 35.0s (next.js: 3ms, application-code: 35.0s)
+ GET /dashboard 307 in 77s (next.js: 9ms, application-code: 77s)
+ GET /dashboard/central-service 200 in 29.1s (next.js: 452ms, application-code: 28.6s)
+ GET /manifest.webmanifest 200 in 67ms (next.js: 14ms, application-code: 52ms)
+ GET /manifest.webmanifest 200 in 24ms (next.js: 8ms, application-code: 16ms)
+○ Compiling /dashboard/analytics ...
+ GET /api/notifications 200 in 2.4s (next.js: 1000ms, application-code: 1401ms)
+ GET /api/notifications 200 in 2.4s (next.js: 1006ms, application-code: 1429ms)
+ GET /dashboard/analytics 200 in 4.0s (next.js: 2.3s, application-code: 1669ms)
+ GET /dashboard/analytics 200 in 1550ms (next.js: 9ms, application-code: 1541ms)
+ GET /api/notifications 200 in 534ms (next.js: 23ms, application-code: 511ms)
+ GET /manifest.webmanifest 200 in 24ms (next.js: 12ms, application-code: 12ms)
+ GET /dashboard/analytics 200 in 5.6s (next.js: 3.3s, application-code: 2.3s)
+ GET /manifest.webmanifest 200 in 12ms (next.js: 4ms, application-code: 8ms)
+ GET /api/notifications 200 in 356ms (next.js: 5ms, application-code: 350ms)
+ GET /api/central-service/employees?limit=10000 200 in 2.7s (next.js: 416ms, application-code: 2.3s)
+[browser] Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template). 
+    at completeWork (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:6945:102)
+    at runWithFiberInDEV (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:965:74)
+    at completeUnitOfWork (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:9622:23)
+    at performUnitOfWork (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:9557:28)
+    at workLoopSync (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:9449:40)
+    at renderRootSync (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:9433:13)
+    at performWorkOnRoot (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:9061:186)
+    at performWorkOnRootViaSchedulerTask (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10255:9)
+    at MessagePort.performWorkUntilDeadline (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_0rpq4pf._.js:2647:64) (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:6945:102)
+[browser] Uncaught Error: timeout exceeded when trying to connect
+    at  getSidebarDataForUser (lib\hero-admin.ts:2928:22)
+    at  DashboardLayout (app\dashboard\layout.tsx:37:79)
+    at resolveErrorDev (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_0p3wegg._.js:1919:105)
+    at processFullStringRow (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_0p3wegg._.js:2434:29)
+    at processFullBinaryRow (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_0p3wegg._.js:2393:9)
+    at processBinaryChunk (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_0p3wegg._.js:2502:221)
+    at progress (file://D:/[01] PROJECT/HERO/.next/dev/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_0p3wegg._.js:2689:13)
+  2926 |   await ensureHeroGovernanceSeedData();
+  2927 |
+> 2928 |   const [employee] = await db
+       |                      ^
+  2929 |     .select({
+  2930 |       accessRole: employees.accessRole,
+  2931 |     })

@@ -34,6 +34,7 @@ export const centralServiceEmployees = pgTable(
     siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),
     siteName: text("site_name").notNull().default(""),
     department: text("department").notNull().default(""),
+    section: text("section").notNull().default(""),
     position: text("position").notNull().default(""),
     employmentStatus: text("employment_status").notNull().default("active"), // active, inactive, resigned
     employmentType: text("employment_type").notNull().default("permanent"), // permanent, contract, outsource

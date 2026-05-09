@@ -178,3 +178,47 @@ export const timesheetSchedulingPlans = pgTable("hero_timesheet_scheduling_plans
 }, (table) => ({
   sitePeriodUnique: uniqueIndex("hero_timesheet_scheduling_plans_site_period_uidx").on(table.siteId, table.period),
 }));
+
+export const timesheetFieldBreakPlans = pgTable("hero_timesheet_field_break_plans", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  employeeName: text("employee_name").notNull(),
+  sectionName: text("section_name").notNull().default(""),
+  rosterSection: text("roster_section").notNull().default(""),
+  onSiteDate: date("on_site_date").notNull(),
+  dayCount: integer("day_count").notNull().default(90),
+  fieldBreakDate: date("field_break_date").notNull(),
+  savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  employeePeriodUnique: uniqueIndex("hero_timesheet_field_break_plans_employee_period_uidx").on(table.siteId, table.period, table.employeeId),
+}));
+
+export const timesheetAttendanceRealOverrides = pgTable("hero_timesheet_attendance_real_overrides", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  day: integer("day").notNull(),
+  status: text("status").notNull().default("empty"),
+  clockIn: text("clock_in").notNull().default(""),
+  clockOut: text("clock_out").notNull().default(""),
+  note: text("note").notNull().default(""),
+  source: text("source").notNull().default("manual"),
+  savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  employeeDayUnique: uniqueIndex("hero_timesheet_attendance_real_overrides_employee_day_uidx").on(table.siteId, table.period, table.employeeId, table.day),
+}));

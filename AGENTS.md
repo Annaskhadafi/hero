@@ -43,3 +43,16 @@ Rules:
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
 - After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+
+## code-review-graph
+
+This project also uses `code-review-graph` for token-efficient codebase navigation, change impact analysis, and safer reviews.
+
+Rules:
+- Before broad repo reading, initialize or refresh the graph with `build_or_update_graph_tool` for this repo root.
+- For architecture, dependency, hotspot, impact, or review questions, prefer `code-review-graph` tools before raw file reads: `get_minimal_context_tool`, `semantic_search_nodes_tool`, `query_graph_tool`, `traverse_graph_tool`, `get_impact_radius_tool`, and `detect_changes_tool`.
+- Start with `get_minimal_context_tool` for compact orientation, then drill into specific files/functions only when needed.
+- Use `query_graph_tool` for callers/callees/importers/tests, `traverse_graph_tool` for local neighborhoods, and `get_impact_radius_tool` / `detect_changes_tool` for changed-code risk.
+- After modifying code files, run `build_or_update_graph_tool` incrementally so future answers use current graph data.
+- Prefer graph summaries and targeted snippets over opening many raw files; only fall back to `rg`/manual reads when graph output is missing, stale, or ambiguous.
+- If graph stats look suspicious, verify with `list_graph_stats_tool` before relying on results.

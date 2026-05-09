@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Upload, CheckCircle, AlertCircle, Edit, Trash2, Eye, Plus, Check, ChevronDown, X, Search } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Edit, Trash2, Eye, Plus, Check, ChevronDown, X, Search, Users, UserCheck, UserX, Building2, RefreshCw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -164,6 +164,7 @@ export default function CentralServicePage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.append("limit", "10000"); // unlimited scroll
       if (search) params.append("search", search);
       if (syncFilter !== "all") params.append("syncStatus", syncFilter);
       const response = await fetch(`/api/central-service/employees?${params}`);
@@ -196,6 +197,23 @@ export default function CentralServicePage() {
     if (selectedSites.length > 0 && !selectedSites.includes(emp.site)) return false;
     return true;
   }), [employees, selectedSections, selectedSites]);
+
+  const dynamicStats = useMemo(() => {
+    const total = visibleEmployees.length;
+    const active = visibleEmployees.filter(e => e.employmentStatus === 'active').length;
+    const inactive = total - active;
+    const synced = visibleEmployees.filter(e => e.isSyncedToUserManagement).length;
+    const unsynced = total - synced;
+    
+    const sitesCount = visibleEmployees.reduce((acc, emp) => {
+      if (!emp.site) return acc;
+      acc[emp.site] = (acc[emp.site] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const topSite = Object.entries(sitesCount).sort((a, b) => b[1] - a[1])[0] || ['-', 0];
+
+    return { total, active, inactive, synced, unsynced, topSite };
+  }, [visibleEmployees]);
 
   const handleDelete = async (id: number) => {
     if (!confirm("Yakin hapus karyawan ini?")) return;
@@ -249,6 +267,49 @@ export default function CentralServicePage() {
     } catch { toast.error("Gagal menambahkan karyawan"); }
     finally { setSaving(false); }
   };
+  const handleExportExcel = () => {
+    if (visibleEmployees.length === 0) {
+      toast.error("Tidak ada data untuk diekspor");
+      return;
+    }
+
+    const headers = [
+      "SN",
+      "Nama",
+      "Email",
+      "Section",
+      "Site",
+      "Department",
+      "Position",
+      "Status",
+      "Sync"
+    ];
+
+    const rows = visibleEmployees.map((emp) => [
+      emp.employeeSn,
+      emp.fullName,
+      emp.email || "",
+      emp.section || "",
+      emp.site || "",
+      emp.department || "",
+      emp.position || "",
+      emp.employmentStatus,
+      emp.isSyncedToUserManagement ? "Synced" : "Not Synced"
+    ]);
+
+    const csvContent =
+      "data:text/csv;charset=utf-8,\uFEFF" +
+      [headers.join(";"), ...rows.map((row) => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";"))].join("\r\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `employee_central_service_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Berhasil mengunduh data!");
+  };
 
   return (
     <div className="container mx-auto py-8 space-y-6">
@@ -258,18 +319,86 @@ export default function CentralServicePage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Total Karyawan</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold">{stats.total}</div></CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200/50 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-blue-600">Total Karyawan</p>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-3xl font-bold text-blue-900">{dynamicStats.total}</h2>
+                  <span className="text-xs text-blue-700 font-medium">Karyawan</span>
+                </div>
+              </div>
+              <div className="p-3 bg-blue-500/10 rounded-xl">
+                <Users className="size-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Synced to User Mgmt</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-green-600">{stats.synced}</div></CardContent>
+
+        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200/50 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-emerald-600">Active Employees</p>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-3xl font-bold text-emerald-900">{dynamicStats.active}</h2>
+                  <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                    <CheckCircle className="size-3" /> Aktif
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-emerald-500/10 rounded-xl">
+                <UserCheck className="size-6 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Not Synced</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-orange-600">{stats.unsynced}</div></CardContent>
+
+        <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/50 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-amber-600">Not Synced</p>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-3xl font-bold text-amber-900">{dynamicStats.unsynced}</h2>
+                  <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
+                    <RefreshCw className="size-3" /> Butuh Sync
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-amber-500/10 rounded-xl">
+                <UserX className="size-6 text-amber-600" />
+              </div>
+            </div>
+            {dynamicStats.total > 0 && (
+              <div className="mt-4 h-1.5 w-full bg-amber-200/50 rounded-full overflow-hidden">
+                <div className="h-full bg-amber-500 rounded-full" style={{ width: `${(dynamicStats.synced / dynamicStats.total) * 100}%` }} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200/50 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between space-y-0">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-purple-600">Top Site</p>
+                <div className="flex flex-col">
+                  <h2 className="text-xl font-bold text-purple-900 truncate max-w-[120px]" title={String(dynamicStats.topSite[0])}>
+                    {dynamicStats.topSite[0]}
+                  </h2>
+                  <span className="text-xs text-purple-700 font-medium">
+                    {dynamicStats.topSite[1]} Karyawan
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-purple-500/10 rounded-xl">
+                <Building2 className="size-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 
@@ -298,6 +427,9 @@ export default function CentralServicePage() {
               }} />
               <Button variant="outline" onClick={() => document.getElementById("import-file")?.click()}>
                 <Upload className="mr-2 h-4 w-4" />Import Excel
+              </Button>
+              <Button variant="outline" onClick={handleExportExcel}>
+                <Download className="mr-2 h-4 w-4" />Export Excel
               </Button>
               <Button onClick={() => setAddOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />Tambah Karyawan
@@ -344,9 +476,9 @@ export default function CentralServicePage() {
           </div>
 
           {/* Table */}
-          <div className="border rounded-lg">
+          <div className="border rounded-lg max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-accent relative">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                 <TableRow>
                   <TableHead>SN</TableHead>
                   <TableHead>Nama</TableHead>

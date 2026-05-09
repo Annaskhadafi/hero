@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     const enriched = employees.map((emp) => ({
       ...emp,
-      section: sectionBySn[emp.employeeSn] ?? sectionBySn[`EMP-${emp.employeeSn}`] ?? "",
+      section: sectionBySn[emp.employeeSn] ?? sectionBySn[`EMP-${emp.employeeSn}`] ?? emp.section ?? "",
     }));
 
     return NextResponse.json({

@@ -54,7 +54,7 @@ import {
   trainingRecords,
   wellnessRecords,
 } from "@/db/schema/hero";
-import { timesheetSchedulingPlans } from "@/db/schema/timesheet";
+import { timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingPlans } from "@/db/schema/timesheet";
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
@@ -171,6 +171,118 @@ export async function saveSchedulingTimesheetPlanAction(input: z.infer<typeof sa
   revalidatePath("/dashboard/scheduling-timesheet");
 
   return { ok: true };
+}
+
+const saveTimesheetFieldBreakPlansSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  plans: z.array(z.object({
+    employeeId: z.number().int().positive(),
+    employeeName: z.string().min(1).max(200),
+    sectionName: z.string().max(160),
+    rosterSection: z.string().max(120),
+    onSiteDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dayCount: z.number().int().min(1).max(365),
+    fieldBreakDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })),
+});
+
+export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>) {
+  const payload = saveTimesheetFieldBreakPlansSchema.parse(input);
+  const actorEmail = await getCurrentActorEmail();
+  const actor = actorEmail ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1) : [];
+  const savedByUserId = actor[0]?.id ?? null;
+
+  for (const plan of payload.plans) {
+    await db
+      .insert(timesheetFieldBreakPlans)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        employeeId: plan.employeeId,
+        employeeName: plan.employeeName,
+        sectionName: plan.sectionName,
+        rosterSection: plan.rosterSection,
+        onSiteDate: plan.onSiteDate,
+        dayCount: plan.dayCount,
+        fieldBreakDate: plan.fieldBreakDate,
+        savedByUserId,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [timesheetFieldBreakPlans.siteId, timesheetFieldBreakPlans.period, timesheetFieldBreakPlans.employeeId],
+        set: {
+          employeeName: plan.employeeName,
+          sectionName: plan.sectionName,
+          rosterSection: plan.rosterSection,
+          onSiteDate: plan.onSiteDate,
+          dayCount: plan.dayCount,
+          fieldBreakDate: plan.fieldBreakDate,
+          savedByUserId,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  revalidatePath("/dashboard/scheduling-timesheet");
+
+  return { ok: true };
+}
+
+const attendanceRealStatusSchema = z.enum(["present", "empty", "sick", "leave", "absent"]);
+const saveAttendanceRealOverridesSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  overrides: z.array(z.object({
+    employeeId: z.number().int().positive(),
+    day: z.number().int().min(1).max(31),
+    status: attendanceRealStatusSchema,
+    clockIn: z.string().max(8).default(""),
+    clockOut: z.string().max(8).default(""),
+    note: z.string().max(240).default(""),
+    source: z.enum(["manual", "excel", "attendance"]).default("manual"),
+  })),
+});
+
+export async function saveAttendanceRealOverridesAction(input: z.infer<typeof saveAttendanceRealOverridesSchema>) {
+  const payload = saveAttendanceRealOverridesSchema.parse(input);
+  const actorEmail = await getCurrentActorEmail();
+  const actor = actorEmail ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1) : [];
+  const savedByUserId = actor[0]?.id ?? null;
+
+  if (!payload.overrides.length) return { ok: true, savedCount: 0 };
+
+  await db
+    .insert(timesheetAttendanceRealOverrides)
+    .values(payload.overrides.map((override) => ({
+      siteId: payload.siteId,
+      period: payload.period,
+      employeeId: override.employeeId,
+      day: override.day,
+      status: override.status,
+      clockIn: override.clockIn,
+      clockOut: override.clockOut,
+      note: override.note,
+      source: override.source,
+      savedByUserId,
+      updatedAt: new Date(),
+    })))
+    .onConflictDoUpdate({
+      target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day],
+      set: {
+        status: sql`excluded.status`,
+        clockIn: sql`excluded.clock_in`,
+        clockOut: sql`excluded.clock_out`,
+        note: sql`excluded.note`,
+        source: sql`excluded.source`,
+        savedByUserId,
+        updatedAt: new Date(),
+      },
+    });
+
+  revalidatePath("/dashboard/scheduling-timesheet");
+
+  return { ok: true, savedCount: payload.overrides.length };
 }
 
 const saveActivityDraftSchema = z.object({

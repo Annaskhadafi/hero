@@ -52,7 +52,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { session, user as authUser } from "@/db/schema/auth";
-import { timesheetSchedulingPlans } from "@/db/schema/timesheet";
+import { timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingPlans } from "@/db/schema/timesheet";
 import { ensureApprovalBlueprintSeedData } from "@/lib/approval-blueprint";
 import {
   ensureMasterCategoryTables,
@@ -2571,7 +2571,12 @@ export async function getOperationalCrudOptions() {
 
 export async function getSchedulingTimesheetOptions() {
   const users = await getSecurityUsersData();
-  const savedPlans = await db.select().from(timesheetSchedulingPlans).catch(() => []);
+  const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides] = await Promise.all([
+    db.select().from(timesheetSchedulingPlans).catch(() => []),
+    db.select().from(timesheetFieldBreakPlans).catch(() => []),
+    db.select().from(attendanceRecords).catch(() => []),
+    db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
+  ]);
   const activeUsers = users.filter((user) => user.isActive);
   const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
 
@@ -2606,6 +2611,41 @@ export async function getSchedulingTimesheetOptions() {
       employeeProfiles: plan.employeeProfiles as Array<{ employeeId: number; section: string; positionOnSite: string; kimperLv: boolean; kimperTh: boolean }>,
       fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
       updatedAt: plan.updatedAt.toISOString(),
+    })),
+    fieldBreakPlans: fieldBreakPlans.map((plan) => ({
+      siteId: plan.siteId,
+      period: plan.period,
+      employeeId: plan.employeeId,
+      employeeName: plan.employeeName,
+      sectionName: plan.sectionName,
+      rosterSection: plan.rosterSection,
+      onSiteDate: String(plan.onSiteDate),
+      dayCount: plan.dayCount,
+      fieldBreakDate: String(plan.fieldBreakDate),
+      updatedAt: plan.updatedAt.toISOString(),
+    })),
+    attendanceRecords: attendanceRows.map((record) => ({
+      employeeId: record.employeeId,
+      siteId: record.siteId,
+      eventType: record.eventType,
+      eventTime: record.eventTime.toISOString(),
+      status: record.status,
+      locationNote: record.locationNote,
+      photoUrl: record.photoUrl,
+      latitude: record.latitude,
+      longitude: record.longitude,
+    })),
+    attendanceOverrides: attendanceOverrides.map((override) => ({
+      siteId: override.siteId,
+      period: override.period,
+      employeeId: override.employeeId,
+      day: override.day,
+      status: ["present", "empty", "sick", "leave", "absent"].includes(override.status) ? override.status : "empty",
+      clockIn: override.clockIn,
+      clockOut: override.clockOut,
+      note: override.note,
+      source: ["manual", "excel", "attendance"].includes(override.source) ? override.source : "manual",
+      updatedAt: override.updatedAt.toISOString(),
     })),
   };
 }
