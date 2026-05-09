@@ -54,7 +54,8 @@ import {
   trainingRecords,
   wellnessRecords,
 } from "@/db/schema/hero";
-import { timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
+import { indonesiaHolidays, timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
+import { fetchIndonesiaHolidays } from "@/lib/openholiday";
 import { buildAttendanceImportPreview, attendanceImportRawRowsSchema, type AttendancePreviewConflict, type AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
 import {
   ensureHeroGovernanceSeedData,
@@ -116,6 +117,56 @@ async function assertSchedulingPeriodOpen(siteId: number, period: string) {
   if (status?.finalizedAt || status?.scheduleStatus === "finalized" || status?.attendanceStatus === "finalized") {
     throw new Error("Scheduling period is finalized. Reopen before editing.");
   }
+}
+
+const indonesiaHolidaySyncSchema = z.object({ year: z.number().int().min(2000).max(2100) });
+const indonesiaHolidayPeriodSchema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) });
+
+export async function syncIndonesiaHolidaysAction(input: z.infer<typeof indonesiaHolidaySyncSchema>) {
+  const payload = indonesiaHolidaySyncSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  const now = new Date();
+  const holidays = await fetchIndonesiaHolidays(payload.year);
+
+  if (holidays.length) {
+    await db.insert(indonesiaHolidays).values(holidays.map((holiday) => ({
+      date: holiday.date,
+      name: holiday.name,
+      localName: holiday.localName,
+      source: "openholiday",
+      sourceId: holiday.sourceId,
+      types: holiday.types,
+      nationwide: holiday.nationwide,
+      rawPayload: holiday.rawPayload,
+      syncedAt: now,
+      updatedAt: now,
+    }))).onConflictDoUpdate({
+      target: [indonesiaHolidays.date, indonesiaHolidays.source],
+      set: {
+        name: sql`excluded.name`,
+        localName: sql`excluded.local_name`,
+        sourceId: sql`excluded.source_id`,
+        types: sql`excluded.types`,
+        nationwide: sql`excluded.nationwide`,
+        rawPayload: sql`excluded.raw_payload`,
+        syncedAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true, count: holidays.length };
+}
+
+export async function getIndonesiaHolidaysAction(input: z.infer<typeof indonesiaHolidayPeriodSchema>) {
+  const payload = indonesiaHolidayPeriodSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  const [year, month] = payload.period.split("-").map(Number);
+  const start = `${payload.period}-01`;
+  const end = `${payload.period}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
+  const rows = await db.select({ date: indonesiaHolidays.date, name: indonesiaHolidays.name, localName: indonesiaHolidays.localName }).from(indonesiaHolidays).where(and(sql`${indonesiaHolidays.date} >= ${start}`, sql`${indonesiaHolidays.date} <= ${end}`)).orderBy(asc(indonesiaHolidays.date));
+  return rows.map((holiday) => ({ ...holiday, day: Number(holiday.date.slice(-2)) }));
 }
 
 const createActivitySchema = z.object({

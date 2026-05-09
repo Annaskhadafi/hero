@@ -162,6 +162,24 @@ export const timesheetValidationIssues = pgTable("hero_timesheet_validation_issu
 });
 
 
+export const indonesiaHolidays = pgTable("hero_indonesia_holidays", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  name: text("name").notNull(),
+  localName: text("local_name").notNull(),
+  countryCode: text("country_code").notNull().default("ID"),
+  source: text("source").notNull().default("openholiday"),
+  sourceId: text("source_id"),
+  types: jsonb("types").notNull().default([]),
+  nationwide: boolean("nationwide").notNull().default(true),
+  rawPayload: jsonb("raw_payload"),
+  syncedAt: timestamp("synced_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  dateSourceUnique: uniqueIndex("hero_indonesia_holidays_date_source_uidx").on(table.date, table.source),
+}));
+
 export const timesheetSchedulingConfigs = pgTable("hero_timesheet_scheduling_configs", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id")

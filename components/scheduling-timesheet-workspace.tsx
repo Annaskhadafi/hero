@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { applyAttendanceImportPreviewAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, reopenSchedulingPeriodAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction } from "@/app/dashboard/admin-actions";
+import { applyAttendanceImportPreviewAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, getIndonesiaHolidaysAction, reopenSchedulingPeriodAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction, syncIndonesiaHolidaysAction } from "@/app/dashboard/admin-actions";
+import { applyHolidayPolicy, classifyOvertimeDay, dateKey, daysInMonth, hoursFromCode, isHoliday, isWeekend, type HolidayLike } from "@/lib/timesheet-scheduling";
 import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-real-tab";
 import { AttendanceImportPreviewDialog } from "@/components/timesheet/attendance-import-preview-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -252,18 +253,6 @@ function isLeadershipPosition(value?: string | null) {
   return normalized === "leader" || normalized === "subleader";
 }
 
-function daysInMonth(period: string) {
-  const [year, month] = period.split("-").map(Number);
-  return new Date(year, month, 0).getDate();
-}
-
-function isWeekend(period: string, day: number) {
-  const [year, month] = period.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-
-  return date.getDay() === 0 || date.getDay() === 6;
-}
-
 function buildSchedule(employeeIndex: number, day: number, scheduleType: SiteScheduleType, period: string): ScheduleCode {
   if (scheduleType === "office") return isWeekend(period, day) ? "OFF" : "IN";
   if ((day + employeeIndex) % 9 === 0) return "OFF";
@@ -301,22 +290,18 @@ function weekdayLabel(period: string, day: number) {
   return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(new Date(year, month - 1, day));
 }
 
-function hoursFromCode(code: ScheduleCode) {
-  return code === "IN" || code === "DS" || code === "NS" || code === "FB" ? 5 : 0;
-}
-
 function rosterSectionLabel(section: string) {
   if (section === "Service Operation") return "Roster Serviceman";
   if (section === "Repair Retread") return "Crew Repair";
   return "Crew Office";
 }
 
-function calculateOvertimeFromVariables(schedule: ScheduleCode[], period: string, rosterType: SiteRosterType, overtimeVariables: OvertimeVariable[]) {
+function calculateOvertimeFromVariables(schedule: ScheduleCode[], period: string, rosterType: SiteRosterType, overtimeVariables: OvertimeVariable[], holidays: HolidayLike[]) {
   return schedule.reduce((sum, code, index) => {
     const totalHours = hoursFromCode(code);
     if (totalHours <= 0) return sum;
 
-    const dayType = isWeekend(period, index + 1) ? "off" : "work";
+    const dayType = classifyOvertimeDay(schedule, period, index, rosterType, holidays);
     const variable = overtimeVariables.find((item) => item.roster === rosterType && item.dayType === dayType && item.totalHours === totalHours);
 
     return sum + (variable?.overtimeHours ?? Math.max(0, totalHours - 5));
@@ -411,6 +396,8 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [siteConfigs, setSiteConfigs] = useState<Record<string, SiteSchedulingConfig>>({});
   const [allowanceVariables, setAllowanceVariables] = useState<AllowanceVariable[]>(defaultAllowanceVariables);
   const [overtimeVariables, setOvertimeVariables] = useState<OvertimeVariable[]>(defaultOvertimeVariables);
+  const [holidays, setHolidays] = useState<HolidayLike[]>([]);
+  const [isSyncingHolidays, startSyncingHolidays] = useTransition();
   const [manualAttendance, setManualAttendance] = useState<Record<string, ManualAttendanceCell>>({});
   const [selectedAttendanceCell, setSelectedAttendanceCell] = useState<{ employeeId: number; day: number } | null>(null);
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false);
@@ -467,6 +454,14 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     setAllowanceVariables(Array.isArray(firstConfig?.allowanceVariables) && firstConfig.allowanceVariables.length ? firstConfig.allowanceVariables as AllowanceVariable[] : defaultAllowanceVariables);
     setOvertimeVariables(Array.isArray(firstConfig?.overtimeVariables) && firstConfig.overtimeVariables.length ? firstConfig.overtimeVariables as OvertimeVariable[] : defaultOvertimeVariables);
   }, [schedulingConfigs, siteId]);
+
+  useEffect(() => {
+    let active = true;
+    getIndonesiaHolidaysAction({ period })
+      .then((items) => { if (active) setHolidays(items); })
+      .catch(() => { if (active) setHolidays([]); });
+    return () => { active = false; };
+  }, [period]);
 
   useEffect(() => {
     const scoped = attendanceOverrides.filter((override) => String(override.siteId) === siteId && override.period === period);
@@ -560,7 +555,8 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
       const fieldBreakCode = fieldBreakConfig ? buildFieldBreakSchedule(day, fieldBreakConfig.workWeeks, fieldBreakConfig.breakWeeks) : null;
       const scheduleType = siteScheduleTypes[siteId] ?? "office";
       const generatedCode = forceDayShift ? "DS" : buildSchedule(employeeIndex, day, scheduleType, period);
-      const code = overrides[`${employee.id}-${day}`] ?? fieldBreakCode ?? generatedCode;
+      const holidayAdjustedCode = applyHolidayPolicy(generatedCode, { scheduleType, rosterType: siteConfig.rosterType, isHoliday: isHoliday(period, day, holidays) });
+      const code = overrides[`${employee.id}-${day}`] ?? fieldBreakCode ?? holidayAdjustedCode;
 
       return code === "FB" && !fieldBreakConfig ? generatedCode : code;
     });
@@ -571,7 +567,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     const msa = siteConfig.msaType === "none" ? 0 : workDays * (siteConfig.msaType === "same-all" ? rate.msaNonStaff : staff ? rate.msaStaff : rate.msaNonStaff);
     const mealsBaseDays = siteConfig.mealsType === "workday" ? workDays : fieldBreakDays;
     const meals = siteConfig.mealsType === "none" ? 0 : mealsBaseDays * (staff ? rate.mealsStaff : rate.mealsNonStaff);
-    const overtime = siteConfig.overtimeType === "none" ? 0 : calculateOvertimeFromVariables(schedule, period, siteConfig.rosterType, overtimeVariables);
+    const overtime = siteConfig.overtimeType === "none" ? 0 : calculateOvertimeFromVariables(schedule, period, siteConfig.rosterType, overtimeVariables, holidays);
     const profile = employeeProfiles[employee.id] ?? {
       employeeId: employee.id,
       section: normalizeRosterSection(employee.section || employee.role),
@@ -621,7 +617,10 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 <th className="min-w-24 px-3 py-2">SN</th>
                 <th className="min-w-36 px-3 py-2">Section</th>
                 <th className="min-w-36 px-3 py-2">Posisi On Site</th>
-                {days.map((day) => <th key={day} className={`min-w-12 border-l border-slate-400 px-2 py-2 ${styles.day}`}><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div></th>)}
+                {days.map((day) => {
+                  const holiday = holidays.find((item) => item.date === dateKey(period, day) || item.day === day);
+                  return <th key={day} title={holiday?.localName ?? holiday?.name} className={`min-w-12 border-l border-slate-400 px-2 py-2 ${styles.day}`}><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div>{holiday ? <Badge variant="secondary" className="mt-1 px-1 text-[10px]">Libur</Badge> : null}</th>;
+                })}
                 <th className="min-w-20 px-3 py-2">Total</th>
               </tr>
             </thead>
@@ -795,6 +794,20 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           ? { workWeeks: fieldBreakConfigs[siteId].workWeeks, breakWeeks: fieldBreakConfigs[siteId].breakWeeks }
           : null,
       });
+    });
+  }
+
+  function syncHolidays() {
+    const year = Number(period.slice(0, 4));
+    startSyncingHolidays(async () => {
+      try {
+        await syncIndonesiaHolidaysAction({ year });
+        const items = await getIndonesiaHolidaysAction({ period });
+        setHolidays(items);
+        toast.success("Hari libur nasional disinkronkan");
+      } catch (error) {
+        toast.error("Sync hari libur gagal", { description: error instanceof Error ? error.message : "OpenHoliday tidak tersedia" });
+      }
     });
   }
 
@@ -1645,12 +1658,14 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               <p className="text-sm text-muted-foreground">Generate/edit draft dulu, lalu save agar jadi baseline Schedule Tetap.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={isSyncingHolidays} onClick={syncHolidays}><RefreshCw className="mr-2 size-4" /> {isSyncingHolidays ? "Sync..." : "Sync Hari Libur Nasional"}</Button>
               <TabExportActions tabTitle="Schedule" tableRows={rows} />
               <Button disabled={rows.length === 0 || isSavingSchedule || isFinalized} onClick={saveScheduleToPermanent}>
                 <Save className="mr-2 size-4" /> {isSavingSchedule ? "Menyimpan..." : "Save ke Schedule Tetap"}
               </Button>
             </div>
           </Card>
+          {holidays.length ? <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">{holidays.map((holiday) => <Badge key={holiday.date} variant="secondary">{holiday.day}: {holiday.localName || holiday.name}</Badge>)}</Card> : null}
           {selectedCell ? (
             <Card className="surface-module-card flex flex-wrap items-center gap-3 rounded-[1rem] border-0 p-3">
               <Badge variant="outline">Edit cell: hari {selectedCell.day}</Badge>
