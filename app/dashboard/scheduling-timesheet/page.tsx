@@ -11,7 +11,7 @@ export default async function SchedulingTimesheetPage() {
       title="Scheduling Time Sheet"
       description="Auto-generate jadwal tim tambang per site, lalu turunkan schedule menjadi MSA, Meals, dan overtime."
     >
-      <SchedulingTimesheetWorkspace employees={options.employees} sites={options.sites} savedPlans={options.savedPlans} fieldBreakPlans={options.fieldBreakPlans} attendanceRecords={options.attendanceRecords} attendanceOverrides={options.attendanceOverrides} />
+      <SchedulingTimesheetWorkspace employees={options.employees} sites={options.sites} savedPlans={options.savedPlans} fieldBreakPlans={options.fieldBreakPlans} attendanceRecords={options.attendanceRecords} attendanceOverrides={options.attendanceOverrides} schedulingConfigs={options.schedulingConfigs} schedulingStatuses={options.schedulingStatuses} importPreviews={options.importPreviews} />
     </AdminPageShell>
   );
 }

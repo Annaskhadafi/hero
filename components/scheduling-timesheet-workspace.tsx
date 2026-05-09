@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { saveAttendanceRealOverridesAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction } from "@/app/dashboard/admin-actions";
+import { saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction } from "@/app/dashboard/admin-actions";
 import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-real-tab";
 import { attendanceStatusLabel, calculateAttendanceOvertime, normalizeAttendanceStatus, type AttendanceCellStatus } from "@/lib/timesheet/attendance-real";
 
@@ -355,41 +355,6 @@ function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "2-digit" }).format(date).replace(/ /g, "-");
 }
 
-function siteConfigKey(siteId: string) {
-  return `hero:scheduling-site-config:${siteId}`;
-}
-
-function readSiteConfig(siteId: string): SiteSchedulingConfig {
-  if (typeof window === "undefined" || siteId === "all") return defaultSiteConfig;
-
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(siteConfigKey(siteId)) ?? "null") as Partial<SiteSchedulingConfig> | null;
-    return { ...defaultSiteConfig, ...parsed };
-  } catch {
-    return defaultSiteConfig;
-  }
-}
-
-function writeSiteConfig(siteId: string, config: SiteSchedulingConfig) {
-  if (typeof window === "undefined" || siteId === "all") return;
-  window.localStorage.setItem(siteConfigKey(siteId), JSON.stringify(config));
-}
-
-function readLocalJson<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-
-  try {
-    return JSON.parse(window.localStorage.getItem(key) ?? "null") ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeLocalJson<T>(key: string, value: T) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
-}
-
 function attendanceKey(employeeId: number, day: number) {
   return `${employeeId}-${day}`;
 }
@@ -409,7 +374,7 @@ function timeFromIso(value?: string) {
   return date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
 }
 
-export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = [], fieldBreakPlans = [], attendanceRecords = [], attendanceOverrides = [] }: { employees: EmployeeOption[]; sites: SiteOption[]; savedPlans?: SavedSchedulingPlan[]; fieldBreakPlans?: SavedFieldBreakPlan[]; attendanceRecords?: AttendanceRealRecord[]; attendanceOverrides?: SavedAttendanceOverride[] }) {
+export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = [], fieldBreakPlans = [], attendanceRecords = [], attendanceOverrides = [], schedulingConfigs = [] }: { employees: EmployeeOption[]; sites: SiteOption[]; savedPlans?: SavedSchedulingPlan[]; fieldBreakPlans?: SavedFieldBreakPlan[]; attendanceRecords?: AttendanceRealRecord[]; attendanceOverrides?: SavedAttendanceOverride[]; schedulingConfigs?: Array<{ siteId: number; scheduleType?: string; rosterType?: string; msaType?: string; mealsType?: string; overtimeType?: string; allowanceVariables?: unknown; overtimeVariables?: unknown }>; schedulingStatuses?: unknown[]; importPreviews?: unknown[] }) {
   const [period, setPeriod] = useState("2026-05");
   const [siteId, setSiteId] = useState(String(sites[0]?.id ?? "all"));
   const [roster, setRoster] = useState("5:2");
@@ -478,9 +443,10 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }, [attendanceRecords, period, siteId]);
 
   useEffect(() => {
-    setAllowanceVariables(readLocalJson("hero:scheduling-allowance-variables", defaultAllowanceVariables));
-    setOvertimeVariables(readLocalJson("hero:scheduling-overtime-variables", defaultOvertimeVariables));
-  }, []);
+    const firstConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId);
+    setAllowanceVariables(Array.isArray(firstConfig?.allowanceVariables) && firstConfig.allowanceVariables.length ? firstConfig.allowanceVariables as AllowanceVariable[] : defaultAllowanceVariables);
+    setOvertimeVariables(Array.isArray(firstConfig?.overtimeVariables) && firstConfig.overtimeVariables.length ? firstConfig.overtimeVariables as OvertimeVariable[] : defaultOvertimeVariables);
+  }, [schedulingConfigs, siteId]);
 
   useEffect(() => {
     const scoped = attendanceOverrides.filter((override) => String(override.siteId) === siteId && override.period === period);
@@ -499,11 +465,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   useEffect(() => {
     if (siteId === "all") return;
 
-    const config = readSiteConfig(siteId);
+    const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId);
+    const config = savedConfig ? { scheduleType: savedConfig.scheduleType as SiteScheduleType, rosterType: savedConfig.rosterType as SiteRosterType, msaType: savedConfig.msaType as SiteMsaType, mealsType: savedConfig.mealsType as SiteMealsType, overtimeType: savedConfig.overtimeType as SiteOvertimeType } : defaultSiteConfig;
     setSiteConfigs((current) => ({ ...current, [siteId]: config }));
     setRoster(config.rosterType);
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: config.scheduleType }));
-  }, [siteId]);
+  }, [siteId, schedulingConfigs]);
 
   useEffect(() => {
     if (!savedPlan) return;
@@ -862,7 +829,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   function saveSiteConfig() {
     if (siteId === "all") return;
 
-    writeSiteConfig(siteId, siteConfig);
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
     setRoster(siteConfig.rosterType);
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: siteConfig.scheduleType }));
     setOverrides({});
@@ -892,12 +859,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function saveAllowanceVariables() {
-    writeLocalJson("hero:scheduling-allowance-variables", allowanceVariables);
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
   }
 
   function resetAllowanceVariables() {
     setAllowanceVariables(defaultAllowanceVariables);
-    writeLocalJson("hero:scheduling-allowance-variables", defaultAllowanceVariables);
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables: defaultAllowanceVariables, overtimeVariables });
   }
 
   function updateOvertimeVariable(index: number, key: keyof OvertimeVariable, value: string | number) {
@@ -913,12 +880,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function saveOvertimeVariables() {
-    writeLocalJson("hero:scheduling-overtime-variables", overtimeVariables);
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
   }
 
   function resetOvertimeVariables() {
     setOvertimeVariables(defaultOvertimeVariables);
-    writeLocalJson("hero:scheduling-overtime-variables", defaultOvertimeVariables);
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables: defaultOvertimeVariables });
   }
 
   function setSelectedCode(code: ScheduleCode) {

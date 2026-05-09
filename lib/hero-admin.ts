@@ -52,7 +52,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { session, user as authUser } from "@/db/schema/auth";
-import { timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingPlans } from "@/db/schema/timesheet";
+import { timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
 import { ensureApprovalBlueprintSeedData } from "@/lib/approval-blueprint";
 import {
   ensureMasterCategoryTables,
@@ -2571,11 +2571,14 @@ export async function getOperationalCrudOptions() {
 
 export async function getSchedulingTimesheetOptions() {
   const users = await getSecurityUsersData();
-  const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides] = await Promise.all([
+  const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses, importPreviews] = await Promise.all([
     db.select().from(timesheetSchedulingPlans).catch(() => []),
     db.select().from(timesheetFieldBreakPlans).catch(() => []),
     db.select().from(attendanceRecords).catch(() => []),
     db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+    db.select().from(timesheetAttendanceImportPreviews).catch(() => []),
   ]);
   const activeUsers = users.filter((user) => user.isActive);
   const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
@@ -2646,6 +2649,47 @@ export async function getSchedulingTimesheetOptions() {
       note: override.note,
       source: ["manual", "excel", "attendance"].includes(override.source) ? override.source : "manual",
       updatedAt: override.updatedAt.toISOString(),
+    })),
+    schedulingConfigs: schedulingConfigs.map((config) => ({
+      siteId: config.siteId,
+      scheduleType: config.scheduleType,
+      rosterType: config.rosterType,
+      msaType: config.msaType,
+      mealsType: config.mealsType,
+      overtimeType: config.overtimeType,
+      fieldBreakConfig: config.fieldBreakConfig,
+      allowanceVariables: config.allowanceVariables,
+      overtimeVariables: config.overtimeVariables,
+      updatedAt: config.updatedAt.toISOString(),
+    })),
+    schedulingStatuses: schedulingStatuses.map((status) => ({
+      siteId: status.siteId,
+      period: status.period,
+      scheduleStatus: status.scheduleStatus,
+      attendanceStatus: status.attendanceStatus,
+      importStatus: status.importStatus,
+      conflictCount: status.conflictCount,
+      lastGeneratedAt: status.lastGeneratedAt?.toISOString() ?? null,
+      lastSavedAt: status.lastSavedAt?.toISOString() ?? null,
+      lastImportedAt: status.lastImportedAt?.toISOString() ?? null,
+      finalizedAt: status.finalizedAt?.toISOString() ?? null,
+      metadata: status.metadata,
+      updatedAt: status.updatedAt.toISOString(),
+    })),
+    importPreviews: importPreviews.map((preview) => ({
+      id: preview.id,
+      siteId: preview.siteId,
+      period: preview.period,
+      filename: preview.filename,
+      status: preview.status,
+      matchedCount: preview.matchedCount,
+      unmatchedCount: preview.unmatchedCount,
+      cellCount: preview.cellCount,
+      conflictCount: preview.conflictCount,
+      previewRows: preview.previewRows,
+      conflicts: preview.conflicts,
+      createdAt: preview.createdAt.toISOString(),
+      appliedAt: preview.appliedAt?.toISOString() ?? null,
     })),
   };
 }

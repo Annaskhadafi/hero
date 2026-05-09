@@ -1,4 +1,4 @@
-﻿import {
+import {
   boolean,
   integer,
   pgTable,
@@ -159,6 +159,68 @@ export const timesheetValidationIssues = pgTable("hero_timesheet_validation_issu
   resolutionNote: text("resolution_note"),
   
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+
+export const timesheetSchedulingConfigs = pgTable("hero_timesheet_scheduling_configs", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  scheduleType: text("schedule_type").notNull().default("office"),
+  rosterType: text("roster_type").notNull().default("5:2"),
+  msaType: text("msa_type").notNull().default("staff-nonstaff"),
+  mealsType: text("meals_type").notNull().default("field-break"),
+  overtimeType: text("overtime_type").notNull().default("five-hour"),
+  fieldBreakConfig: jsonb("field_break_config"),
+  allowanceVariables: jsonb("allowance_variables").notNull().default([]),
+  overtimeVariables: jsonb("overtime_variables").notNull().default([]),
+  savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  siteUnique: uniqueIndex("hero_timesheet_scheduling_configs_site_uidx").on(table.siteId),
+}));
+
+export const timesheetSchedulingStatuses = pgTable("hero_timesheet_scheduling_statuses", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  scheduleStatus: text("schedule_status").notNull().default("draft"),
+  attendanceStatus: text("attendance_status").notNull().default("draft"),
+  importStatus: text("import_status").notNull().default("none"),
+  conflictCount: integer("conflict_count").notNull().default(0),
+  lastGeneratedAt: timestamp("last_generated_at"),
+  lastSavedAt: timestamp("last_saved_at"),
+  lastImportedAt: timestamp("last_imported_at"),
+  finalizedAt: timestamp("finalized_at"),
+  savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sitePeriodUnique: uniqueIndex("hero_timesheet_scheduling_statuses_site_period_uidx").on(table.siteId, table.period),
+}));
+
+export const timesheetAttendanceImportPreviews = pgTable("hero_timesheet_attendance_import_previews", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  period: text("period").notNull(),
+  filename: text("filename").notNull(),
+  status: text("status").notNull().default("preview"),
+  matchedCount: integer("matched_count").notNull().default(0),
+  unmatchedCount: integer("unmatched_count").notNull().default(0),
+  cellCount: integer("cell_count").notNull().default(0),
+  conflictCount: integer("conflict_count").notNull().default(0),
+  previewRows: jsonb("preview_rows").notNull().default([]),
+  conflicts: jsonb("conflicts").notNull().default([]),
+  uploadedByUserId: text("uploaded_by_user_id").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  appliedAt: timestamp("applied_at"),
 });
 
 export const timesheetSchedulingPlans = pgTable("hero_timesheet_scheduling_plans", {

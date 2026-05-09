@@ -17,7 +17,16 @@ export type AuditAction =
   | "user.bulk_deactivated"
   | "user.bulk_deleted"
   | "user.bulk_banned"
-  | "user.bulk_unbanned";
+  | "user.bulk_unbanned"
+  | "timesheet.config_saved"
+  | "timesheet.schedule_saved"
+  | "timesheet.field_break_saved"
+  | "timesheet.attendance_saved"
+  | "timesheet.import_previewed"
+  | "timesheet.import_applied"
+  | "timesheet.import_discarded"
+  | "timesheet.period_finalized"
+  | "timesheet.period_reopened";
 
 export type AuditSeverity = "info" | "warning" | "critical";
 
