@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { AttendancePreviewConflict, AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
 
-export function AttendanceImportPreviewDialog({ open, preview, mode, disabled, onModeChange, onApply, onDiscard }: {
+export function AttendanceImportPreviewDialog({ open, preview, mode, disabled, onModeChange, onApply, onDiscard, onRequestClose }: {
   open: boolean;
   preview: { previewId: number; matchedCount: number; unmatchedCount: number; cellCount: number; conflictCount: number; previewRows: AttendancePreviewRow[]; conflicts: AttendancePreviewConflict[] } | null;
   mode: "skip-conflicts" | "overwrite-conflicts";
@@ -13,9 +13,10 @@ export function AttendanceImportPreviewDialog({ open, preview, mode, disabled, o
   onModeChange: (mode: "skip-conflicts" | "overwrite-conflicts") => void;
   onApply: () => void;
   onDiscard: () => void;
+  onRequestClose: () => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onDiscard()}>
+    <Dialog open={open} onOpenChange={(next) => !next && onRequestClose()}>
       <DialogContent className="max-w-3xl">
         <DialogHeader><DialogTitle>Attendance import preview</DialogTitle></DialogHeader>
         {!preview ? null : (
@@ -26,6 +27,7 @@ export function AttendanceImportPreviewDialog({ open, preview, mode, disabled, o
               <div className="rounded-lg border p-3"><div className="text-muted-foreground">Cells</div><div className="text-xl font-semibold">{preview.cellCount}</div></div>
               <div className="rounded-lg border p-3"><div className="text-muted-foreground">Conflicts</div><div className="text-xl font-semibold text-orange-700">{preview.conflictCount}</div></div>
             </div>
+            {preview.conflictCount ? <div className="rounded-lg bg-orange-50 p-3 text-sm text-orange-800">{preview.conflictCount} conflicts found. Review before applying overwrite.</div> : null}
             <div className="max-h-48 overflow-auto rounded-lg border text-sm">
               {preview.previewRows.filter((row) => row.unmatched || row.duplicate || row.crossSite).slice(0, 20).map((row, index) => (
                 <div key={index} className="flex justify-between border-b px-3 py-2 last:border-b-0">
@@ -48,12 +50,12 @@ export function AttendanceImportPreviewDialog({ open, preview, mode, disabled, o
               <Select value={mode} onValueChange={onModeChange}>
                 <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="skip-conflicts">Skip conflicts</SelectItem>
+                  <SelectItem value="skip-conflicts">Skip conflicts (recommended)</SelectItem>
                   <SelectItem value="overwrite-conflicts">Overwrite conflicts</SelectItem>
                 </SelectContent>
               </Select>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={onDiscard} disabled={disabled}>Discard</Button>
+                <Button variant="outline" onClick={onDiscard} disabled={disabled}>Discard preview</Button>
                 <Button onClick={onApply} disabled={disabled}>Apply import</Button>
               </div>
             </div>

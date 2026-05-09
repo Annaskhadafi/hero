@@ -32,6 +32,23 @@ describe("scheduling timesheet workflow", () => {
     expect(preview.conflicts).toHaveLength(2);
   });
 
+  it("does not use native prompts in scheduling workspace", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "components/scheduling-timesheet-workspace.tsx"), "utf8");
+    expect(source).not.toContain("window.prompt");
+  });
+
+  it("keeps import preview close separate from discard", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "components/timesheet/attendance-import-preview-dialog.tsx"), "utf8");
+    expect(source).toContain("onRequestClose");
+    expect(source).toContain("onOpenChange={(next) => !next && onRequestClose()}");
+  });
+
+  it("labels CSV export accurately", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "components/scheduling-timesheet-workspace.tsx"), "utf8");
+    expect(source).toContain("Export CSV");
+    expect(source).not.toContain("Export Excel");
+  });
+
   it("keeps DB status serialization keys stable", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "lib/hero-admin.ts"), "utf8");
     for (const key of ["scheduleStatus", "attendanceStatus", "importStatus", "conflictCount", "finalizedAt", "metadata"]) {

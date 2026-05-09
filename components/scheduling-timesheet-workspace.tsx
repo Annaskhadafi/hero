@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,6 +17,7 @@ import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-rea
 import { AttendanceImportPreviewDialog } from "@/components/timesheet/attendance-import-preview-dialog";
 import { SchedulingStatusRail } from "@/components/timesheet/scheduling-status-rail";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
 import { attendanceStatusLabel, calculateAttendanceOvertime, normalizeAttendanceStatus, type AttendanceCellStatus } from "@/lib/timesheet/attendance-real";
 import type { AttendancePreviewConflict, AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
 
@@ -421,6 +423,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false);
   const [isSavingAttendance, startSavingAttendance] = useTransition();
   const [isSavingSchedule, startSavingSchedule] = useTransition();
+  const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [finalizeReason, setFinalizeReason] = useState("");
+  const [reopenReason, setReopenReason] = useState("");
+  const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false);
+  const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false);
   const dayCount = daysInMonth(period);
   const days = Array.from({ length: dayCount }, (_, index) => index + 1);
   const site = sites.find((item) => String(item.id) === siteId);
@@ -430,6 +438,11 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const savedPlan = savedPlans.find((plan) => String(plan.siteId) === siteId && plan.period === period);
   const currentStatus = schedulingStatuses.find((status) => String(status.siteId) === siteId && status.period === period) ?? null;
   const isFinalized = Boolean(currentStatus?.finalizedAt || currentStatus?.scheduleStatus === "finalized" || currentStatus?.attendanceStatus === "finalized");
+  function guardOpenPeriod(actionLabel: string) {
+    if (!isFinalized) return true;
+    toast.error(`${actionLabel} blocked`, { description: "Period finalized. Reopen before editing." });
+    return false;
+  }
   const attendanceByCell = useMemo(() => {
     const map = new Map<string, { clockIn?: AttendanceRealRecord; clockOut?: AttendanceRealRecord; records: AttendanceRealRecord[] }>();
 
@@ -713,6 +726,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const missingServicemanKimperDays = servicemanKimperCoverage.filter((item) => !item.hasDayShift || !item.hasNightShift);
 
   function cycleCell(employeeId: number, day: number) {
+    if (!guardOpenPeriod("Edit schedule")) return;
     const key = `${employeeId}-${day}`;
     const current = overrides[key] ?? rows.find((row) => row.employee.id === employeeId)?.schedule[day - 1] ?? "IN";
     const next = codeCycle[(codeCycle.indexOf(current) + 1) % codeCycle.length];
@@ -721,6 +735,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function cyclePermanentCell(employeeId: number, day: number) {
+    if (!guardOpenPeriod("Edit fixed schedule")) return;
     const key = `${employeeId}-${day}`;
     const current = permanentOverrides[key] ?? permanentRows.find((row) => row.employee.id === employeeId)?.schedule[day - 1] ?? "IN";
     const next = codeCycle[(codeCycle.indexOf(current) + 1) % codeCycle.length];
@@ -729,6 +744,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function saveScheduleToPermanent() {
+    if (!guardOpenPeriod("Save schedule")) return;
     const nextBase = rows.reduce<Record<string, ScheduleCode>>((base, row) => {
       row.schedule.forEach((code, index) => {
         base[`${row.employee.id}-${index + 1}`] = code;
@@ -744,6 +760,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function savePermanentSchedule() {
+    if (!guardOpenPeriod("Save fixed schedule")) return;
     const nextBase = permanentRows.reduce<Record<string, ScheduleCode>>((base, row) => {
       row.schedule.forEach((code, index) => {
         base[`${row.employee.id}-${index + 1}`] = code;
@@ -798,6 +815,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function updateFieldBreakDraft(employeeId: number, key: keyof FieldBreakDraft, value: string | number) {
+    if (!guardOpenPeriod("Edit field break")) return;
     setFieldBreakDrafts((current) => {
       const existing = current[employeeId] ?? { employeeId, onSiteDate: `${period}-01`, dayCount: 90 };
 
@@ -812,6 +830,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function syncFieldBreakPlansToDatabase() {
+    if (!guardOpenPeriod("Sync field break")) return;
     const numericSiteId = Number(fieldBreakSiteId);
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || fieldBreakRows.length === 0) return;
 
@@ -835,6 +854,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function saveSiteConfig() {
+    if (!guardOpenPeriod("Save site settings")) return;
     if (siteId === "all") return;
 
     void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
@@ -846,6 +866,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function updateSiteConfig<Key extends keyof SiteSchedulingConfig>(key: Key, value: SiteSchedulingConfig[Key]) {
+    if (!guardOpenPeriod("Edit site settings")) return;
     if (siteId === "all") return;
 
     setSiteConfigs((current) => ({
@@ -897,6 +918,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function setSelectedCode(code: ScheduleCode) {
+    if (!guardOpenPeriod("Edit schedule")) return;
     if (!selectedCell) return;
     setOverrides((currentOverrides) => ({ ...currentOverrides, [`${selectedCell.employeeId}-${selectedCell.day}`]: code }));
   }
@@ -1048,7 +1070,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     printable.document.close();
   }
 
-  function exportExcel(tabTitle: string, columns: string[], exportRows: Array<Array<string | number>>) {
+  function exportCsv(tabTitle: string, columns: string[], exportRows: Array<Array<string | number>>) {
     const csv = [columns, ...exportRows]
       .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -1095,14 +1117,15 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         <Button size="sm" variant="outline" disabled={tableRows.length === 0 && excelRows.length === 0} onClick={() => (columns && exportRows ? exportSummaryPdf(tabTitle, excelColumns, excelRows) : exportRosterPdf(tabTitle, tableRows))}>
           <Download className="mr-2 size-4" /> Export PDF
         </Button>
-        <Button size="sm" variant="outline" disabled={excelRows.length === 0} onClick={() => exportExcel(tabTitle, excelColumns, excelRows)}>
-          <Download className="mr-2 size-4" /> Export Excel
+        <Button size="sm" variant="outline" disabled={excelRows.length === 0} onClick={() => exportCsv(tabTitle, excelColumns, excelRows)}>
+          <Download className="mr-2 size-4" /> Export CSV
         </Button>
       </div>
     );
   }
 
   function applyEmployeeEdit() {
+    if (!guardOpenPeriod("Edit employee schedule")) return;
     if (!selectedEmployee) return;
     const backup = visibleEmployees.find((employee) => String(employee.id) === backupEmployeeId) ?? null;
     const nextOverrides: Record<string, ScheduleCode> = {};
@@ -1178,6 +1201,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function updateAttendanceCell(employeeId: number, day: number, patch: Partial<ManualAttendanceCell>) {
+    if (!guardOpenPeriod("Edit attendance")) return;
     const key = attendanceKey(employeeId, day);
     setManualAttendance((current) => ({
       ...current,
@@ -1187,6 +1211,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function cycleAttendanceCell(employeeId: number, day: number) {
+    if (!guardOpenPeriod("Edit attendance")) return;
     const current = getAttendanceCell(employeeId, day);
     const cycle: AttendanceCellStatus[] = ["present", "sick", "leave", "absent", "empty"];
     const nextStatus = cycle[(cycle.indexOf(current.status) + 1) % cycle.length];
@@ -1199,11 +1224,13 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function toggleAttendanceSelection(employeeId: number, day: number) {
+    if (!guardOpenPeriod("Select attendance")) return;
     const key = attendanceKey(employeeId, day);
     setSelectedAttendanceKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
   }
 
   function applyBulkAttendance(patch: Partial<ManualAttendanceCell>) {
+    if (!guardOpenPeriod("Bulk edit attendance")) return;
     setManualAttendance((current) => {
       const next = { ...current };
       for (const key of selectedAttendanceKeys) {
@@ -1221,9 +1248,10 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   async function importAttendanceExcel(file: File | null) {
-    if (!file || isFinalized) return;
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
+    if (!file || !guardOpenPeriod("Import attendance")) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
     const rawRows = records.flatMap((record) => {
@@ -1240,25 +1268,44 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     });
     const numericSiteId = Number(siteId);
     const result = await createAttendanceImportPreviewAction({ siteId: numericSiteId, period, filename: file.name, rows: rawRows as any, fixedSchedule: rows.map((row) => ({ employeeId: row.employee.id, schedule: row.schedule })) });
-    setAttendanceImportPreview({ previewId: result.previewId, matchedCount: result.matchedCount, unmatchedCount: result.unmatchedCount, cellCount: result.cellCount, conflictCount: result.conflictCount, previewRows: result.previewRows, conflicts: result.conflicts });
+      setAttendanceImportPreview({ previewId: result.previewId, matchedCount: result.matchedCount, unmatchedCount: result.unmatchedCount, cellCount: result.cellCount, conflictCount: result.conflictCount, previewRows: result.previewRows, conflicts: result.conflicts });
+      toast.success("Import preview ready");
+    } catch (error) {
+      toast.error("Import preview failed", { description: error instanceof Error ? error.message : "Unknown error" });
+    }
   }
 
   function applyAttendanceImportPreview() {
-    if (!attendanceImportPreview || isFinalized) return;
+    if (!attendanceImportPreview || !guardOpenPeriod("Apply attendance import")) return;
+    if (attendanceImportMode === "overwrite-conflicts" && attendanceImportPreview.conflictCount > 0) {
+      setOverwriteImportDialogOpen(true);
+      return;
+    }
+    confirmApplyAttendanceImportPreview();
+  }
+
+  function confirmApplyAttendanceImportPreview() {
+    if (!attendanceImportPreview || !guardOpenPeriod("Apply attendance import")) return;
     startSavingAttendance(async () => {
-      const result = await applyAttendanceImportPreviewAction({ previewId: attendanceImportPreview.previewId, mode: attendanceImportMode });
-      const next: Record<string, ManualAttendanceCell> = {};
-      for (const row of result.rows) {
-        next[attendanceKey(row.employeeId!, row.day)] = { status: row.status, clockIn: row.clockIn, clockOut: row.clockOut, note: row.note, source: "excel" };
+      try {
+        const result = await applyAttendanceImportPreviewAction({ previewId: attendanceImportPreview.previewId, mode: attendanceImportMode });
+        const next: Record<string, ManualAttendanceCell> = {};
+        for (const row of result.rows) {
+          next[attendanceKey(row.employeeId!, row.day)] = { status: row.status, clockIn: row.clockIn, clockOut: row.clockOut, note: row.note, source: "excel" };
+        }
+        setManualAttendance((current) => ({ ...current, ...next }));
+        setAttendanceImportPreview(null);
+        setAttendanceSavedAt(new Date().toISOString());
+        setIsAttendanceDirty(false);
+        toast.success("Attendance import applied");
+      } catch (error) {
+        toast.error("Apply import failed", { description: error instanceof Error ? error.message : "Unknown error" });
       }
-      setManualAttendance((current) => ({ ...current, ...next }));
-      setAttendanceImportPreview(null);
-      setAttendanceSavedAt(new Date().toISOString());
-      setIsAttendanceDirty(false);
     });
   }
 
   function saveAttendanceReal() {
+    if (!guardOpenPeriod("Save attendance")) return;
     const numericSiteId = Number(siteId);
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return;
     const overrides = Object.entries(manualAttendance).map(([key, cell]) => {
@@ -1267,10 +1314,15 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     });
 
     startSavingAttendance(async () => {
-      const result = await saveAttendanceRealOverridesAction({ siteId: numericSiteId, period, overrides });
-      if (result.ok) {
-        setAttendanceSavedAt(new Date().toISOString());
-        setIsAttendanceDirty(false);
+      try {
+        const result = await saveAttendanceRealOverridesAction({ siteId: numericSiteId, period, overrides });
+        if (result.ok) {
+          setAttendanceSavedAt(new Date().toISOString());
+          setIsAttendanceDirty(false);
+          toast.success("Attendance saved");
+        }
+      } catch (error) {
+        toast.error("Save attendance failed", { description: error instanceof Error ? error.message : "Unknown error" });
       }
     });
   }
@@ -1278,35 +1330,78 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   function discardAttendanceImportPreview() {
     if (!attendanceImportPreview) return;
     startSavingAttendance(async () => {
-      await discardAttendanceImportPreviewAction({ previewId: attendanceImportPreview.previewId });
-      setAttendanceImportPreview(null);
+      try {
+        await discardAttendanceImportPreviewAction({ previewId: attendanceImportPreview.previewId });
+        setAttendanceImportPreview(null);
+        setDiscardImportDialogOpen(false);
+        toast.success("Import preview discarded");
+      } catch (error) {
+        toast.error("Discard failed", { description: error instanceof Error ? error.message : "Unknown error" });
+      }
     });
   }
 
   const attendanceConflicts = rows.flatMap((row) => row.schedule.map((code, index) => {
     const day = index + 1;
     const cell = getAttendanceCell(row.employee.id, day);
-    return cell.status === "present" && ["OFF", "FB", "Sakit", "Libur"].includes(code) ? { employeeId: row.employee.id, employeeName: row.employee.name, day, scheduleCode: code } : null;
-  }).filter(Boolean) as Array<{ employeeId: number; employeeName: string; day: number; scheduleCode: string }>);
+    return cell.status === "present" && ["OFF", "FB", "Sakit", "Libur"].includes(code) ? { employeeId: row.employee.id, employeeName: row.employee.name, day, scheduleCode: code, currentCell: cell } : null;
+  }).filter(Boolean) as Array<{ employeeId: number; employeeName: string; day: number; scheduleCode: string; currentCell: ManualAttendanceCell }>);
+
+  function clearAttendanceConflict(employeeId: number, day: number) {
+    updateAttendanceCell(employeeId, day, { status: "empty", clockIn: "", clockOut: "", note: "" });
+  }
+
+  function markConflictScheduleWorking(employeeId: number, day: number) {
+    if (!guardOpenPeriod("Resolve conflict")) return;
+    const key = `${employeeId}-${day}`;
+    const workingCode: ScheduleCode = siteConfig.scheduleType === "shift" ? "DS" : "IN";
+    setOverrides((currentOverrides) => ({ ...currentOverrides, [key]: workingCode }));
+    setSelectedCell({ employeeId, day });
+  }
+
+  function clearAllAttendanceConflicts() {
+    if (!guardOpenPeriod("Clear conflicts")) return;
+    for (const conflict of attendanceConflicts) clearAttendanceConflict(conflict.employeeId, conflict.day);
+  }
+
+  function markAllConflictSchedulesWorking() {
+    if (!guardOpenPeriod("Resolve conflicts")) return;
+    const workingCode: ScheduleCode = siteConfig.scheduleType === "shift" ? "DS" : "IN";
+    setOverrides((currentOverrides) => {
+      const next = { ...currentOverrides };
+      for (const conflict of attendanceConflicts) next[attendanceKey(conflict.employeeId, conflict.day)] = workingCode;
+      return next;
+    });
+  }
   const conflictKeySet = new Set(attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day)));
   const displayedAttendanceRows = showConflictsOnly ? rows.filter((row) => days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))) : rows;
 
-  function finalizePeriod() {
+  function submitFinalizePeriod() {
     const numericSiteId = Number(siteId);
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) return;
     startSavingSchedule(async () => {
-      await finalizeSchedulingPeriodAction({ siteId: numericSiteId, period, reason: window.prompt("Finalize reason (optional)") ?? "" });
-      window.location.reload();
+      try {
+        await finalizeSchedulingPeriodAction({ siteId: numericSiteId, period, reason: finalizeReason });
+        toast.success("Period finalized");
+        window.location.reload();
+      } catch (error) {
+        toast.error("Finalize failed", { description: error instanceof Error ? error.message : "Unknown error" });
+      }
     });
   }
 
-  function reopenPeriod() {
+  function submitReopenPeriod() {
     const numericSiteId = Number(siteId);
-    const reason = window.prompt("Reopen reason");
+    const reason = reopenReason.trim();
     if (!reason || !Number.isFinite(numericSiteId) || numericSiteId <= 0) return;
     startSavingSchedule(async () => {
-      await reopenSchedulingPeriodAction({ siteId: numericSiteId, period, reason });
-      window.location.reload();
+      try {
+        await reopenSchedulingPeriodAction({ siteId: numericSiteId, period, reason });
+        toast.success("Period reopened");
+        window.location.reload();
+      } catch (error) {
+        toast.error("Reopen failed", { description: error instanceof Error ? error.message : "Unknown error" });
+      }
     });
   }
 
@@ -1405,7 +1500,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
             <Button className="h-10 w-full lg:w-auto" disabled={siteId === "all" || isFinalized} onClick={() => { saveSiteConfig(); setIsGenerated(true); }}>
               <RefreshCw className="mr-2 size-4" /> Generate Auto Scheduling
             </Button>
-            {isFinalized ? <Button variant="outline" disabled={isSavingSchedule} onClick={reopenPeriod}>Reopen</Button> : <Button variant="outline" disabled={siteId === "all" || isSavingSchedule} onClick={finalizePeriod}>Finalize</Button>}
+            {isFinalized ? <Button variant="outline" disabled={isSavingSchedule} onClick={() => setReopenDialogOpen(true)}>Reopen</Button> : <Button variant="outline" disabled={siteId === "all" || isSavingSchedule} onClick={() => setFinalizeDialogOpen(true)}>Finalize</Button>}
           </div>
         </div>
       </Card>
@@ -1583,7 +1678,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               <Button asChild variant="outline" disabled={isFinalized}>
                 <Label className="h-10 cursor-pointer px-4">
                   <Upload className="mr-2 size-4" /> Import Excel
-                  <Input disabled={isFinalized} className="hidden" type="file" accept=".xlsx,.xls,.csv" onChange={(event) => importAttendanceExcel(event.target.files?.[0] ?? null)} />
+                  <Input disabled={isFinalized} className="hidden" type="file" accept=".xlsx,.xls,.csv" onChange={(event) => { void importAttendanceExcel(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
                 </Label>
               </Button>
               <Button variant="outline" onClick={downloadAttendanceTemplate}>
@@ -1608,7 +1703,17 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               {attendanceImportPreview ? <span className="text-muted-foreground">Import preview: {attendanceImportPreview.matchedCount} matched, {attendanceImportPreview.cellCount} cells, {attendanceImportPreview.conflictCount} conflicts</span> : null}
             </Card>
           ) : null}
-          {attendanceConflicts.length ? <Alert><AlertDescription>{attendanceConflicts.length} attendance conflicts detected. <Button size="sm" variant="link" className="h-auto p-0" onClick={() => setShowConflictsOnly((value) => !value)}>{showConflictsOnly ? "Show all" : "Show conflicts only"}</Button></AlertDescription></Alert> : null}
+          {attendanceConflicts.length ? (
+            <Card className="surface-module-card rounded-[1rem] border-0 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><p className="font-semibold text-orange-800">{attendanceConflicts.length} attendance conflicts</p><p className="text-sm text-muted-foreground">Present attendance on OFF/FB/Sakit/Libur schedule cells.</p></div>
+                <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setShowConflictsOnly((value) => !value)}>{showConflictsOnly ? "Show all" : "Show conflicts only"}</Button><Button size="sm" variant="outline" disabled={isFinalized} onClick={clearAllAttendanceConflicts}>Clear attendance for all conflicts</Button><Button size="sm" disabled={isFinalized} onClick={markAllConflictSchedulesWorking}>Use attendance / mark schedule working</Button></div>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {attendanceConflicts.slice(0, 12).map((conflict) => <div key={`${conflict.employeeId}-${conflict.day}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-orange-50 p-2 text-sm"><span>{conflict.employeeName} · day {conflict.day} · {conflict.scheduleCode} · {attendanceStatusLabel(conflict.currentCell.status)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={isFinalized} onClick={() => clearAttendanceConflict(conflict.employeeId, conflict.day)}>Clear attendance</Button><Button size="sm" variant="outline" disabled={isFinalized} onClick={() => markConflictScheduleWorking(conflict.employeeId, conflict.day)}>Mark schedule working</Button></span></div>)}
+              </div>
+            </Card>
+          ) : null}
           <AttendanceRealBulkToolbar
             enabled={multiSelectAttendance}
             selectedCount={selectedAttendanceKeys.length}
@@ -1821,7 +1926,31 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           </div>
         </DialogContent>
       </Dialog>
-      <AttendanceImportPreviewDialog open={Boolean(attendanceImportPreview)} preview={attendanceImportPreview} mode={attendanceImportMode} disabled={isSavingAttendance || isFinalized} onModeChange={setAttendanceImportMode} onApply={applyAttendanceImportPreview} onDiscard={discardAttendanceImportPreview} />
+      <AttendanceImportPreviewDialog open={Boolean(attendanceImportPreview)} preview={attendanceImportPreview} mode={attendanceImportMode} disabled={isSavingAttendance || isFinalized} onModeChange={setAttendanceImportMode} onApply={applyAttendanceImportPreview} onDiscard={discardAttendanceImportPreview} onRequestClose={() => setDiscardImportDialogOpen(true)} />
+      <AlertDialog open={discardImportDialogOpen} onOpenChange={setDiscardImportDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Discard import preview?</AlertDialogTitle><AlertDialogDescription>Preview data will be removed. Imported attendance will not be applied.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={discardAttendanceImportPreview}>Discard preview</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={overwriteImportDialogOpen} onOpenChange={setOverwriteImportDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Overwrite attendance conflicts?</AlertDialogTitle><AlertDialogDescription>{attendanceImportPreview?.conflictCount ?? 0} conflicting cells will overwrite current values.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { setOverwriteImportDialogOpen(false); confirmApplyAttendanceImportPreview(); }}>Overwrite conflicts</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={finalizeDialogOpen} onOpenChange={setFinalizeDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Finalize period</DialogTitle></DialogHeader>
+          <div className="space-y-3"><Alert><Lock className="h-4 w-4" /><AlertDescription>Finalized periods are locked for schedule, attendance, import, and settings edits.</AlertDescription></Alert><Input placeholder="Reason (optional)" value={finalizeReason} onChange={(event) => setFinalizeReason(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setFinalizeDialogOpen(false)}>Cancel</Button><Button onClick={submitFinalizePeriod} disabled={isSavingSchedule}>Finalize</Button></div></div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Reopen period</DialogTitle></DialogHeader>
+          <div className="space-y-3"><Alert><AlertDescription>Reopening is audited. Enter a reason before unlocking edits.</AlertDescription></Alert><Input placeholder="Reason required" value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} /><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setReopenDialogOpen(false)}>Cancel</Button><Button onClick={submitReopenPeriod} disabled={isSavingSchedule || !reopenReason.trim()}>Reopen</Button></div></div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
