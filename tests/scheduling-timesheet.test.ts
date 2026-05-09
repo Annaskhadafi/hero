@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { buildAttendanceImportPreview } from "@/lib/timesheet/attendance-import";
-import { applyHolidayPolicy, classifyOvertimeDay, type ScheduleCode } from "@/lib/timesheet-scheduling";
+import { applyHolidayPolicy, canSwapOff, classifyOvertimeDay, swapScheduleCodes, type ScheduleCode } from "@/lib/timesheet-scheduling";
 import { normalizeOpenHolidayResponse } from "@/lib/openholiday";
 
 describe("scheduling timesheet workflow", () => {
@@ -39,6 +39,14 @@ describe("scheduling timesheet workflow", () => {
     expect(source).not.toContain("window.prompt");
   });
 
+  it("exposes same-section OFF swap UI without native prompts", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "components/scheduling-timesheet-workspace.tsx"), "utf8");
+    expect(source).toContain("swapSelectedScheduleCell");
+    expect(source).toContain("Tukar OFF satu section");
+    expect(source).toContain("rosterSection !== selectedRow.rosterSection");
+    expect(source).not.toContain("window.prompt");
+  });
+
   it("keeps import preview close separate from discard", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "components/timesheet/attendance-import-preview-dialog.tsx"), "utf8");
     expect(source).toContain("onRequestClose");
@@ -56,6 +64,20 @@ describe("scheduling timesheet workflow", () => {
     for (const key of ["scheduleStatus", "attendanceStatus", "importStatus", "conflictCount", "finalizedAt", "metadata"]) {
       expect(source).toContain(key);
     }
+  });
+
+  it("swaps only schedules where one side is OFF", () => {
+    expect(canSwapOff("OFF", "DS")).toBe(true);
+    expect(swapScheduleCodes("OFF", "DS")).toEqual(["DS", "OFF"]);
+    expect(canSwapOff("DS", "NS")).toBe(false);
+    expect(swapScheduleCodes("DS", "NS")).toBeNull();
+  });
+
+  it("shows holiday labels in schedule and attendance views", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "components/scheduling-timesheet-workspace.tsx"), "utf8");
+    expect(source).toContain("holidaysByDay");
+    expect(source).toContain("attendance-${holiday.date}");
+    expect(source).toContain("bg-amber-100/70");
   });
 
   it("applies holiday policy for office and 5:2 but preserves 6:1 code", () => {

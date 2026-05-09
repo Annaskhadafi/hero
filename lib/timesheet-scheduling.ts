@@ -61,3 +61,12 @@ export function applyHolidayPolicy(code: ScheduleCode, context: { scheduleType: 
   if (context.scheduleType === "office" || context.rosterType === "5:2") return "Libur";
   return code;
 }
+
+export function canSwapOff(codeA?: ScheduleCode, codeB?: ScheduleCode) {
+  return codeA === "OFF" || codeB === "OFF";
+}
+
+export function swapScheduleCodes(codeA: ScheduleCode, codeB: ScheduleCode): [ScheduleCode, ScheduleCode] | null {
+  if (!canSwapOff(codeA, codeB)) return null;
+  return [codeB, codeA];
+}

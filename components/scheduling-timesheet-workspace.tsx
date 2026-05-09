@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { applyAttendanceImportPreviewAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, getIndonesiaHolidaysAction, reopenSchedulingPeriodAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction, syncIndonesiaHolidaysAction } from "@/app/dashboard/admin-actions";
-import { applyHolidayPolicy, classifyOvertimeDay, dateKey, daysInMonth, hoursFromCode, isHoliday, isWeekend, type HolidayLike } from "@/lib/timesheet-scheduling";
+import { applyHolidayPolicy, canSwapOff, classifyOvertimeDay, dateKey, daysInMonth, hoursFromCode, isHoliday, isWeekend, swapScheduleCodes, type HolidayLike } from "@/lib/timesheet-scheduling";
 import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-real-tab";
 import { AttendanceImportPreviewDialog } from "@/components/timesheet/attendance-import-preview-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -143,6 +143,7 @@ type FieldBreakDraft = {
   employeeId: number;
   onSiteDate: string;
   dayCount: number;
+  fieldBreakDate?: string;
 };
 
 const sectionOptions = ["Service Operation", "Repair Retread", "Crew Office"];
@@ -369,6 +370,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [siteId, setSiteId] = useState(String(sites[0]?.id ?? "all"));
   const [roster, setRoster] = useState("5:2");
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null);
+  const [swapTargetEmployeeId, setSwapTargetEmployeeId] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
   const [isGenerated, setIsGenerated] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, ScheduleCode>>({});
@@ -415,8 +417,14 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [reopenReason, setReopenReason] = useState("");
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false);
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setSwapTargetEmployeeId("");
+  }, [selectedCell?.employeeId, selectedCell?.day]);
+
   const dayCount = daysInMonth(period);
   const days = Array.from({ length: dayCount }, (_, index) => index + 1);
+  const holidaysByDay = new Map(holidays.map((holiday) => [holiday.day ?? Number(holiday.date.slice(-2)), holiday]));
   const site = sites.find((item) => String(item.id) === siteId);
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig;
   const siteNameOptions = sites.map((item) => item.name).filter(Boolean);
@@ -618,8 +626,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 <th className="min-w-36 px-3 py-2">Section</th>
                 <th className="min-w-36 px-3 py-2">Posisi On Site</th>
                 {days.map((day) => {
-                  const holiday = holidays.find((item) => item.date === dateKey(period, day) || item.day === day);
-                  return <th key={day} title={holiday?.localName ?? holiday?.name} className={`min-w-12 border-l border-slate-400 px-2 py-2 ${styles.day}`}><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div>{holiday ? <Badge variant="secondary" className="mt-1 px-1 text-[10px]">Libur</Badge> : null}</th>;
+                  const holiday = holidaysByDay.get(day);
+                  const holidayName = holiday?.localName ?? holiday?.name;
+                  return <th key={day} title={holidayName} className={`min-w-12 border-l border-slate-400 px-2 py-2 ${styles.day} ${holiday ? "bg-amber-100/70 ring-1 ring-inset ring-amber-300" : ""}`}><div>{weekdayLabel(period, day)}</div><div className="font-normal">{day}</div>{holiday ? <Badge variant="secondary" className="mt-1 px-1 text-[10px]" title={holidayName}>Libur</Badge> : null}</th>;
                 })}
                 <th className="min-w-20 px-3 py-2">Total</th>
               </tr>
@@ -633,7 +642,11 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                   <td className="px-3 py-2 text-center">{row.employee.id}</td>
                   <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
                   <td className="px-3 py-2 text-center font-semibold uppercase">{row.profile.positionOnSite}</td>
-                  {row.schedule.map((code, index) => <td key={`${keyPrefix}-${row.employee.id}-${index}`} className="border-l border-slate-200 p-0 text-center"><button className={`h-8 w-full px-2 font-medium ${codeClass(code)}`} onClick={() => onCellClick(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>)}
+                  {row.schedule.map((code, index) => {
+                    const holiday = holidaysByDay.get(index + 1);
+                    const holidayName = holiday?.localName ?? holiday?.name;
+                    return <td key={`${keyPrefix}-${row.employee.id}-${index}`} className={`border-l border-slate-200 p-0 text-center ${holiday ? "bg-amber-50/70 ring-1 ring-inset ring-amber-200" : ""}`} title={holidayName}><button className={`h-8 w-full px-2 font-medium ${codeClass(code)} ${holiday ? "ring-1 ring-inset ring-amber-300" : ""}`} onClick={() => onCellClick(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>;
+                  })}
                   <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
                 </tr>
               ))}
@@ -701,14 +714,22 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     totalHours: row.schedule.reduce((sum, code) => sum + hoursFromCode(code), 0),
   }));
   const selectedEmployee = visibleEmployees.find((employee) => employee.id === selectedEmployeeId) ?? null;
-  const selectedCode = selectedCell ? overrides[`${selectedCell.employeeId}-${selectedCell.day}`] ?? rows.find((row) => row.employee.id === selectedCell.employeeId)?.schedule[selectedCell.day - 1] : undefined;
+  const selectedRow = selectedCell ? rows.find((row) => row.employee.id === selectedCell.employeeId) ?? null : null;
+  const selectedCode = selectedCell && selectedRow ? overrides[`${selectedCell.employeeId}-${selectedCell.day}`] ?? selectedRow.schedule[selectedCell.day - 1] : undefined;
+  const swapTargetRows = selectedCell && selectedRow && selectedCode ? rows.filter((row) => {
+    if (row.employee.id === selectedCell.employeeId || row.rosterSection !== selectedRow.rosterSection) return false;
+    const targetCode = overrides[`${row.employee.id}-${selectedCell.day}`] ?? row.schedule[selectedCell.day - 1];
+    return canSwapOff(selectedCode, targetCode);
+  }) : [];
+  const selectedSwapTargetRow = swapTargetRows.find((row) => String(row.employee.id) === swapTargetEmployeeId) ?? null;
   const savedFieldBreakByEmployee = new Map(fieldBreakPlans.filter((plan) => String(plan.siteId) === fieldBreakSiteId && plan.period === period).map((plan) => [plan.employeeId, plan]));
   const fieldBreakRows = rows.map((row, index) => {
     const savedPlan = savedFieldBreakByEmployee.get(row.employee.id);
     const draft = fieldBreakDrafts[row.employee.id];
     const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? addDays(`${period}-01`, index * 7);
-    const dayCountValue = draft?.dayCount ?? savedPlan?.dayCount ?? 90;
-    const fieldBreakDate = addDays(onSiteDate, dayCountValue);
+    const savedFieldBreakDate = savedPlan?.fieldBreakDate ?? addDays(onSiteDate, savedPlan?.dayCount ?? 90);
+    const fieldBreakDate = draft?.fieldBreakDate ?? savedFieldBreakDate;
+    const dayCountValue = draft?.dayCount ?? Math.max(1, Math.round((new Date(`${fieldBreakDate}T00:00:00`).getTime() - new Date(`${onSiteDate}T00:00:00`).getTime()) / 86400000));
 
     return { ...row, onSiteDate, dayCount: dayCountValue, fieldBreakDate, savedAt: savedPlan?.updatedAt ?? null };
   });
@@ -829,13 +850,18 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   function updateFieldBreakDraft(employeeId: number, key: keyof FieldBreakDraft, value: string | number) {
     if (!guardOpenPeriod("Edit field break")) return;
     setFieldBreakDrafts((current) => {
-      const existing = current[employeeId] ?? { employeeId, onSiteDate: `${period}-01`, dayCount: 90 };
+      const row = fieldBreakRows.find((item) => item.employee.id === employeeId);
+      const existing = current[employeeId] ?? { employeeId, onSiteDate: row?.onSiteDate ?? `${period}-01`, dayCount: row?.dayCount ?? 90, fieldBreakDate: row?.fieldBreakDate ?? addDays(`${period}-01`, 90) };
+      const next = { ...existing, [key]: key === "dayCount" ? Number(value || 1) : String(value) };
+      const startTime = new Date(`${next.onSiteDate}T00:00:00`).getTime();
+      const endTime = new Date(`${next.fieldBreakDate ?? existing.fieldBreakDate}T00:00:00`).getTime();
+      const dayCountValue = Number.isFinite(startTime) && Number.isFinite(endTime) ? Math.max(1, Math.round((endTime - startTime) / 86400000)) : next.dayCount;
 
       return {
         ...current,
         [employeeId]: {
-          ...existing,
-          [key]: key === "dayCount" ? Number(value || 1) : String(value),
+          ...next,
+          dayCount: dayCountValue,
         },
       };
     });
@@ -933,6 +959,29 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     if (!guardOpenPeriod("Edit schedule")) return;
     if (!selectedCell) return;
     setOverrides((currentOverrides) => ({ ...currentOverrides, [`${selectedCell.employeeId}-${selectedCell.day}`]: code }));
+  }
+
+  function swapSelectedScheduleCell() {
+    if (!guardOpenPeriod("Tukar OFF")) return;
+    if (!selectedCell || !selectedRow || !selectedSwapTargetRow) {
+      toast.error("Tukar OFF gagal", { description: "Pilih cell dan target karyawan satu section." });
+      return;
+    }
+    if (selectedSwapTargetRow.rosterSection !== selectedRow.rosterSection) {
+      toast.error("Tukar OFF gagal", { description: "Target harus satu section." });
+      return;
+    }
+    const selectedKey = `${selectedCell.employeeId}-${selectedCell.day}`;
+    const targetKey = `${selectedSwapTargetRow.employee.id}-${selectedCell.day}`;
+    const sourceCode = overrides[selectedKey] ?? selectedRow.schedule[selectedCell.day - 1];
+    const targetCode = overrides[targetKey] ?? selectedSwapTargetRow.schedule[selectedCell.day - 1];
+    const swapped = swapScheduleCodes(sourceCode, targetCode);
+    if (!swapped) {
+      toast.error("Tukar OFF gagal", { description: "Salah satu schedule harus OFF." });
+      return;
+    }
+    setOverrides((currentOverrides) => ({ ...currentOverrides, [selectedKey]: swapped[0], [targetKey]: swapped[1] }));
+    toast.success("OFF ditukar", { description: `${selectedRow.employee.name} ↔ ${selectedSwapTargetRow.employee.name} hari ${selectedCell.day}` });
   }
 
   function handleProfileSectionChange(section: string) {
@@ -1674,6 +1723,18 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                 <SelectContent>{codeCycle.map((code) => <SelectItem key={code} value={code}>{code === "IN" ? "✓ Masuk" : code}</SelectItem>)}</SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">Shift pakai DS/NS. Office pakai ✓, weekend OFF; weekend lembur bisa diedit manual ke ✓/DS/NS.</p>
+              <div className="flex flex-wrap items-center gap-2 border-l pl-3">
+                <span className="text-sm font-semibold text-foreground">Tukar OFF satu section</span>
+                <Select value={swapTargetEmployeeId} onValueChange={setSwapTargetEmployeeId} disabled={isFinalized || swapTargetRows.length === 0}>
+                  <SelectTrigger className="w-[240px]"><SelectValue placeholder="Pilih target" /></SelectTrigger>
+                  <SelectContent>{swapTargetRows.map((row) => {
+                    const code = overrides[`${row.employee.id}-${selectedCell.day}`] ?? row.schedule[selectedCell.day - 1];
+                    return <SelectItem key={row.employee.id} value={String(row.employee.id)}>{row.employee.name} · {code}</SelectItem>;
+                  })}</SelectContent>
+                </Select>
+                <Button size="sm" disabled={isFinalized || !swapTargetEmployeeId || swapTargetRows.length === 0} onClick={swapSelectedScheduleCell}>Tukar OFF</Button>
+                <p className="text-xs text-muted-foreground">{swapTargetRows.length ? "Target hanya karyawan satu section; salah satu cell wajib OFF." : "Tidak ada target satu section dengan OFF di hari ini."}</p>
+              </div>
             </Card>
           ) : null}
           <div className="space-y-5">
@@ -1707,6 +1768,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               })} />
             </div>
           </Card>
+          {holidays.length ? <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">{holidays.map((holiday) => <Badge key={`attendance-${holiday.date}`} variant="secondary" title={holiday.localName || holiday.name}>{holiday.day}: {holiday.localName || holiday.name}</Badge>)}</Card> : null}
           {(attendanceImportPreview || attendanceSavedAt || isAttendanceDirty) ? (
             <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3 text-sm">
               <div className="flex flex-wrap gap-2">
@@ -1749,12 +1811,18 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
             <div className="max-w-full overflow-x-auto overflow-y-visible">
               <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
-                <thead><tr className="bg-surface-container-low text-left uppercase tracking-[0.12em] text-muted-foreground"><th className="sticky left-0 z-30 w-[220px] min-w-[220px] bg-surface-container-low px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">Nama</th>{days.map((day) => <th key={day} className="w-[52px] min-w-[52px] px-1 py-3 text-center">{day}<br /><span className="normal-case tracking-normal">{weekdayLabel(period, day)}</span></th>)}</tr></thead>
+                <thead><tr className="bg-surface-container-low text-left uppercase tracking-[0.12em] text-muted-foreground"><th className="sticky left-0 z-30 w-[220px] min-w-[220px] bg-surface-container-low px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">Nama</th>{days.map((day) => {
+                  const holiday = holidaysByDay.get(day);
+                  const holidayName = holiday?.localName ?? holiday?.name;
+                  return <th key={day} title={holidayName} className={`w-[52px] min-w-[52px] px-1 py-3 text-center ${holiday ? "bg-amber-100/70 ring-1 ring-inset ring-amber-300" : ""}`}>{day}<br /><span className="normal-case tracking-normal">{weekdayLabel(period, day)}</span>{holiday ? <Badge variant="secondary" className="mt-1 px-1 text-[9px]" title={holidayName}>Libur</Badge> : null}</th>;
+                })}</tr></thead>
                 <tbody>{displayedAttendanceRows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100"><td className="sticky left-0 z-20 min-w-[220px] bg-white px-3 py-2 font-semibold text-foreground shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">{row.employee.name}<p className="text-[10px] font-normal text-muted-foreground">{row.employee.role}</p></td>{days.map((day) => {
                   const cell = getAttendanceCell(row.employee.id, day);
                   const isSelected = selectedAttendanceKeys.includes(attendanceKey(row.employee.id, day));
                   const isConflict = cell.status === "present" && ["OFF", "Libur", "Sakit", "FB"].includes(row.schedule[day - 1]);
-                  return <td key={day} className="w-[52px] min-w-[52px] px-1 py-2 align-top"><button className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${attendanceCellClass(cell.status)} ${isSelected ? "outline outline-2 outline-slate-900 outline-offset-2" : ""} ${isConflict ? "ring-2 ring-orange-400" : ""}`} onClick={() => multiSelectAttendance ? toggleAttendanceSelection(row.employee.id, day) : setSelectedAttendanceCell({ employeeId: row.employee.id, day })} onDoubleClick={() => cycleAttendanceCell(row.employee.id, day)} title={isConflict ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk` : cell.note || attendanceStatusLabel(cell.status)}>{isConflict ? <span className="absolute right-1 top-1 text-[10px]">!</span> : null}<span>{attendanceStatusLabel(cell.status)}</span>{cell.clockIn || cell.clockOut ? <span className="mt-1 block font-mono text-[10px]">{cell.clockIn || "--:--"}-{cell.clockOut || "--:--"}</span> : null}</button></td>;
+                  const holiday = holidaysByDay.get(day);
+                  const holidayName = holiday?.localName ?? holiday?.name;
+                  return <td key={day} className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${holiday ? "bg-amber-50/70 ring-1 ring-inset ring-amber-200" : ""}`} title={holidayName}><button className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${attendanceCellClass(cell.status)} ${isSelected ? "outline outline-2 outline-slate-900 outline-offset-2" : ""} ${isConflict ? "ring-2 ring-orange-400" : ""} ${holiday ? "ring-1 ring-amber-300" : ""}`} onClick={() => multiSelectAttendance ? toggleAttendanceSelection(row.employee.id, day) : setSelectedAttendanceCell({ employeeId: row.employee.id, day })} onDoubleClick={() => cycleAttendanceCell(row.employee.id, day)} title={isConflict ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk` : holidayName || cell.note || attendanceStatusLabel(cell.status)}>{isConflict ? <span className="absolute right-1 top-1 text-[10px]">!</span> : null}{holiday ? <span className="absolute right-1 top-1 text-[9px]">L</span> : null}<span>{attendanceStatusLabel(cell.status)}</span>{cell.clockIn || cell.clockOut ? <span className="mt-1 block font-mono text-[10px]">{cell.clockIn || "--:--"}-{cell.clockOut || "--:--"}</span> : null}</button></td>;
                 })}</tr>)}</tbody>
               </table>
             </div>
@@ -1814,8 +1882,8 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
             <div className="overflow-auto">
               <table className="w-full min-w-[920px] text-sm">
-                <thead><tr className="bg-surface-container-low text-left text-xs uppercase tracking-[0.12em] text-muted-foreground"><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Section</th><th className="px-4 py-3">Roster</th><th className="px-4 py-3">On Site</th><th className="px-4 py-3">Day</th><th className="px-4 py-3">FB</th></tr></thead>
-                <tbody>{fieldBreakRows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 hover:bg-muted/35"><td className="px-4 py-3 font-medium">{row.employee.name}</td><td className="px-4 py-3">{row.sectionLabel}</td><td className="px-4 py-3">{rosterSectionLabel(row.rosterSection)}</td><td className="px-4 py-3"><Input type="date" value={row.onSiteDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "onSiteDate", event.target.value)} /></td><td className="px-4 py-3"><Input min={1} type="number" value={row.dayCount} onChange={(event) => updateFieldBreakDraft(row.employee.id, "dayCount", event.target.value)} /></td><td className="px-4 py-3 font-semibold">{formatShortDate(row.fieldBreakDate)}</td></tr>)}</tbody>
+                <thead><tr className="bg-surface-container-low text-left text-xs uppercase tracking-[0.12em] text-muted-foreground"><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Section</th><th className="px-4 py-3">Roster</th><th className="px-4 py-3">Mulai</th><th className="px-4 py-3">Akhir</th><th className="px-4 py-3">Day</th></tr></thead>
+                <tbody>{fieldBreakRows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 hover:bg-muted/35"><td className="px-4 py-3 font-medium">{row.employee.name}</td><td className="px-4 py-3">{row.sectionLabel}</td><td className="px-4 py-3">{rosterSectionLabel(row.rosterSection)}</td><td className="px-4 py-3"><Input type="date" value={row.onSiteDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "onSiteDate", event.target.value)} /></td><td className="px-4 py-3"><Input type="date" min={row.onSiteDate} value={row.fieldBreakDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "fieldBreakDate", event.target.value)} /></td><td className="px-4 py-3 font-semibold">{row.dayCount}</td></tr>)}</tbody>
               </table>
             </div>
           </Card>
