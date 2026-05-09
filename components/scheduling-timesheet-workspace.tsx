@@ -15,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { applyAttendanceImportPreviewAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, reopenSchedulingPeriodAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction } from "@/app/dashboard/admin-actions";
 import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-real-tab";
 import { AttendanceImportPreviewDialog } from "@/components/timesheet/attendance-import-preview-dialog";
-import { SchedulingStatusRail } from "@/components/timesheet/scheduling-status-rail";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { attendanceStatusLabel, calculateAttendanceOvertime, normalizeAttendanceStatus, type AttendanceCellStatus } from "@/lib/timesheet/attendance-real";
@@ -1453,7 +1452,6 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
 
   return (
     <div className="space-y-4">
-      <SchedulingStatusRail status={currentStatus} conflicts={attendanceConflicts.length} />
       {isFinalized ? <Alert><Lock className="h-4 w-4" /><AlertDescription>Period finalized. Reopen before editing/importing/saving.</AlertDescription></Alert> : null}
       <Card className="surface-module-card rounded-[1.2rem] border-0 p-5 shadow-sm ring-1 ring-black/5">
         <div className="mb-4">
