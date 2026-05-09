@@ -19,7 +19,7 @@ async function getCurrentActorEmail(): Promise<string | undefined> {
 }
 
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { hashPassword } from "better-auth/crypto";
@@ -1496,6 +1496,62 @@ function normalizeProfileImageValue(value: string | undefined) {
   }
 }
 
+function normalizeAuthEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+async function upsertCredentialAccount({
+  authUserId,
+  email,
+  password,
+  now,
+}: {
+  authUserId: string;
+  email: string;
+  password: string;
+  now: Date;
+}) {
+  const normalizedEmail = normalizeAuthEmail(email);
+  const passwordHash = await hashPassword(password);
+
+  const [existingCredential] = await db
+    .select({ id: account.id })
+    .from(account)
+    .where(
+      and(
+        eq(account.providerId, "credential"),
+        or(
+          eq(account.userId, authUserId),
+          eq(account.accountId, normalizedEmail),
+          eq(account.accountId, authUserId),
+        ),
+      ),
+    )
+    .limit(1);
+
+  const credentialValues = {
+    accountId: normalizedEmail,
+    providerId: "credential" as const,
+    userId: authUserId,
+    password: passwordHash,
+    updatedAt: now,
+  };
+
+  if (existingCredential) {
+    await db
+      .update(account)
+      .set(credentialValues)
+      .where(eq(account.id, existingCredential.id));
+    return;
+  }
+
+  await db.insert(account).values({
+    id: randomUUID(),
+    ...credentialValues,
+    createdAt: now,
+  });
+}
+
 async function ensureAuthUserForEmployee(employee: {
   id: number;
   authUserId: string | null;
@@ -2236,7 +2292,6 @@ export async function manageSecurityUserAction(
 
       const authUserId = randomUUID();
       const now = new Date();
-      const passwordHash = await hashPassword(password);
 
       await db.insert(user).values({
         id: authUserId,
@@ -2248,15 +2303,7 @@ export async function manageSecurityUserAction(
         updatedAt: now,
       });
 
-      await db.insert(account).values({
-        id: randomUUID(),
-        accountId: authUserId,
-        providerId: "credential",
-        userId: authUserId,
-        password: passwordHash,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await upsertCredentialAccount({ authUserId, email, password, now });
 
       await db.insert(employees).values({
         authUserId,
@@ -2521,33 +2568,13 @@ export async function manageSecurityUserAction(
       };
       const authUserId = await ensureAuthUserForEmployee(latestEmployee);
       const now = new Date();
-      const passwordHash = await hashPassword(newPassword);
 
-      const [existingCredential] = await db
-        .select({ id: account.id })
-        .from(account)
-        .where(and(eq(account.userId, authUserId), eq(account.providerId, "credential")))
-        .limit(1);
-
-      if (existingCredential) {
-        await db
-          .update(account)
-          .set({
-            password: passwordHash,
-            updatedAt: now,
-          })
-          .where(eq(account.id, existingCredential.id));
-      } else {
-        await db.insert(account).values({
-          id: randomUUID(),
-          accountId: authUserId,
-          providerId: "credential",
-          userId: authUserId,
-          password: passwordHash,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
+      await upsertCredentialAccount({
+        authUserId,
+        email: latestEmployee.email,
+        password: newPassword,
+        now,
+      });
 
       await db.delete(session).where(eq(session.userId, authUserId));
 
