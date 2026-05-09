@@ -55,6 +55,7 @@ import {
   wellnessRecords,
 } from "@/db/schema/hero";
 import { timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
+import { buildAttendanceImportPreview, attendanceImportRawRowsSchema, type AttendancePreviewConflict, type AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
@@ -217,29 +218,20 @@ const saveTimesheetFieldBreakPlansSchema = z.object({
 
 export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>) {
   const payload = saveTimesheetFieldBreakPlansSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
   const actorEmail = await getCurrentActorEmail();
-  const actor = actorEmail ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1) : [];
-  const savedByUserId = actor[0]?.id ?? null;
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
 
-  for (const plan of payload.plans) {
-    await db
-      .insert(timesheetFieldBreakPlans)
-      .values({
-        siteId: payload.siteId,
-        period: payload.period,
-        employeeId: plan.employeeId,
-        employeeName: plan.employeeName,
-        sectionName: plan.sectionName,
-        rosterSection: plan.rosterSection,
-        onSiteDate: plan.onSiteDate,
-        dayCount: plan.dayCount,
-        fieldBreakDate: plan.fieldBreakDate,
-        savedByUserId,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [timesheetFieldBreakPlans.siteId, timesheetFieldBreakPlans.period, timesheetFieldBreakPlans.employeeId],
-        set: {
+  await db.transaction(async (tx) => {
+    for (const plan of payload.plans) {
+      await tx
+        .insert(timesheetFieldBreakPlans)
+        .values({
+          siteId: payload.siteId,
+          period: payload.period,
+          employeeId: plan.employeeId,
           employeeName: plan.employeeName,
           sectionName: plan.sectionName,
           rosterSection: plan.rosterSection,
@@ -247,11 +239,27 @@ export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof s
           dayCount: plan.dayCount,
           fieldBreakDate: plan.fieldBreakDate,
           savedByUserId,
-          updatedAt: new Date(),
-        },
-      });
-  }
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [timesheetFieldBreakPlans.siteId, timesheetFieldBreakPlans.period, timesheetFieldBreakPlans.employeeId],
+          set: {
+            employeeName: plan.employeeName,
+            sectionName: plan.sectionName,
+            rosterSection: plan.rosterSection,
+            onSiteDate: plan.onSiteDate,
+            dayCount: plan.dayCount,
+            fieldBreakDate: plan.fieldBreakDate,
+            savedByUserId,
+            updatedAt: now,
+          },
+        });
+    }
 
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.field_break_saved", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Saved field break plans (${payload.plans.length} rows).` });
   revalidatePath("/dashboard/scheduling-timesheet");
 
   return { ok: true };
@@ -274,43 +282,171 @@ const saveAttendanceRealOverridesSchema = z.object({
 
 export async function saveAttendanceRealOverridesAction(input: z.infer<typeof saveAttendanceRealOverridesSchema>) {
   const payload = saveAttendanceRealOverridesSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
   const actorEmail = await getCurrentActorEmail();
-  const actor = actorEmail ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1) : [];
-  const savedByUserId = actor[0]?.id ?? null;
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
 
   if (!payload.overrides.length) return { ok: true, savedCount: 0 };
 
-  await db
-    .insert(timesheetAttendanceRealOverrides)
-    .values(payload.overrides.map((override) => ({
-      siteId: payload.siteId,
-      period: payload.period,
-      employeeId: override.employeeId,
-      day: override.day,
-      status: override.status,
-      clockIn: override.clockIn,
-      clockOut: override.clockOut,
-      note: override.note,
-      source: override.source,
-      savedByUserId,
-      updatedAt: new Date(),
-    })))
-    .onConflictDoUpdate({
-      target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day],
-      set: {
-        status: sql`excluded.status`,
-        clockIn: sql`excluded.clock_in`,
-        clockOut: sql`excluded.clock_out`,
-        note: sql`excluded.note`,
-        source: sql`excluded.source`,
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(timesheetAttendanceRealOverrides)
+      .values(payload.overrides.map((override) => ({
+        siteId: payload.siteId,
+        period: payload.period,
+        employeeId: override.employeeId,
+        day: override.day,
+        status: override.status,
+        clockIn: override.clockIn,
+        clockOut: override.clockOut,
+        note: override.note,
+        source: override.source,
         savedByUserId,
-        updatedAt: new Date(),
-      },
-    });
+        updatedAt: now,
+      })))
+      .onConflictDoUpdate({
+        target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day],
+        set: {
+          status: sql`excluded.status`,
+          clockIn: sql`excluded.clock_in`,
+          clockOut: sql`excluded.clock_out`,
+          note: sql`excluded.note`,
+          source: sql`excluded.source`,
+          savedByUserId,
+          updatedAt: now,
+        },
+      });
 
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, attendanceStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.attendance_saved", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Saved attendance overrides (${payload.overrides.length} cells).` });
   revalidatePath("/dashboard/scheduling-timesheet");
 
   return { ok: true, savedCount: payload.overrides.length };
+}
+
+const finalizeSchedulingPeriodSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  reason: z.string().max(500).optional().default(""),
+});
+
+const reopenSchedulingPeriodSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export async function finalizeSchedulingPeriodAction(input: z.infer<typeof finalizeSchedulingPeriodSchema>) {
+  const payload = finalizeSchedulingPeriodSchema.parse(input);
+  await requireSchedulingTimesheetAccess("finalize");
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+
+  await db.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "finalized", attendanceStatus: "finalized", importStatus: "finalized", finalizedAt: now, savedByUserId, metadata: { finalizedReason: payload.reason }, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "finalized", attendanceStatus: "finalized", importStatus: "finalized", finalizedAt: now, savedByUserId, metadata: { finalizedReason: payload.reason }, updatedAt: now } });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.period_finalized", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Finalized scheduling period. ${payload.reason}`.trim(), severity: "warning" });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
+}
+
+export async function reopenSchedulingPeriodAction(input: z.infer<typeof reopenSchedulingPeriodSchema>) {
+  const payload = reopenSchedulingPeriodSchema.parse(input);
+  await requireSchedulingTimesheetAccess("finalize");
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+
+  await db.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "reopened", attendanceStatus: "reopened", importStatus: "none", finalizedAt: null, savedByUserId, metadata: { reopenedReason: payload.reason }, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "reopened", attendanceStatus: "reopened", importStatus: "none", finalizedAt: null, savedByUserId, metadata: { reopenedReason: payload.reason }, updatedAt: now } });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.period_reopened", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Reopened scheduling period. ${payload.reason}`, severity: "warning" });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
+}
+
+const createAttendanceImportPreviewSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  filename: z.string().min(1).max(240),
+  rows: attendanceImportRawRowsSchema,
+  fixedSchedule: z.array(schedulingPlanRowSchema).default([]),
+});
+
+const attendanceImportPreviewIdSchema = z.object({ previewId: z.number().int().positive() });
+const applyAttendanceImportPreviewSchema = attendanceImportPreviewIdSchema.extend({ mode: z.enum(["skip-conflicts", "overwrite-conflicts"]).default("skip-conflicts") });
+
+export async function createAttendanceImportPreviewAction(input: z.infer<typeof createAttendanceImportPreviewSchema>) {
+  const payload = createAttendanceImportPreviewSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+  const siteEmployees = await db.select({ id: employees.id, name: employees.name, employeeSn: employees.employeeSn, siteId: employees.siteId, siteName: sites.name }).from(employees).leftJoin(sites, eq(employees.siteId, sites.id));
+  const [site] = await db.select({ name: sites.name }).from(sites).where(eq(sites.id, payload.siteId)).limit(1);
+  const preview = buildAttendanceImportPreview({ rows: payload.rows, employees: siteEmployees, siteId: payload.siteId, siteName: site?.name, fixedSchedule: payload.fixedSchedule });
+  let previewId = 0;
+
+  await db.transaction(async (tx) => {
+    const [inserted] = await tx.insert(timesheetAttendanceImportPreviews).values({ siteId: payload.siteId, period: payload.period, filename: payload.filename, status: "preview", matchedCount: preview.matchedCount, unmatchedCount: preview.unmatchedCount, cellCount: preview.cellCount, conflictCount: preview.conflictCount, previewRows: preview.previewRows, conflicts: preview.conflicts, uploadedByUserId: savedByUserId, createdAt: now }).returning({ id: timesheetAttendanceImportPreviews.id });
+    previewId = inserted.id;
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, importStatus: "preview", conflictCount: preview.conflictCount, lastImportedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "preview", conflictCount: preview.conflictCount, lastImportedAt: now, savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.import_previewed", entityType: "timesheet_scheduling_import", entityLabel: `${payload.siteId}:${payload.period}:${previewId}`, description: `Previewed attendance import (${preview.cellCount} cells, ${preview.conflictCount} conflicts).` });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true, previewId, ...preview };
+}
+
+export async function applyAttendanceImportPreviewAction(input: z.infer<typeof applyAttendanceImportPreviewSchema>) {
+  const payload = applyAttendanceImportPreviewSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
+  if (!preview || preview.status !== "preview") throw new Error("Import preview not found.");
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
+  const rows = preview.previewRows as AttendancePreviewRow[];
+  const conflicts = preview.conflicts as AttendancePreviewConflict[];
+  const conflictKeys = new Set(conflicts.map((conflict) => `${conflict.employeeId}:${conflict.day}`));
+  const writableRows = rows.filter((row) => row.employeeId && !row.unmatched && !row.duplicate && !row.crossSite && (payload.mode === "overwrite-conflicts" || !conflictKeys.has(`${row.employeeId}:${row.day}`)));
+
+  await db.transaction(async (tx) => {
+    if (writableRows.length) {
+      await tx.insert(timesheetAttendanceRealOverrides).values(writableRows.map((row) => ({ siteId: preview.siteId, period: preview.period, employeeId: row.employeeId!, day: row.day, status: row.status, clockIn: row.clockIn, clockOut: row.clockOut, note: row.note, source: "excel" as const, savedByUserId, updatedAt: now }))).onConflictDoUpdate({ target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day], set: { status: sql`excluded.status`, clockIn: sql`excluded.clock_in`, clockOut: sql`excluded.clock_out`, note: sql`excluded.note`, source: sql`excluded.source`, savedByUserId, updatedAt: now } });
+    }
+    await tx.update(timesheetAttendanceImportPreviews).set({ status: "applied", appliedAt: now }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, attendanceStatus: "saved", importStatus: "applied", conflictCount: payload.mode === "skip-conflicts" ? conflicts.length : 0, lastImportedAt: now, lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "saved", importStatus: "applied", conflictCount: payload.mode === "skip-conflicts" ? conflicts.length : 0, lastImportedAt: now, lastSavedAt: now, savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.import_applied", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: `Applied attendance import (${writableRows.length} cells, mode ${payload.mode}).` });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true, savedCount: writableRows.length, rows: writableRows };
+}
+
+export async function discardAttendanceImportPreviewAction(input: z.infer<typeof attendanceImportPreviewIdSchema>) {
+  const payload = attendanceImportPreviewIdSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
+  if (!preview || preview.status !== "preview") throw new Error("Import preview not found.");
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
+
+  await db.transaction(async (tx) => {
+    await tx.update(timesheetAttendanceImportPreviews).set({ status: "discarded" }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, importStatus: "discarded", savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "discarded", savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.import_discarded", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: "Discarded attendance import preview." });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
 }
 
 const saveSchedulingConfigSchema = z.object({

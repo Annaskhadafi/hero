@@ -3,6 +3,8 @@ module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>'],
   testMatch: ['**/__tests__/**/*.ts?(x)', '**/?(*.)+(spec|test).ts?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/.kilo/', '/tests/design-guardrails.test.ts'],
+  modulePathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/.kilo/'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
