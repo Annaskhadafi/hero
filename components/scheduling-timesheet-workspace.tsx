@@ -358,6 +358,39 @@ function attendanceCellClass(status: AttendanceCellStatus) {
   return "bg-red-100 text-red-950 ring-1 ring-red-200";
 }
 
+const scheduleHolidayCellClass = "bg-amber-200 text-amber-950 hover:bg-amber-300 ring-1 ring-inset ring-amber-400";
+const attendanceHolidayCellClass = "bg-amber-200 text-amber-950 ring-1 ring-amber-400";
+
+function currentMonthPeriod() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+async function fetchHolidayFallback(period: string): Promise<HolidayLike[]> {
+  try {
+    const response = await fetch(`https://api-hari-libur.vercel.app/api?year=${period.slice(0, 4)}`, { cache: "no-store" });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const items = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+
+    return items
+      .filter((item: { date?: string; description?: string; name?: string }) => {
+        const name = item.description ?? item.name ?? "";
+        return typeof item.date === "string" && item.date.startsWith(period) && !name.toLowerCase().includes("cuti bersama");
+      })
+      .map((item: { date: string; description?: string; name?: string }) => {
+        const name = item.description ?? item.name ?? "Hari Libur Nasional";
+        return {
+          date: item.date,
+          day: Number(item.date.slice(-2)),
+          name,
+          localName: name,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
 function timeFromIso(value?: string) {
   if (!value) return "";
   const date = new Date(value);
@@ -366,7 +399,7 @@ function timeFromIso(value?: string) {
 }
 
 export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = [], fieldBreakPlans = [], attendanceRecords = [], attendanceOverrides = [], schedulingConfigs = [], schedulingStatuses = [] }: { employees: EmployeeOption[]; sites: SiteOption[]; savedPlans?: SavedSchedulingPlan[]; fieldBreakPlans?: SavedFieldBreakPlan[]; attendanceRecords?: AttendanceRealRecord[]; attendanceOverrides?: SavedAttendanceOverride[]; schedulingConfigs?: Array<{ siteId: number; scheduleType?: string; rosterType?: string; msaType?: string; mealsType?: string; overtimeType?: string; allowanceVariables?: unknown; overtimeVariables?: unknown }>; schedulingStatuses?: Array<{ siteId: number; period: string; scheduleStatus: string; attendanceStatus: string; importStatus: string; conflictCount: number; lastSavedAt?: string | null; lastImportedAt?: string | null; finalizedAt?: string | null }>; importPreviews?: unknown[] }) {
-  const [period, setPeriod] = useState("2026-05");
+  const [period, setPeriod] = useState(currentMonthPeriod);
   const [siteId, setSiteId] = useState(String(sites[0]?.id ?? "all"));
   const [roster, setRoster] = useState("5:2");
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null);
@@ -466,8 +499,14 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   useEffect(() => {
     let active = true;
     getIndonesiaHolidaysAction({ period })
-      .then((items) => { if (active) setHolidays(items); })
-      .catch(() => { if (active) setHolidays([]); });
+      .then(async (items) => {
+        const nextItems = items.length ? items : await fetchHolidayFallback(period);
+        if (active) setHolidays(nextItems);
+      })
+      .catch(async () => {
+        const nextItems = await fetchHolidayFallback(period);
+        if (active) setHolidays(nextItems);
+      });
     return () => { active = false; };
   }, [period]);
 
@@ -569,11 +608,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
       return code === "FB" && !fieldBreakConfig ? generatedCode : code;
     });
     const workDays = schedule.filter((code) => code === "IN" || code === "DS" || code === "NS" || code === "FB").length;
+    const msaDays = schedule.filter((code, index) => (code === "IN" || code === "DS" || code === "NS" || code === "FB") && !isHoliday(period, index + 1, holidays)).length;
     const fieldBreakDays = schedule.filter((code) => code === "FB").length;
     const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0);
     const staff = /manager|supervisor|lead|staff|admin/i.test(employee.role);
-    const msa = siteConfig.msaType === "none" ? 0 : workDays * (siteConfig.msaType === "same-all" ? rate.msaNonStaff : staff ? rate.msaStaff : rate.msaNonStaff);
-    const mealsBaseDays = siteConfig.mealsType === "workday" ? workDays : fieldBreakDays;
+    const msa = siteConfig.msaType === "none" ? 0 : msaDays * (siteConfig.msaType === "same-all" ? rate.msaNonStaff : staff ? rate.msaStaff : rate.msaNonStaff);
+    const mealsBaseDays = siteConfig.mealsType === "workday" ? msaDays : fieldBreakDays;
     const meals = siteConfig.mealsType === "none" ? 0 : mealsBaseDays * (staff ? rate.mealsStaff : rate.mealsNonStaff);
     const overtime = siteConfig.overtimeType === "none" ? 0 : calculateOvertimeFromVariables(schedule, period, siteConfig.rosterType, overtimeVariables, holidays);
     const profile = employeeProfiles[employee.id] ?? {
@@ -586,7 +626,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     const rosterSection = normalizeRosterSection(profile.section || employee.section || employee.role);
     const sectionLabel = employee.section || rosterSection;
     const positionOnSite = isLeadershipPosition(profile.positionOnSite) ? profile.positionOnSite : defaultPositionOnSite(sectionLabel);
-    return { employee, schedule, workDays, fieldBreakDays, totalHours, staff, msa, meals, overtime, profile: { ...profile, section: rosterSection, positionOnSite }, sectionLabel, rosterSection };
+    return { employee, schedule, workDays, msaDays, fieldBreakDays, totalHours, staff, msa, meals, overtime, profile: { ...profile, section: rosterSection, positionOnSite }, sectionLabel, rosterSection };
   });
 
   function renderRosterTable(
@@ -645,7 +685,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                   {row.schedule.map((code, index) => {
                     const holiday = holidaysByDay.get(index + 1);
                     const holidayName = holiday?.localName ?? holiday?.name;
-                    return <td key={`${keyPrefix}-${row.employee.id}-${index}`} className={`border-l border-slate-200 p-0 text-center ${holiday ? "bg-amber-50/70 ring-1 ring-inset ring-amber-200" : ""}`} title={holidayName}><button className={`h-8 w-full px-2 font-medium ${codeClass(code)} ${holiday ? "ring-1 ring-inset ring-amber-300" : ""}`} onClick={() => onCellClick(row.employee.id, index + 1)}>{codeLabel(code)}</button></td>;
+                    return <td key={`${keyPrefix}-${row.employee.id}-${index}`} className={`border-l border-slate-200 p-0 text-center ${holiday ? "bg-amber-100 ring-1 ring-inset ring-amber-300" : ""}`} title={holidayName}><button className={`h-8 w-full px-2 font-medium ${holiday ? scheduleHolidayCellClass : codeClass(code)}`} onClick={() => onCellClick(row.employee.id, index + 1)} title={holidayName}>{codeLabel(code)}</button></td>;
                   })}
                   <td className="px-3 py-2 text-center font-semibold">{row.totalHours}</td>
                 </tr>
@@ -703,13 +743,17 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     ...row,
     schedule: row.schedule.map((code, index) => {
       const fieldBreakConfig = fieldBreakConfigs[String(row.employee.siteId ?? siteId)];
-      const savedCode = permanentOverrides[`${row.employee.id}-${index + 1}`] ?? permanentBase[`${row.employee.id}-${index + 1}`] ?? code;
+      const day = index + 1;
+      const key = `${row.employee.id}-${day}`;
+      const savedCode = permanentOverrides[key] ?? permanentBase[key] ?? code;
+      const holidayCode = permanentOverrides[key] ? savedCode : applyHolidayPolicy(savedCode, { scheduleType: siteConfig.scheduleType, rosterType: siteConfig.rosterType, isHoliday: isHoliday(period, day, holidays) });
 
-      return savedCode === "FB" && !fieldBreakConfig ? code : savedCode;
+      return holidayCode === "FB" && !fieldBreakConfig ? code : holidayCode;
     }),
   })).map((row) => ({
     ...row,
     workDays: row.schedule.filter((code) => code === "IN" || code === "DS" || code === "NS" || code === "FB").length,
+    msaDays: row.schedule.filter((code, index) => (code === "IN" || code === "DS" || code === "NS" || code === "FB") && !isHoliday(period, index + 1, holidays)).length,
     fieldBreakDays: row.schedule.filter((code) => code === "FB").length,
     totalHours: row.schedule.reduce((sum, code) => sum + hoursFromCode(code), 0),
   }));
@@ -1506,7 +1550,10 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const selectedAttendanceEmployee = selectedAttendanceCell ? visibleEmployees.find((employee) => employee.id === selectedAttendanceCell.employeeId) : null;
   const selectedAttendanceValue = selectedAttendanceCell ? getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day) : null;
   const attendanceOvertimeRows = rows.map((row) => {
-    const baseHours = row.workDays * 5;
+    const baseHours = row.schedule.reduce((sum, code, index) => {
+      if (hoursFromCode(code) <= 0) return sum;
+      return isHoliday(period, index + 1, holidays) ? sum : sum + 5;
+    }, 0);
     const calculated = calculateAttendanceOvertime(days.map((day) => getAttendanceCell(row.employee.id, day)), baseHours);
 
     return { ...row, attendanceTotalHours: calculated.totalHours, attendanceBaseHours: calculated.baseHours, attendanceOvertime: calculated.overtime };
@@ -1822,7 +1869,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                   const isConflict = cell.status === "present" && ["OFF", "Libur", "Sakit", "FB"].includes(row.schedule[day - 1]);
                   const holiday = holidaysByDay.get(day);
                   const holidayName = holiday?.localName ?? holiday?.name;
-                  return <td key={day} className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${holiday ? "bg-amber-50/70 ring-1 ring-inset ring-amber-200" : ""}`} title={holidayName}><button className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${attendanceCellClass(cell.status)} ${isSelected ? "outline outline-2 outline-slate-900 outline-offset-2" : ""} ${isConflict ? "ring-2 ring-orange-400" : ""} ${holiday ? "ring-1 ring-amber-300" : ""}`} onClick={() => multiSelectAttendance ? toggleAttendanceSelection(row.employee.id, day) : setSelectedAttendanceCell({ employeeId: row.employee.id, day })} onDoubleClick={() => cycleAttendanceCell(row.employee.id, day)} title={isConflict ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk` : holidayName || cell.note || attendanceStatusLabel(cell.status)}>{isConflict ? <span className="absolute right-1 top-1 text-[10px]">!</span> : null}{holiday ? <span className="absolute right-1 top-1 text-[9px]">L</span> : null}<span>{attendanceStatusLabel(cell.status)}</span>{cell.clockIn || cell.clockOut ? <span className="mt-1 block font-mono text-[10px]">{cell.clockIn || "--:--"}-{cell.clockOut || "--:--"}</span> : null}</button></td>;
+                  return <td key={day} className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${holiday ? "bg-amber-100 ring-1 ring-inset ring-amber-300" : ""}`} title={holidayName}><button className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${holiday ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? "outline outline-2 outline-slate-900 outline-offset-2" : ""} ${isConflict ? "ring-2 ring-orange-400" : ""}`} onClick={() => multiSelectAttendance ? toggleAttendanceSelection(row.employee.id, day) : setSelectedAttendanceCell({ employeeId: row.employee.id, day })} onDoubleClick={() => cycleAttendanceCell(row.employee.id, day)} title={isConflict ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk` : holidayName || cell.note || attendanceStatusLabel(cell.status)}>{isConflict ? <span className="absolute right-1 top-1 text-[10px]">!</span> : null}{holiday ? <span className="absolute right-1 top-1 text-[9px]">L</span> : null}<span>{attendanceStatusLabel(cell.status)}</span>{cell.clockIn || cell.clockOut ? <span className="mt-1 block font-mono text-[10px]">{cell.clockIn || "--:--"}-{cell.clockOut || "--:--"}</span> : null}</button></td>;
                 })}</tr>)}</tbody>
               </table>
             </div>
@@ -1893,9 +1940,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         <TabsContent value="allowance" className="space-y-4">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
             <div><p className="font-semibold text-foreground">Export MSA + Meals</p><p className="text-sm text-muted-foreground">Export khusus tab allowance.</p></div>
-            <TabExportActions tabTitle="MSA Meals" columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} exportRows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.workDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
+            <TabExportActions tabTitle="MSA Meals" columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} exportRows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.msaDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
           </Card>
-          <SummaryTable columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} rows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.workDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
+          <SummaryTable columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} rows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.msaDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
         </TabsContent>
 
         <TabsContent value="overtime" className="space-y-4">

@@ -57,6 +57,7 @@ import {
 import { indonesiaHolidays, timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
 import { fetchIndonesiaHolidays } from "@/lib/openholiday";
 import { buildAttendanceImportPreview, attendanceImportRawRowsSchema, type AttendancePreviewConflict, type AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
+import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
@@ -113,6 +114,7 @@ async function getCurrentActorUserId(actorEmail?: string) {
 }
 
 async function assertSchedulingPeriodOpen(siteId: number, period: string) {
+  await ensureSchedulingTimesheetTables();
   const [status] = await db.select().from(timesheetSchedulingStatuses).where(and(eq(timesheetSchedulingStatuses.siteId, siteId), eq(timesheetSchedulingStatuses.period, period))).limit(1);
   if (status?.finalizedAt || status?.scheduleStatus === "finalized" || status?.attendanceStatus === "finalized") {
     throw new Error("Scheduling period is finalized. Reopen before editing.");
@@ -125,15 +127,23 @@ const indonesiaHolidayPeriodSchema = z.object({ period: z.string().regex(/^\d{4}
 export async function syncIndonesiaHolidaysAction(input: z.infer<typeof indonesiaHolidaySyncSchema>) {
   const payload = indonesiaHolidaySyncSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
-  const now = new Date();
+  await ensureSchedulingTimesheetTables();
   const holidays = await fetchIndonesiaHolidays(payload.year);
+  await upsertIndonesiaHolidays(holidays);
+
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true, count: holidays.length };
+}
+
+async function upsertIndonesiaHolidays(holidays: Awaited<ReturnType<typeof fetchIndonesiaHolidays>>) {
+  const now = new Date();
 
   if (holidays.length) {
     await db.insert(indonesiaHolidays).values(holidays.map((holiday) => ({
       date: holiday.date,
       name: holiday.name,
       localName: holiday.localName,
-      source: "openholiday",
+      source: "api-hari-libur",
       sourceId: holiday.sourceId,
       types: holiday.types,
       nationwide: holiday.nationwide,
@@ -154,18 +164,23 @@ export async function syncIndonesiaHolidaysAction(input: z.infer<typeof indonesi
       },
     });
   }
-
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true, count: holidays.length };
 }
 
 export async function getIndonesiaHolidaysAction(input: z.infer<typeof indonesiaHolidayPeriodSchema>) {
   const payload = indonesiaHolidayPeriodSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   const [year, month] = payload.period.split("-").map(Number);
   const start = `${payload.period}-01`;
   const end = `${payload.period}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
-  const rows = await db.select({ date: indonesiaHolidays.date, name: indonesiaHolidays.name, localName: indonesiaHolidays.localName }).from(indonesiaHolidays).where(and(sql`${indonesiaHolidays.date} >= ${start}`, sql`${indonesiaHolidays.date} <= ${end}`)).orderBy(asc(indonesiaHolidays.date));
+  let rows = await db.select({ date: indonesiaHolidays.date, name: indonesiaHolidays.name, localName: indonesiaHolidays.localName }).from(indonesiaHolidays).where(and(eq(indonesiaHolidays.source, "api-hari-libur"), sql`${indonesiaHolidays.date} >= ${start}`, sql`${indonesiaHolidays.date} <= ${end}`)).orderBy(asc(indonesiaHolidays.date));
+
+  if (rows.length === 0) {
+    const holidays = await fetchIndonesiaHolidays(year);
+    await upsertIndonesiaHolidays(holidays);
+    rows = await db.select({ date: indonesiaHolidays.date, name: indonesiaHolidays.name, localName: indonesiaHolidays.localName }).from(indonesiaHolidays).where(and(eq(indonesiaHolidays.source, "api-hari-libur"), sql`${indonesiaHolidays.date} >= ${start}`, sql`${indonesiaHolidays.date} <= ${end}`)).orderBy(asc(indonesiaHolidays.date));
+  }
+
   return rows.map((holiday) => ({ ...holiday, day: Number(holiday.date.slice(-2)) }));
 }
 
@@ -211,6 +226,7 @@ const saveSchedulingTimesheetPlanSchema = z.object({
 export async function saveSchedulingTimesheetPlanAction(input: z.infer<typeof saveSchedulingTimesheetPlanSchema>) {
   const payload = saveSchedulingTimesheetPlanSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   await assertSchedulingPeriodOpen(payload.siteId, payload.period);
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
@@ -270,6 +286,7 @@ const saveTimesheetFieldBreakPlansSchema = z.object({
 export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>) {
   const payload = saveTimesheetFieldBreakPlansSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   await assertSchedulingPeriodOpen(payload.siteId, payload.period);
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
@@ -334,6 +351,7 @@ const saveAttendanceRealOverridesSchema = z.object({
 export async function saveAttendanceRealOverridesAction(input: z.infer<typeof saveAttendanceRealOverridesSchema>) {
   const payload = saveAttendanceRealOverridesSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   await assertSchedulingPeriodOpen(payload.siteId, payload.period);
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
@@ -394,6 +412,7 @@ const reopenSchedulingPeriodSchema = z.object({
 export async function finalizeSchedulingPeriodAction(input: z.infer<typeof finalizeSchedulingPeriodSchema>) {
   const payload = finalizeSchedulingPeriodSchema.parse(input);
   await requireSchedulingTimesheetAccess("finalize");
+  await ensureSchedulingTimesheetTables();
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
   const now = new Date();
@@ -408,6 +427,7 @@ export async function finalizeSchedulingPeriodAction(input: z.infer<typeof final
 export async function reopenSchedulingPeriodAction(input: z.infer<typeof reopenSchedulingPeriodSchema>) {
   const payload = reopenSchedulingPeriodSchema.parse(input);
   await requireSchedulingTimesheetAccess("finalize");
+  await ensureSchedulingTimesheetTables();
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
   const now = new Date();
@@ -433,6 +453,7 @@ const applyAttendanceImportPreviewSchema = attendanceImportPreviewIdSchema.exten
 export async function createAttendanceImportPreviewAction(input: z.infer<typeof createAttendanceImportPreviewSchema>) {
   const payload = createAttendanceImportPreviewSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   await assertSchedulingPeriodOpen(payload.siteId, payload.period);
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
@@ -456,6 +477,7 @@ export async function createAttendanceImportPreviewAction(input: z.infer<typeof 
 export async function applyAttendanceImportPreviewAction(input: z.infer<typeof applyAttendanceImportPreviewSchema>) {
   const payload = applyAttendanceImportPreviewSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
   const now = new Date();
@@ -483,6 +505,7 @@ export async function applyAttendanceImportPreviewAction(input: z.infer<typeof a
 export async function discardAttendanceImportPreviewAction(input: z.infer<typeof attendanceImportPreviewIdSchema>) {
   const payload = attendanceImportPreviewIdSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
   const now = new Date();
@@ -515,9 +538,12 @@ const saveSchedulingConfigSchema = z.object({
 export async function saveSchedulingConfigAction(input: z.infer<typeof saveSchedulingConfigSchema>) {
   const payload = saveSchedulingConfigSchema.parse(input);
   await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
   const actorEmail = await getCurrentActorEmail();
   const savedByUserId = await getCurrentActorUserId(actorEmail);
   const now = new Date();
+  const [site] = await db.select({ id: sites.id }).from(sites).where(eq(sites.id, payload.siteId)).limit(1);
+  if (!site) return { ok: false, error: "Site not found" };
 
   await db.insert(timesheetSchedulingConfigs).values({ ...payload, savedByUserId, updatedAt: now }).onConflictDoUpdate({
     target: [timesheetSchedulingConfigs.siteId],

@@ -19,6 +19,14 @@ type OpenHolidayItem = {
   types?: unknown;
   type?: unknown;
 };
+type ApiHariLiburItem = {
+  date?: string;
+  description?: string;
+  name?: string;
+};
+type ApiHariLiburResponse = {
+  data?: ApiHariLiburItem[];
+};
 
 function addDays(date: string, days: number) {
   const value = new Date(`${date}T00:00:00.000Z`);
@@ -57,15 +65,57 @@ export function normalizeOpenHolidayResponse(items: OpenHolidayItem[]): Indonesi
   });
 }
 
-export async function fetchIndonesiaHolidays(year: number) {
-  const params = new URLSearchParams({
-    countryIsoCode: "ID",
-    languageIsoCode: "ID",
-    validFrom: `${year}-01-01`,
-    validTo: `${year}-12-31`,
+export function normalizeApiHariLiburResponse(input: ApiHariLiburItem[] | ApiHariLiburResponse): IndonesiaHoliday[] {
+  const items = Array.isArray(input) ? input : Array.isArray(input.data) ? input.data : [];
+
+  return items.flatMap((item) => {
+    if (!item.date) return [];
+    const localName = (item.description || item.name || "Hari Libur Nasional").trim();
+    if (localName.toLowerCase().includes("cuti bersama")) return [];
+
+    return [{
+      date: item.date,
+      name: localName,
+      localName,
+      sourceId: item.date,
+      types: [],
+      nationwide: true,
+      rawPayload: item,
+    }];
   });
-  const response = await fetch(`https://openholidaysapi.org/PublicHolidays?${params.toString()}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(`OpenHoliday sync failed (${response.status})`);
+}
+
+export async function fetchIndonesiaHolidays(year: number) {
+  const params = new URLSearchParams({ year: String(year) });
+  const url = `https://api-hari-libur.vercel.app/api?${params.toString()}`;
+  let response = await fetch(url, { cache: "no-store" });
+
+  if (!response.ok) {
+    await generateApiHariLiburYear(year);
+    response = await fetch(url, { cache: "no-store" });
+  }
+
+  if (!response.ok) throw new Error(`Hari libur sync failed (${response.status})`);
   const data = await response.json();
-  return normalizeOpenHolidayResponse(Array.isArray(data) ? data : []);
+  const holidays = normalizeApiHariLiburResponse(data);
+
+  if (holidays.length === 0) {
+    await generateApiHariLiburYear(year);
+    const generatedResponse = await fetch(url, { cache: "no-store" });
+    if (generatedResponse.ok) return normalizeApiHariLiburResponse(await generatedResponse.json());
+  }
+
+  return holidays;
+}
+
+async function generateApiHariLiburYear(year: number) {
+  try {
+    await fetch("https://api-hari-libur.vercel.app/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year }),
+      cache: "no-store",
+    });
+  } catch {
+  }
 }

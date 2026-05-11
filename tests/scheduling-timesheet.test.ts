@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { buildAttendanceImportPreview } from "@/lib/timesheet/attendance-import";
 import { applyHolidayPolicy, canSwapOff, classifyOvertimeDay, swapScheduleCodes, type ScheduleCode } from "@/lib/timesheet-scheduling";
-import { normalizeOpenHolidayResponse } from "@/lib/openholiday";
+import { normalizeApiHariLiburResponse, normalizeOpenHolidayResponse } from "@/lib/openholiday";
 
 describe("scheduling timesheet workflow", () => {
   it("does not use localStorage scheduling persistence", () => {
@@ -95,5 +95,34 @@ describe("scheduling timesheet workflow", () => {
   it("normalizes OpenHoliday multi-day ranges", () => {
     const holidays = normalizeOpenHolidayResponse([{ id: "x", startDate: "2026-05-01", endDate: "2026-05-03", name: [{ language: "ID", text: "Libur Nasional" }], nationwide: true }]);
     expect(holidays.map((holiday) => holiday.date)).toEqual(["2026-05-01", "2026-05-02", "2026-05-03"]);
+  });
+
+  it("normalizes api-hari-libur response", () => {
+    const holidays = normalizeApiHariLiburResponse({ data: [
+      { date: "2026-05-01", description: " Hari Buruh Internasional " },
+      { date: "2026-05-02", description: "Cuti Melahirkan Nasional" },
+      { date: "2026-05-15", description: "Cuti Bersama Hari Raya Idul Adha 1447H" },
+    ] });
+    expect(holidays).toHaveLength(2);
+    expect(holidays.map((holiday) => holiday.localName)).toEqual(["Hari Buruh Internasional", "Cuti Melahirkan Nasional"]);
+    expect(holidays[0]).toMatchObject({
+      date: "2026-05-01",
+      localName: "Hari Buruh Internasional",
+      sourceId: "2026-05-01",
+      nationwide: true,
+    });
+  });
+
+  it("uses api-hari-libur source for scheduling holidays", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "app/dashboard/admin-actions.ts"), "utf8");
+    expect(source).toContain('source: "api-hari-libur"');
+    expect(source).toContain('eq(indonesiaHolidays.source, "api-hari-libur")');
+  });
+
+  it("marks every holiday schedule and attendance cell with holiday color classes", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "components/scheduling-timesheet-workspace.tsx"), "utf8");
+    expect(source).toContain("scheduleHolidayCellClass");
+    expect(source).toContain("attendanceHolidayCellClass");
+    expect(source).toContain('!name.toLowerCase().includes("cuti bersama")');
   });
 });
