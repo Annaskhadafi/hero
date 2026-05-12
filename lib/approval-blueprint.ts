@@ -1,5 +1,5 @@
-import { and, asc, desc, eq, inArray, lt, lte, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { and, asc, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm'
+import { db } from '@/db'
 import {
   activities,
   approvalAttachments,
@@ -31,129 +31,129 @@ import {
   workflowStepRules,
   workflowTemplateVersions,
   workflowTemplates,
-} from "@/db/schema/hero";
-import { parseApprovalNoteEntries } from "@/lib/approval-notes";
-import { sendPushNotification, type PushDispatchInput } from "@/lib/push-notifications";
+} from '@/db/schema/hero'
+import { parseApprovalNoteEntries } from '@/lib/approval-notes'
+import { sendPushNotification, type PushDispatchInput } from '@/lib/push-notifications'
 
-const DAILY_ACTIVITY_TEMPLATE_KEY = "daily-activity";
-const DAILY_ACTIVITY_WORKFLOW_KEY = "daily-activity-org";
+const DAILY_ACTIVITY_TEMPLATE_KEY = 'daily-activity'
+const DAILY_ACTIVITY_WORKFLOW_KEY = 'daily-activity-org'
 
 type ActivitySupplementalPayload = {
-  workDate?: string;
-  shift?: string;
-  riskCategory?: string;
-  referenceCode?: string;
-  manpowerInvolved?: string;
-  checklistCompletion?: string[];
-  department?: string;
-  section?: string;
-  photoAttachmentUrl?: string;
-  documentAttachmentUrl?: string;
-  signatureName?: string;
-  latitude?: string;
-  longitude?: string;
-  additionalWatchers?: string[];
-};
+  workDate?: string
+  shift?: string
+  riskCategory?: string
+  referenceCode?: string
+  manpowerInvolved?: string
+  checklistCompletion?: string[]
+  department?: string
+  section?: string
+  photoAttachmentUrl?: string
+  documentAttachmentUrl?: string
+  signatureName?: string
+  latitude?: string
+  longitude?: string
+  additionalWatchers?: string[]
+}
 
 function normalizeStatus(value: string) {
-  return value.trim().toLowerCase().replaceAll(" ", "_");
+  return value.trim().toLowerCase().replaceAll(' ', '_')
 }
 
 function parseJsonObject<T extends object>(value: string, fallback: T) {
-  const trimmed = value.trim();
+  const trimmed = value.trim()
   if (!trimmed) {
-    return fallback;
+    return fallback
   }
 
   try {
-    const parsed = JSON.parse(trimmed) as T;
-    return { ...fallback, ...parsed };
+    const parsed = JSON.parse(trimmed) as T
+    return { ...fallback, ...parsed }
   } catch {
-    return fallback;
+    return fallback
   }
 }
 
 function getRequestStatus(activityStatus: string) {
-  const normalized = normalizeStatus(activityStatus);
+  const normalized = normalizeStatus(activityStatus)
 
-  if (normalized === "approved") {
-    return "approved";
+  if (normalized === 'approved') {
+    return 'approved'
   }
 
-  if (normalized === "rejected") {
-    return "rejected";
+  if (normalized === 'rejected') {
+    return 'rejected'
   }
 
-  if (normalized === "needs_correction") {
-    return "needs_revision";
+  if (normalized === 'needs_correction') {
+    return 'needs_revision'
   }
 
-  if (normalized.startsWith("pending")) {
-    return "in_review";
+  if (normalized.startsWith('pending')) {
+    return 'in_review'
   }
 
-  if (normalized === "cancelled") {
-    return "cancelled";
+  if (normalized === 'cancelled') {
+    return 'cancelled'
   }
 
-  return "submitted";
+  return 'submitted'
 }
 
 function getApprovalModeGroupStatus(statuses: string[], mode: string) {
-  const normalizedMode = normalizeStatus(mode);
-  const normalizedStatuses = statuses.map((status) => normalizeStatus(status));
+  const normalizedMode = normalizeStatus(mode)
+  const normalizedStatuses = statuses.map((status) => normalizeStatus(status))
 
-  if (normalizedStatuses.some((status) => status === "rejected")) {
-    return "rejected";
+  if (normalizedStatuses.some((status) => status === 'rejected')) {
+    return 'rejected'
   }
 
-  if (normalizedStatuses.some((status) => status === "needs_correction")) {
-    return "needs_revision";
+  if (normalizedStatuses.some((status) => status === 'needs_correction')) {
+    return 'needs_revision'
   }
 
-  if (normalizedMode === "parallel_any" || normalizedMode === "any_one") {
-    if (normalizedStatuses.some((status) => status === "approved")) {
-      return "approved";
+  if (normalizedMode === 'parallel_any' || normalizedMode === 'any_one') {
+    if (normalizedStatuses.some((status) => status === 'approved')) {
+      return 'approved'
     }
 
-    if (normalizedStatuses.some((status) => status === "pending")) {
-      return "pending";
+    if (normalizedStatuses.some((status) => status === 'pending')) {
+      return 'pending'
     }
   }
 
-  if (normalizedStatuses.every((status) => status === "approved" || status === "skipped")) {
-    return "approved";
+  if (normalizedStatuses.every((status) => status === 'approved' || status === 'skipped')) {
+    return 'approved'
   }
 
-  if (normalizedStatuses.some((status) => status === "pending")) {
-    return "pending";
+  if (normalizedStatuses.some((status) => status === 'pending')) {
+    return 'pending'
   }
 
-  return normalizedStatuses[normalizedStatuses.length - 1] ?? "waiting";
+  return normalizedStatuses[normalizedStatuses.length - 1] ?? 'waiting'
 }
 
 function buildRequestNumber(activityId: number, submittedAt: Date) {
   const stamp = [
     submittedAt.getFullYear(),
-    `${submittedAt.getMonth() + 1}`.padStart(2, "0"),
-    `${submittedAt.getDate()}`.padStart(2, "0"),
-  ].join("");
+    `${submittedAt.getMonth() + 1}`.padStart(2, '0'),
+    `${submittedAt.getDate()}`.padStart(2, '0'),
+  ].join('')
 
-  return `DA-${stamp}-${`${activityId}`.padStart(4, "0")}`;
+  return `DA-${stamp}-${`${activityId}`.padStart(4, '0')}`
 }
 
 function getDueAt(submittedAt: Date, slaHours: number) {
-  return new Date(submittedAt.getTime() + slaHours * 60 * 60 * 1000);
+  return new Date(submittedAt.getTime() + slaHours * 60 * 60 * 1000)
 }
 
 function slugifyKey(value: string, fallback: string) {
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
 
-  return normalized || fallback;
+  return normalized || fallback
 }
 
 function parseOptionLines(value: string) {
@@ -162,65 +162,81 @@ function parseOptionLines(value: string) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const [rawValue, rawLabel] = line.includes("|") ? line.split("|", 2) : [line, line];
+      const [rawValue, rawLabel] = line.includes('|') ? line.split('|', 2) : [line, line]
       return {
         optionValue: rawValue.trim(),
         optionLabel: (rawLabel ?? rawValue).trim(),
         sortOrder: index + 1,
-      };
-    });
+      }
+    })
 }
 
 function normalizeConditionValue(value: unknown) {
   if (Array.isArray(value)) {
-    return value.map((item) => `${item}`.trim()).filter(Boolean);
+    return value.map((item) => `${item}`.trim()).filter(Boolean)
   }
 
-  return `${value ?? ""}`.trim();
+  return `${value ?? ''}`.trim()
 }
 
 function compareConditionValue(input: unknown, operator: string, expected: string) {
-  const normalizedOperator = normalizeStatus(operator);
-  const normalizedInput = normalizeConditionValue(input);
-  const normalizedExpected = expected.trim();
-  const inputText = Array.isArray(normalizedInput) ? normalizedInput.join(",") : normalizedInput;
-  const inputNumber = Number.parseFloat(inputText);
-  const expectedNumber = Number.parseFloat(normalizedExpected);
+  const normalizedOperator = normalizeStatus(operator)
+  const normalizedInput = normalizeConditionValue(input)
+  const normalizedExpected = expected.trim()
+  const inputText = Array.isArray(normalizedInput) ? normalizedInput.join(',') : normalizedInput
+  const inputNumber = Number.parseFloat(inputText)
+  const expectedNumber = Number.parseFloat(normalizedExpected)
 
   switch (normalizedOperator) {
-    case "=":
-    case "eq":
-      return inputText.toLowerCase() === normalizedExpected.toLowerCase();
-    case "!=":
-    case "not_eq":
-      return inputText.toLowerCase() !== normalizedExpected.toLowerCase();
-    case ">":
-      return Number.isFinite(inputNumber) && Number.isFinite(expectedNumber) && inputNumber > expectedNumber;
-    case ">=":
-      return Number.isFinite(inputNumber) && Number.isFinite(expectedNumber) && inputNumber >= expectedNumber;
-    case "<":
-      return Number.isFinite(inputNumber) && Number.isFinite(expectedNumber) && inputNumber < expectedNumber;
-    case "<=":
-      return Number.isFinite(inputNumber) && Number.isFinite(expectedNumber) && inputNumber <= expectedNumber;
-    case "contains":
-      return inputText.toLowerCase().includes(normalizedExpected.toLowerCase());
-    case "in": {
+    case '=':
+    case 'eq':
+      return inputText.toLowerCase() === normalizedExpected.toLowerCase()
+    case '!=':
+    case 'not_eq':
+      return inputText.toLowerCase() !== normalizedExpected.toLowerCase()
+    case '>':
+      return (
+        Number.isFinite(inputNumber) &&
+        Number.isFinite(expectedNumber) &&
+        inputNumber > expectedNumber
+      )
+    case '>=':
+      return (
+        Number.isFinite(inputNumber) &&
+        Number.isFinite(expectedNumber) &&
+        inputNumber >= expectedNumber
+      )
+    case '<':
+      return (
+        Number.isFinite(inputNumber) &&
+        Number.isFinite(expectedNumber) &&
+        inputNumber < expectedNumber
+      )
+    case '<=':
+      return (
+        Number.isFinite(inputNumber) &&
+        Number.isFinite(expectedNumber) &&
+        inputNumber <= expectedNumber
+      )
+    case 'contains':
+      return inputText.toLowerCase().includes(normalizedExpected.toLowerCase())
+    case 'in': {
       const expectedValues = normalizedExpected
-        .split(",")
+        .split(',')
         .map((item) => item.trim().toLowerCase())
-        .filter(Boolean);
-      return expectedValues.includes(inputText.toLowerCase());
+        .filter(Boolean)
+      return expectedValues.includes(inputText.toLowerCase())
     }
-    case "is_empty":
-    case "is empty":
-      return inputText.length === 0;
-    case "is_not_empty":
-    case "is not empty":
-      return inputText.length > 0;
-    case "attachment_exists":
-      return inputText.length > 0;
+    case 'is_empty':
+    case 'is empty':
+      return inputText.length === 0
+    case 'is_not_empty':
+    case 'is not empty':
+      return inputText.length > 0
+    case 'attachment_exists':
+      return inputText.length > 0
     default:
-      return inputText.toLowerCase() === normalizedExpected.toLowerCase();
+      return inputText.toLowerCase() === normalizedExpected.toLowerCase()
   }
 }
 
@@ -228,86 +244,288 @@ function getTemplateCatalogSeed() {
   return [
     {
       templateKey: DAILY_ACTIVITY_TEMPLATE_KEY,
-      category: "Operations",
-      name: "Daily Activity",
-      workflowMode: "org_template",
-      description: "Form aktivitas harian dengan workflow approval berbasis struktur organisasi atau matrix khusus.",
+      category: 'Operations',
+      name: 'Daily Activity',
+      workflowMode: 'org_template',
+      description:
+        'Form aktivitas harian dengan workflow approval berbasis struktur organisasi atau matrix khusus.',
     },
     {
-      templateKey: "overtime-request",
-      category: "Operations",
-      name: "Overtime Request",
-      workflowMode: "org_template",
-      description: "Request lembur terpisah untuk kebutuhan payroll dan monitoring SLA approval.",
+      templateKey: 'overtime-request',
+      category: 'Operations',
+      name: 'Overtime Request',
+      workflowMode: 'org_template',
+      description: 'Request lembur terpisah untuk kebutuhan payroll dan monitoring SLA approval.',
     },
     {
-      templateKey: "leave-permission",
-      category: "HC",
-      name: "Leave / Permission",
-      workflowMode: "manual_workflow",
-      description: "Permohonan cuti, izin, dan approval lintas atasan/HC.",
+      templateKey: 'leave-permission',
+      category: 'HC',
+      name: 'Leave / Permission',
+      workflowMode: 'manual_workflow',
+      description: 'Permohonan cuti, izin, dan approval lintas atasan/HC.',
     },
     {
-      templateKey: "daily-report",
-      category: "Reporting",
-      name: "Daily Report",
-      workflowMode: "org_template",
-      description: "Rekap operasional harian site dengan approval berjenjang.",
+      templateKey: 'daily-report',
+      category: 'Reporting',
+      name: 'Daily Report',
+      workflowMode: 'org_template',
+      description: 'Rekap operasional harian site dengan approval berjenjang.',
     },
     {
-      templateKey: "hse-observation",
-      category: "HSE",
-      name: "HSE Observation",
-      workflowMode: "org_template",
-      description: "Pencatatan observasi HSE dengan attachment dan eskalasi.",
+      templateKey: 'hse-observation',
+      category: 'HSE',
+      name: 'HSE Observation',
+      workflowMode: 'org_template',
+      description: 'Pencatatan observasi HSE dengan attachment dan eskalasi.',
     },
     {
-      templateKey: "procurement-request",
-      category: "Finance / SCM",
-      name: "Procurement Request",
-      workflowMode: "manual_workflow",
-      description: "Permintaan pembelian dengan rule nominal dan approval lintas fungsi.",
+      templateKey: 'procurement-request',
+      category: 'Finance / SCM',
+      name: 'Procurement Request',
+      workflowMode: 'manual_workflow',
+      description: 'Permintaan pembelian dengan rule nominal dan approval lintas fungsi.',
     },
-  ] as const;
+  ] as const
 }
 
 function getDailyActivityFieldSeed() {
   return {
     sections: [
-      { sectionKey: "work_context", label: "Work Context", description: "Identitas aktivitas dan konteks organisasi." },
-      { sectionKey: "time_window", label: "Time Window", description: "Jam kerja, overtime, dan kalkulasi durasi." },
-      { sectionKey: "evidence", label: "Evidence & Control", description: "Attachment, signature, checklist, dan remark." },
+      {
+        sectionKey: 'work_context',
+        label: 'Work Context',
+        description: 'Identitas aktivitas dan konteks organisasi.',
+      },
+      {
+        sectionKey: 'time_window',
+        label: 'Time Window',
+        description: 'Jam kerja, overtime, dan kalkulasi durasi.',
+      },
+      {
+        sectionKey: 'evidence',
+        label: 'Evidence & Control',
+        description: 'Attachment, signature, checklist, dan remark.',
+      },
     ],
     fields: [
-      { sectionKey: "work_context", fieldKey: "title", fieldType: "text", label: "Judul pekerjaan", required: true, placeholder: "Contoh: Inspeksi unit operasional" },
-      { sectionKey: "work_context", fieldKey: "activityCode", fieldType: "select", label: "Kode aktivitas", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "activityType", fieldType: "select", label: "Activity Type", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "workDate", fieldType: "date", label: "Tanggal kerja", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "shift", fieldType: "radio", label: "Shift", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "siteName", fieldType: "org_unit_picker", label: "Site", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "department", fieldType: "org_unit_picker", label: "Department", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "section", fieldType: "org_unit_picker", label: "Section", required: false, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "unitNumber", fieldType: "text", label: "Unit / Area", required: true, placeholder: "Contoh: Unit-001" },
-      { sectionKey: "work_context", fieldKey: "referenceCode", fieldType: "text", label: "Reference WO / Ticket", required: false, placeholder: "Opsional" },
-      { sectionKey: "work_context", fieldKey: "employeeId", fieldType: "people_picker", label: "Requester", required: true, placeholder: "" },
-      { sectionKey: "work_context", fieldKey: "additionalWatchers", fieldType: "multi_select", label: "Watcher / CC", required: false, placeholder: "" },
-      { sectionKey: "time_window", fieldKey: "startTime", fieldType: "datetime", label: "Waktu mulai", required: true, placeholder: "" },
-      { sectionKey: "time_window", fieldKey: "endTime", fieldType: "datetime", label: "Waktu selesai", required: true, placeholder: "" },
-      { sectionKey: "time_window", fieldKey: "priority", fieldType: "select", label: "Prioritas", required: true, placeholder: "" },
-      { sectionKey: "time_window", fieldKey: "overtimeMinutes", fieldType: "number", label: "Kandidat lembur (menit)", required: true, placeholder: "0" },
-      { sectionKey: "time_window", fieldKey: "manpowerInvolved", fieldType: "number", label: "Manpower involved", required: false, placeholder: "0" },
-      { sectionKey: "time_window", fieldKey: "riskCategory", fieldType: "radio", label: "Kategori risiko", required: false, placeholder: "" },
-      { sectionKey: "time_window", fieldKey: "calculatedDuration", fieldType: "calculated_field", label: "Durasi kerja (preview)", required: false, placeholder: "" },
-      { sectionKey: "evidence", fieldKey: "titleDetails", fieldType: "textarea", label: "Deskripsi kerja", required: true, placeholder: "Catatan detail pekerjaan" },
-      { sectionKey: "evidence", fieldKey: "checklistCompletion", fieldType: "checkbox", label: "Checklist completion", required: false, placeholder: "" },
-      { sectionKey: "evidence", fieldKey: "photoAttachmentUrl", fieldType: "image_upload", label: "Attachment foto", required: false, placeholder: "Tempel URL image" },
-      { sectionKey: "evidence", fieldKey: "documentAttachmentUrl", fieldType: "file_upload", label: "Attachment dokumen", required: false, placeholder: "Tempel URL dokumen" },
-      { sectionKey: "evidence", fieldKey: "signatureName", fieldType: "signature", label: "Signature requester", required: false, placeholder: "Ketik nama sebagai e-sign" },
-      { sectionKey: "evidence", fieldKey: "remarks", fieldType: "textarea", label: "Remark", required: true, placeholder: "Catatan singkat" },
-      { sectionKey: "evidence", fieldKey: "latitude", fieldType: "text", label: "Latitude", required: false, placeholder: "Opsional" },
-      { sectionKey: "evidence", fieldKey: "longitude", fieldType: "text", label: "Longitude", required: false, placeholder: "Opsional" },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'title',
+        fieldType: 'text',
+        label: 'Judul pekerjaan',
+        required: true,
+        placeholder: 'Contoh: Inspeksi unit operasional',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'activityCode',
+        fieldType: 'select',
+        label: 'Kode aktivitas',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'activityType',
+        fieldType: 'select',
+        label: 'Activity Type',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'workDate',
+        fieldType: 'date',
+        label: 'Tanggal kerja',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'shift',
+        fieldType: 'radio',
+        label: 'Shift',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'siteName',
+        fieldType: 'org_unit_picker',
+        label: 'Site',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'department',
+        fieldType: 'org_unit_picker',
+        label: 'Department',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'section',
+        fieldType: 'org_unit_picker',
+        label: 'Section',
+        required: false,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'unitNumber',
+        fieldType: 'text',
+        label: 'Unit / Area',
+        required: true,
+        placeholder: 'Contoh: Unit-001',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'referenceCode',
+        fieldType: 'text',
+        label: 'Reference WO / Ticket',
+        required: false,
+        placeholder: 'Opsional',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'employeeId',
+        fieldType: 'people_picker',
+        label: 'Requester',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'work_context',
+        fieldKey: 'additionalWatchers',
+        fieldType: 'multi_select',
+        label: 'Watcher / CC',
+        required: false,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'startTime',
+        fieldType: 'datetime',
+        label: 'Waktu mulai',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'endTime',
+        fieldType: 'datetime',
+        label: 'Waktu selesai',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'priority',
+        fieldType: 'select',
+        label: 'Prioritas',
+        required: true,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'overtimeMinutes',
+        fieldType: 'number',
+        label: 'Kandidat lembur (menit)',
+        required: true,
+        placeholder: '0',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'manpowerInvolved',
+        fieldType: 'number',
+        label: 'Manpower involved',
+        required: false,
+        placeholder: '0',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'riskCategory',
+        fieldType: 'radio',
+        label: 'Kategori risiko',
+        required: false,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'time_window',
+        fieldKey: 'calculatedDuration',
+        fieldType: 'calculated_field',
+        label: 'Durasi kerja (preview)',
+        required: false,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'titleDetails',
+        fieldType: 'textarea',
+        label: 'Deskripsi kerja',
+        required: true,
+        placeholder: 'Catatan detail pekerjaan',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'checklistCompletion',
+        fieldType: 'checkbox',
+        label: 'Checklist completion',
+        required: false,
+        placeholder: '',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'photoAttachmentUrl',
+        fieldType: 'image_upload',
+        label: 'Attachment foto',
+        required: false,
+        placeholder: 'Tempel URL image',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'documentAttachmentUrl',
+        fieldType: 'file_upload',
+        label: 'Attachment dokumen',
+        required: false,
+        placeholder: 'Tempel URL dokumen',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'signatureName',
+        fieldType: 'signature',
+        label: 'Signature requester',
+        required: false,
+        placeholder: 'Ketik nama sebagai e-sign',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'remarks',
+        fieldType: 'textarea',
+        label: 'Remark',
+        required: true,
+        placeholder: 'Catatan singkat',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'latitude',
+        fieldType: 'text',
+        label: 'Latitude',
+        required: false,
+        placeholder: 'Opsional',
+      },
+      {
+        sectionKey: 'evidence',
+        fieldKey: 'longitude',
+        fieldType: 'text',
+        label: 'Longitude',
+        required: false,
+        placeholder: 'Opsional',
+      },
     ],
-  } as const;
+  } as const
 }
 
 async function ensureApprovalBlueprintTables() {
@@ -323,17 +541,17 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create unique index if not exists hero_form_templates_template_key_unique
     on hero_form_templates (template_key);
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_form_templates
     add column if not exists workflow_mode text not null default 'org_template';
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_template_versions (
@@ -349,7 +567,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_template_sections (
@@ -363,7 +581,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_template_fields (
@@ -385,7 +603,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_field_options (
@@ -398,7 +616,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_validation_rules (
@@ -412,7 +630,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_templates (
@@ -425,12 +643,12 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create unique index if not exists hero_workflow_templates_template_key_unique
     on hero_workflow_templates (template_key);
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_template_versions (
@@ -444,7 +662,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_conditions (
@@ -460,7 +678,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_branches (
@@ -474,7 +692,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_step_rules (
@@ -490,7 +708,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_notification_rules (
@@ -505,7 +723,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_workflow_reminder_rules (
@@ -519,7 +737,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_submissions (
@@ -540,7 +758,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_form_submission_values (
@@ -553,7 +771,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_approval_comments (
@@ -565,7 +783,7 @@ async function ensureApprovalBlueprintTables() {
       is_internal boolean not null default false,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_approval_request_actors (
@@ -581,7 +799,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_approval_attachments (
@@ -595,12 +813,12 @@ async function ensureApprovalBlueprintTables() {
       uploaded_by_employee_id integer references hero_employees(id) on delete set null,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approval_attachments
     add column if not exists mime_type text not null default 'application/octet-stream';
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_inbox_items (
@@ -615,7 +833,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_notification_events (
@@ -631,7 +849,7 @@ async function ensureApprovalBlueprintTables() {
       delivered_at timestamp,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_notification_deliveries (
@@ -645,7 +863,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_reminder_jobs (
@@ -658,7 +876,7 @@ async function ensureApprovalBlueprintTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_request_status_histories (
@@ -671,7 +889,7 @@ async function ensureApprovalBlueprintTables() {
       note text not null default '',
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_step_decision_histories (
@@ -684,7 +902,7 @@ async function ensureApprovalBlueprintTables() {
       decided_at timestamp not null default now(),
       created_at timestamp not null default now()
     );
-  `);
+  `)
 }
 
 async function ensureDailyActivityTemplateVersion(templateId: number) {
@@ -693,10 +911,10 @@ async function ensureDailyActivityTemplateVersion(templateId: number) {
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.templateId, templateId))
     .orderBy(desc(formTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   if (existingVersion) {
-    return existingVersion;
+    return existingVersion
   }
 
   const [createdVersion] = await db
@@ -704,13 +922,13 @@ async function ensureDailyActivityTemplateVersion(templateId: number) {
     .values({
       templateId,
       versionNumber: 1,
-      publishStatus: "published",
+      publishStatus: 'published',
       schemaSnapshot: JSON.stringify({ templateKey: DAILY_ACTIVITY_TEMPLATE_KEY }),
       workflowSnapshot: JSON.stringify({ workflowKey: DAILY_ACTIVITY_WORKFLOW_KEY }),
     })
-    .returning();
+    .returning()
 
-  return createdVersion;
+  return createdVersion
 }
 
 async function ensureWorkflowTemplateVersion(workflowTemplateId: number) {
@@ -719,10 +937,10 @@ async function ensureWorkflowTemplateVersion(workflowTemplateId: number) {
     .from(workflowTemplateVersions)
     .where(eq(workflowTemplateVersions.workflowTemplateId, workflowTemplateId))
     .orderBy(desc(workflowTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   if (existingVersion) {
-    return existingVersion;
+    return existingVersion
   }
 
   const [createdVersion] = await db
@@ -730,12 +948,12 @@ async function ensureWorkflowTemplateVersion(workflowTemplateId: number) {
     .values({
       workflowTemplateId,
       versionNumber: 1,
-      publishStatus: "published",
-      notes: "Initial published workflow version",
+      publishStatus: 'published',
+      notes: 'Initial published workflow version',
     })
-    .returning();
+    .returning()
 
-  return createdVersion;
+  return createdVersion
 }
 
 async function ensureDailyActivityTemplateFields(versionId: number) {
@@ -743,13 +961,13 @@ async function ensureDailyActivityTemplateFields(versionId: number) {
     .select({ id: formTemplateFields.id })
     .from(formTemplateFields)
     .where(eq(formTemplateFields.versionId, versionId))
-    .limit(1);
+    .limit(1)
 
   if (fieldCount) {
-    return;
+    return
   }
 
-  const seed = getDailyActivityFieldSeed();
+  const seed = getDailyActivityFieldSeed()
   const insertedSections = await db
     .insert(formTemplateSections)
     .values(
@@ -760,11 +978,11 @@ async function ensureDailyActivityTemplateFields(versionId: number) {
         description: section.description,
         sortOrder: index + 1,
         isCollapsible: false,
-      })),
+      }))
     )
-    .returning();
+    .returning()
 
-  const sectionByKey = new Map(insertedSections.map((section) => [section.sectionKey, section]));
+  const sectionByKey = new Map(insertedSections.map((section) => [section.sectionKey, section]))
   const insertedFields = await db
     .insert(formTemplateFields)
     .values(
@@ -775,54 +993,75 @@ async function ensureDailyActivityTemplateFields(versionId: number) {
         fieldType: field.fieldType,
         label: field.label,
         placeholder: field.placeholder,
-        helpText: "",
-        defaultValue: "",
+        helpText: '',
+        defaultValue: '',
         configJson: JSON.stringify({ sectionKey: field.sectionKey }),
         validationJson: JSON.stringify({ required: field.required }),
-        optionSourceJson: "",
+        optionSourceJson: '',
         isRequired: field.required,
         isHidden: false,
         sortOrder: index + 1,
-      })),
+      }))
     )
-    .returning();
+    .returning()
 
-  const fieldByKey = new Map(insertedFields.map((field) => [field.fieldKey, field]));
+  const fieldByKey = new Map(insertedFields.map((field) => [field.fieldKey, field]))
 
-  const optionSeed: Array<{ fieldKey: string; value: string; label: string; sortOrder: number; isDefault?: boolean }> = [
-    { fieldKey: "activityCode", value: "TS", label: "TS", sortOrder: 1, isDefault: true },
-    { fieldKey: "activityCode", value: "TR", label: "TR", sortOrder: 2 },
-    { fieldKey: "activityCode", value: "TE", label: "TE", sortOrder: 3 },
-    { fieldKey: "activityCode", value: "TI", label: "TI", sortOrder: 4 },
-    { fieldKey: "activityCode", value: "HS", label: "HS", sortOrder: 5 },
-    { fieldKey: "activityCode", value: "SB", label: "SB", sortOrder: 6 },
-    { fieldKey: "activityCode", value: "AD", label: "AD", sortOrder: 7 },
-    { fieldKey: "activityType", value: "Tire Service", label: "Tire Service", sortOrder: 1 },
-    { fieldKey: "activityType", value: "Tire Repair", label: "Tire Repair", sortOrder: 2 },
-    { fieldKey: "activityType", value: "Technical Engineering", label: "Technical Engineering", sortOrder: 3 },
-    { fieldKey: "activityType", value: "Tire Inspection", label: "Tire Inspection", sortOrder: 4 },
-    { fieldKey: "activityType", value: "HSE Activity", label: "HSE Activity", sortOrder: 5 },
-    { fieldKey: "activityType", value: "Daily Recap", label: "Daily Recap", sortOrder: 6 },
-    { fieldKey: "priority", value: "Normal", label: "Normal", sortOrder: 1, isDefault: true },
-    { fieldKey: "priority", value: "Safety", label: "Safety", sortOrder: 2 },
-    { fieldKey: "priority", value: "Emergency", label: "Emergency", sortOrder: 3 },
-    { fieldKey: "shift", value: "Shift Pagi", label: "Shift Pagi", sortOrder: 1, isDefault: true },
-    { fieldKey: "shift", value: "Shift Sore", label: "Shift Sore", sortOrder: 2 },
-    { fieldKey: "shift", value: "Shift Malam", label: "Shift Malam", sortOrder: 3 },
-    { fieldKey: "riskCategory", value: "Low", label: "Low", sortOrder: 1 },
-    { fieldKey: "riskCategory", value: "Medium", label: "Medium", sortOrder: 2 },
-    { fieldKey: "riskCategory", value: "High", label: "High", sortOrder: 3 },
-    { fieldKey: "checklistCompletion", value: "Work area safe", label: "Work area safe", sortOrder: 1 },
-    { fieldKey: "checklistCompletion", value: "PPE complete", label: "PPE complete", sortOrder: 2 },
-    { fieldKey: "checklistCompletion", value: "Photo attached", label: "Photo attached", sortOrder: 3 },
-  ];
+  const optionSeed: Array<{
+    fieldKey: string
+    value: string
+    label: string
+    sortOrder: number
+    isDefault?: boolean
+  }> = [
+    { fieldKey: 'activityCode', value: 'TS', label: 'TS', sortOrder: 1, isDefault: true },
+    { fieldKey: 'activityCode', value: 'TR', label: 'TR', sortOrder: 2 },
+    { fieldKey: 'activityCode', value: 'TE', label: 'TE', sortOrder: 3 },
+    { fieldKey: 'activityCode', value: 'TI', label: 'TI', sortOrder: 4 },
+    { fieldKey: 'activityCode', value: 'HS', label: 'HS', sortOrder: 5 },
+    { fieldKey: 'activityCode', value: 'SB', label: 'SB', sortOrder: 6 },
+    { fieldKey: 'activityCode', value: 'AD', label: 'AD', sortOrder: 7 },
+    { fieldKey: 'activityType', value: 'Tire Service', label: 'Tire Service', sortOrder: 1 },
+    { fieldKey: 'activityType', value: 'Tire Repair', label: 'Tire Repair', sortOrder: 2 },
+    {
+      fieldKey: 'activityType',
+      value: 'Technical Engineering',
+      label: 'Technical Engineering',
+      sortOrder: 3,
+    },
+    { fieldKey: 'activityType', value: 'Tire Inspection', label: 'Tire Inspection', sortOrder: 4 },
+    { fieldKey: 'activityType', value: 'HSE Activity', label: 'HSE Activity', sortOrder: 5 },
+    { fieldKey: 'activityType', value: 'Daily Recap', label: 'Daily Recap', sortOrder: 6 },
+    { fieldKey: 'priority', value: 'Normal', label: 'Normal', sortOrder: 1, isDefault: true },
+    { fieldKey: 'priority', value: 'Safety', label: 'Safety', sortOrder: 2 },
+    { fieldKey: 'priority', value: 'Emergency', label: 'Emergency', sortOrder: 3 },
+    { fieldKey: 'shift', value: 'Shift Pagi', label: 'Shift Pagi', sortOrder: 1, isDefault: true },
+    { fieldKey: 'shift', value: 'Shift Sore', label: 'Shift Sore', sortOrder: 2 },
+    { fieldKey: 'shift', value: 'Shift Malam', label: 'Shift Malam', sortOrder: 3 },
+    { fieldKey: 'riskCategory', value: 'Low', label: 'Low', sortOrder: 1 },
+    { fieldKey: 'riskCategory', value: 'Medium', label: 'Medium', sortOrder: 2 },
+    { fieldKey: 'riskCategory', value: 'High', label: 'High', sortOrder: 3 },
+    {
+      fieldKey: 'checklistCompletion',
+      value: 'Work area safe',
+      label: 'Work area safe',
+      sortOrder: 1,
+    },
+    { fieldKey: 'checklistCompletion', value: 'PPE complete', label: 'PPE complete', sortOrder: 2 },
+    {
+      fieldKey: 'checklistCompletion',
+      value: 'Photo attached',
+      label: 'Photo attached',
+      sortOrder: 3,
+    },
+  ]
 
   if (optionSeed.length > 0) {
     await db.insert(formFieldOptions).values(
       optionSeed.flatMap((option) => {
-        const field = fieldByKey.get(option.fieldKey);
+        const field = fieldByKey.get(option.fieldKey)
         if (!field) {
-          return [];
+          return []
         }
 
         return [
@@ -833,23 +1072,58 @@ async function ensureDailyActivityTemplateFields(versionId: number) {
             sortOrder: option.sortOrder,
             isDefault: option.isDefault ?? false,
           },
-        ];
-      }),
-    );
+        ]
+      })
+    )
   }
 
-  const validationSeed: Array<{ fieldKey: string; ruleType: string; operator: string; value: string; message: string; sortOrder: number }> = [
-    { fieldKey: "title", ruleType: "length", operator: ">=", value: "5", message: "Judul pekerjaan minimal 5 karakter.", sortOrder: 1 },
-    { fieldKey: "unitNumber", ruleType: "required", operator: "is_not_empty", value: "", message: "Unit / area wajib diisi.", sortOrder: 1 },
-    { fieldKey: "overtimeMinutes", ruleType: "number_range", operator: "<=", value: "720", message: "Overtime maksimal 720 menit.", sortOrder: 1 },
-    { fieldKey: "photoAttachmentUrl", ruleType: "file_type", operator: "contains", value: "http", message: "Attachment foto gunakan URL yang valid.", sortOrder: 1 },
-  ];
+  const validationSeed: Array<{
+    fieldKey: string
+    ruleType: string
+    operator: string
+    value: string
+    message: string
+    sortOrder: number
+  }> = [
+    {
+      fieldKey: 'title',
+      ruleType: 'length',
+      operator: '>=',
+      value: '5',
+      message: 'Judul pekerjaan minimal 5 karakter.',
+      sortOrder: 1,
+    },
+    {
+      fieldKey: 'unitNumber',
+      ruleType: 'required',
+      operator: 'is_not_empty',
+      value: '',
+      message: 'Unit / area wajib diisi.',
+      sortOrder: 1,
+    },
+    {
+      fieldKey: 'overtimeMinutes',
+      ruleType: 'number_range',
+      operator: '<=',
+      value: '720',
+      message: 'Overtime maksimal 720 menit.',
+      sortOrder: 1,
+    },
+    {
+      fieldKey: 'photoAttachmentUrl',
+      ruleType: 'file_type',
+      operator: 'contains',
+      value: 'http',
+      message: 'Attachment foto gunakan URL yang valid.',
+      sortOrder: 1,
+    },
+  ]
 
   await db.insert(formValidationRules).values(
     validationSeed.flatMap((rule) => {
-      const field = fieldByKey.get(rule.fieldKey);
+      const field = fieldByKey.get(rule.fieldKey)
       if (!field) {
-        return [];
+        return []
       }
 
       return [
@@ -861,9 +1135,9 @@ async function ensureDailyActivityTemplateFields(versionId: number) {
           errorMessage: rule.message,
           sortOrder: rule.sortOrder,
         },
-      ];
-    }),
-  );
+      ]
+    })
+  )
 }
 
 async function ensureDailyActivityWorkflowSeed() {
@@ -872,13 +1146,12 @@ async function ensureDailyActivityWorkflowSeed() {
       .insert(workflowTemplates)
       .values({
         templateKey: DAILY_ACTIVITY_WORKFLOW_KEY,
-        name: "Daily Activity Org Workflow",
-        mode: "org_template",
-        description: "Workflow approval daily activity berbasis org structure dan approval matrix.",
+        name: 'Daily Activity Org Workflow',
+        mode: 'org_template',
+        description: 'Workflow approval daily activity berbasis org structure dan approval matrix.',
       })
       .onConflictDoNothing()
-      .returning()) ??
-    [];
+      .returning()) ?? []
 
   const [resolvedWorkflowTemplate] =
     workflowTemplate != null
@@ -887,84 +1160,84 @@ async function ensureDailyActivityWorkflowSeed() {
           .select()
           .from(workflowTemplates)
           .where(eq(workflowTemplates.templateKey, DAILY_ACTIVITY_WORKFLOW_KEY))
-          .limit(1);
+          .limit(1)
 
   if (!resolvedWorkflowTemplate) {
-    return null;
+    return null
   }
 
-  const workflowVersion = await ensureWorkflowTemplateVersion(resolvedWorkflowTemplate.id);
+  const workflowVersion = await ensureWorkflowTemplateVersion(resolvedWorkflowTemplate.id)
 
   const [conditionExists] = await db
     .select({ id: workflowConditions.id })
     .from(workflowConditions)
     .where(eq(workflowConditions.workflowVersionId, workflowVersion.id))
-    .limit(1);
+    .limit(1)
 
   if (!conditionExists) {
     await db.insert(workflowConditions).values([
       {
         workflowVersionId: workflowVersion.id,
-        fieldKey: "site",
-        operator: "=",
-        compareValue: "",
-        logicalJoin: "AND",
-        groupLabel: "Default Site Scope",
+        fieldKey: 'site',
+        operator: '=',
+        compareValue: '',
+        logicalJoin: 'AND',
+        groupLabel: 'Default Site Scope',
         sortOrder: 1,
       },
       {
         workflowVersionId: workflowVersion.id,
-        fieldKey: "priority",
-        operator: "in",
-        compareValue: "Normal,Safety,Emergency",
-        logicalJoin: "AND",
-        groupLabel: "Priority Coverage",
+        fieldKey: 'priority',
+        operator: 'in',
+        compareValue: 'Normal,Safety,Emergency',
+        logicalJoin: 'AND',
+        groupLabel: 'Priority Coverage',
         sortOrder: 2,
       },
       {
         workflowVersionId: workflowVersion.id,
-        fieldKey: "overtimeMinutes",
-        operator: "<=",
-        compareValue: "720",
-        logicalJoin: "AND",
-        groupLabel: "Overtime Threshold",
+        fieldKey: 'overtimeMinutes',
+        operator: '<=',
+        compareValue: '720',
+        logicalJoin: 'AND',
+        groupLabel: 'Overtime Threshold',
         sortOrder: 3,
       },
-    ]);
+    ])
   }
 
   const [branchExists] = await db
     .select({ id: workflowBranches.id })
     .from(workflowBranches)
     .where(eq(workflowBranches.workflowVersionId, workflowVersion.id))
-    .limit(1);
+    .limit(1)
 
   if (!branchExists) {
     await db.insert(workflowBranches).values([
       {
         workflowVersionId: workflowVersion.id,
-        branchKey: "default-sequential",
-        label: "Default Sequential",
-        outcomeType: "route",
-        routeMode: "sequential",
+        branchKey: 'default-sequential',
+        label: 'Default Sequential',
+        outcomeType: 'route',
+        routeMode: 'sequential',
         sortOrder: 1,
       },
       {
         workflowVersionId: workflowVersion.id,
-        branchKey: "priority-emergency",
-        label: "Emergency Escalation",
-        outcomeType: "route",
-        routeMode: "parallel_any",
+        branchKey: 'priority-emergency',
+        label: 'Emergency Escalation',
+        outcomeType: 'route',
+        routeMode: 'parallel_any',
         sortOrder: 2,
       },
-    ]);
+    ])
   }
 
   const [stepRuleExists] = await db
     .select({ id: workflowStepRules.id })
     .from(workflowStepRules)
     .where(eq(workflowStepRules.workflowVersionId, workflowVersion.id))
-    .limit(1);
+    .limit(1)
 
   if (!stepRuleExists) {
     const matrixSteps = await db
@@ -975,27 +1248,30 @@ async function ensureDailyActivityWorkflowSeed() {
         approvalMode: approvalMatrixSteps.approvalMode,
       })
       .from(approvalMatrixSteps)
-      .orderBy(asc(approvalMatrixSteps.stepOrder), asc(approvalMatrixSteps.id));
+      .orderBy(asc(approvalMatrixSteps.stepOrder), asc(approvalMatrixSteps.id))
 
     const [defaultBranch, emergencyBranch] = await db
       .select()
       .from(workflowBranches)
       .where(eq(workflowBranches.workflowVersionId, workflowVersion.id))
-      .orderBy(asc(workflowBranches.sortOrder));
+      .orderBy(asc(workflowBranches.sortOrder))
 
     if (matrixSteps.length > 0 && defaultBranch) {
       await db.insert(workflowStepRules).values(
         matrixSteps.map((step) => ({
           workflowVersionId: workflowVersion.id,
-          branchId: normalizeStatus(step.approvalMode) === "parallel_any" ? emergencyBranch?.id ?? defaultBranch.id : defaultBranch.id,
+          branchId:
+            normalizeStatus(step.approvalMode) === 'parallel_any'
+              ? (emergencyBranch?.id ?? defaultBranch.id)
+              : defaultBranch.id,
           approvalMatrixStepId: step.id,
           stepOrder: step.stepOrder,
           label: step.label,
           approvalMode: step.approvalMode,
-          assignmentSource: "matrix",
+          assignmentSource: 'matrix',
           isRequired: true,
-        })),
-      );
+        }))
+      )
     }
   }
 
@@ -1003,49 +1279,49 @@ async function ensureDailyActivityWorkflowSeed() {
     .select({ id: workflowNotificationRules.id })
     .from(workflowNotificationRules)
     .where(eq(workflowNotificationRules.workflowVersionId, workflowVersion.id))
-    .limit(1);
+    .limit(1)
 
   if (!notificationRuleExists) {
     await db.insert(workflowNotificationRules).values([
       {
         workflowVersionId: workflowVersion.id,
-        eventType: "submitted",
-        channel: "in_app",
-        recipientMode: "requester",
-        ccMode: "workflow_admin",
+        eventType: 'submitted',
+        channel: 'in_app',
+        recipientMode: 'requester',
+        ccMode: 'workflow_admin',
         isActive: true,
       },
       {
         workflowVersionId: workflowVersion.id,
-        eventType: "step_assigned",
-        channel: "email",
-        recipientMode: "approver",
-        ccMode: "watcher",
+        eventType: 'step_assigned',
+        channel: 'email',
+        recipientMode: 'approver',
+        ccMode: 'watcher',
         isActive: true,
       },
       {
         workflowVersionId: workflowVersion.id,
-        eventType: "step_decision",
-        channel: "in_app",
-        recipientMode: "requester",
-        ccMode: "workflow_admin",
+        eventType: 'step_decision',
+        channel: 'in_app',
+        recipientMode: 'requester',
+        ccMode: 'workflow_admin',
         isActive: true,
       },
-    ]);
+    ])
   }
 
   const [reminderRuleExists] = await db
     .select({ id: workflowReminderRules.id })
     .from(workflowReminderRules)
     .where(eq(workflowReminderRules.workflowVersionId, workflowVersion.id))
-    .limit(1);
+    .limit(1)
 
   if (!reminderRuleExists) {
     const stepRules = await db
       .select()
       .from(workflowStepRules)
       .where(eq(workflowStepRules.workflowVersionId, workflowVersion.id))
-      .orderBy(asc(workflowStepRules.stepOrder));
+      .orderBy(asc(workflowStepRules.stepOrder))
 
     if (stepRules.length > 0) {
       await db.insert(workflowReminderRules).values(
@@ -1053,73 +1329,77 @@ async function ensureDailyActivityWorkflowSeed() {
           {
             workflowVersionId: workflowVersion.id,
             stepRuleId: stepRule.id,
-            reminderType: "before_due",
+            reminderType: 'before_due',
             offsetHours: 2,
-            channel: "email",
+            channel: 'email',
             isActive: true,
           },
           {
             workflowVersionId: workflowVersion.id,
             stepRuleId: stepRule.id,
-            reminderType: "overdue",
+            reminderType: 'overdue',
             offsetHours: 0,
-            channel: "in_app",
+            channel: 'in_app',
             isActive: true,
           },
-        ]),
-      );
+        ])
+      )
     }
   }
 
-  return workflowVersion;
+  return workflowVersion
 }
 
 function inferDefaultShift(startTime: Date) {
-  const hour = startTime.getHours();
+  const hour = startTime.getHours()
   if (hour >= 6 && hour < 15) {
-    return "Shift Pagi";
+    return 'Shift Pagi'
   }
 
   if (hour >= 15 && hour < 23) {
-    return "Shift Sore";
+    return 'Shift Sore'
   }
 
-  return "Shift Malam";
+  return 'Shift Malam'
 }
 
 export async function ensureApprovalBlueprintSeedData() {
-  await ensureApprovalBlueprintTables();
+  await ensureApprovalBlueprintTables()
 
-  const [site] = await db.select().from(sites).limit(1);
+  const [site] = await db.select().from(sites).limit(1)
   if (!site) {
-    return;
+    return
   }
 
-  await db.insert(formTemplates).values([...getTemplateCatalogSeed()]).onConflictDoNothing();
+  await db
+    .insert(formTemplates)
+    .values([...getTemplateCatalogSeed()])
+    .onConflictDoNothing()
 
   const [dailyTemplate] = await db
     .select()
     .from(formTemplates)
     .where(eq(formTemplates.templateKey, DAILY_ACTIVITY_TEMPLATE_KEY))
-    .limit(1);
+    .limit(1)
 
   if (!dailyTemplate) {
-    return;
+    return
   }
 
-  const dailyVersion = await ensureDailyActivityTemplateVersion(dailyTemplate.id);
-  await ensureDailyActivityTemplateFields(dailyVersion.id);
-  await ensureDailyActivityWorkflowSeed();
+  const dailyVersion = await ensureDailyActivityTemplateVersion(dailyTemplate.id)
+  await ensureDailyActivityTemplateFields(dailyVersion.id)
+  await ensureDailyActivityWorkflowSeed()
 
-  const activityRows = await db.select({ id: activities.id }).from(activities);
+  const activityRows = await db.select({ id: activities.id }).from(activities)
   for (const activity of activityRows) {
-    await syncActivityWorkflowArtifacts(activity.id);
+    await syncActivityWorkflowArtifacts(activity.id, undefined, { skipPush: true })
   }
 }
 
 export async function syncActivityWorkflowArtifacts(
   activityId: number,
   supplementalPayload?: ActivitySupplementalPayload,
+  options?: { skipPush?: boolean }
 ) {
   const [activity] = await db
     .select({
@@ -1147,20 +1427,20 @@ export async function syncActivityWorkflowArtifacts(
     .innerJoin(employees, eq(activities.employeeId, employees.id))
     .innerJoin(sites, eq(activities.siteId, sites.id))
     .where(eq(activities.id, activityId))
-    .limit(1);
+    .limit(1)
 
   if (!activity) {
-    return null;
+    return null
   }
 
   const [template] = await db
     .select()
     .from(formTemplates)
     .where(eq(formTemplates.templateKey, DAILY_ACTIVITY_TEMPLATE_KEY))
-    .limit(1);
+    .limit(1)
 
   if (!template) {
-    return null;
+    return null
   }
 
   const [templateVersion] = await db
@@ -1168,10 +1448,10 @@ export async function syncActivityWorkflowArtifacts(
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.templateId, template.id))
     .orderBy(desc(formTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   if (!templateVersion) {
-    return null;
+    return null
   }
 
   const approvalRows = await db
@@ -1191,23 +1471,23 @@ export async function syncActivityWorkflowArtifacts(
     })
     .from(approvals)
     .where(eq(approvals.activityId, activityId))
-    .orderBy(asc(approvals.level), asc(approvals.id));
+    .orderBy(asc(approvals.level), asc(approvals.id))
 
   const [existingSubmission] = await db
     .select()
     .from(formSubmissions)
     .where(eq(formSubmissions.legacyActivityId, activityId))
-    .limit(1);
+    .limit(1)
 
   const existingPayload = parseJsonObject<ActivitySupplementalPayload>(
-    existingSubmission?.payloadSnapshot ?? "",
-    {},
-  );
+    existingSubmission?.payloadSnapshot ?? '',
+    {}
+  )
   const mergedPayload = {
     ...existingPayload,
     ...supplementalPayload,
-  };
-  const totalOvertimeMinutes = approvalRows[0]?.overtimeMinutes ?? 0;
+  }
+  const totalOvertimeMinutes = approvalRows[0]?.overtimeMinutes ?? 0
 
   const payloadSnapshot = {
     employeeId: `${activity.employeeId}`,
@@ -1226,30 +1506,30 @@ export async function syncActivityWorkflowArtifacts(
     priority: activity.priority,
     overtimeMinutes: `${totalOvertimeMinutes}`,
     remarks: activity.remarks,
-    riskCategory: mergedPayload.riskCategory ?? "",
-    referenceCode: mergedPayload.referenceCode ?? "",
-    manpowerInvolved: mergedPayload.manpowerInvolved ?? "",
+    riskCategory: mergedPayload.riskCategory ?? '',
+    referenceCode: mergedPayload.referenceCode ?? '',
+    manpowerInvolved: mergedPayload.manpowerInvolved ?? '',
     checklistCompletion: mergedPayload.checklistCompletion ?? [],
-    photoAttachmentUrl: mergedPayload.photoAttachmentUrl ?? "",
-    documentAttachmentUrl: mergedPayload.documentAttachmentUrl ?? "",
+    photoAttachmentUrl: mergedPayload.photoAttachmentUrl ?? '',
+    documentAttachmentUrl: mergedPayload.documentAttachmentUrl ?? '',
     signatureName: mergedPayload.signatureName ?? activity.requesterName,
-    latitude: mergedPayload.latitude ?? "",
-    longitude: mergedPayload.longitude ?? "",
+    latitude: mergedPayload.latitude ?? '',
+    longitude: mergedPayload.longitude ?? '',
     additionalWatchers: mergedPayload.additionalWatchers ?? [],
-  };
+  }
 
   const previewSnapshot = {
     ...payloadSnapshot,
     calculatedDuration: `${Math.max(
       0,
-      Math.round((activity.endTime.getTime() - activity.startTime.getTime()) / 60000),
+      Math.round((activity.endTime.getTime() - activity.startTime.getTime()) / 60000)
     )} menit`,
     overtimeMinutes: `${totalOvertimeMinutes}`,
-  };
+  }
 
-  const requestStatus = getRequestStatus(activity.status);
-  const pushDispatchQueue: PushDispatchInput[] = [];
-  const routeSnapshot = approvalRows.find((row) => row.routeSnapshot.trim())?.routeSnapshot ?? "";
+  const requestStatus = getRequestStatus(activity.status)
+  const pushDispatchQueue: PushDispatchInput[] = []
+  const routeSnapshot = approvalRows.find((row) => row.routeSnapshot.trim())?.routeSnapshot ?? ''
 
   const [submission] = existingSubmission
     ? await db
@@ -1259,14 +1539,16 @@ export async function syncActivityWorkflowArtifacts(
           templateVersionId: templateVersion.id,
           requesterEmployeeId: activity.employeeId,
           siteId: activity.siteId,
-          requestNumber: existingSubmission.requestNumber || buildRequestNumber(activityId, activity.createdAt),
+          requestNumber:
+            existingSubmission.requestNumber || buildRequestNumber(activityId, activity.createdAt),
           requestStatus,
           workflowSnapshot: routeSnapshot,
           payloadSnapshot: JSON.stringify(payloadSnapshot),
           previewSnapshot: JSON.stringify(previewSnapshot),
           submittedAt: activity.createdAt,
-          completedAt: requestStatus === "approved" || requestStatus === "rejected" ? new Date() : null,
-          cancelledAt: requestStatus === "cancelled" ? new Date() : null,
+          completedAt:
+            requestStatus === 'approved' || requestStatus === 'rejected' ? new Date() : null,
+          cancelledAt: requestStatus === 'cancelled' ? new Date() : null,
           updatedAt: new Date(),
         })
         .where(eq(formSubmissions.id, existingSubmission.id))
@@ -1286,45 +1568,53 @@ export async function syncActivityWorkflowArtifacts(
           previewSnapshot: JSON.stringify(previewSnapshot),
           submittedAt: activity.createdAt,
         })
-        .returning();
+        .returning()
 
   if (!submission) {
-    return null;
+    return null
   }
 
   await db.transaction(async (tx) => {
-    const approvalIds = approvalRows.map((row) => row.id);
+    const approvalIds = approvalRows.map((row) => row.id)
     const existingNotificationEventIds = (
       await tx
         .select({ id: notificationEvents.id })
         .from(notificationEvents)
         .where(eq(notificationEvents.submissionId, submission.id))
-    ).map((row) => row.id);
+    ).map((row) => row.id)
     const existingInboxIds = (
       await tx
         .select({ id: inboxItems.id })
         .from(inboxItems)
         .where(eq(inboxItems.submissionId, submission.id))
-    ).map((row) => row.id);
+    ).map((row) => row.id)
 
-    await tx.delete(formSubmissionValues).where(eq(formSubmissionValues.submissionId, submission.id));
-    await tx.delete(approvalRequestActors).where(eq(approvalRequestActors.submissionId, submission.id));
+    await tx
+      .delete(formSubmissionValues)
+      .where(eq(formSubmissionValues.submissionId, submission.id))
+    await tx
+      .delete(approvalRequestActors)
+      .where(eq(approvalRequestActors.submissionId, submission.id))
     if (approvalIds.length > 0) {
-      await tx.delete(approvalComments).where(inArray(approvalComments.approvalId, approvalIds));
+      await tx.delete(approvalComments).where(inArray(approvalComments.approvalId, approvalIds))
     }
-    await tx.delete(inboxItems).where(eq(inboxItems.submissionId, submission.id));
+    await tx.delete(inboxItems).where(eq(inboxItems.submissionId, submission.id))
     if (existingNotificationEventIds.length > 0) {
       await tx
         .delete(notificationDeliveries)
-        .where(inArray(notificationDeliveries.notificationEventId, existingNotificationEventIds));
+        .where(inArray(notificationDeliveries.notificationEventId, existingNotificationEventIds))
     }
-    await tx.delete(notificationEvents).where(eq(notificationEvents.submissionId, submission.id));
+    await tx.delete(notificationEvents).where(eq(notificationEvents.submissionId, submission.id))
     if (existingInboxIds.length > 0) {
-      await tx.delete(reminderJobs).where(inArray(reminderJobs.inboxItemId, existingInboxIds));
+      await tx.delete(reminderJobs).where(inArray(reminderJobs.inboxItemId, existingInboxIds))
     }
-    await tx.delete(requestStatusHistories).where(eq(requestStatusHistories.submissionId, submission.id));
-    await tx.delete(stepDecisionHistories).where(eq(stepDecisionHistories.submissionId, submission.id));
-    await tx.delete(approvalAttachments).where(eq(approvalAttachments.submissionId, submission.id));
+    await tx
+      .delete(requestStatusHistories)
+      .where(eq(requestStatusHistories.submissionId, submission.id))
+    await tx
+      .delete(stepDecisionHistories)
+      .where(eq(stepDecisionHistories.submissionId, submission.id))
+    await tx.delete(approvalAttachments).where(eq(approvalAttachments.submissionId, submission.id))
 
     const fields = await tx
       .select({
@@ -1334,14 +1624,14 @@ export async function syncActivityWorkflowArtifacts(
       })
       .from(formTemplateFields)
       .where(eq(formTemplateFields.versionId, templateVersion.id))
-      .orderBy(asc(formTemplateFields.sortOrder));
+      .orderBy(asc(formTemplateFields.sortOrder))
 
     const valueMap = new Map<string, string>(
       Object.entries(payloadSnapshot).map(([key, value]) => [
         key,
-        Array.isArray(value) ? value.join(", ") : `${value ?? ""}`,
-      ]),
-    );
+        Array.isArray(value) ? value.join(', ') : `${value ?? ''}`,
+      ])
+    )
 
     if (fields.length > 0) {
       await tx.insert(formSubmissionValues).values(
@@ -1349,10 +1639,10 @@ export async function syncActivityWorkflowArtifacts(
           submissionId: submission.id,
           fieldKey: field.fieldKey,
           fieldType: field.fieldType,
-          valueText: valueMap.get(field.fieldKey) ?? "",
-          displayValue: valueMap.get(field.fieldKey) ?? "",
-        })),
-      );
+          valueText: valueMap.get(field.fieldKey) ?? '',
+          displayValue: valueMap.get(field.fieldKey) ?? '',
+        }))
+      )
     }
 
     const historyRows = [
@@ -1360,9 +1650,9 @@ export async function syncActivityWorkflowArtifacts(
         submissionId: submission.id,
         approvalId: null,
         actorEmployeeId: activity.employeeId,
-        fromStatus: "",
-        toStatus: "submitted",
-        note: "Request dibuat oleh requester.",
+        fromStatus: '',
+        toStatus: 'submitted',
+        note: 'Request dibuat oleh requester.',
       },
       ...approvalRows
         .filter((row) => row.reviewedAt != null)
@@ -1370,7 +1660,7 @@ export async function syncActivityWorkflowArtifacts(
           submissionId: submission.id,
           approvalId: row.id,
           actorEmployeeId: row.approverEmployeeId,
-          fromStatus: "pending",
+          fromStatus: 'pending',
           toStatus: normalizeStatus(row.status),
           note: `Step ${row.level} diputuskan oleh ${row.approverName}.`,
         })),
@@ -1378,22 +1668,22 @@ export async function syncActivityWorkflowArtifacts(
         submissionId: submission.id,
         approvalId: null,
         actorEmployeeId: activity.employeeId,
-        fromStatus: "submitted",
+        fromStatus: 'submitted',
         toStatus: requestStatus,
         note: `Request saat ini berada pada status ${requestStatus}.`,
       },
-    ];
+    ]
 
-    await tx.insert(requestStatusHistories).values(historyRows);
+    await tx.insert(requestStatusHistories).values(historyRows)
 
     const attachmentsToInsert = [
       payloadSnapshot.photoAttachmentUrl
         ? {
             submissionId: submission.id,
             approvalId: approvalRows[0]?.id ?? null,
-            attachmentKind: "image",
-            fileName: "activity-photo",
-            mimeType: "image/jpeg",
+            attachmentKind: 'image',
+            fileName: 'activity-photo',
+            mimeType: 'image/jpeg',
             fileUrl: payloadSnapshot.photoAttachmentUrl,
             uploadedByEmployeeId: activity.employeeId,
           }
@@ -1402,62 +1692,74 @@ export async function syncActivityWorkflowArtifacts(
         ? {
             submissionId: submission.id,
             approvalId: approvalRows[0]?.id ?? null,
-            attachmentKind: "file",
-            fileName: "activity-document",
-            mimeType: "application/pdf",
+            attachmentKind: 'file',
+            fileName: 'activity-document',
+            mimeType: 'application/pdf',
             fileUrl: payloadSnapshot.documentAttachmentUrl,
             uploadedByEmployeeId: activity.employeeId,
           }
         : null,
-      !payloadSnapshot.photoAttachmentUrl && activity.remarks.toLowerCase().includes("foto")
+      !payloadSnapshot.photoAttachmentUrl && activity.remarks.toLowerCase().includes('foto')
         ? {
             submissionId: submission.id,
             approvalId: approvalRows[0]?.id ?? null,
-            attachmentKind: "image",
-            fileName: "seeded-activity-photo",
-            mimeType: "image/jpeg",
-            fileUrl: "/ChitraParatama_Stationery_Letterhead_jkt.jpg",
+            attachmentKind: 'image',
+            fileName: 'seeded-activity-photo',
+            mimeType: 'image/jpeg',
+            fileUrl: '/ChitraParatama_Stationery_Letterhead_jkt.jpg',
             uploadedByEmployeeId: activity.employeeId,
           }
         : null,
-    ].filter((value): value is NonNullable<typeof value> => value != null);
+    ].filter((value): value is NonNullable<typeof value> => value != null)
 
     if (attachmentsToInsert.length > 0) {
-      await tx.insert(approvalAttachments).values(attachmentsToInsert);
+      await tx.insert(approvalAttachments).values(attachmentsToInsert)
     }
 
-    const groupedByLevel = new Map<number, typeof approvalRows>();
+    const groupedByLevel = new Map<number, typeof approvalRows>()
     for (const approval of approvalRows) {
-      const existing = groupedByLevel.get(approval.level) ?? [];
-      existing.push(approval);
-      groupedByLevel.set(approval.level, existing);
+      const existing = groupedByLevel.get(approval.level) ?? []
+      existing.push(approval)
+      groupedByLevel.set(approval.level, existing)
     }
 
     for (const group of groupedByLevel.values()) {
       for (const approval of group) {
-        const routeSnapshotValue = approval.routeSnapshot.trim();
-        const parsedRoute = routeSnapshotValue ? (JSON.parse(routeSnapshotValue) as { steps?: Array<{ stepOrder: number; approvalMatrixStepId: number | null; slaHours: number; approvalMode?: string }> }) : null;
+        const routeSnapshotValue = approval.routeSnapshot.trim()
+        const parsedRoute = routeSnapshotValue
+          ? (JSON.parse(routeSnapshotValue) as {
+              steps?: Array<{
+                stepOrder: number
+                approvalMatrixStepId: number | null
+                slaHours: number
+                approvalMode?: string
+              }>
+            })
+          : null
         const matchedStep =
           parsedRoute?.steps?.find(
             (step) =>
               step.stepOrder === approval.level &&
-              (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId),
-          ) ?? null;
-        const approvalMode = matchedStep?.approvalMode ?? "sequential";
-        const dueAt = getDueAt(approval.submittedAt, matchedStep?.slaHours ?? 24);
+              (approval.approvalStepId == null ||
+                step.approvalMatrixStepId === approval.approvalStepId)
+          ) ?? null
+        const approvalMode = matchedStep?.approvalMode ?? 'sequential'
+        const dueAt = getDueAt(approval.submittedAt, matchedStep?.slaHours ?? 24)
 
         await tx.insert(approvalRequestActors).values({
           submissionId: submission.id,
           approvalId: approval.id,
           actorEmployeeId: approval.approverEmployeeId,
           actorRole: approval.approverName,
-          assignmentType: normalizeStatus(approval.resolutionSource).includes("delegate") ? "delegate" : "primary",
+          assignmentType: normalizeStatus(approval.resolutionSource).includes('delegate')
+            ? 'delegate'
+            : 'primary',
           status: normalizeStatus(approval.status),
           dueAt,
           actedAt: approval.reviewedAt ?? null,
-        });
+        })
 
-        const noteEntries = parseApprovalNoteEntries(approval.decisionNote, approval.approverName);
+        const noteEntries = parseApprovalNoteEntries(approval.decisionNote, approval.approverName)
         if (noteEntries.length > 0) {
           await tx.insert(approvalComments).values(
             noteEntries.map((entry) => ({
@@ -1466,9 +1768,11 @@ export async function syncActivityWorkflowArtifacts(
               commentKind: entry.kind,
               message: entry.message,
               isInternal: false,
-              createdAt: entry.at ? new Date(entry.at) : approval.reviewedAt ?? approval.submittedAt,
-            })),
-          );
+              createdAt: entry.at
+                ? new Date(entry.at)
+                : (approval.reviewedAt ?? approval.submittedAt),
+            }))
+          )
         }
 
         if (approval.reviewedAt) {
@@ -1477,12 +1781,12 @@ export async function syncActivityWorkflowArtifacts(
             approvalId: approval.id,
             actorEmployeeId: approval.approverEmployeeId,
             decision: normalizeStatus(approval.status),
-            decisionNote: noteEntries.map((entry) => entry.message).join(" | "),
+            decisionNote: noteEntries.map((entry) => entry.message).join(' | '),
             decidedAt: approval.reviewedAt,
-          });
+          })
         }
 
-        if (normalizeStatus(approval.status) === "pending") {
+        if (normalizeStatus(approval.status) === 'pending') {
           const [approverRecipientProfile] =
             approval.approverEmployeeId == null
               ? []
@@ -1493,7 +1797,7 @@ export async function syncActivityWorkflowArtifacts(
                   })
                   .from(employees)
                   .where(eq(employees.id, approval.approverEmployeeId))
-                  .limit(1);
+                  .limit(1)
           const [createdInboxItem] = await tx
             .insert(inboxItems)
             .values({
@@ -1501,28 +1805,28 @@ export async function syncActivityWorkflowArtifacts(
               approvalId: approval.id,
               assigneeEmployeeId: approval.approverEmployeeId,
               inboxType:
-                normalizeStatus(approval.resolutionSource) === "delegate"
-                  ? "delegation"
-                  : normalizeStatus(approval.resolutionSource) === "escalation"
-                    ? "escalation"
-                    : "approval",
-              status: "pending",
+                normalizeStatus(approval.resolutionSource) === 'delegate'
+                  ? 'delegation'
+                  : normalizeStatus(approval.resolutionSource) === 'escalation'
+                    ? 'escalation'
+                    : 'approval',
+              status: 'pending',
               dueAt,
             })
-            .returning();
+            .returning()
 
           const recipient =
             approverRecipientProfile?.email ||
             approverRecipientProfile?.name ||
-            approval.approverName;
+            approval.approverName
           const [assignedEvent] = await tx
             .insert(notificationEvents)
             .values({
               submissionId: submission.id,
               inboxItemId: createdInboxItem.id,
               approvalId: approval.id,
-              channel: "in_app",
-              eventType: "step_assigned",
+              channel: 'in_app',
+              eventType: 'step_assigned',
               recipient,
               payloadSnapshot: JSON.stringify({
                 requestNumber: submission.requestNumber,
@@ -1530,179 +1834,184 @@ export async function syncActivityWorkflowArtifacts(
                 dueAt: dueAt.toISOString(),
                 approvalMode,
               }),
-              deliveryStatus: "delivered",
+              deliveryStatus: 'delivered',
               deliveredAt: new Date(),
             })
-            .returning();
+            .returning()
 
           await tx.insert(notificationDeliveries).values([
             {
               notificationEventId: assignedEvent.id,
-              deliveryChannel: "in_app",
+              deliveryChannel: 'in_app',
               recipient,
-              status: "delivered",
+              status: 'delivered',
               sentAt: new Date(),
             },
             {
               notificationEventId: assignedEvent.id,
-              deliveryChannel: "email",
+              deliveryChannel: 'email',
               recipient,
-              status: "delivered",
+              status: 'delivered',
               sentAt: new Date(),
             },
-          ]);
+          ])
 
           if (approval.approverEmployeeId) {
             pushDispatchQueue.push({
               employeeId: approval.approverEmployeeId,
-              category: "approval_requests",
+              category: 'approval_requests',
               title: `Approval request ${submission.requestNumber}`,
-              body: `${activity.title} menunggu review sebelum ${dueAt.toLocaleTimeString("id-ID", {
-                hour: "2-digit",
-                minute: "2-digit",
+              body: `${activity.title} menunggu review sebelum ${dueAt.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
               })}.`,
-              url: "/mobile/notifications",
+              url: '/mobile/notifications',
               tag: `approval-${createdInboxItem.id}`,
               notificationEventId: assignedEvent.id,
               metadata: {
                 inboxItemId: createdInboxItem.id,
                 requestNumber: submission.requestNumber,
               },
-            });
+            })
           }
 
           await tx.insert(reminderJobs).values([
             {
               inboxItemId: createdInboxItem.id,
-              reminderType: "before_due",
+              reminderType: 'before_due',
               reminderAt: new Date(dueAt.getTime() - 2 * 60 * 60 * 1000),
-              status: "scheduled",
-              executionLog: "Auto-generated from SLA rule",
+              status: 'scheduled',
+              executionLog: 'Auto-generated from SLA rule',
             },
             {
               inboxItemId: createdInboxItem.id,
-              reminderType: "overdue",
+              reminderType: 'overdue',
               reminderAt: dueAt,
-              status: "scheduled",
-              executionLog: "Auto-generated from SLA rule",
+              status: 'scheduled',
+              executionLog: 'Auto-generated from SLA rule',
             },
-          ]);
+          ])
         } else {
           const [decisionEvent] = await tx
             .insert(notificationEvents)
             .values({
               submissionId: submission.id,
               approvalId: approval.id,
-              channel: "in_app",
-              eventType: "step_decision",
+              channel: 'in_app',
+              eventType: 'step_decision',
               recipient: activity.requesterEmail || activity.requesterName,
               payloadSnapshot: JSON.stringify({
                 requestNumber: submission.requestNumber,
                 activityTitle: activity.title,
                 decision: normalizeStatus(approval.status),
               }),
-              deliveryStatus: "delivered",
+              deliveryStatus: 'delivered',
               deliveredAt: approval.reviewedAt ?? new Date(),
             })
-            .returning();
+            .returning()
 
           await tx.insert(notificationDeliveries).values([
             {
               notificationEventId: decisionEvent.id,
-              deliveryChannel: "in_app",
+              deliveryChannel: 'in_app',
               recipient: activity.requesterEmail || activity.requesterName,
-              status: "delivered",
+              status: 'delivered',
               sentAt: approval.reviewedAt ?? new Date(),
             },
             {
               notificationEventId: decisionEvent.id,
-              deliveryChannel: "email",
+              deliveryChannel: 'email',
               recipient: activity.requesterEmail,
-              status: "delivered",
+              status: 'delivered',
               sentAt: approval.reviewedAt ?? new Date(),
             },
-          ]);
+          ])
         }
       }
 
       const groupMode = normalizeStatus(
         group[0]?.routeSnapshot
-          ? (
+          ? ((
               JSON.parse(group[0].routeSnapshot) as {
-                steps?: Array<{ stepOrder: number; approvalMode?: string; approvalMatrixStepId: number | null }>;
+                steps?: Array<{
+                  stepOrder: number
+                  approvalMode?: string
+                  approvalMatrixStepId: number | null
+                }>
               }
             ).steps?.find(
               (step) =>
                 step.stepOrder === group[0].level &&
-                (group[0].approvalStepId == null || step.approvalMatrixStepId === group[0].approvalStepId),
-            )?.approvalMode ?? "sequential"
-          : "sequential",
-      );
+                (group[0].approvalStepId == null ||
+                  step.approvalMatrixStepId === group[0].approvalStepId)
+            )?.approvalMode ?? 'sequential')
+          : 'sequential'
+      )
 
       const groupStatus = getApprovalModeGroupStatus(
         group.map((item) => item.status),
-        groupMode,
-      );
+        groupMode
+      )
 
       const [groupEvent] = await tx
         .insert(notificationEvents)
         .values({
           submissionId: submission.id,
           approvalId: group[0]?.id ?? null,
-          channel: "in_app",
+          channel: 'in_app',
           eventType:
-            groupMode === "parallel_any" || groupMode === "any_one"
-              ? "parallel_any_status"
-              : "approval_group_status",
+            groupMode === 'parallel_any' || groupMode === 'any_one'
+              ? 'parallel_any_status'
+              : 'approval_group_status',
           recipient: activity.requesterEmail || activity.requesterName,
           payloadSnapshot: JSON.stringify({
             stepLevel: group[0]?.level ?? 0,
             mode: groupMode,
             groupStatus,
           }),
-          deliveryStatus: "delivered",
+          deliveryStatus: 'delivered',
           deliveredAt: new Date(),
         })
-        .returning();
+        .returning()
 
       await tx.insert(notificationDeliveries).values({
         notificationEventId: groupEvent.id,
-        deliveryChannel: "in_app",
+        deliveryChannel: 'in_app',
         recipient: activity.requesterEmail || activity.requesterName,
-        status: "delivered",
+        status: 'delivered',
         sentAt: new Date(),
-      });
+      })
     }
-  });
+  })
 
-  if (pushDispatchQueue.length > 0) {
-    await Promise.all(pushDispatchQueue.map((job) => sendPushNotification(job)));
+  if (pushDispatchQueue.length > 0 && !options?.skipPush) {
+    await Promise.allSettled(pushDispatchQueue.map((job) => sendPushNotification(job)))
   }
 
-  return submission;
+  return submission
 }
 
 export async function saveActivityDraftSubmission(input: {
-  employeeId: number;
-  activityCode: string;
-  activityType: string;
-  title: string;
-  unitNumber: string;
-  startTime: string;
-  endTime: string;
-  priority: string;
-  overtimeMinutes: number;
-  remarks: string;
-  supplementalPayload?: ActivitySupplementalPayload;
+  employeeId: number
+  activityCode: string
+  activityType: string
+  title: string
+  unitNumber: string
+  startTime: string
+  endTime: string
+  priority: string
+  overtimeMinutes: number
+  remarks: string
+  supplementalPayload?: ActivitySupplementalPayload
 }) {
   const [template] = await db
     .select()
     .from(formTemplates)
     .where(eq(formTemplates.templateKey, DAILY_ACTIVITY_TEMPLATE_KEY))
-    .limit(1);
+    .limit(1)
 
   if (!template) {
-    return null;
+    return null
   }
 
   const [version] = await db
@@ -1710,10 +2019,10 @@ export async function saveActivityDraftSubmission(input: {
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.templateId, template.id))
     .orderBy(desc(formTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   if (!version) {
-    return null;
+    return null
   }
 
   const [employee] = await db
@@ -1724,10 +2033,10 @@ export async function saveActivityDraftSubmission(input: {
     })
     .from(employees)
     .where(eq(employees.id, input.employeeId))
-    .limit(1);
+    .limit(1)
 
   if (!employee) {
-    return null;
+    return null
   }
 
   const snapshot = {
@@ -1742,7 +2051,7 @@ export async function saveActivityDraftSubmission(input: {
     overtimeMinutes: `${input.overtimeMinutes}`,
     remarks: input.remarks,
     ...input.supplementalPayload,
-  };
+  }
 
   const [draft] = await db
     .insert(formSubmissions)
@@ -1752,43 +2061,43 @@ export async function saveActivityDraftSubmission(input: {
       requesterEmployeeId: employee.id,
       siteId: employee.siteId,
       requestNumber: `DRAFT-${Date.now()}`,
-      requestStatus: "draft",
+      requestStatus: 'draft',
       workflowSnapshot: JSON.stringify({ workflowKey: DAILY_ACTIVITY_WORKFLOW_KEY }),
       payloadSnapshot: JSON.stringify(snapshot),
       previewSnapshot: JSON.stringify(snapshot),
     })
-    .returning();
+    .returning()
 
-  return draft;
+  return draft
 }
 
 export async function cancelFormSubmissionDraft(submissionId: number) {
   const [submission] = await db
     .update(formSubmissions)
     .set({
-      requestStatus: "cancelled",
+      requestStatus: 'cancelled',
       cancelledAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(formSubmissions.id, submissionId))
-    .returning();
+    .returning()
 
-  return submission ?? null;
+  return submission ?? null
 }
 
 export async function createFormTemplateSection(input: {
-  versionId: number;
-  label: string;
-  description?: string;
-  isCollapsible?: boolean;
+  versionId: number
+  label: string
+  description?: string
+  isCollapsible?: boolean
 }) {
-  const sectionKey = slugifyKey(input.label, `section_${Date.now()}`);
+  const sectionKey = slugifyKey(input.label, `section_${Date.now()}`)
   const [latestSection] = await db
     .select({ sortOrder: formTemplateSections.sortOrder })
     .from(formTemplateSections)
     .where(eq(formTemplateSections.versionId, input.versionId))
     .orderBy(desc(formTemplateSections.sortOrder))
-    .limit(1);
+    .limit(1)
 
   const [section] = await db
     .insert(formTemplateSections)
@@ -1796,53 +2105,53 @@ export async function createFormTemplateSection(input: {
       versionId: input.versionId,
       sectionKey,
       label: input.label,
-      description: input.description ?? "",
+      description: input.description ?? '',
       sortOrder: (latestSection?.sortOrder ?? 0) + 1,
       isCollapsible: input.isCollapsible ?? false,
     })
-    .returning();
+    .returning()
 
-  return section;
+  return section
 }
 
 export async function createFormTemplateField(input: {
-  versionId: number;
-  sectionId: number | null;
-  label: string;
-  fieldKey?: string;
-  fieldType: string;
-  placeholder?: string;
-  helpText?: string;
-  defaultValue?: string;
-  isRequired?: boolean;
-  optionLines?: string;
-  validationRuleType?: string;
-  validationOperator?: string;
-  validationValue?: string;
-  validationMessage?: string;
-  allowedMimeTypes?: string;
-  maxSizeMb?: number;
+  versionId: number
+  sectionId: number | null
+  label: string
+  fieldKey?: string
+  fieldType: string
+  placeholder?: string
+  helpText?: string
+  defaultValue?: string
+  isRequired?: boolean
+  optionLines?: string
+  validationRuleType?: string
+  validationOperator?: string
+  validationValue?: string
+  validationMessage?: string
+  allowedMimeTypes?: string
+  maxSizeMb?: number
 }) {
-  const fieldKey = slugifyKey(input.fieldKey || input.label, `field_${Date.now()}`);
+  const fieldKey = slugifyKey(input.fieldKey || input.label, `field_${Date.now()}`)
   const [latestField] = await db
     .select({ sortOrder: formTemplateFields.sortOrder })
     .from(formTemplateFields)
     .where(eq(formTemplateFields.versionId, input.versionId))
     .orderBy(desc(formTemplateFields.sortOrder))
-    .limit(1);
-  const isAttachmentField = input.fieldType === "file_upload" || input.fieldType === "image_upload";
+    .limit(1)
+  const isAttachmentField = input.fieldType === 'file_upload' || input.fieldType === 'image_upload'
   const configJson = isAttachmentField
     ? JSON.stringify({
         attachmentRule: {
-          allowedMimeTypes: input.allowedMimeTypes ?? "",
+          allowedMimeTypes: input.allowedMimeTypes ?? '',
           maxSizeMb: input.maxSizeMb ?? 10,
         },
       })
-    : "";
+    : ''
   const validationJson = JSON.stringify({
     required: input.isRequired ?? false,
-    attachmentRequired: isAttachmentField ? input.isRequired ?? false : undefined,
-  });
+    attachmentRequired: isAttachmentField ? (input.isRequired ?? false) : undefined,
+  })
 
   const [field] = await db
     .insert(formTemplateFields)
@@ -1852,19 +2161,19 @@ export async function createFormTemplateField(input: {
       fieldKey,
       fieldType: input.fieldType,
       label: input.label,
-      placeholder: input.placeholder ?? "",
-      helpText: input.helpText ?? "",
-      defaultValue: input.defaultValue ?? "",
+      placeholder: input.placeholder ?? '',
+      helpText: input.helpText ?? '',
+      defaultValue: input.defaultValue ?? '',
       configJson,
       validationJson,
-      optionSourceJson: "",
+      optionSourceJson: '',
       isRequired: input.isRequired ?? false,
       isHidden: false,
       sortOrder: (latestField?.sortOrder ?? 0) + 1,
     })
-    .returning();
+    .returning()
 
-  const options = parseOptionLines(input.optionLines ?? "");
+  const options = parseOptionLines(input.optionLines ?? '')
   if (options.length > 0) {
     await db.insert(formFieldOptions).values(
       options.map((option) => ({
@@ -1873,8 +2182,8 @@ export async function createFormTemplateField(input: {
         optionLabel: option.optionLabel,
         sortOrder: option.sortOrder,
         isDefault: option.sortOrder === 1,
-      })),
-    );
+      }))
+    )
   }
 
   const validationRows = [
@@ -1882,8 +2191,8 @@ export async function createFormTemplateField(input: {
       ? {
           fieldId: field.id,
           ruleType: input.validationRuleType,
-          operator: input.validationOperator || "=",
-          ruleValue: input.validationValue ?? "",
+          operator: input.validationOperator || '=',
+          ruleValue: input.validationValue ?? '',
           errorMessage: input.validationMessage || `${input.label} tidak memenuhi validasi.`,
           sortOrder: 1,
         }
@@ -1891,33 +2200,39 @@ export async function createFormTemplateField(input: {
     isAttachmentField
       ? {
           fieldId: field.id,
-          ruleType: "attachment_rule",
-          operator: input.isRequired ? "is_not_empty" : "contains",
-          ruleValue: input.allowedMimeTypes || (input.fieldType === "image_upload" ? "image/" : ""),
-          errorMessage: input.validationMessage || `${input.label} harus memenuhi aturan attachment.`,
+          ruleType: 'attachment_rule',
+          operator: input.isRequired ? 'is_not_empty' : 'contains',
+          ruleValue: input.allowedMimeTypes || (input.fieldType === 'image_upload' ? 'image/' : ''),
+          errorMessage:
+            input.validationMessage || `${input.label} harus memenuhi aturan attachment.`,
           sortOrder: 2,
         }
       : null,
-  ].filter((row): row is NonNullable<typeof row> => row != null);
+  ].filter((row): row is NonNullable<typeof row> => row != null)
 
   if (validationRows.length > 0) {
-    await db.insert(formValidationRules).values(validationRows);
+    await db.insert(formValidationRules).values(validationRows)
   }
 
-  return field;
+  return field
 }
 
 export async function saveFormTemplateLayout(input: {
-  versionId: number;
-  sections: Array<{ id: number; sortOrder: number }>;
-  fields: Array<{ id: number; sectionId: number | null; sortOrder: number }>;
+  versionId: number
+  sections: Array<{ id: number; sortOrder: number }>
+  fields: Array<{ id: number; sectionId: number | null; sortOrder: number }>
 }) {
   await db.transaction(async (tx) => {
     for (const section of input.sections) {
       await tx
         .update(formTemplateSections)
         .set({ sortOrder: section.sortOrder, updatedAt: new Date() })
-        .where(and(eq(formTemplateSections.id, section.id), eq(formTemplateSections.versionId, input.versionId)));
+        .where(
+          and(
+            eq(formTemplateSections.id, section.id),
+            eq(formTemplateSections.versionId, input.versionId)
+          )
+        )
     }
 
     for (const field of input.fields) {
@@ -1928,9 +2243,14 @@ export async function saveFormTemplateLayout(input: {
           sortOrder: field.sortOrder,
           updatedAt: new Date(),
         })
-        .where(and(eq(formTemplateFields.id, field.id), eq(formTemplateFields.versionId, input.versionId)));
+        .where(
+          and(
+            eq(formTemplateFields.id, field.id),
+            eq(formTemplateFields.versionId, input.versionId)
+          )
+        )
     }
-  });
+  })
 }
 
 export async function publishFormTemplateVersion(versionId: number) {
@@ -1938,29 +2258,34 @@ export async function publishFormTemplateVersion(versionId: number) {
     .select()
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.id, versionId))
-    .limit(1);
+    .limit(1)
 
   if (!version) {
-    return null;
+    return null
   }
 
   await db
     .update(formTemplateVersions)
-    .set({ publishStatus: "archived", effectiveTo: new Date(), updatedAt: new Date() })
-    .where(and(eq(formTemplateVersions.templateId, version.templateId), eq(formTemplateVersions.publishStatus, "published")));
+    .set({ publishStatus: 'archived', effectiveTo: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(formTemplateVersions.templateId, version.templateId),
+        eq(formTemplateVersions.publishStatus, 'published')
+      )
+    )
 
   const [published] = await db
     .update(formTemplateVersions)
     .set({
-      publishStatus: "published",
+      publishStatus: 'published',
       effectiveFrom: new Date(),
       effectiveTo: null,
       updatedAt: new Date(),
     })
     .where(eq(formTemplateVersions.id, versionId))
-    .returning();
+    .returning()
 
-  return published ?? null;
+  return published ?? null
 }
 
 export async function cloneFormTemplateVersion(versionId: number) {
@@ -1968,10 +2293,10 @@ export async function cloneFormTemplateVersion(versionId: number) {
     .select()
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.id, versionId))
-    .limit(1);
+    .limit(1)
 
   if (!sourceVersion) {
-    return null;
+    return null
   }
 
   const [latestVersion] = await db
@@ -1979,7 +2304,7 @@ export async function cloneFormTemplateVersion(versionId: number) {
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.templateId, sourceVersion.templateId))
     .orderBy(desc(formTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   return db.transaction(async (tx) => {
     const [createdVersion] = await tx
@@ -1987,35 +2312,41 @@ export async function cloneFormTemplateVersion(versionId: number) {
       .values({
         templateId: sourceVersion.templateId,
         versionNumber: (latestVersion?.versionNumber ?? sourceVersion.versionNumber) + 1,
-        publishStatus: "draft",
+        publishStatus: 'draft',
         workflowSnapshot: sourceVersion.workflowSnapshot,
         schemaSnapshot: sourceVersion.schemaSnapshot,
         effectiveFrom: null,
         effectiveTo: null,
         createdByEmployeeId: sourceVersion.createdByEmployeeId,
       })
-      .returning();
+      .returning()
 
     const sourceSections = await tx
       .select()
       .from(formTemplateSections)
       .where(eq(formTemplateSections.versionId, sourceVersion.id))
-      .orderBy(asc(formTemplateSections.sortOrder));
+      .orderBy(asc(formTemplateSections.sortOrder))
     const sourceFields = await tx
       .select()
       .from(formTemplateFields)
       .where(eq(formTemplateFields.versionId, sourceVersion.id))
-      .orderBy(asc(formTemplateFields.sortOrder));
-    const sourceFieldIds = sourceFields.map((field) => field.id);
+      .orderBy(asc(formTemplateFields.sortOrder))
+    const sourceFieldIds = sourceFields.map((field) => field.id)
     const [sourceOptions, sourceValidations] =
       sourceFieldIds.length === 0
         ? [[], []]
         : await Promise.all([
-            tx.select().from(formFieldOptions).where(inArray(formFieldOptions.fieldId, sourceFieldIds)),
-            tx.select().from(formValidationRules).where(inArray(formValidationRules.fieldId, sourceFieldIds)),
-          ]);
+            tx
+              .select()
+              .from(formFieldOptions)
+              .where(inArray(formFieldOptions.fieldId, sourceFieldIds)),
+            tx
+              .select()
+              .from(formValidationRules)
+              .where(inArray(formValidationRules.fieldId, sourceFieldIds)),
+          ])
 
-    const sectionIdMap = new Map<number, number>();
+    const sectionIdMap = new Map<number, number>()
     for (const section of sourceSections) {
       const [createdSection] = await tx
         .insert(formTemplateSections)
@@ -2027,17 +2358,17 @@ export async function cloneFormTemplateVersion(versionId: number) {
           sortOrder: section.sortOrder,
           isCollapsible: section.isCollapsible,
         })
-        .returning();
-      sectionIdMap.set(section.id, createdSection.id);
+        .returning()
+      sectionIdMap.set(section.id, createdSection.id)
     }
 
-    const fieldIdMap = new Map<number, number>();
+    const fieldIdMap = new Map<number, number>()
     for (const field of sourceFields) {
       const [createdField] = await tx
         .insert(formTemplateFields)
         .values({
           versionId: createdVersion.id,
-          sectionId: field.sectionId == null ? null : sectionIdMap.get(field.sectionId) ?? null,
+          sectionId: field.sectionId == null ? null : (sectionIdMap.get(field.sectionId) ?? null),
           fieldKey: field.fieldKey,
           fieldType: field.fieldType,
           label: field.label,
@@ -2051,12 +2382,12 @@ export async function cloneFormTemplateVersion(versionId: number) {
           isHidden: field.isHidden,
           sortOrder: field.sortOrder,
         })
-        .returning();
-      fieldIdMap.set(field.id, createdField.id);
+        .returning()
+      fieldIdMap.set(field.id, createdField.id)
     }
 
     const clonedOptions = sourceOptions.flatMap((option) => {
-      const fieldId = fieldIdMap.get(option.fieldId);
+      const fieldId = fieldIdMap.get(option.fieldId)
       return fieldId == null
         ? []
         : [
@@ -2067,10 +2398,10 @@ export async function cloneFormTemplateVersion(versionId: number) {
               sortOrder: option.sortOrder,
               isDefault: option.isDefault,
             },
-          ];
-    });
+          ]
+    })
     const clonedValidations = sourceValidations.flatMap((rule) => {
-      const fieldId = fieldIdMap.get(rule.fieldId);
+      const fieldId = fieldIdMap.get(rule.fieldId)
       return fieldId == null
         ? []
         : [
@@ -2082,36 +2413,36 @@ export async function cloneFormTemplateVersion(versionId: number) {
               errorMessage: rule.errorMessage,
               sortOrder: rule.sortOrder,
             },
-          ];
-    });
+          ]
+    })
 
     if (clonedOptions.length > 0) {
-      await tx.insert(formFieldOptions).values(clonedOptions);
+      await tx.insert(formFieldOptions).values(clonedOptions)
     }
 
     if (clonedValidations.length > 0) {
-      await tx.insert(formValidationRules).values(clonedValidations);
+      await tx.insert(formValidationRules).values(clonedValidations)
     }
 
-    return createdVersion;
-  });
+    return createdVersion
+  })
 }
 
 export async function createWorkflowCondition(input: {
-  workflowVersionId: number;
-  parentConditionId?: number | null;
-  fieldKey: string;
-  operator: string;
-  compareValue?: string;
-  logicalJoin?: string;
-  groupLabel?: string;
+  workflowVersionId: number
+  parentConditionId?: number | null
+  fieldKey: string
+  operator: string
+  compareValue?: string
+  logicalJoin?: string
+  groupLabel?: string
 }) {
   const [latestCondition] = await db
     .select({ sortOrder: workflowConditions.sortOrder })
     .from(workflowConditions)
     .where(eq(workflowConditions.workflowVersionId, input.workflowVersionId))
     .orderBy(desc(workflowConditions.sortOrder))
-    .limit(1);
+    .limit(1)
 
   const [condition] = await db
     .insert(workflowConditions)
@@ -2120,51 +2451,56 @@ export async function createWorkflowCondition(input: {
       parentConditionId: input.parentConditionId ?? null,
       fieldKey: input.fieldKey,
       operator: input.operator,
-      compareValue: input.compareValue ?? "",
-      logicalJoin: input.logicalJoin ?? "AND",
-      groupLabel: input.groupLabel ?? "Custom Condition Group",
+      compareValue: input.compareValue ?? '',
+      logicalJoin: input.logicalJoin ?? 'AND',
+      groupLabel: input.groupLabel ?? 'Custom Condition Group',
       sortOrder: (latestCondition?.sortOrder ?? 0) + 1,
     })
-    .returning();
+    .returning()
 
-  return condition;
+  return condition
 }
 
 export function evaluateWorkflowConditionGroups(
   values: Record<string, unknown>,
   conditions: Array<{
-    id: number;
-    parentConditionId: number | null;
-    fieldKey: string;
-    operator: string;
-    compareValue: string;
-    logicalJoin: string;
-    groupLabel: string;
-  }>,
+    id: number
+    parentConditionId: number | null
+    fieldKey: string
+    operator: string
+    compareValue: string
+    logicalJoin: string
+    groupLabel: string
+  }>
 ) {
   const groups = conditions.reduce<Record<string, typeof conditions>>((accumulator, condition) => {
-    const key = condition.groupLabel || "Default Group";
-    accumulator[key] = accumulator[key] ?? [];
-    accumulator[key].push(condition);
-    return accumulator;
-  }, {});
+    const key = condition.groupLabel || 'Default Group'
+    accumulator[key] = accumulator[key] ?? []
+    accumulator[key].push(condition)
+    return accumulator
+  }, {})
 
   return Object.entries(groups).map(([groupLabel, groupConditions]) => {
     const outcomes = groupConditions.map((condition) => ({
       condition,
-      passed: compareConditionValue(values[condition.fieldKey], condition.operator, condition.compareValue),
-    }));
-    const joins = groupConditions.map((condition) => normalizeStatus(condition.logicalJoin));
-    const passed = joins.includes("OR".toLowerCase()) || joins.includes("or")
-      ? outcomes.some((outcome) => outcome.passed)
-      : outcomes.every((outcome) => outcome.passed);
+      passed: compareConditionValue(
+        values[condition.fieldKey],
+        condition.operator,
+        condition.compareValue
+      ),
+    }))
+    const joins = groupConditions.map((condition) => normalizeStatus(condition.logicalJoin))
+    const passed =
+      joins.includes('OR'.toLowerCase()) || joins.includes('or')
+        ? outcomes.some((outcome) => outcome.passed)
+        : outcomes.every((outcome) => outcome.passed)
 
     return {
       groupLabel,
       passed,
       outcomes,
-    };
-  });
+    }
+  })
 }
 
 export async function runApprovalAutomationTick(referenceDate = new Date()) {
@@ -2187,34 +2523,35 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
     .innerJoin(inboxItems, eq(reminderJobs.inboxItemId, inboxItems.id))
     .innerJoin(formSubmissions, eq(inboxItems.submissionId, formSubmissions.id))
     .leftJoin(employees, eq(inboxItems.assigneeEmployeeId, employees.id))
-    .where(and(eq(reminderJobs.status, "scheduled"), lte(reminderJobs.reminderAt, referenceDate)));
+    .where(and(eq(reminderJobs.status, 'scheduled'), lte(reminderJobs.reminderAt, referenceDate)))
 
-  let remindersExecuted = 0;
-  let expiredRequests = 0;
-  const pushDispatchQueue: PushDispatchInput[] = [];
+  let remindersExecuted = 0
+  let expiredRequests = 0
+  const pushDispatchQueue: PushDispatchInput[] = []
 
   await db.transaction(async (tx) => {
     for (const job of executedReminderJobs) {
-      if (job.inboxStatus !== "pending" || job.requestStatus === "expired") {
+      if (job.inboxStatus !== 'pending' || job.requestStatus === 'expired') {
         await tx
           .update(reminderJobs)
           .set({
-            status: "skipped",
-            executionLog: "Skipped because inbox/request is no longer pending.",
+            status: 'skipped',
+            executionLog: 'Skipped because inbox/request is no longer pending.',
             updatedAt: referenceDate,
           })
-          .where(eq(reminderJobs.id, job.id));
-        continue;
+          .where(eq(reminderJobs.id, job.id))
+        continue
       }
 
-      const recipient = job.assigneeEmail || job.assigneeName || `employee-${job.assigneeEmployeeId ?? "unknown"}`;
+      const recipient =
+        job.assigneeEmail || job.assigneeName || `employee-${job.assigneeEmployeeId ?? 'unknown'}`
       const [event] = await tx
         .insert(notificationEvents)
         .values({
           submissionId: job.submissionId,
           inboxItemId: job.inboxItemId,
           approvalId: job.approvalId,
-          channel: job.reminderType === "overdue" ? "in_app" : "email",
+          channel: job.reminderType === 'overdue' ? 'in_app' : 'email',
           eventType: `reminder_${job.reminderType}`,
           recipient,
           payloadSnapshot: JSON.stringify({
@@ -2222,91 +2559,93 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
             reminderAt: job.reminderAt.toISOString(),
             reminderType: job.reminderType,
           }),
-          deliveryStatus: "delivered",
+          deliveryStatus: 'delivered',
           deliveredAt: referenceDate,
         })
-        .returning();
+        .returning()
 
       await tx.insert(notificationDeliveries).values({
         notificationEventId: event.id,
-        deliveryChannel: job.reminderType === "overdue" ? "in_app" : "email",
+        deliveryChannel: job.reminderType === 'overdue' ? 'in_app' : 'email',
         recipient,
-        status: "delivered",
+        status: 'delivered',
         sentAt: referenceDate,
-      });
+      })
 
       if (job.assigneeEmployeeId) {
         pushDispatchQueue.push({
           employeeId: job.assigneeEmployeeId,
-          category: "approval_requests",
+          category: 'approval_requests',
           title:
-            job.reminderType === "overdue"
+            job.reminderType === 'overdue'
               ? `Approval overdue ${job.requestNumber}`
               : `Approval reminder ${job.requestNumber}`,
           body:
-            job.reminderType === "overdue"
-              ? "Approval melewati SLA. Buka inbox untuk tindak lanjut."
-              : "Approval mendekati SLA. Review sebelum jatuh tempo.",
-          url: "/mobile/notifications",
+            job.reminderType === 'overdue'
+              ? 'Approval melewati SLA. Buka inbox untuk tindak lanjut.'
+              : 'Approval mendekati SLA. Review sebelum jatuh tempo.',
+          url: '/mobile/notifications',
           tag: `approval-reminder-${job.id}`,
           notificationEventId: event.id,
           metadata: {
             requestNumber: job.requestNumber,
             reminderType: job.reminderType,
           },
-        });
+        })
       }
 
       await tx
         .update(reminderJobs)
         .set({
-          status: "executed",
+          status: 'executed',
           executionLog: `Executed by automation tick at ${referenceDate.toISOString()}.`,
           updatedAt: referenceDate,
         })
-        .where(eq(reminderJobs.id, job.id));
+        .where(eq(reminderJobs.id, job.id))
 
-      remindersExecuted += 1;
+      remindersExecuted += 1
     }
 
-    const expiryCutoff = new Date(referenceDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const expiryCutoff = new Date(referenceDate.getTime() - 7 * 24 * 60 * 60 * 1000)
     const staleDrafts = await tx
       .select()
       .from(formSubmissions)
-      .where(and(eq(formSubmissions.requestStatus, "draft"), lt(formSubmissions.createdAt, expiryCutoff)));
+      .where(
+        and(eq(formSubmissions.requestStatus, 'draft'), lt(formSubmissions.createdAt, expiryCutoff))
+      )
 
     for (const draft of staleDrafts) {
       await tx
         .update(formSubmissions)
         .set({
-          requestStatus: "expired",
+          requestStatus: 'expired',
           cancelledAt: referenceDate,
           updatedAt: referenceDate,
         })
-        .where(eq(formSubmissions.id, draft.id));
+        .where(eq(formSubmissions.id, draft.id))
 
       await tx.insert(requestStatusHistories).values({
         submissionId: draft.id,
         approvalId: null,
         actorEmployeeId: draft.requesterEmployeeId,
-        fromStatus: "draft",
-        toStatus: "expired",
-        note: "Draft otomatis expired karena melewati batas lifecycle 7 hari.",
+        fromStatus: 'draft',
+        toStatus: 'expired',
+        note: 'Draft otomatis expired karena melewati batas lifecycle 7 hari.',
         createdAt: referenceDate,
-      });
+      })
 
-      expiredRequests += 1;
+      expiredRequests += 1
     }
-  });
+  })
 
   if (pushDispatchQueue.length > 0) {
-    await Promise.all(pushDispatchQueue.map((job) => sendPushNotification(job)));
+    await Promise.all(pushDispatchQueue.map((job) => sendPushNotification(job)))
   }
 
   return {
     remindersExecuted,
     expiredRequests,
-  };
+  }
 }
 
 export async function getDailyActivityTemplateFormData() {
@@ -2314,10 +2653,10 @@ export async function getDailyActivityTemplateFormData() {
     .select()
     .from(formTemplates)
     .where(eq(formTemplates.templateKey, DAILY_ACTIVITY_TEMPLATE_KEY))
-    .limit(1);
+    .limit(1)
 
   if (!template) {
-    return null;
+    return null
   }
 
   const [version] = await db
@@ -2325,10 +2664,10 @@ export async function getDailyActivityTemplateFormData() {
     .from(formTemplateVersions)
     .where(eq(formTemplateVersions.templateId, template.id))
     .orderBy(desc(formTemplateVersions.versionNumber))
-    .limit(1);
+    .limit(1)
 
   if (!version) {
-    return null;
+    return null
   }
 
   const [sections, fields, options, validations, employeeRows, siteRows] = await Promise.all([
@@ -2357,7 +2696,7 @@ export async function getDailyActivityTemplateFormData() {
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
     db.select({ id: sites.id, name: sites.name }).from(sites).orderBy(asc(sites.name)),
-  ]);
+  ])
 
   return {
     template,
@@ -2374,19 +2713,20 @@ export async function getDailyActivityTemplateFormData() {
     })),
     employees: employeeRows,
     sites: siteRows,
-  };
+  }
 }
 
 export async function getFormStudioConsoleData() {
-  const [templates, versions, sections, fields, options, validations, submissions] = await Promise.all([
-    db.select().from(formTemplates).orderBy(asc(formTemplates.category), asc(formTemplates.name)),
-    db.select().from(formTemplateVersions).orderBy(desc(formTemplateVersions.versionNumber)),
-    db.select().from(formTemplateSections).orderBy(asc(formTemplateSections.sortOrder)),
-    db.select().from(formTemplateFields).orderBy(asc(formTemplateFields.sortOrder)),
-    db.select().from(formFieldOptions).orderBy(asc(formFieldOptions.sortOrder)),
-    db.select().from(formValidationRules).orderBy(asc(formValidationRules.sortOrder)),
-    db.select().from(formSubmissions).orderBy(desc(formSubmissions.createdAt)),
-  ]);
+  const [templates, versions, sections, fields, options, validations, submissions] =
+    await Promise.all([
+      db.select().from(formTemplates).orderBy(asc(formTemplates.category), asc(formTemplates.name)),
+      db.select().from(formTemplateVersions).orderBy(desc(formTemplateVersions.versionNumber)),
+      db.select().from(formTemplateSections).orderBy(asc(formTemplateSections.sortOrder)),
+      db.select().from(formTemplateFields).orderBy(asc(formTemplateFields.sortOrder)),
+      db.select().from(formFieldOptions).orderBy(asc(formFieldOptions.sortOrder)),
+      db.select().from(formValidationRules).orderBy(asc(formValidationRules.sortOrder)),
+      db.select().from(formSubmissions).orderBy(desc(formSubmissions.createdAt)),
+    ])
 
   return {
     metrics: {
@@ -2399,10 +2739,10 @@ export async function getFormStudioConsoleData() {
     templates: templates.map((template) => {
       const templateVersions = versions
         .filter((version) => version.templateId === template.id)
-        .sort((left, right) => right.versionNumber - left.versionNumber);
-      const latestVersion = templateVersions[0] ?? null;
-      const versionSections = sections.filter((section) => section.versionId === latestVersion?.id);
-      const versionFields = fields.filter((field) => field.versionId === latestVersion?.id);
+        .sort((left, right) => right.versionNumber - left.versionNumber)
+      const latestVersion = templateVersions[0] ?? null
+      const versionSections = sections.filter((section) => section.versionId === latestVersion?.id)
+      const versionFields = fields.filter((field) => field.versionId === latestVersion?.id)
 
       return {
         ...template,
@@ -2419,24 +2759,35 @@ export async function getFormStudioConsoleData() {
         })),
         versionCount: templateVersions.length,
         draftCount: submissions.filter(
-          (submission) => submission.templateId === template.id && submission.requestStatus === "draft",
+          (submission) =>
+            submission.templateId === template.id && submission.requestStatus === 'draft'
         ).length,
-      };
+      }
     }),
-  };
+  }
 }
 
 export async function getWorkflowStudioConsoleData() {
-  const [workflowRows, versions, conditions, branches, stepRules, notificationRules, reminderRules] =
-    await Promise.all([
-      db.select().from(workflowTemplates).orderBy(asc(workflowTemplates.name)),
-      db.select().from(workflowTemplateVersions).orderBy(desc(workflowTemplateVersions.versionNumber)),
-      db.select().from(workflowConditions).orderBy(asc(workflowConditions.sortOrder)),
-      db.select().from(workflowBranches).orderBy(asc(workflowBranches.sortOrder)),
-      db.select().from(workflowStepRules).orderBy(asc(workflowStepRules.stepOrder)),
-      db.select().from(workflowNotificationRules).orderBy(asc(workflowNotificationRules.eventType)),
-      db.select().from(workflowReminderRules).orderBy(asc(workflowReminderRules.reminderType)),
-    ]);
+  const [
+    workflowRows,
+    versions,
+    conditions,
+    branches,
+    stepRules,
+    notificationRules,
+    reminderRules,
+  ] = await Promise.all([
+    db.select().from(workflowTemplates).orderBy(asc(workflowTemplates.name)),
+    db
+      .select()
+      .from(workflowTemplateVersions)
+      .orderBy(desc(workflowTemplateVersions.versionNumber)),
+    db.select().from(workflowConditions).orderBy(asc(workflowConditions.sortOrder)),
+    db.select().from(workflowBranches).orderBy(asc(workflowBranches.sortOrder)),
+    db.select().from(workflowStepRules).orderBy(asc(workflowStepRules.stepOrder)),
+    db.select().from(workflowNotificationRules).orderBy(asc(workflowNotificationRules.eventType)),
+    db.select().from(workflowReminderRules).orderBy(asc(workflowReminderRules.reminderType)),
+  ])
 
   return {
     metrics: {
@@ -2448,15 +2799,26 @@ export async function getWorkflowStudioConsoleData() {
       reminderRules: reminderRules.length,
     },
     workflows: workflowRows.map((workflow) => {
-      const workflowVersions = versions.filter((version) => version.workflowTemplateId === workflow.id);
-      const latestVersion = workflowVersions.sort((left, right) => right.versionNumber - left.versionNumber)[0] ?? null;
-      const workflowConditionsRows = conditions.filter((condition) => condition.workflowVersionId === latestVersion?.id);
-      const workflowBranchesRows = branches.filter((branch) => branch.workflowVersionId === latestVersion?.id);
-      const workflowStepRows = stepRules.filter((stepRule) => stepRule.workflowVersionId === latestVersion?.id);
+      const workflowVersions = versions.filter(
+        (version) => version.workflowTemplateId === workflow.id
+      )
+      const latestVersion =
+        workflowVersions.sort((left, right) => right.versionNumber - left.versionNumber)[0] ?? null
+      const workflowConditionsRows = conditions.filter(
+        (condition) => condition.workflowVersionId === latestVersion?.id
+      )
+      const workflowBranchesRows = branches.filter(
+        (branch) => branch.workflowVersionId === latestVersion?.id
+      )
+      const workflowStepRows = stepRules.filter(
+        (stepRule) => stepRule.workflowVersionId === latestVersion?.id
+      )
       const workflowNotificationRows = notificationRules.filter(
-        (rule) => rule.workflowVersionId === latestVersion?.id,
-      );
-      const workflowReminderRows = reminderRules.filter((rule) => rule.workflowVersionId === latestVersion?.id);
+        (rule) => rule.workflowVersionId === latestVersion?.id
+      )
+      const workflowReminderRows = reminderRules.filter(
+        (rule) => rule.workflowVersionId === latestVersion?.id
+      )
 
       return {
         ...workflow,
@@ -2466,9 +2828,9 @@ export async function getWorkflowStudioConsoleData() {
         stepRules: workflowStepRows,
         notificationRules: workflowNotificationRows,
         reminderRules: workflowReminderRows,
-      };
+      }
     }),
-  };
+  }
 }
 
 export async function getNotificationCenterData() {
@@ -2478,21 +2840,21 @@ export async function getNotificationCenterData() {
     db.select().from(reminderJobs).orderBy(desc(reminderJobs.reminderAt)),
     db.select().from(formSubmissions).orderBy(desc(formSubmissions.createdAt)),
     db.select().from(inboxItems).orderBy(desc(inboxItems.createdAt)),
-  ]);
+  ])
 
   return {
     metrics: {
-      inApp: deliveries.filter((delivery) => delivery.deliveryChannel === "in_app").length,
-      email: deliveries.filter((delivery) => delivery.deliveryChannel === "email").length,
-      dueSoon: reminders.filter((reminder) => reminder.reminderType === "before_due").length,
-      overdue: reminders.filter((reminder) => reminder.reminderType === "overdue").length,
-      delegationQueue: inboxRows.filter((item) => item.inboxType === "delegation").length,
-      escalationQueue: inboxRows.filter((item) => item.inboxType === "escalation").length,
+      inApp: deliveries.filter((delivery) => delivery.deliveryChannel === 'in_app').length,
+      email: deliveries.filter((delivery) => delivery.deliveryChannel === 'email').length,
+      dueSoon: reminders.filter((reminder) => reminder.reminderType === 'before_due').length,
+      overdue: reminders.filter((reminder) => reminder.reminderType === 'overdue').length,
+      delegationQueue: inboxRows.filter((item) => item.inboxType === 'delegation').length,
+      escalationQueue: inboxRows.filter((item) => item.inboxType === 'escalation').length,
     },
     events,
     deliveries,
     reminders,
     submissions,
     inboxRows,
-  };
+  }
 }

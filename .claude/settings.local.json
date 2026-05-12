@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(task-manager list-tasks:*)",
+      "Bash(task-manager delete-task:*)",
+      "Bash(task-manager:*)",
+      "Bash(node:*)",
+      "Bash(npx drizzle-kit push:*)",
+      "Bash(printf:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(npm test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix\\(timesheet\\): sync api-hari-libur holidays safely\n\nUse api-hari-libur as the scheduling holiday source, exclude only cuti bersama holidays, and ensure scheduling tables exist before holiday/config operations.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(npm install *)",
+      "Bash(claude plugin *)",
+      "mcp__code-review-graph__get_minimal_context_tool",
+      "Bash(DATABASE_SSL=false npm run *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
