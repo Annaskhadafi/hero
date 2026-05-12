@@ -1,5 +1,5 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { db } from '@/db'
 import {
   activities,
   approvals,
@@ -50,47 +50,54 @@ import {
   timesheetEntries,
   trainingRecords,
   wellnessRecords,
-} from "@/db/schema/hero";
-import { session, user as authUser } from "@/db/schema/auth";
-import { timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
-import { ensureApprovalBlueprintSeedData } from "@/lib/approval-blueprint";
+} from '@/db/schema/hero'
+import { session, user as authUser } from '@/db/schema/auth'
+import {
+  timesheetAttendanceImportPreviews,
+  timesheetAttendanceRealOverrides,
+  timesheetFieldBreakPlans,
+  timesheetSchedulingConfigs,
+  timesheetSchedulingPlans,
+  timesheetSchedulingStatuses,
+} from '@/db/schema/timesheet'
+import { ensureApprovalBlueprintSeedData } from '@/lib/approval-blueprint'
 import {
   ensureMasterCategoryTables,
   getActiveMasterCategoryOptionMap,
-} from "@/lib/master-categories";
-import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
-import { ensureDepartmentSectionSeedData } from "@/lib/org-seed-data";
+} from '@/lib/master-categories'
+import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import { ensureDepartmentSectionSeedData } from '@/lib/org-seed-data'
 
-let seedPromise: Promise<void> | null = null;
-let governanceSeedPromise: Promise<void> | null = null;
+let seedPromise: Promise<void> | null = null
+let governanceSeedPromise: Promise<void> | null = null
 
 export type SecurityUserRecord = {
-  id: number;
-  siteId: number | null;
-  employeeSn: string;
-  joinYear: number;
-  name: string;
-  profileImage: string | null;
-  birthPlaceDate: string;
-  domicile: string;
-  directManagerId: number | null;
-  directManagerName: string | null;
-  section: string;
-  department: string;
-  jobTitle: string;
-  workLocation: string;
-  phoneNumber: string;
-  email: string;
-  status: string;
-  role: string;
-  accessRole: string;
-  employeeStatusType: string;
-  levelName: string;
-  fitStatus: string;
-  isActive: boolean;
-  siteName: string;
-  totalPoints: number;
-};
+  id: number
+  siteId: number | null
+  employeeSn: string
+  joinYear: number
+  name: string
+  profileImage: string | null
+  birthPlaceDate: string
+  domicile: string
+  directManagerId: number | null
+  directManagerName: string | null
+  section: string
+  department: string
+  jobTitle: string
+  workLocation: string
+  phoneNumber: string
+  email: string
+  status: string
+  role: string
+  accessRole: string
+  employeeStatusType: string
+  levelName: string
+  fitStatus: string
+  isActive: boolean
+  siteName: string
+  totalPoints: number
+}
 
 export async function getSecurityUserReferenceData() {
   const [sections, departments, positions, sitesData] = await Promise.all([
@@ -118,9 +125,9 @@ export async function getSecurityUserReferenceData() {
         id: hrPositions.id,
         code: hrPositions.code,
         name: hrPositions.rankName,
-        siteLocation: sql<string>``.as("site_location"),
-        level: sql<number>`1`.as("level"),
-        departmentId: sql<number | null>`null`.as("department_id"),
+        siteLocation: sql<string>``.as('site_location'),
+        level: sql<number>`1`.as('level'),
+        departmentId: sql<number | null>`null`.as('department_id'),
       })
       .from(hrPositions)
       .where(eq(hrPositions.isActive, true))
@@ -134,79 +141,79 @@ export async function getSecurityUserReferenceData() {
       .from(hrSites)
       .where(eq(hrSites.isActive, true))
       .orderBy(asc(hrSites.name)),
-  ]);
+  ])
 
   return {
     sections,
     departments,
     positions,
     sites: sitesData,
-  };
+  }
 }
 
 export type SecurityRoleMenuPermissionRecord = {
-  id: number;
-  roleId: number;
-  menuItemId: number;
-  canView: boolean;
-  canEdit: boolean;
-  canDelete: boolean;
-  canSelectAll: boolean;
-};
+  id: number
+  roleId: number
+  menuItemId: number
+  canView: boolean
+  canEdit: boolean
+  canDelete: boolean
+  canSelectAll: boolean
+}
 
 function toCurrency(amount: number) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(amount)
 }
 
 function minutesToHours(minutes: number) {
-  return `${(minutes / 60).toFixed(1)} jam`;
+  return `${(minutes / 60).toFixed(1)} jam`
 }
 
 function normalizeLookupValue(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
+  return (value ?? '').trim().toLowerCase()
 }
 
 async function ensureHeroEmployeeProfileColumns() {
   await db.execute(sql`
     alter table hero_employees add column if not exists employee_sn text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists join_year integer not null default extract(year from current_date)::int;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists birth_place_date text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists domicile text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists direct_manager_id integer;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists section text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists job_title text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists work_location text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists phone_number text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists employment_status text not null default 'active';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists employee_status_type text not null default 'Permanen | Staff';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_employees add column if not exists access_role text not null default 'Site Admin';
-  `);
+  `)
 
   await db.execute(sql`
     update hero_employees
@@ -221,1004 +228,1010 @@ async function ensureHeroEmployeeProfileColumns() {
       phone_number = coalesce(phone_number, ''),
       employment_status = coalesce(nullif(employment_status, ''), case when is_active then 'active' else 'inactive' end),
       access_role = coalesce(nullif(access_role, ''), 'Site Admin');
-  `);
+  `)
 }
 
 async function ensureHeroSiteLocationColumns() {
   await db.execute(sql`
     alter table hero_sites add column if not exists province_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists province_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists regency_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists regency_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists district_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists district_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists village_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists village_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists address_detail text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists geo_latitude text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists geo_longitude text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists geo_radius_meters integer not null default 500;
-  `);
+  `)
 }
 
 async function ensureEmergencyIncidentColumns() {
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists employee_id integer references hero_employees(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists location text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists latitude text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists longitude text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists notes text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists photo_url text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_hse_incidents add column if not exists alert_status text not null default 'pending';
-  `);
+  `)
 }
 
 async function ensureTrainingRecordHistoryColumns() {
   await db.execute(sql`
     alter table hero_training_records add column if not exists completed_year integer;
-  `);
+  `)
 
   await db.execute(sql`
     update hero_training_records
     set completed_year = coalesce(completed_year, extract(year from coalesce(expires_at, now()))::int)
     where completed_year is null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_training_records alter column completed_year set default extract(year from current_date)::int;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_training_records alter column completed_year set not null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_training_records alter column expires_at drop not null;
-  `);
+  `)
 }
 
 const GOVERNANCE_ROLE_SEEDS = [
   {
-    name: "Super Admin",
-    description: "Kontrol penuh modul HERO termasuk konfigurasi sistem.",
-    scope: "all_sites",
+    name: 'Super Admin',
+    description: 'Kontrol penuh modul HERO termasuk konfigurasi sistem.',
+    scope: 'all_sites',
   },
   {
-    name: "Site Admin",
-    description: "Operasional site, approval, report, dan koordinasi manpower.",
-    scope: "site",
+    name: 'Site Admin',
+    description: 'Operasional site, approval, report, dan koordinasi manpower.',
+    scope: 'site',
   },
   {
-    name: "HC Manager",
-    description: "Kontrol user, training, wellness, dan payroll support.",
-    scope: "all_sites",
+    name: 'HC Manager',
+    description: 'Kontrol user, training, wellness, dan payroll support.',
+    scope: 'all_sites',
   },
-];
+]
 
 const SIDEBAR_MENU_SEEDS = [
   // Portal Chitra
   {
-    menuArea: "main",
-    section: "Portal Chitra",
-    title: "Portal Chitra",
-    url: "/dashboard/portal-chitra",
-    iconName: "dashboard",
-    resource: "portal_chitra",
+    menuArea: 'main',
+    section: 'Portal Chitra',
+    title: 'Portal Chitra',
+    url: '/dashboard/portal-chitra',
+    iconName: 'dashboard',
+    resource: 'portal_chitra',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   // Daily Activity
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "My Day",
-    url: "/dashboard/activity-hub/my-day",
-    iconName: "dashboard",
-    resource: "tire_service",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'My Day',
+    url: '/dashboard/activity-hub/my-day',
+    iconName: 'dashboard',
+    resource: 'tire_service',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "Team Board",
-    url: "/dashboard/activity-hub/team-board",
-    iconName: "list-details",
-    resource: "tire_repair",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'Team Board',
+    url: '/dashboard/activity-hub/team-board',
+    iconName: 'list-details',
+    resource: 'tire_repair',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "Activity Library",
-    url: "/dashboard/activity-hub/library",
-    iconName: "database",
-    resource: "activity_library",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'Activity Library',
+    url: '/dashboard/activity-hub/library',
+    iconName: 'database',
+    resource: 'activity_library',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "Route Builder",
-    url: "/dashboard/activity-hub/routes",
-    iconName: "list-details",
-    resource: "activity_routes",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'Route Builder',
+    url: '/dashboard/activity-hub/routes',
+    iconName: 'list-details',
+    resource: 'activity_routes',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "Activity Configuration",
-    url: "/dashboard/activity-hub/configuration",
-    iconName: "settings",
-    resource: "activity_configuration",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'Activity Configuration',
+    url: '/dashboard/activity-hub/configuration',
+    iconName: 'settings',
+    resource: 'activity_configuration',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "Pengajuan Lembur",
-    url: "/dashboard/overtime-requests",
-    iconName: "checklist",
-    resource: "overtime_requests",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'Pengajuan Lembur',
+    url: '/dashboard/overtime-requests',
+    iconName: 'checklist',
+    resource: 'overtime_requests',
     sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Daily Activity",
-    title: "Timesheet",
-    url: "/dashboard/timesheet",
-    iconName: "folder",
-    resource: "tire_engineer",
+    menuArea: 'main',
+    section: 'Daily Activity',
+    title: 'Timesheet',
+    url: '/dashboard/timesheet',
+    iconName: 'folder',
+    resource: 'tire_engineer',
     sortOrder: 7,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Scheduling Time Sheet",
-    title: "Overview",
-    url: "/dashboard/scheduling-timesheet",
-    iconName: "clock",
-    resource: "scheduling_timesheet",
+    menuArea: 'main',
+    section: 'Scheduling Time Sheet',
+    title: 'Overview',
+    url: '/dashboard/scheduling-timesheet',
+    iconName: 'clock',
+    resource: 'scheduling_timesheet',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Scheduling Time Sheet",
-    title: "Setup",
-    url: "/dashboard/scheduling-timesheet/setup",
-    iconName: "settings",
-    resource: "scheduling_timesheet_setup",
+    menuArea: 'main',
+    section: 'Scheduling Time Sheet',
+    title: 'Setup',
+    url: '/dashboard/scheduling-timesheet/setup',
+    iconName: 'settings',
+    resource: 'scheduling_timesheet_setup',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Scheduling Time Sheet",
-    title: "Schedule",
-    url: "/dashboard/scheduling-timesheet/schedule",
-    iconName: "clock",
-    resource: "scheduling_timesheet_schedule",
+    menuArea: 'main',
+    section: 'Scheduling Time Sheet',
+    title: 'Schedule',
+    url: '/dashboard/scheduling-timesheet/schedule',
+    iconName: 'clock',
+    resource: 'scheduling_timesheet_schedule',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Scheduling Time Sheet",
-    title: "Attendance",
-    url: "/dashboard/scheduling-timesheet/attendance",
-    iconName: "checklist",
-    resource: "scheduling_timesheet_attendance",
+    menuArea: 'main',
+    section: 'Scheduling Time Sheet',
+    title: 'Attendance',
+    url: '/dashboard/scheduling-timesheet/attendance',
+    iconName: 'checklist',
+    resource: 'scheduling_timesheet_attendance',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Scheduling Time Sheet",
-    title: "Field Break",
-    url: "/dashboard/scheduling-timesheet/field-break",
-    iconName: "list-details",
-    resource: "scheduling_timesheet_field_break",
+    menuArea: 'main',
+    section: 'Scheduling Time Sheet',
+    title: 'Field Break',
+    url: '/dashboard/scheduling-timesheet/field-break',
+    iconName: 'list-details',
+    resource: 'scheduling_timesheet_field_break',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Scheduling Time Sheet",
-    title: "Payroll",
-    url: "/dashboard/scheduling-timesheet/payroll",
-    iconName: "report",
-    resource: "scheduling_timesheet_payroll",
+    menuArea: 'main',
+    section: 'Scheduling Time Sheet',
+    title: 'Payroll',
+    url: '/dashboard/scheduling-timesheet/payroll',
+    iconName: 'report',
+    resource: 'scheduling_timesheet_payroll',
     sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
   // Approval
   {
-    menuArea: "main",
-    section: "Approval",
-    title: "Approval Inbox",
-    url: "/dashboard/approval",
-    iconName: "mail",
-    resource: "approval_inbox",
+    menuArea: 'main',
+    section: 'Approval',
+    title: 'Approval Inbox',
+    url: '/dashboard/approval',
+    iconName: 'mail',
+    resource: 'approval_inbox',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Approval",
-    title: "Request Center",
-    url: "/dashboard/request-center",
-    iconName: "folder",
-    resource: "request_center",
+    menuArea: 'main',
+    section: 'Approval',
+    title: 'Request Center',
+    url: '/dashboard/request-center',
+    iconName: 'folder',
+    resource: 'request_center',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Approval",
-    title: "Workflow Studio",
-    url: "/dashboard/workflow-studio",
-    iconName: "list-details",
-    resource: "workflow_studio",
+    menuArea: 'main',
+    section: 'Approval',
+    title: 'Workflow Studio',
+    url: '/dashboard/workflow-studio',
+    iconName: 'list-details',
+    resource: 'workflow_studio',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Approval",
-    title: "Approval Blueprint",
-    url: "/dashboard/activity-hub/blueprint",
-    iconName: "file-word",
-    resource: "activity_blueprint",
+    menuArea: 'main',
+    section: 'Approval',
+    title: 'Approval Blueprint',
+    url: '/dashboard/activity-hub/blueprint',
+    iconName: 'file-word',
+    resource: 'activity_blueprint',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Approval",
-    title: "Notifications",
-    url: "/dashboard/notifications",
-    iconName: "mail",
-    resource: "notification_center",
+    menuArea: 'main',
+    section: 'Approval',
+    title: 'Notifications',
+    url: '/dashboard/notifications',
+    iconName: 'mail',
+    resource: 'notification_center',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   // Master Data
   {
-    menuArea: "secondary",
-    section: "Master Data",
-    title: "Master Data",
-    url: "/dashboard/master-data",
-    iconName: "database",
-    resource: "master_data",
+    menuArea: 'secondary',
+    section: 'Master Data',
+    title: 'Master Data',
+    url: '/dashboard/master-data',
+    iconName: 'database',
+    resource: 'master_data',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "secondary",
-    section: "Master Data",
-    title: "Form Studio",
-    url: "/dashboard/form-studio",
-    iconName: "file-word",
-    resource: "form_studio",
+    menuArea: 'secondary',
+    section: 'Master Data',
+    title: 'Form Studio',
+    url: '/dashboard/form-studio',
+    iconName: 'file-word',
+    resource: 'form_studio',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   // HR
   {
-    menuArea: "main",
-    section: "HR",
-    title: "HC",
-    url: "/dashboard/hc",
-    iconName: "users",
-    resource: "hc_safety",
+    menuArea: 'main',
+    section: 'HR',
+    title: 'HC',
+    url: '/dashboard/hc',
+    iconName: 'users',
+    resource: 'hc_safety',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "HR",
-    title: "Attendance",
-    url: "/dashboard/attendance",
-    iconName: "clock",
-    resource: "attendance",
+    menuArea: 'main',
+    section: 'HR',
+    title: 'Attendance',
+    url: '/dashboard/attendance',
+    iconName: 'clock',
+    resource: 'attendance',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "secondary",
-    section: "HR",
-    title: "Attendance Records",
-    url: "/dashboard/attendance/records",
-    iconName: "clock",
-    resource: "attendance_records",
+    menuArea: 'secondary',
+    section: 'HR',
+    title: 'Attendance Records',
+    url: '/dashboard/attendance/records',
+    iconName: 'clock',
+    resource: 'attendance_records',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "HR",
-    title: "Training Records",
-    url: "/dashboard/training-records",
-    iconName: "list-details",
-    resource: "training_records",
+    menuArea: 'main',
+    section: 'HR',
+    title: 'Training Records',
+    url: '/dashboard/training-records',
+    iconName: 'list-details',
+    resource: 'training_records',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "secondary",
-    section: "HR",
-    title: "User Management",
-    url: "/dashboard/security/users",
-    iconName: "users",
-    resource: "security_users",
+    menuArea: 'secondary',
+    section: 'HR',
+    title: 'User Management',
+    url: '/dashboard/security/users',
+    iconName: 'users',
+    resource: 'security_users',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   // HSE
   {
-    menuArea: "main",
-    section: "HSE",
-    title: "HSE",
-    url: "/dashboard/hse",
-    iconName: "shield",
-    resource: "hse",
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'HSE',
+    url: '/dashboard/hse',
+    iconName: 'shield',
+    resource: 'hse',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   // Logistik
   {
-    menuArea: "main",
-    section: "Logistik",
-    title: "Cargo Manifest",
-    url: "/dashboard/cargo-manifest",
-    iconName: "folder",
-    resource: "cargo_manifest",
+    menuArea: 'main',
+    section: 'Logistik',
+    title: 'Cargo Manifest',
+    url: '/dashboard/cargo-manifest',
+    iconName: 'folder',
+    resource: 'cargo_manifest',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   // Report
   {
-    menuArea: "main",
-    section: "Report",
-    title: "Analytics",
-    url: "/dashboard/analytics",
-    iconName: "chart-bar",
-    resource: "dashboard_repair",
+    menuArea: 'main',
+    section: 'Report',
+    title: 'Analytics',
+    url: '/dashboard/analytics',
+    iconName: 'chart-bar',
+    resource: 'dashboard_repair',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Report",
-    title: "Reports",
-    url: "/dashboard/reports",
-    iconName: "report",
-    resource: "repair_productivity",
+    menuArea: 'main',
+    section: 'Report',
+    title: 'Reports',
+    url: '/dashboard/reports',
+    iconName: 'report',
+    resource: 'repair_productivity',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Report",
-    title: "Hero Points",
-    url: "/dashboard/leaderboard",
-    iconName: "settings",
-    resource: "point_setting",
+    menuArea: 'main',
+    section: 'Report',
+    title: 'Hero Points',
+    url: '/dashboard/leaderboard',
+    iconName: 'settings',
+    resource: 'point_setting',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Report",
-    title: "Security Overview",
-    url: "/dashboard/security",
-    iconName: "database",
-    resource: "security_session",
+    menuArea: 'main',
+    section: 'Report',
+    title: 'Security Overview',
+    url: '/dashboard/security',
+    iconName: 'database',
+    resource: 'security_session',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "main",
-    section: "Report",
-    title: "Audit Log",
-    url: "/dashboard/security/audit-logs",
-    iconName: "report",
-    resource: "security_audit",
+    menuArea: 'main',
+    section: 'Report',
+    title: 'Audit Log',
+    url: '/dashboard/security/audit-logs',
+    iconName: 'report',
+    resource: 'security_audit',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   // Settings
   {
-    menuArea: "main",
-    section: "Setting",
-    title: "Role Management",
-    url: "/dashboard/security/roles",
-    iconName: "shield",
-    resource: "security_roles",
+    menuArea: 'main',
+    section: 'Setting',
+    title: 'Role Management',
+    url: '/dashboard/security/roles',
+    iconName: 'shield',
+    resource: 'security_roles',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "secondary",
-    section: "Setting",
-    title: "Navbar Setting",
-    url: "/dashboard/settings/navbar",
-    iconName: "settings",
-    resource: "settings_navbar",
+    menuArea: 'secondary',
+    section: 'Setting',
+    title: 'Navbar Setting',
+    url: '/dashboard/settings/navbar',
+    iconName: 'settings',
+    resource: 'settings_navbar',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "secondary",
-    section: "Setting",
-    title: "Portal Chitra Settings",
-    url: "/dashboard/settings/portal-chitra",
-    iconName: "settings",
-    resource: "settings_portal_chitra",
+    menuArea: 'secondary',
+    section: 'Setting',
+    title: 'Portal Chitra Settings',
+    url: '/dashboard/settings/portal-chitra',
+    iconName: 'settings',
+    resource: 'settings_portal_chitra',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
-    menuArea: "secondary",
-    section: "Setting",
-    title: "Email Delivery Log",
-    url: "/dashboard/settings/email",
-    iconName: "mail",
-    resource: "settings_email",
+    menuArea: 'secondary',
+    section: 'Setting',
+    title: 'Email Delivery Log',
+    url: '/dashboard/settings/email',
+    iconName: 'mail',
+    resource: 'settings_email',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
-] as const;
+] as const
 
-const DEPRECATED_MENU_RESOURCES = ["slow_moving"];
-const DEPRECATED_MENU_URLS = ["/dashboard/slow-moving"];
+const DEPRECATED_MENU_RESOURCES = ['slow_moving']
+const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving']
 
 const PORTAL_CHITRA_APP_SEEDS = [
   {
-    slug: "hcms",
-    name: "HCMS",
-    category: "Human Capital",
-    description: "Human Capital Management System terintegrasi.",
-    url: "https://hcms.chitraparatama.co.id/",
-    color: "#003461",
-    iconName: "users",
+    slug: 'hcms',
+    name: 'HCMS',
+    category: 'Human Capital',
+    description: 'Human Capital Management System terintegrasi.',
+    url: 'https://hcms.chitraparatama.co.id/',
+    color: '#003461',
+    iconName: 'users',
     sortOrder: 1,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "chitra-tire-system",
-    name: "Chitra Tire System",
-    category: "Central Services",
-    description: "Manajemen siklus hidup ban dan pemantauan performa.",
-    url: "https://cts-chitraparatama.co.id/ChitraTireMngr/product/login.php",
-    color: "#004b87",
-    iconName: "car",
+    slug: 'chitra-tire-system',
+    name: 'Chitra Tire System',
+    category: 'Central Services',
+    description: 'Manajemen siklus hidup ban dan pemantauan performa.',
+    url: 'https://cts-chitraparatama.co.id/ChitraTireMngr/product/login.php',
+    color: '#004b87',
+    iconName: 'car',
     sortOrder: 2,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "integrated-chitra-system",
-    name: "Integrated Chitra System",
-    category: "General",
-    description: "Portal utama integrasi seluruh sistem operasional.",
-    url: "http://ics.chitraparatama.co.id/product/login.php",
-    color: "#0f6ba8",
-    iconName: "layers",
+    slug: 'integrated-chitra-system',
+    name: 'Integrated Chitra System',
+    category: 'General',
+    description: 'Portal utama integrasi seluruh sistem operasional.',
+    url: 'http://ics.chitraparatama.co.id/product/login.php',
+    color: '#0f6ba8',
+    iconName: 'layers',
     sortOrder: 3,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "chitra-paratama-website",
-    name: "Chitra Paratama Website",
-    category: "General",
-    description: "Profil perusahaan dan informasi publik.",
-    url: "https://chitraparatama.co.id",
-    color: "#2d7c67",
-    iconName: "globe",
+    slug: 'chitra-paratama-website',
+    name: 'Chitra Paratama Website',
+    category: 'General',
+    description: 'Profil perusahaan dan informasi publik.',
+    url: 'https://chitraparatama.co.id',
+    color: '#2d7c67',
+    iconName: 'globe',
     sortOrder: 4,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "go-hse",
-    name: "GO HSE",
-    category: "Human Capital",
-    description: "Sistem pelaporan kesehatan dan keselamatan kerja.",
-    url: "https://gohse.id",
-    color: "#9f4b18",
-    iconName: "shield",
+    slug: 'go-hse',
+    name: 'GO HSE',
+    category: 'Human Capital',
+    description: 'Sistem pelaporan kesehatan dan keselamatan kerja.',
+    url: 'https://gohse.id',
+    color: '#9f4b18',
+    iconName: 'shield',
     sortOrder: 5,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "e-purchase-request",
-    name: "E - Purchase Request",
-    category: "Supply Chain",
-    description: "Digitalisasi proses pengadaan dan approval.",
-    url: "https://proc-share.com",
-    color: "#005f73",
-    iconName: "shopping-bag",
+    slug: 'e-purchase-request',
+    name: 'E - Purchase Request',
+    category: 'Supply Chain',
+    description: 'Digitalisasi proses pengadaan dan approval.',
+    url: 'https://proc-share.com',
+    color: '#005f73',
+    iconName: 'shopping-bag',
     sortOrder: 6,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "go-bpi",
-    name: "GO BPI",
-    category: "Continuous Improvement",
-    description: "Inovasi dan perbaikan proses bisnis berkelanjutan.",
-    url: "https://gobpi.id",
-    color: "#7a3c12",
-    iconName: "bolt",
+    slug: 'go-bpi',
+    name: 'GO BPI',
+    category: 'Continuous Improvement',
+    description: 'Inovasi dan perbaikan proses bisnis berkelanjutan.',
+    url: 'https://gobpi.id',
+    color: '#7a3c12',
+    iconName: 'bolt',
     sortOrder: 7,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "crm",
-    name: "CRM",
-    category: "Sales & Marketing",
-    description: "Manajemen relasi pelanggan dan pipeline penjualan.",
-    url: "https://gohse.id/crm/admin",
-    color: "#005e7a",
-    iconName: "briefcase",
+    slug: 'crm',
+    name: 'CRM',
+    category: 'Sales & Marketing',
+    description: 'Manajemen relasi pelanggan dan pipeline penjualan.',
+    url: 'https://gohse.id/crm/admin',
+    color: '#005e7a',
+    iconName: 'briefcase',
     sortOrder: 8,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "camos",
-    name: "CAMOS",
-    category: "Central Services",
-    description: "Aplikasi mobile untuk monitoring aset operasional.",
-    url: "https://play.google.com/store/apps/details?id=com.chitraparatama.camos",
-    color: "#3c566b",
-    iconName: "smartphone",
+    slug: 'camos',
+    name: 'CAMOS',
+    category: 'Central Services',
+    description: 'Aplikasi mobile untuk monitoring aset operasional.',
+    url: 'https://play.google.com/store/apps/details?id=com.chitraparatama.camos',
+    color: '#3c566b',
+    iconName: 'smartphone',
     sortOrder: 9,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "ar-dashboard",
-    name: "AR Dashboard",
-    category: "Finance",
-    description: "Visualisasi piutang dan performa keuangan.",
-    url: "#",
-    color: "#0f766e",
-    iconName: "chart",
+    slug: 'ar-dashboard',
+    name: 'AR Dashboard',
+    category: 'Finance',
+    description: 'Visualisasi piutang dan performa keuangan.',
+    url: '#',
+    color: '#0f766e',
+    iconName: 'chart',
     sortOrder: 10,
     isActive: true,
     showOnMobile: false,
   },
   {
-    slug: "warehouse-repair",
-    name: "Warehouse Repair",
-    category: "Central Services",
-    description: "Pelacakan pemeliharaan dan perbaikan gudang.",
-    url: "https://rrschitra.gohse.id/login.php",
-    color: "#7c3f00",
-    iconName: "warehouse",
+    slug: 'warehouse-repair',
+    name: 'Warehouse Repair',
+    category: 'Central Services',
+    description: 'Pelacakan pemeliharaan dan perbaikan gudang.',
+    url: 'https://rrschitra.gohse.id/login.php',
+    color: '#7c3f00',
+    iconName: 'warehouse',
     sortOrder: 11,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "marketing-tools",
-    name: "Marketing Tools",
-    category: "Sales & Marketing",
-    description: "Peralatan bantu analisis pasar dan kampanye.",
-    url: "https://one.chitraparatama.com",
-    color: "#8b2f4d",
-    iconName: "megaphone",
+    slug: 'marketing-tools',
+    name: 'Marketing Tools',
+    category: 'Sales & Marketing',
+    description: 'Peralatan bantu analisis pasar dan kampanye.',
+    url: 'https://one.chitraparatama.com',
+    color: '#8b2f4d',
+    iconName: 'megaphone',
     sortOrder: 12,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "lms-v2",
-    name: "LMS V2",
-    category: "Human Capital",
-    description: "Platform pelatihan dan pengembangan karyawan.",
-    url: "https://tc.chitraparatama.com",
-    color: "#003f78",
-    iconName: "book-open",
+    slug: 'lms-v2',
+    name: 'LMS V2',
+    category: 'Human Capital',
+    description: 'Platform pelatihan dan pengembangan karyawan.',
+    url: 'https://tc.chitraparatama.com',
+    color: '#003f78',
+    iconName: 'book-open',
     sortOrder: 13,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "supply-chain-management",
-    name: "Supply Chain Management",
-    category: "Supply Chain",
-    description: "Pemantauan rantai pasok dari hulu ke hilir.",
-    url: "https://one.chitraparatama.com",
-    color: "#005f8f",
-    iconName: "truck",
+    slug: 'supply-chain-management',
+    name: 'Supply Chain Management',
+    category: 'Supply Chain',
+    description: 'Pemantauan rantai pasok dari hulu ke hilir.',
+    url: 'https://one.chitraparatama.com',
+    color: '#005f8f',
+    iconName: 'truck',
     sortOrder: 14,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "chris",
-    name: "CHRIS",
-    category: "Human Capital",
-    description: "Chitra Human Resources Information System.",
-    url: "https://chris.chitraparatama.com",
-    color: "#a04d16",
-    iconName: "user-cog",
+    slug: 'chris',
+    name: 'CHRIS',
+    category: 'Human Capital',
+    description: 'Chitra Human Resources Information System.',
+    url: 'https://chris.chitraparatama.com',
+    color: '#a04d16',
+    iconName: 'user-cog',
     sortOrder: 15,
     isActive: true,
     showOnMobile: true,
   },
   {
-    slug: "competitor-dashboard",
-    name: "Competitor Dashboard",
-    category: "Sales & Marketing",
-    description: "Analisis perbandingan performa kompetitor.",
-    url: "https://lookerstudio.google.com/reporting/7d2e0f57-a983-42d0-977d-878b3bfeb662",
-    color: "#6c1f37",
-    iconName: "radar",
+    slug: 'competitor-dashboard',
+    name: 'Competitor Dashboard',
+    category: 'Sales & Marketing',
+    description: 'Analisis perbandingan performa kompetitor.',
+    url: 'https://lookerstudio.google.com/reporting/7d2e0f57-a983-42d0-977d-878b3bfeb662',
+    color: '#6c1f37',
+    iconName: 'radar',
     sortOrder: 16,
     isActive: true,
     showOnMobile: true,
   },
-] as const;
+] as const
 
 const ATTENDANCE_SHIFT_SEEDS = [
   {
-    code: "day",
-    label: "Shift Pagi",
-    startTime: "07:00",
-    endTime: "15:00",
-    windowLabel: "07:00 - 15:00",
-    helper: "Operasional reguler site pagi.",
+    code: 'day',
+    label: 'Shift Pagi',
+    startTime: '07:00',
+    endTime: '15:00',
+    windowLabel: '07:00 - 15:00',
+    helper: 'Operasional reguler site pagi.',
     sortOrder: 1,
   },
   {
-    code: "swing",
-    label: "Shift Sore",
-    startTime: "15:00",
-    endTime: "23:00",
-    windowLabel: "15:00 - 23:00",
-    helper: "Pergantian crew dan pekerjaan lanjutan.",
+    code: 'swing',
+    label: 'Shift Sore',
+    startTime: '15:00',
+    endTime: '23:00',
+    windowLabel: '15:00 - 23:00',
+    helper: 'Pergantian crew dan pekerjaan lanjutan.',
     sortOrder: 2,
   },
   {
-    code: "night",
-    label: "Shift Malam",
-    startTime: "23:00",
-    endTime: "07:00",
-    windowLabel: "23:00 - 07:00",
-    helper: "Shift lintas hari, pastikan clock out tetap dilakukan.",
+    code: 'night',
+    label: 'Shift Malam',
+    startTime: '23:00',
+    endTime: '07:00',
+    windowLabel: '23:00 - 07:00',
+    helper: 'Shift lintas hari, pastikan clock out tetap dilakukan.',
     sortOrder: 3,
   },
   {
-    code: "standby",
-    label: "Standby / On-call",
-    startTime: "",
-    endTime: "",
-    windowLabel: "Sesuai assignment",
-    helper: "Dipakai saat hadir karena panggilan atau standby.",
+    code: 'standby',
+    label: 'Standby / On-call',
+    startTime: '',
+    endTime: '',
+    windowLabel: 'Sesuai assignment',
+    helper: 'Dipakai saat hadir karena panggilan atau standby.',
     sortOrder: 4,
   },
-];
+]
 
 const EMAIL_SMTP_SETTING_SEED = {
-  profileName: "Default SMTP",
-  host: "smtp.chitraparatama.co.id",
+  profileName: 'Default SMTP',
+  host: 'smtp.chitraparatama.co.id',
   port: 587,
-  encryption: "tls",
-  username: "noreply@chitraparatama.co.id",
-  passwordSecret: "",
-  fromEmail: "noreply@chitraparatama.co.id",
-  fromName: "HERO Operations",
-  replyToEmail: "",
+  encryption: 'tls',
+  username: 'noreply@chitraparatama.co.id',
+  passwordSecret: '',
+  fromEmail: 'noreply@chitraparatama.co.id',
+  fromName: 'HERO Operations',
+  replyToEmail: '',
   retryLimit: 3,
   timeoutSeconds: 15,
   queueEnabled: true,
   auditEnabled: true,
   isActive: true,
-};
+}
 
 const EMAIL_TEMPLATE_SEEDS = [
   {
-    name: "Auth Magic Link",
-    templateCode: "auth_magic_link",
-    templateType: "Magic Link",
-    deliveryChannel: "email",
-    recipientScope: "all",
-    ccEmail: "",
-    subject: "Magic link masuk untuk {{userName}}",
-    htmlContent: "<p>Gunakan link berikut untuk masuk ke HERO: {{magicLink}}</p>",
-    textContent: "Gunakan link berikut untuk masuk ke HERO: {{magicLink}}",
+    name: 'Auth Magic Link',
+    templateCode: 'auth_magic_link',
+    templateType: 'Magic Link',
+    deliveryChannel: 'email',
+    recipientScope: 'all',
+    ccEmail: '',
+    subject: 'Magic link masuk untuk {{userName}}',
+    htmlContent: '<p>Gunakan link berikut untuk masuk ke HERO: {{magicLink}}</p>',
+    textContent: 'Gunakan link berikut untuk masuk ke HERO: {{magicLink}}',
     isActive: true,
   },
   {
-    name: "Approval Assignment",
-    templateCode: "approval_assignment",
-    templateType: "Notification",
-    deliveryChannel: "email,bell",
-    recipientScope: "approver",
-    ccEmail: "",
-    subject: "Tugas approval baru #{{requestId}}",
-    htmlContent: "<p>Request #{{requestId}} menunggu approval Anda.</p>",
-    textContent: "Request #{{requestId}} menunggu approval Anda.",
+    name: 'Approval Assignment',
+    templateCode: 'approval_assignment',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: 'Tugas approval baru #{{requestId}}',
+    htmlContent: '<p>Request #{{requestId}} menunggu approval Anda.</p>',
+    textContent: 'Request #{{requestId}} menunggu approval Anda.',
     isActive: true,
   },
   {
-    name: "Approval SLA Reminder",
-    templateCode: "approval_sla_reminder",
-    templateType: "Reminder",
-    deliveryChannel: "email,bell,pwa_push",
-    recipientScope: "approver",
-    ccEmail: "",
-    subject: "Reminder SLA untuk request #{{requestId}}",
-    htmlContent: "<p>SLA request #{{requestId}} hampir jatuh tempo.</p>",
-    textContent: "SLA request #{{requestId}} hampir jatuh tempo.",
+    name: 'Approval SLA Reminder',
+    templateCode: 'approval_sla_reminder',
+    templateType: 'Reminder',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: 'Reminder SLA untuk request #{{requestId}}',
+    htmlContent: '<p>SLA request #{{requestId}} hampir jatuh tempo.</p>',
+    textContent: 'SLA request #{{requestId}} hampir jatuh tempo.',
     isActive: true,
   },
   {
-    name: "Daily Report Delivery",
-    templateCode: "daily_report_delivery",
-    templateType: "Report",
-    deliveryChannel: "email",
-    recipientScope: "admin,pjo",
-    ccEmail: "",
-    subject: "Daily Report {{siteName}} - {{reportDate}}",
-    htmlContent: "<p>Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.</p>",
-    textContent: "Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.",
+    name: 'Daily Report Delivery',
+    templateCode: 'daily_report_delivery',
+    templateType: 'Report',
+    deliveryChannel: 'email',
+    recipientScope: 'admin,pjo',
+    ccEmail: '',
+    subject: 'Daily Report {{siteName}} - {{reportDate}}',
+    htmlContent: '<p>Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.</p>',
+    textContent: 'Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.',
     isActive: true,
   },
-];
+]
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
   {
-    channel: "bell",
+    channel: 'bell',
     isEnabled: true,
     realtimeBadge: true,
     soundEnabled: true,
     autoMarkRead: true,
-    vapidPublicKey: "",
-    vapidPrivateKey: "",
-    pushSubject: "",
-    serviceWorkerPath: "/sw.js",
+    vapidPublicKey: '',
+    vapidPrivateKey: '',
+    pushSubject: '',
+    serviceWorkerPath: '/sw.js',
   },
   {
-    channel: "pwa_push",
+    channel: 'pwa_push',
     isEnabled: true,
     realtimeBadge: false,
     soundEnabled: false,
     autoMarkRead: false,
-    vapidPublicKey: "",
-    vapidPrivateKey: "",
-    pushSubject: "mailto:noreply@chitraparatama.co.id",
-    serviceWorkerPath: "/sw.js",
+    vapidPublicKey: '',
+    vapidPrivateKey: '',
+    pushSubject: 'mailto:noreply@chitraparatama.co.id',
+    serviceWorkerPath: '/sw.js',
   },
-];
+]
 
 const NOTIFICATION_RULE_SEEDS = [
   {
-    channel: "bell",
-    label: "Approval assignment",
-    eventType: "approval_assignment",
-    targetAudience: "Approver",
-    priority: "approval",
-    triggerExpression: "Saat request masuk ke step approval",
-    templateCode: "approval_assignment",
+    channel: 'bell',
+    label: 'Approval assignment',
+    eventType: 'approval_assignment',
+    targetAudience: 'Approver',
+    priority: 'approval',
+    triggerExpression: 'Saat request masuk ke step approval',
+    templateCode: 'approval_assignment',
     isActive: true,
     sortOrder: 1,
   },
   {
-    channel: "bell",
-    label: "Delegation handover",
-    eventType: "delegation_created",
-    targetAudience: "Delegate",
-    priority: "delegation",
-    triggerExpression: "Saat tugas dialihkan ke pemeriksa lain",
-    templateCode: "approval_assignment",
+    channel: 'bell',
+    label: 'Delegation handover',
+    eventType: 'delegation_created',
+    targetAudience: 'Delegate',
+    priority: 'delegation',
+    triggerExpression: 'Saat tugas dialihkan ke pemeriksa lain',
+    templateCode: 'approval_assignment',
     isActive: true,
     sortOrder: 2,
   },
   {
-    channel: "bell",
-    label: "Escalation alert",
-    eventType: "approval_escalation",
-    targetAudience: "Manager",
-    priority: "escalation",
-    triggerExpression: "Saat approval melewati SLA",
-    templateCode: "approval_sla_reminder",
+    channel: 'bell',
+    label: 'Escalation alert',
+    eventType: 'approval_escalation',
+    targetAudience: 'Manager',
+    priority: 'escalation',
+    triggerExpression: 'Saat approval melewati SLA',
+    templateCode: 'approval_sla_reminder',
     isActive: true,
     sortOrder: 3,
   },
   {
-    channel: "bell",
-    label: "Before due reminder",
-    eventType: "before_due",
-    targetAudience: "Requester + Approver",
-    priority: "before_due",
-    triggerExpression: "Sebelum batas waktu tiba",
-    templateCode: "approval_sla_reminder",
+    channel: 'bell',
+    label: 'Before due reminder',
+    eventType: 'before_due',
+    targetAudience: 'Requester + Approver',
+    priority: 'before_due',
+    triggerExpression: 'Sebelum batas waktu tiba',
+    templateCode: 'approval_sla_reminder',
     isActive: true,
     sortOrder: 4,
   },
   {
-    channel: "pwa_push",
-    label: "Push approval urgent",
-    eventType: "approval_sla_reminder",
-    targetAudience: "Approver aktif",
-    priority: "urgent",
-    triggerExpression: "SLA < 2 jam",
-    templateCode: "approval_sla_reminder",
+    channel: 'pwa_push',
+    label: 'Push approval urgent',
+    eventType: 'approval_sla_reminder',
+    targetAudience: 'Approver aktif',
+    priority: 'urgent',
+    triggerExpression: 'SLA < 2 jam',
+    templateCode: 'approval_sla_reminder',
     isActive: true,
     sortOrder: 1,
   },
   {
-    channel: "pwa_push",
-    label: "Push escalation",
-    eventType: "approval_escalation",
-    targetAudience: "Manager site",
-    priority: "escalation",
-    triggerExpression: "Lewat SLA",
-    templateCode: "approval_sla_reminder",
+    channel: 'pwa_push',
+    label: 'Push escalation',
+    eventType: 'approval_escalation',
+    targetAudience: 'Manager site',
+    priority: 'escalation',
+    triggerExpression: 'Lewat SLA',
+    templateCode: 'approval_sla_reminder',
     isActive: true,
     sortOrder: 2,
   },
   {
-    channel: "pwa_push",
-    label: "Push daily report ready",
-    eventType: "daily_report_ready",
-    targetAudience: "PJO + Admin",
-    priority: "report",
-    triggerExpression: "Report siap kirim",
-    templateCode: "daily_report_delivery",
+    channel: 'pwa_push',
+    label: 'Push daily report ready',
+    eventType: 'daily_report_ready',
+    targetAudience: 'PJO + Admin',
+    priority: 'report',
+    triggerExpression: 'Report siap kirim',
+    templateCode: 'daily_report_delivery',
     isActive: false,
     sortOrder: 3,
   },
-];
+]
 
 function dedupeMenuItemsByPage<
   T extends {
-    url: string;
+    url: string
   },
 >(items: T[]) {
-  const seenPages = new Set<string>();
+  const seenPages = new Set<string>()
 
   return items.filter((item) => {
-    const pageKey = item.url;
+    const pageKey = item.url
 
     if (seenPages.has(pageKey)) {
-      return false;
+      return false
     }
 
-    seenPages.add(pageKey);
-    return true;
-  });
+    seenPages.add(pageKey)
+    return true
+  })
 }
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
-  if (roleName === "Super Admin") {
+  if (roleName === 'Super Admin') {
     return {
       canView: true,
       canEdit: true,
       canDelete: true,
       canSelectAll: true,
-    };
+    }
   }
 
-  if (roleName === "HC Manager") {
+  if (roleName === 'HC Manager') {
     return {
       canView: true,
       canEdit: true,
-      canDelete: ["security", "settings_navbar", "settings_email", "portal_chitra", "settings_portal_chitra"].includes(resource),
+      canDelete: [
+        'security',
+        'settings_navbar',
+        'settings_email',
+        'portal_chitra',
+        'settings_portal_chitra',
+      ].includes(resource),
       canSelectAll: false,
-    };
+    }
   }
 
   return {
     canView: true,
-    canEdit: !["settings_email", "portal_chitra", "settings_portal_chitra"].includes(resource),
+    canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra'].includes(resource),
     canDelete: false,
     canSelectAll: false,
-  };
+  }
 }
 
 async function ensureHeroGovernanceTables() {
@@ -1230,7 +1243,7 @@ async function ensureHeroGovernanceTables() {
       scope text not null default 'site',
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_security_permissions (
@@ -1241,7 +1254,7 @@ async function ensureHeroGovernanceTables() {
       action text not null,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_security_role_permissions (
@@ -1250,7 +1263,7 @@ async function ensureHeroGovernanceTables() {
       permission_id integer not null references hero_security_permissions(id) on delete cascade,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_email_delivery_logs (
@@ -1270,7 +1283,7 @@ async function ensureHeroGovernanceTables() {
       sent_at timestamp,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_email_smtp_settings (
@@ -1292,7 +1305,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_email_templates (
@@ -1310,7 +1323,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_notification_channel_settings (
@@ -1327,7 +1340,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_notification_channel_rules (
@@ -1344,7 +1357,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_notification_user_preferences (
@@ -1360,7 +1373,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_notification_push_subscriptions (
@@ -1376,7 +1389,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_audit_logs (
@@ -1389,7 +1402,7 @@ async function ensureHeroGovernanceTables() {
       severity text not null default 'info',
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_navbar_themes (
@@ -1403,12 +1416,12 @@ async function ensureHeroGovernanceTables() {
       logo_mode text not null default 'hero',
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_navbar_themes
     add column if not exists header_background_color text not null default '#FFFFFF';
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_navbar_menu_items (
@@ -1424,47 +1437,47 @@ async function ensureHeroGovernanceTables() {
       open_in_new_tab boolean not null default false,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_navbar_menu_items add column if not exists menu_area text not null default 'main';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists province_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists province_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists regency_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists regency_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists district_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists district_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists village_id text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists village_name text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_sites add column if not exists address_detail text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_role_menu_permissions (
@@ -1477,7 +1490,7 @@ async function ensureHeroGovernanceTables() {
       can_select_all boolean not null default false,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_portal_chitra_apps (
@@ -1495,7 +1508,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_portal_chitra_role_access (
@@ -1504,7 +1517,7 @@ async function ensureHeroGovernanceTables() {
       role_id integer not null references hero_security_roles(id) on delete cascade,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_master_departments (
@@ -1516,7 +1529,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_master_sections (
@@ -1529,7 +1542,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_master_positions (
@@ -1545,7 +1558,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_master_attendance_shifts (
@@ -1561,32 +1574,32 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_master_positions
     add column if not exists site_location text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_master_positions
     add column if not exists section_id integer references hero_master_sections(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_employees
     add column if not exists department_id integer;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_employees
     add column if not exists section_id integer;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_employees
     add column if not exists position_id integer;
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_org_chart_structures (
@@ -1603,7 +1616,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_org_chart_nodes (
@@ -1626,72 +1639,72 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists version integer not null default 1;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists effective_from timestamp not null default now();
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists effective_to timestamp;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_structures
     add column if not exists is_default boolean not null default false;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists employee_id integer references hero_employees(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists node_code text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists node_type text not null default 'position';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists approval_role text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists can_approve boolean not null default false;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists can_delegate boolean not null default true;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists is_escalation_target boolean not null default false;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists sla_hours integer not null default 24;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_org_chart_nodes
     add column if not exists fallback_node_id integer;
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_org_node_assignments (
@@ -1706,7 +1719,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_approval_matrices (
@@ -1729,7 +1742,7 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_approval_matrix_steps (
@@ -1747,78 +1760,78 @@ async function ensureHeroGovernanceTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_employees
     add column if not exists org_node_id integer;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists approver_employee_id integer references hero_employees(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists approver_node_id integer references hero_org_chart_nodes(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists approval_matrix_id integer references hero_approval_matrices(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists approval_step_id integer references hero_approval_matrix_steps(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists resolution_source text not null default 'matrix';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists route_snapshot text not null default '';
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals
     add column if not exists decision_note text not null default '';
-  `);
-  }
+  `)
+}
 
 export async function ensureHeroSeedData() {
   if (seedPromise) {
-    return seedPromise;
+    return seedPromise
   }
 
   seedPromise = (async () => {
-    await ensureHeroEmployeeProfileColumns();
-    await ensureHeroSiteLocationColumns();
-    await ensureEmergencyIncidentColumns();
-    await ensureTrainingRecordHistoryColumns();
-    await ensureApprovalBlueprintSeedData();
-    await ensureDepartmentSectionSeedData();
+    await ensureHeroEmployeeProfileColumns()
+    await ensureHeroSiteLocationColumns()
+    await ensureEmergencyIncidentColumns()
+    await ensureTrainingRecordHistoryColumns()
+    await ensureApprovalBlueprintSeedData()
+    await ensureDepartmentSectionSeedData()
   })().catch((error) => {
-    seedPromise = null;
-    throw error;
-  });
+    seedPromise = null
+    throw error
+  })
 
-  return seedPromise;
+  return seedPromise
 }
 
 export async function ensureHeroGovernanceSeedData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   if (governanceSeedPromise) {
-    return governanceSeedPromise;
+    return governanceSeedPromise
   }
 
   governanceSeedPromise = (async () => {
-    await ensureHeroGovernanceTables();
+    await ensureHeroGovernanceTables()
 
     const [
       permissionCount,
@@ -1830,94 +1843,121 @@ export async function ensureHeroGovernanceSeedData() {
       notificationChannelSettingCount,
       notificationPreferenceCount,
       notificationSubscriptionCount,
-    ] =
-      await Promise.all([
-        db.select({ count: sql<number>`count(*)::int` }).from(securityPermissions),
-        db.select({ count: sql<number>`count(*)::int` }).from(securityRolePermissions),
-        db.select({ count: sql<number>`count(*)::int` }).from(navbarThemes),
-        db.select({ count: sql<number>`count(*)::int` }).from(masterAttendanceShifts),
-        db.select({ count: sql<number>`count(*)::int` }).from(emailSmtpSettings),
-        db.select({ count: sql<number>`count(*)::int` }).from(emailTemplates),
-        db.select({ count: sql<number>`count(*)::int` }).from(notificationChannelSettings),
-        db.select({ count: sql<number>`count(*)::int` }).from(notificationUserPreferences),
-        db.select({ count: sql<number>`count(*)::int` }).from(notificationPushSubscriptions),
-      ]);
+    ] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(securityPermissions),
+      db.select({ count: sql<number>`count(*)::int` }).from(securityRolePermissions),
+      db.select({ count: sql<number>`count(*)::int` }).from(navbarThemes),
+      db.select({ count: sql<number>`count(*)::int` }).from(masterAttendanceShifts),
+      db.select({ count: sql<number>`count(*)::int` }).from(emailSmtpSettings),
+      db.select({ count: sql<number>`count(*)::int` }).from(emailTemplates),
+      db.select({ count: sql<number>`count(*)::int` }).from(notificationChannelSettings),
+      db.select({ count: sql<number>`count(*)::int` }).from(notificationUserPreferences),
+      db.select({ count: sql<number>`count(*)::int` }).from(notificationPushSubscriptions),
+    ])
 
-    const currentRoles = await db.select().from(securityRoles);
-    const existingRoleNames = new Set(currentRoles.map((role) => role.name));
+    const currentRoles = await db.select().from(securityRoles)
+    const existingRoleNames = new Set(currentRoles.map((role) => role.name))
 
-    const missingRoles = GOVERNANCE_ROLE_SEEDS.filter(
-      (role) => !existingRoleNames.has(role.name),
-    );
+    const missingRoles = GOVERNANCE_ROLE_SEEDS.filter((role) => !existingRoleNames.has(role.name))
 
     if (missingRoles.length > 0) {
-      await db.insert(securityRoles).values(missingRoles);
+      await db.insert(securityRoles).values(missingRoles)
     }
 
     if ((permissionCount[0]?.count ?? 0) === 0) {
       await db.insert(securityPermissions).values([
-        { code: "security.overview.read", label: "Read security overview", resource: "security", action: "read" },
-        { code: "security.users.manage", label: "Manage security users", resource: "security_users", action: "manage" },
-        { code: "security.roles.manage", label: "Manage roles and permissions", resource: "security_roles", action: "manage" },
-        { code: "security.audit.read", label: "Read audit logs", resource: "security_audit", action: "read" },
-        { code: "settings.navbar.manage", label: "Manage navbar settings", resource: "settings_navbar", action: "manage" },
-        { code: "settings.email.read", label: "Read email delivery logs", resource: "settings_email", action: "read" },
-      ]);
+        {
+          code: 'security.overview.read',
+          label: 'Read security overview',
+          resource: 'security',
+          action: 'read',
+        },
+        {
+          code: 'security.users.manage',
+          label: 'Manage security users',
+          resource: 'security_users',
+          action: 'manage',
+        },
+        {
+          code: 'security.roles.manage',
+          label: 'Manage roles and permissions',
+          resource: 'security_roles',
+          action: 'manage',
+        },
+        {
+          code: 'security.audit.read',
+          label: 'Read audit logs',
+          resource: 'security_audit',
+          action: 'read',
+        },
+        {
+          code: 'settings.navbar.manage',
+          label: 'Manage navbar settings',
+          resource: 'settings_navbar',
+          action: 'manage',
+        },
+        {
+          code: 'settings.email.read',
+          label: 'Read email delivery logs',
+          resource: 'settings_email',
+          action: 'read',
+        },
+      ])
     }
 
     if ((rolePermissionCount[0]?.count ?? 0) === 0) {
       const [roles, permissions] = await Promise.all([
         db.select().from(securityRoles),
         db.select().from(securityPermissions),
-      ]);
+      ])
 
-      const roleByName = Object.fromEntries(roles.map((role) => [role.name, role]));
+      const roleByName = Object.fromEntries(roles.map((role) => [role.name, role]))
       const permissionByCode = Object.fromEntries(
-        permissions.map((permission) => [permission.code, permission]),
-      );
+        permissions.map((permission) => [permission.code, permission])
+      )
 
       await db.insert(securityRolePermissions).values([
         {
-          roleId: roleByName["Super Admin"].id,
-          permissionId: permissionByCode["security.overview.read"].id,
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['security.overview.read'].id,
         },
         {
-          roleId: roleByName["Super Admin"].id,
-          permissionId: permissionByCode["security.users.manage"].id,
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['security.users.manage'].id,
         },
         {
-          roleId: roleByName["Super Admin"].id,
-          permissionId: permissionByCode["security.roles.manage"].id,
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['security.roles.manage'].id,
         },
         {
-          roleId: roleByName["Super Admin"].id,
-          permissionId: permissionByCode["security.audit.read"].id,
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['security.audit.read'].id,
         },
         {
-          roleId: roleByName["Super Admin"].id,
-          permissionId: permissionByCode["settings.navbar.manage"].id,
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['settings.navbar.manage'].id,
         },
         {
-          roleId: roleByName["Super Admin"].id,
-          permissionId: permissionByCode["settings.email.read"].id,
+          roleId: roleByName['Super Admin'].id,
+          permissionId: permissionByCode['settings.email.read'].id,
         },
         {
-          roleId: roleByName["Site Admin"].id,
-          permissionId: permissionByCode["security.overview.read"].id,
+          roleId: roleByName['Site Admin'].id,
+          permissionId: permissionByCode['security.overview.read'].id,
         },
         {
-          roleId: roleByName["Site Admin"].id,
-          permissionId: permissionByCode["security.audit.read"].id,
+          roleId: roleByName['Site Admin'].id,
+          permissionId: permissionByCode['security.audit.read'].id,
         },
         {
-          roleId: roleByName["HC Manager"].id,
-          permissionId: permissionByCode["security.users.manage"].id,
+          roleId: roleByName['HC Manager'].id,
+          permissionId: permissionByCode['security.users.manage'].id,
         },
         {
-          roleId: roleByName["HC Manager"].id,
-          permissionId: permissionByCode["settings.email.read"].id,
+          roleId: roleByName['HC Manager'].id,
+          permissionId: permissionByCode['settings.email.read'].id,
         },
-      ]);
+      ])
     }
 
     await db
@@ -1925,69 +1965,61 @@ export async function ensureHeroGovernanceSeedData() {
       .where(
         or(
           inArray(navbarMenuItems.resource, DEPRECATED_MENU_RESOURCES),
-          inArray(navbarMenuItems.url, DEPRECATED_MENU_URLS),
-        ),
-      );
+          inArray(navbarMenuItems.url, DEPRECATED_MENU_URLS)
+        )
+      )
 
     const currentMenuItems = await db
       .select()
       .from(navbarMenuItems)
-      .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id);
+      .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id)
 
     const preferredSeedByUrl = new Map<string, (typeof SIDEBAR_MENU_SEEDS)[number]>(
-      SIDEBAR_MENU_SEEDS.map((item) => [item.url, item]),
-    );
-    const menuGroupsByUrl = currentMenuItems.reduce<
-      Map<string, typeof currentMenuItems>
-    >((accumulator, item) => {
-      const currentItems = accumulator.get(item.url) ?? [];
-      currentItems.push(item);
-      accumulator.set(item.url, currentItems);
-      return accumulator;
-    }, new Map());
+      SIDEBAR_MENU_SEEDS.map((item) => [item.url, item])
+    )
+    const menuGroupsByUrl = currentMenuItems.reduce<Map<string, typeof currentMenuItems>>(
+      (accumulator, item) => {
+        const currentItems = accumulator.get(item.url) ?? []
+        currentItems.push(item)
+        accumulator.set(item.url, currentItems)
+        return accumulator
+      },
+      new Map()
+    )
 
     for (const [url, groupedItems] of menuGroupsByUrl) {
       if (groupedItems.length <= 1) {
-        continue;
+        continue
       }
 
-      const preferredSeed = preferredSeedByUrl.get(url);
-      const keepItem =
-        preferredSeed
-          ? groupedItems.find((item) => item.resource === preferredSeed.resource) ??
-            groupedItems[0]
-          : groupedItems[0];
+      const preferredSeed = preferredSeedByUrl.get(url)
+      const keepItem = preferredSeed
+        ? (groupedItems.find((item) => item.resource === preferredSeed.resource) ?? groupedItems[0])
+        : groupedItems[0]
 
       const duplicateIds = groupedItems
         .filter((item) => item.id !== keepItem.id)
-        .map((item) => item.id);
+        .map((item) => item.id)
 
       if (duplicateIds.length > 0) {
-        await db
-          .delete(navbarMenuItems)
-          .where(inArray(navbarMenuItems.id, duplicateIds));
+        await db.delete(navbarMenuItems).where(inArray(navbarMenuItems.id, duplicateIds))
       }
     }
 
     const canonicalMenuItems = await db
       .select()
       .from(navbarMenuItems)
-      .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id);
+      .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id)
 
-    const menuItemByResource = new Map(
-      canonicalMenuItems.map((item) => [item.resource, item]),
-    );
-    const menuItemByUrl = new Map(
-      canonicalMenuItems.map((item) => [item.url, item]),
-    );
+    const menuItemByResource = new Map(canonicalMenuItems.map((item) => [item.resource, item]))
+    const menuItemByUrl = new Map(canonicalMenuItems.map((item) => [item.url, item]))
 
     for (const menuSeed of SIDEBAR_MENU_SEEDS) {
       const existingMenuItem =
-        menuItemByResource.get(menuSeed.resource) ??
-        menuItemByUrl.get(menuSeed.url);
+        menuItemByResource.get(menuSeed.resource) ?? menuItemByUrl.get(menuSeed.url)
 
       if (!existingMenuItem) {
-        continue;
+        continue
       }
 
       if (
@@ -2004,38 +2036,36 @@ export async function ensureHeroGovernanceSeedData() {
         await db
           .update(navbarMenuItems)
           .set(menuSeed)
-          .where(eq(navbarMenuItems.id, existingMenuItem.id));
+          .where(eq(navbarMenuItems.id, existingMenuItem.id))
       }
     }
 
     const refreshedMenuItems = await db
       .select()
       .from(navbarMenuItems)
-      .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id);
+      .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id)
 
-    const existingMenuResources = new Set<string>(
-      refreshedMenuItems.map((item) => item.resource),
-    );
+    const existingMenuResources = new Set<string>(refreshedMenuItems.map((item) => item.resource))
     const missingMenuItems = SIDEBAR_MENU_SEEDS.filter(
-      (item) => !existingMenuResources.has(item.resource),
-    );
+      (item) => !existingMenuResources.has(item.resource)
+    )
 
     if (missingMenuItems.length > 0) {
-      await db.insert(navbarMenuItems).values(missingMenuItems);
+      await db.insert(navbarMenuItems).values(missingMenuItems)
     }
 
     const existingPortalApps = await db
       .select()
       .from(portalChitraApps)
-      .orderBy(portalChitraApps.sortOrder, portalChitraApps.id);
+      .orderBy(portalChitraApps.sortOrder, portalChitraApps.id)
 
-    const portalAppBySlug = new Map(existingPortalApps.map((item) => [item.slug, item]));
+    const portalAppBySlug = new Map(existingPortalApps.map((item) => [item.slug, item]))
 
     for (const portalSeed of PORTAL_CHITRA_APP_SEEDS) {
-      const existingPortalApp = portalAppBySlug.get(portalSeed.slug);
+      const existingPortalApp = portalAppBySlug.get(portalSeed.slug)
 
       if (!existingPortalApp) {
-        continue;
+        continue
       }
 
       if (
@@ -2055,95 +2085,91 @@ export async function ensureHeroGovernanceSeedData() {
             ...portalSeed,
             updatedAt: new Date(),
           })
-          .where(eq(portalChitraApps.id, existingPortalApp.id));
+          .where(eq(portalChitraApps.id, existingPortalApp.id))
       }
     }
 
     const missingPortalApps = PORTAL_CHITRA_APP_SEEDS.filter(
-      (item) => !portalAppBySlug.has(item.slug),
-    );
+      (item) => !portalAppBySlug.has(item.slug)
+    )
 
     if (missingPortalApps.length > 0) {
       await db.insert(portalChitraApps).values(
         missingPortalApps.map((item) => ({
           ...item,
           updatedAt: new Date(),
-        })),
-      );
+        }))
+      )
     }
 
     if ((themeCount[0]?.count ?? 0) === 0) {
       await db.insert(navbarThemes).values({
-        themeName: "HERO Surface",
-        backgroundStyle: "Slate gradient",
-        accentColor: "#D97706",
-        headerBackgroundColor: "#FFFFFF",
-        textColor: "#F8FAFC",
-        density: "comfortable",
-        logoMode: "hero-badge",
-      });
+        themeName: 'HERO Surface',
+        backgroundStyle: 'Slate gradient',
+        accentColor: '#D97706',
+        headerBackgroundColor: '#FFFFFF',
+        textColor: '#F8FAFC',
+        density: 'comfortable',
+        logoMode: 'hero-badge',
+      })
     }
 
     if ((attendanceShiftCount[0]?.count ?? 0) === 0) {
-      await db.insert(masterAttendanceShifts).values(ATTENDANCE_SHIFT_SEEDS);
+      await db.insert(masterAttendanceShifts).values(ATTENDANCE_SHIFT_SEEDS)
     }
 
     if ((emailSmtpSettingCount[0]?.count ?? 0) === 0) {
-      await db.insert(emailSmtpSettings).values(EMAIL_SMTP_SETTING_SEED);
+      await db.insert(emailSmtpSettings).values(EMAIL_SMTP_SETTING_SEED)
     }
 
     if ((emailTemplateCount[0]?.count ?? 0) === 0) {
-      await db.insert(emailTemplates).values(EMAIL_TEMPLATE_SEEDS);
+      await db.insert(emailTemplates).values(EMAIL_TEMPLATE_SEEDS)
     }
 
     if ((notificationChannelSettingCount[0]?.count ?? 0) === 0) {
-      await db.insert(notificationChannelSettings).values(NOTIFICATION_CHANNEL_SETTING_SEEDS);
+      await db.insert(notificationChannelSettings).values(NOTIFICATION_CHANNEL_SETTING_SEEDS)
     }
 
-    void notificationPreferenceCount;
-    void notificationSubscriptionCount;
+    void notificationPreferenceCount
+    void notificationSubscriptionCount
 
     const [rolesForMenu, menuItemsForRole, existingRoleMenuPermissions] = await Promise.all([
       db.select().from(securityRoles),
       db.select().from(navbarMenuItems),
       db.select().from(roleMenuPermissions),
-    ]);
+    ])
 
     const existingRoleMenuPairs = new Set(
       existingRoleMenuPermissions.map(
-        (permission) => `${permission.roleId}:${permission.menuItemId}`,
-      ),
-    );
+        (permission) => `${permission.roleId}:${permission.menuItemId}`
+      )
+    )
 
     const missingRoleMenuPermissions = rolesForMenu.flatMap((role) =>
       menuItemsForRole
-        .filter(
-          (menuItem) =>
-            !existingRoleMenuPairs.has(`${role.id}:${menuItem.id}`),
-        )
+        .filter((menuItem) => !existingRoleMenuPairs.has(`${role.id}:${menuItem.id}`))
         .map((menuItem) => ({
           roleId: role.id,
           menuItemId: menuItem.id,
           ...getDefaultMenuPermission(role.name, menuItem.resource),
-        })),
-    );
+        }))
+    )
 
     if (missingRoleMenuPermissions.length > 0) {
-      await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions);
+      await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
     }
-
   })().catch((error) => {
-    governanceSeedPromise = null;
-    throw error;
-  });
+    governanceSeedPromise = null
+    throw error
+  })
 
-  return governanceSeedPromise;
+  return governanceSeedPromise
 }
 
 export async function getDashboardOverview() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
-  const [site] = await db.select().from(sites).limit(1);
+  const [site] = await db.select().from(sites).limit(1)
 
   const [
     activitiesCount,
@@ -2157,61 +2183,63 @@ export async function getDashboardOverview() {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(approvals)
-      .where(eq(approvals.status, "pending")),
-    db.select({ total: sql<number>`coalesce(sum(${timesheetEntries.overtimeMinutes}),0)::int` }).from(timesheetEntries),
+      .where(eq(approvals.status, 'pending')),
+    db
+      .select({ total: sql<number>`coalesce(sum(${timesheetEntries.overtimeMinutes}),0)::int` })
+      .from(timesheetEntries),
     db.select().from(dailyReports).orderBy(desc(dailyReports.reportDate)).limit(1),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(hseObservations)
-      .where(eq(hseObservations.status, "open")),
+      .where(eq(hseObservations.status, 'open')),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(employees)
       .where(eq(employees.isActive, true)),
-  ]);
+  ])
 
   return {
     site,
     metrics: [
       {
-        label: "Submitted activities",
+        label: 'Submitted activities',
         value: `${activitiesCount[0]?.count ?? 0}`,
-        meta: "Aktivitas masuk hari ini",
+        meta: 'Aktivitas masuk hari ini',
       },
       {
-        label: "Pending approvals",
+        label: 'Pending approvals',
         value: `${pendingApprovals[0]?.count ?? 0}`,
-        meta: "Approval L1 dan L2",
+        meta: 'Approval L1 dan L2',
       },
       {
-        label: "Overtime tracked",
+        label: 'Overtime tracked',
         value: minutesToHours(overtimeMinutes[0]?.total ?? 0),
-        meta: "Dari timesheet aktif",
+        meta: 'Dari timesheet aktif',
       },
       {
-        label: "Open HSE items",
+        label: 'Open HSE items',
         value: `${openObservations[0]?.count ?? 0}`,
-        meta: "Observation yang belum close",
+        meta: 'Observation yang belum close',
       },
       {
-        label: "Active workforce",
+        label: 'Active workforce',
         value: `${activeEmployees[0]?.count ?? 0}`,
-        meta: "Karyawan aktif di site",
+        meta: 'Karyawan aktif di site',
       },
       {
-        label: "Last report",
+        label: 'Last report',
         value:
           lastReport[0] != null
             ? `${lastReport[0].readySections}/${lastReport[0].totalSections} sections`
-            : "Belum ada",
-        meta: "Kesiapan daily report",
+            : 'Belum ada',
+        meta: 'Kesiapan daily report',
       },
     ],
-  };
+  }
 }
 
 export async function getActivityPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const rows = await db
     .select({
@@ -2230,21 +2258,18 @@ export async function getActivityPageData() {
     .from(activities)
     .innerJoin(employees, eq(activities.employeeId, employees.id))
     .innerJoin(sites, eq(activities.siteId, sites.id))
-    .orderBy(desc(activities.startTime));
+    .orderBy(desc(activities.startTime))
 
   return rows.map((row) => ({
     ...row,
     duration: minutesToHours(
-      Math.max(
-        0,
-        Math.round((row.endTime.getTime() - row.startTime.getTime()) / 60000),
-      ),
+      Math.max(0, Math.round((row.endTime.getTime() - row.startTime.getTime()) / 60000))
     ),
-  }));
+  }))
 }
 
 export async function getActivityFormOptions() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   return db
     .select({
@@ -2258,11 +2283,11 @@ export async function getActivityFormOptions() {
     .from(employees)
     .innerJoin(sites, eq(employees.siteId, sites.id))
     .where(eq(employees.isActive, true))
-    .orderBy(employees.name);
+    .orderBy(employees.name)
 }
 
 export async function getApprovalPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   return db
     .select({
@@ -2281,11 +2306,11 @@ export async function getApprovalPageData() {
     .from(approvals)
     .innerJoin(activities, eq(approvals.activityId, activities.id))
     .innerJoin(employees, eq(activities.employeeId, employees.id))
-    .orderBy(desc(approvals.submittedAt));
+    .orderBy(desc(approvals.submittedAt))
 }
 
 export async function getTimesheetPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const rows = await db
     .select({
@@ -2302,18 +2327,18 @@ export async function getTimesheetPageData() {
     })
     .from(timesheetEntries)
     .innerJoin(employees, eq(timesheetEntries.employeeId, employees.id))
-    .orderBy(desc(timesheetEntries.updatedAt));
+    .orderBy(desc(timesheetEntries.updatedAt))
 
   return rows.map((row) => ({
     ...row,
     regularHours: minutesToHours(row.regularMinutes),
     overtimeHours: minutesToHours(row.overtimeMinutes),
     overtimeCost: toCurrency(row.overtimeAmount),
-  }));
+  }))
 }
 
 export async function getReportsPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   return db
     .select({
@@ -2331,11 +2356,11 @@ export async function getReportsPageData() {
     })
     .from(dailyReports)
     .innerJoin(sites, eq(dailyReports.siteId, sites.id))
-    .orderBy(desc(dailyReports.reportDate));
+    .orderBy(desc(dailyReports.reportDate))
 }
 
 export async function getPointsPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const leaderboard = await db
     .select({
@@ -2347,7 +2372,7 @@ export async function getPointsPageData() {
       totalPoints: employees.totalPoints,
     })
     .from(employees)
-    .orderBy(desc(employees.totalPoints));
+    .orderBy(desc(employees.totalPoints))
 
   const recentPointEvents = await db
     .select({
@@ -2362,7 +2387,7 @@ export async function getPointsPageData() {
     .from(pointEvents)
     .innerJoin(employees, eq(pointEvents.employeeId, employees.id))
     .orderBy(desc(pointEvents.createdAt))
-    .limit(50);
+    .limit(50)
 
   const recentPenaltyEvents = await db
     .select({
@@ -2378,7 +2403,7 @@ export async function getPointsPageData() {
     .from(penaltyEvents)
     .innerJoin(employees, eq(penaltyEvents.employeeId, employees.id))
     .orderBy(desc(penaltyEvents.createdAt))
-    .limit(50);
+    .limit(50)
 
   const disputesQueue = await db
     .select({
@@ -2396,19 +2421,19 @@ export async function getPointsPageData() {
     .from(pointDisputes)
     .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
     .innerJoin(employees, eq(penaltyEvents.employeeId, employees.id))
-    .orderBy(desc(pointDisputes.createdAt));
+    .orderBy(desc(pointDisputes.createdAt))
 
-  const allLevels = await db.select().from(levels).orderBy(asc(levels.minPoints));
-  const allBadges = await db.select().from(badges);
+  const allLevels = await db.select().from(levels).orderBy(asc(levels.minPoints))
+  const allBadges = await db.select().from(badges)
 
-  return { 
-    leaderboard, 
-    recentPointEvents, 
-    recentPenaltyEvents, 
-    disputes: disputesQueue, 
-    allLevels, 
-    allBadges 
-  };
+  return {
+    leaderboard,
+    recentPointEvents,
+    recentPenaltyEvents,
+    disputes: disputesQueue,
+    allLevels,
+    allBadges,
+  }
 }
 
 export async function evaluatePointThresholdBadges(
@@ -2423,22 +2448,22 @@ export async function evaluatePointThresholdBadges(
     .where(
       and(
         eq(badges.isActive, true),
-        eq(badges.autoAssignRule, "points_threshold"),
+        eq(badges.autoAssignRule, 'points_threshold'),
         sql`${badges.autoAssignThreshold} <= ${currentPoints}`
       )
-    );
+    )
 
-  if (eligibleBadges.length === 0) return;
+  if (eligibleBadges.length === 0) return
 
   // Retrieve badges already earned by the employee to avoid duplication
   const existingEmployeeBadges = await tx
     .select({ badgeId: employeeBadges.badgeId })
     .from(employeeBadges)
-    .where(eq(employeeBadges.employeeId, employeeId));
+    .where(eq(employeeBadges.employeeId, employeeId))
 
-  const existingBadgeIds = new Set(existingEmployeeBadges.map((e: any) => e.badgeId));
+  const existingBadgeIds = new Set(existingEmployeeBadges.map((e: any) => e.badgeId))
 
-  const badgesToAssign = eligibleBadges.filter((b: any) => !existingBadgeIds.has(b.id));
+  const badgesToAssign = eligibleBadges.filter((b: any) => !existingBadgeIds.has(b.id))
 
   if (badgesToAssign.length > 0) {
     await tx.insert(employeeBadges).values(
@@ -2446,12 +2471,12 @@ export async function evaluatePointThresholdBadges(
         employeeId,
         badgeId: b.id,
       }))
-    );
+    )
   }
 }
 
 export async function getHsePageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const observations = await db
     .select({
@@ -2469,7 +2494,7 @@ export async function getHsePageData() {
     })
     .from(hseObservations)
     .leftJoin(employees, eq(hseObservations.employeeId, employees.id))
-    .orderBy(desc(hseObservations.observedAt));
+    .orderBy(desc(hseObservations.observedAt))
 
   const incidents = await db
     .select({
@@ -2483,13 +2508,13 @@ export async function getHsePageData() {
       reportedAt: hseIncidents.reportedAt,
     })
     .from(hseIncidents)
-    .orderBy(desc(hseIncidents.reportedAt));
+    .orderBy(desc(hseIncidents.reportedAt))
 
-  return { observations, incidents };
+  return { observations, incidents }
 }
 
 export async function getHcPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const attendance = await db
     .select({
@@ -2508,7 +2533,7 @@ export async function getHcPageData() {
     })
     .from(attendanceRecords)
     .innerJoin(employees, eq(attendanceRecords.employeeId, employees.id))
-    .orderBy(desc(attendanceRecords.eventTime));
+    .orderBy(desc(attendanceRecords.eventTime))
 
   const trainings = await db
     .select({
@@ -2524,7 +2549,11 @@ export async function getHcPageData() {
     })
     .from(trainingRecords)
     .innerJoin(employees, eq(trainingRecords.employeeId, employees.id))
-    .orderBy(desc(trainingRecords.completedYear), asc(employees.name), asc(trainingRecords.trainingName));
+    .orderBy(
+      desc(trainingRecords.completedYear),
+      asc(employees.name),
+      asc(trainingRecords.trainingName)
+    )
 
   const wellness = await db
     .select({
@@ -2539,13 +2568,13 @@ export async function getHcPageData() {
     })
     .from(wellnessRecords)
     .innerJoin(employees, eq(wellnessRecords.employeeId, employees.id))
-    .orderBy(desc(wellnessRecords.recordedAt));
+    .orderBy(desc(wellnessRecords.recordedAt))
 
-  return { attendance, trainings, wellness };
+  return { attendance, trainings, wellness }
 }
 
 export async function getTrainingRecordPageData() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const [rows, employeeOptions] = await Promise.all([
     db
@@ -2564,7 +2593,11 @@ export async function getTrainingRecordPageData() {
       })
       .from(trainingRecords)
       .innerJoin(employees, eq(trainingRecords.employeeId, employees.id))
-      .orderBy(desc(trainingRecords.completedYear), asc(employees.name), asc(trainingRecords.trainingName)),
+      .orderBy(
+        desc(trainingRecords.completedYear),
+        asc(employees.name),
+        asc(trainingRecords.trainingName)
+      ),
     db
       .select({
         id: employees.id,
@@ -2575,24 +2608,26 @@ export async function getTrainingRecordPageData() {
       .from(employees)
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
-  ]);
+  ])
 
-  const yearOptions = Array.from(new Set(rows.map((row) => row.completedYear))).sort((left, right) => right - left);
+  const yearOptions = Array.from(new Set(rows.map((row) => row.completedYear))).sort(
+    (left, right) => right - left
+  )
   const departmentOptions = Array.from(
-    new Set(employeeOptions.map((employee) => employee.department).filter(Boolean)),
-  ).sort((left, right) => left.localeCompare(right, "id-ID"));
+    new Set(employeeOptions.map((employee) => employee.department).filter(Boolean))
+  ).sort((left, right) => left.localeCompare(right, 'id-ID'))
 
   return {
     rows,
     employeeOptions,
     departmentOptions,
     yearOptions,
-  };
+  }
 }
 
 export async function getOperationalCrudOptions() {
-  await ensureHeroSeedData();
-  await ensureMasterCategoryTables();
+  await ensureHeroSeedData()
+  await ensureMasterCategoryTables()
 
   const [employeeRows, siteRows, categoryOptions] = await Promise.all([
     db
@@ -2616,38 +2651,67 @@ export async function getOperationalCrudOptions() {
       .where(eq(sites.isActive, true))
       .orderBy(asc(sites.name)),
     getActiveMasterCategoryOptionMap(),
-  ]);
+  ])
 
   return {
     employees: employeeRows,
     sites: siteRows,
     categoryOptions,
-  };
+  }
 }
 
 export async function getSchedulingTimesheetOptions() {
-  await ensureSchedulingTimesheetTables();
-  const users = await getSecurityUsersData();
-  const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses, importPreviews] = await Promise.all([
-    db.select().from(timesheetSchedulingPlans).catch(() => []),
-    db.select().from(timesheetFieldBreakPlans).catch(() => []),
-    db.select().from(attendanceRecords).catch(() => []),
-    db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-    db.select().from(timesheetAttendanceImportPreviews).catch(() => []),
-  ]);
-  const activeUsers = users.filter((user) => user.isActive);
-  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
+  await ensureSchedulingTimesheetTables()
+  const users = await getSecurityUsersData()
+  const [
+    savedPlans,
+    fieldBreakPlans,
+    attendanceRows,
+    attendanceOverrides,
+    schedulingConfigs,
+    schedulingStatuses,
+    importPreviews,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(timesheetSchedulingPlans)
+      .catch(() => []),
+    db
+      .select()
+      .from(timesheetFieldBreakPlans)
+      .catch(() => []),
+    db
+      .select()
+      .from(attendanceRecords)
+      .catch(() => []),
+    db
+      .select()
+      .from(timesheetAttendanceRealOverrides)
+      .catch(() => []),
+    db
+      .select()
+      .from(timesheetSchedulingConfigs)
+      .catch(() => []),
+    db
+      .select()
+      .from(timesheetSchedulingStatuses)
+      .catch(() => []),
+    db
+      .select()
+      .from(timesheetAttendanceImportPreviews)
+      .catch(() => []),
+  ])
+  const activeUsers = users.filter((user) => user.isActive)
+  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>()
 
   for (const user of activeUsers) {
-    const siteName = user.siteName || "Belum diisi";
+    const siteName = user.siteName || 'Belum diisi'
     if (!siteByKey.has(siteName)) {
       siteByKey.set(siteName, {
         id: user.siteId ?? -siteByKey.size - 1,
         name: siteName,
         customerName: siteName,
-      });
+      })
     }
   }
 
@@ -2658,18 +2722,27 @@ export async function getSchedulingTimesheetOptions() {
       email: user.email,
       employeeSn: user.employeeSn,
       role: user.jobTitle || user.role,
+      department: user.department,
       section: user.section,
       siteId: user.siteId ?? null,
       locationName: user.siteName,
     })),
-    sites: Array.from(siteByKey.values()).sort((left, right) => left.name.localeCompare(right.name, "id-ID")),
+    sites: Array.from(siteByKey.values()).sort((left, right) =>
+      left.name.localeCompare(right.name, 'id-ID')
+    ),
     savedPlans: savedPlans.map((plan) => ({
       siteId: plan.siteId,
       period: plan.period,
       siteScheduleType: plan.siteScheduleType,
       draftSchedule: plan.draftSchedule as Array<{ employeeId: number; schedule: string[] }>,
       fixedSchedule: plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
-      employeeProfiles: plan.employeeProfiles as Array<{ employeeId: number; section: string; positionOnSite: string; kimperLv: boolean; kimperTh: boolean }>,
+      employeeProfiles: plan.employeeProfiles as Array<{
+        employeeId: number
+        section: string
+        positionOnSite: string
+        kimperLv: boolean
+        kimperTh: boolean
+      }>,
       fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
       updatedAt: plan.updatedAt.toISOString(),
     })),
@@ -2680,9 +2753,9 @@ export async function getSchedulingTimesheetOptions() {
       employeeName: plan.employeeName,
       sectionName: plan.sectionName,
       rosterSection: plan.rosterSection,
-      onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : "",
+      onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : '',
       dayCount: plan.dayCount ?? null,
-      fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : "",
+      fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
       updatedAt: plan.updatedAt.toISOString(),
     })),
     attendanceRecords: attendanceRows.map((record) => ({
@@ -2701,11 +2774,15 @@ export async function getSchedulingTimesheetOptions() {
       period: override.period,
       employeeId: override.employeeId,
       day: override.day,
-      status: ["present", "empty", "sick", "leave", "absent"].includes(override.status) ? override.status : "empty",
+      status: ['present', 'empty', 'sick', 'leave', 'absent'].includes(override.status)
+        ? override.status
+        : 'empty',
       clockIn: override.clockIn,
       clockOut: override.clockOut,
       note: override.note,
-      source: ["manual", "excel", "attendance"].includes(override.source) ? override.source : "manual",
+      source: ['manual', 'excel', 'attendance'].includes(override.source)
+        ? override.source
+        : 'manual',
       updatedAt: override.updatedAt.toISOString(),
     })),
     schedulingConfigs: schedulingConfigs.map((config) => ({
@@ -2749,23 +2826,23 @@ export async function getSchedulingTimesheetOptions() {
       createdAt: preview.createdAt.toISOString(),
       appliedAt: preview.appliedAt?.toISOString() ?? null,
     })),
-  };
+  }
 }
 
 async function getSchedulingTimesheetBaseOptions() {
-  await ensureSchedulingTimesheetTables();
-  const users = await getSecurityUsersData();
-  const activeUsers = users.filter((user) => user.isActive);
-  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
+  await ensureSchedulingTimesheetTables()
+  const users = await getSecurityUsersData()
+  const activeUsers = users.filter((user) => user.isActive)
+  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>()
 
   for (const user of activeUsers) {
-    const siteName = user.siteName || "Belum diisi";
+    const siteName = user.siteName || 'Belum diisi'
     if (!siteByKey.has(siteName)) {
       siteByKey.set(siteName, {
         id: user.siteId ?? -siteByKey.size - 1,
         name: siteName,
         customerName: siteName,
-      });
+      })
     }
   }
 
@@ -2776,12 +2853,15 @@ async function getSchedulingTimesheetBaseOptions() {
       email: user.email,
       employeeSn: user.employeeSn,
       role: user.jobTitle || user.role,
+      department: user.department,
       section: user.section,
       siteId: user.siteId ?? null,
       locationName: user.siteName,
     })),
-    sites: Array.from(siteByKey.values()).sort((left, right) => left.name.localeCompare(right.name, "id-ID")),
-  };
+    sites: Array.from(siteByKey.values()).sort((left, right) =>
+      left.name.localeCompare(right.name, 'id-ID')
+    ),
+  }
 }
 
 function serializeSchedulingConfig(config: typeof timesheetSchedulingConfigs.$inferSelect) {
@@ -2796,7 +2876,7 @@ function serializeSchedulingConfig(config: typeof timesheetSchedulingConfigs.$in
     allowanceVariables: config.allowanceVariables,
     overtimeVariables: config.overtimeVariables,
     updatedAt: config.updatedAt.toISOString(),
-  };
+  }
 }
 
 function serializeSchedulingStatus(status: typeof timesheetSchedulingStatuses.$inferSelect) {
@@ -2813,7 +2893,7 @@ function serializeSchedulingStatus(status: typeof timesheetSchedulingStatuses.$i
     finalizedAt: status.finalizedAt?.toISOString() ?? null,
     metadata: status.metadata,
     updatedAt: status.updatedAt.toISOString(),
-  };
+  }
 }
 
 function serializeSavedPlan(plan: typeof timesheetSchedulingPlans.$inferSelect) {
@@ -2823,10 +2903,16 @@ function serializeSavedPlan(plan: typeof timesheetSchedulingPlans.$inferSelect) 
     siteScheduleType: plan.siteScheduleType,
     draftSchedule: plan.draftSchedule as Array<{ employeeId: number; schedule: string[] }>,
     fixedSchedule: plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
-    employeeProfiles: plan.employeeProfiles as Array<{ employeeId: number; section: string; positionOnSite: string; kimperLv: boolean; kimperTh: boolean }>,
+    employeeProfiles: plan.employeeProfiles as Array<{
+      employeeId: number
+      section: string
+      positionOnSite: string
+      kimperLv: boolean
+      kimperTh: boolean
+    }>,
     fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
     updatedAt: plan.updatedAt.toISOString(),
-  };
+  }
 }
 
 function serializeFieldBreakPlan(plan: typeof timesheetFieldBreakPlans.$inferSelect) {
@@ -2837,11 +2923,11 @@ function serializeFieldBreakPlan(plan: typeof timesheetFieldBreakPlans.$inferSel
     employeeName: plan.employeeName,
     sectionName: plan.sectionName,
     rosterSection: plan.rosterSection,
-    onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : "",
+    onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : '',
     dayCount: plan.dayCount ?? null,
-    fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : "",
+    fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : '',
     updatedAt: plan.updatedAt.toISOString(),
-  };
+  }
 }
 
 function serializeAttendanceRecord(record: typeof attendanceRecords.$inferSelect) {
@@ -2855,50 +2941,56 @@ function serializeAttendanceRecord(record: typeof attendanceRecords.$inferSelect
     photoUrl: record.photoUrl,
     latitude: record.latitude,
     longitude: record.longitude,
-  };
+  }
 }
 
-function serializeAttendanceOverride(override: typeof timesheetAttendanceRealOverrides.$inferSelect) {
+function serializeAttendanceOverride(
+  override: typeof timesheetAttendanceRealOverrides.$inferSelect
+) {
   return {
     siteId: override.siteId,
     period: override.period,
     employeeId: override.employeeId,
     day: override.day,
-    status: ["present", "empty", "sick", "leave", "absent"].includes(override.status) ? override.status : "empty",
+    status: ['present', 'empty', 'sick', 'leave', 'absent'].includes(override.status)
+      ? override.status
+      : 'empty',
     clockIn: override.clockIn,
     clockOut: override.clockOut,
     note: override.note,
-    source: ["manual", "excel", "attendance"].includes(override.source) ? override.source : "manual",
+    source: ['manual', 'excel', 'attendance'].includes(override.source)
+      ? override.source
+      : 'manual',
     updatedAt: override.updatedAt.toISOString(),
-  };
+  }
 }
 
 export async function getSchedulingTimesheetOverviewOptions() {
-  return getSchedulingTimesheetOptions();
+  return getSchedulingTimesheetOptions()
 }
 
 export async function getSchedulingTimesheetSetupOptions() {
-  return getSchedulingTimesheetOptions();
+  return getSchedulingTimesheetOptions()
 }
 
 export async function getSchedulingTimesheetScheduleOptions() {
-  return getSchedulingTimesheetOptions();
+  return getSchedulingTimesheetOptions()
 }
 
 export async function getSchedulingTimesheetAttendanceOptions() {
-  return getSchedulingTimesheetOptions();
+  return getSchedulingTimesheetOptions()
 }
 
 export async function getSchedulingTimesheetFieldBreakOptions() {
-  return getSchedulingTimesheetOptions();
+  return getSchedulingTimesheetOptions()
 }
 
 export async function getSchedulingTimesheetPayrollOptions() {
-  return getSchedulingTimesheetOptions();
+  return getSchedulingTimesheetOptions()
 }
 
 export async function getSecurityOverviewData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   const [userCount, activeSessionCount, roleCount, permissionCount, suspendedCount] =
     await Promise.all([
@@ -2910,7 +3002,7 @@ export async function getSecurityOverviewData() {
         .select({ count: sql<number>`count(*)::int` })
         .from(employees)
         .where(eq(employees.isActive, false)),
-    ]);
+    ])
 
   const recentLogs = await db
     .select({
@@ -2925,18 +3017,34 @@ export async function getSecurityOverviewData() {
     .from(auditLogs)
     .leftJoin(employees, eq(auditLogs.actorEmployeeId, employees.id))
     .orderBy(desc(auditLogs.createdAt))
-    .limit(10);
+    .limit(10)
 
   return {
     metrics: [
-      { title: "Total Users", value: `${userCount[0]?.count ?? 0}`, href: "/dashboard/security/users" },
-      { title: "Active Sessions", value: `${activeSessionCount[0]?.count ?? 0}`, href: "/dashboard/security" },
-      { title: "Roles", value: `${roleCount[0]?.count ?? 0}`, href: "/dashboard/security/roles" },
-      { title: "Permissions", value: `${permissionCount[0]?.count ?? 0}`, href: "/dashboard/security/roles" },
-      { title: "Suspended Users", value: `${suspendedCount[0]?.count ?? 0}`, href: "/dashboard/security/users" },
+      {
+        title: 'Total Users',
+        value: `${userCount[0]?.count ?? 0}`,
+        href: '/dashboard/security/users',
+      },
+      {
+        title: 'Active Sessions',
+        value: `${activeSessionCount[0]?.count ?? 0}`,
+        href: '/dashboard/security',
+      },
+      { title: 'Roles', value: `${roleCount[0]?.count ?? 0}`, href: '/dashboard/security/roles' },
+      {
+        title: 'Permissions',
+        value: `${permissionCount[0]?.count ?? 0}`,
+        href: '/dashboard/security/roles',
+      },
+      {
+        title: 'Suspended Users',
+        value: `${suspendedCount[0]?.count ?? 0}`,
+        href: '/dashboard/security/users',
+      },
     ],
     recentLogs,
-  };
+  }
 }
 
 export async function getSecurityUsersData() {
@@ -2949,23 +3057,23 @@ export async function getSecurityUsersData() {
       name: hrEmployees.fullName,
       profileImage: authUser.image,
       birthDate: hrEmployees.birthDate,
-      domicile: sql<string>`''`.as("domicile"),
-      directManagerId: sql<number | null>`null`.as("direct_manager_id"),
+      domicile: sql<string>`''`.as('domicile'),
+      directManagerId: sql<number | null>`null`.as('direct_manager_id'),
       section: hrSections.name,
       jobTitle: hrPositions.rankName,
       workLocation: hrOrgNodes.name,
-      phoneNumber: sql<string>`''`.as("phone_number"),
+      phoneNumber: sql<string>`''`.as('phone_number'),
       email: hrEmployees.email,
       employmentStatus: hrEmployeeStatuses.name,
       employeeStatusType: hrEmployeeStatuses.name,
-      accessRole: sql<string>`coalesce(${hrPositions.levelName}, 'User')`.as("access_role"),
-      role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as("role"),
+      accessRole: sql<string>`coalesce(${hrPositions.levelName}, 'User')`.as('access_role'),
+      role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
       department: hrDepartments.name,
       levelName: hrPositions.levelName,
-      fitStatus: sql<string>`'fit'`.as("fit_status"),
+      fitStatus: sql<string>`'fit'`.as('fit_status'),
       isActive: hrEmployees.isActive,
       siteName: hrSites.name,
-      totalPoints: sql<number>`0`.as("total_points"),
+      totalPoints: sql<number>`0`.as('total_points'),
     })
     .from(hrEmployees)
     .leftJoin(authUser, eq(hrEmployees.authUserId, authUser.id))
@@ -2974,10 +3082,13 @@ export async function getSecurityUsersData() {
     .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
     .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
     .leftJoin(hrOrgNodes, eq(hrEmployees.orgNodeId, hrOrgNodes.id))
-    .leftJoin(hrEmployeeStatuses, eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code))
-    .orderBy(hrEmployees.fullName);
+    .leftJoin(
+      hrEmployeeStatuses,
+      eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code)
+    )
+    .orderBy(hrEmployees.fullName)
 
-  const employeeNameById = new Map(rows.map((row) => [row.id, row.name]));
+  const employeeNameById = new Map(rows.map((row) => [row.id, row.name]))
 
   return rows.map<SecurityUserRecord>((row: any) => ({
     id: row.id,
@@ -2986,67 +3097,60 @@ export async function getSecurityUsersData() {
     joinYear: row.joinDate ? new Date(row.joinDate).getFullYear() : new Date().getFullYear(),
     name: row.name,
     profileImage: row.profileImage,
-    birthPlaceDate: row.birthDate ? new Date(row.birthDate).toISOString().slice(0, 10) : "",
+    birthPlaceDate: row.birthDate ? new Date(row.birthDate).toISOString().slice(0, 10) : '',
     domicile: row.domicile,
     directManagerId: row.directManagerId,
     directManagerName: row.directManagerId
-      ? employeeNameById.get(row.directManagerId) ?? null
+      ? (employeeNameById.get(row.directManagerId) ?? null)
       : null,
-    section: row.section ?? "",
-    department: row.department ?? "",
-    jobTitle: row.jobTitle ?? "",
-    workLocation: row.workLocation ?? "",
-    employeeStatusType: row.employeeStatusType ?? "",
+    section: row.section ?? '',
+    department: row.department ?? '',
+    jobTitle: row.jobTitle ?? '',
+    workLocation: row.workLocation ?? '',
+    employeeStatusType: row.employeeStatusType ?? '',
     phoneNumber: row.phoneNumber,
-    email: row.email ?? "",
-    status: row.isActive ? row.employmentStatus ?? "active" : "inactive",
+    email: row.email ?? '',
+    status: row.isActive ? (row.employmentStatus ?? 'active') : 'inactive',
     role: row.role,
     accessRole: row.accessRole,
-    levelName: row.levelName ?? "",
+    levelName: row.levelName ?? '',
     fitStatus: row.fitStatus,
     isActive: row.isActive,
-    siteName: row.siteName ?? row.workLocation ?? "Belum diisi",
+    siteName: row.siteName ?? row.workLocation ?? 'Belum diisi',
     totalPoints: row.totalPoints,
-  }));
+  }))
 }
 
 export async function getSecurityRolesData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
-  const [roles, permissions, grants, menuItems, menuPermissions, users] =
-    await Promise.all([
-      db.select().from(securityRoles).orderBy(securityRoles.name),
-      db
-        .select()
-        .from(securityPermissions)
-        .orderBy(securityPermissions.resource, securityPermissions.action),
-      db.select().from(securityRolePermissions),
-      db
-        .select()
-        .from(navbarMenuItems)
-        .orderBy(
-          navbarMenuItems.menuArea,
-          navbarMenuItems.section,
-          navbarMenuItems.sortOrder,
-        ),
-      db.select().from(roleMenuPermissions),
-      db
-        .select({
-          id: employees.id,
-          accessRole: employees.accessRole,
-          name: employees.name,
-        })
-        .from(employees)
-        .orderBy(employees.name),
-    ]);
+  const [roles, permissions, grants, menuItems, menuPermissions, users] = await Promise.all([
+    db.select().from(securityRoles).orderBy(securityRoles.name),
+    db
+      .select()
+      .from(securityPermissions)
+      .orderBy(securityPermissions.resource, securityPermissions.action),
+    db.select().from(securityRolePermissions),
+    db
+      .select()
+      .from(navbarMenuItems)
+      .orderBy(navbarMenuItems.menuArea, navbarMenuItems.section, navbarMenuItems.sortOrder),
+    db.select().from(roleMenuPermissions),
+    db
+      .select({
+        id: employees.id,
+        accessRole: employees.accessRole,
+        name: employees.name,
+      })
+      .from(employees)
+      .orderBy(employees.name),
+  ])
 
-  const rolePermissionMap = new Set(
-    grants.map((grant) => `${grant.roleId}:${grant.permissionId}`),
-  );
+  const rolePermissionMap = new Set(grants.map((grant) => `${grant.roleId}:${grant.permissionId}`))
   const userCountByRole = users.reduce<Record<string, number>>((accumulator, user) => {
-    accumulator[user.accessRole] = (accumulator[user.accessRole] ?? 0) + 1;
-    return accumulator;
-  }, {});
+    accumulator[user.accessRole] = (accumulator[user.accessRole] ?? 0) + 1
+    return accumulator
+  }, {})
 
   return {
     roles: roles.map((role) => ({
@@ -3063,11 +3167,11 @@ export async function getSecurityRolesData() {
     })),
     menuItems: dedupeMenuItemsByPage(menuItems),
     menuPermissions,
-  };
+  }
 }
 
 export async function getAuditLogsPageData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   return db
     .select({
@@ -3083,11 +3187,11 @@ export async function getAuditLogsPageData() {
     })
     .from(auditLogs)
     .leftJoin(employees, eq(auditLogs.actorEmployeeId, employees.id))
-    .orderBy(desc(auditLogs.createdAt));
+    .orderBy(desc(auditLogs.createdAt))
 }
 
 export async function getEmailDeliveryLogsData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   return db
     .select({
@@ -3109,66 +3213,69 @@ export async function getEmailDeliveryLogsData() {
     })
     .from(emailDeliveryLogs)
     .leftJoin(employees, eq(emailDeliveryLogs.employeeId, employees.id))
-    .orderBy(desc(emailDeliveryLogs.createdAt));
+    .orderBy(desc(emailDeliveryLogs.createdAt))
 }
 
 export async function getEmailTemplatesData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   return db
     .select()
     .from(emailTemplates)
-    .orderBy(desc(emailTemplates.isActive), asc(emailTemplates.name), asc(emailTemplates.id));
+    .orderBy(desc(emailTemplates.isActive), asc(emailTemplates.name), asc(emailTemplates.id))
 }
 
 export async function getEmailSmtpSettingsData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   const [settings] = await db
     .select()
     .from(emailSmtpSettings)
-    .orderBy(desc(emailSmtpSettings.isActive), desc(emailSmtpSettings.updatedAt), desc(emailSmtpSettings.id))
-    .limit(1);
+    .orderBy(
+      desc(emailSmtpSettings.isActive),
+      desc(emailSmtpSettings.updatedAt),
+      desc(emailSmtpSettings.id)
+    )
+    .limit(1)
 
   if (!settings) {
-    const [created] = await db
-      .insert(emailSmtpSettings)
-      .values(EMAIL_SMTP_SETTING_SEED)
-      .returning();
+    const [created] = await db.insert(emailSmtpSettings).values(EMAIL_SMTP_SETTING_SEED).returning()
 
     return {
       ...created,
       hasPassword: Boolean(created.passwordSecret),
-    };
+    }
   }
 
   return {
     ...settings,
     hasPassword: Boolean(settings.passwordSecret),
-  };
+  }
 }
 
 export async function getPwaPushSettingsData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   const [settings] = await db
     .select()
     .from(notificationChannelSettings)
-    .where(eq(notificationChannelSettings.channel, "pwa_push"))
-    .limit(1);
+    .where(eq(notificationChannelSettings.channel, 'pwa_push'))
+    .limit(1)
 
   if (!settings) {
-    const fallback = NOTIFICATION_CHANNEL_SETTING_SEEDS.find((item) => item.channel === "pwa_push") ?? {
-      channel: "pwa_push",
+    const fallback = NOTIFICATION_CHANNEL_SETTING_SEEDS.find(
+      (item) => item.channel === 'pwa_push'
+    ) ?? {
+      channel: 'pwa_push',
       isEnabled: true,
       realtimeBadge: false,
       soundEnabled: false,
       autoMarkRead: false,
-      vapidPublicKey: "",
-      vapidPrivateKey: "",
-      pushSubject: "mailto:noreply@chitraparatama.co.id",
-      serviceWorkerPath: "/sw.js",
-    };
+      vapidPublicKey: '',
+      vapidPrivateKey: '',
+      pushSubject: 'mailto:noreply@chitraparatama.co.id',
+      serviceWorkerPath: '/sw.js',
+    }
 
     const [created] = await db
       .insert(notificationChannelSettings)
@@ -3183,34 +3290,38 @@ export async function getPwaPushSettingsData() {
         pushSubject: fallback.pushSubject,
         serviceWorkerPath: fallback.serviceWorkerPath,
       })
-      .returning();
+      .returning()
 
-    return created;
+    return created
   }
 
-  return settings;
+  return settings
 }
 
 export async function getNavbarSettingsData() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
-  const [theme] = await db.select().from(navbarThemes).orderBy(desc(navbarThemes.createdAt)).limit(1);
+  const [theme] = await db
+    .select()
+    .from(navbarThemes)
+    .orderBy(desc(navbarThemes.createdAt))
+    .limit(1)
   const menuItems = await db
     .select()
     .from(navbarMenuItems)
-    .orderBy(navbarMenuItems.section, navbarMenuItems.sortOrder);
+    .orderBy(navbarMenuItems.section, navbarMenuItems.sortOrder)
 
-  return { theme, menuItems: dedupeMenuItemsByPage(menuItems) };
+  return { theme, menuItems: dedupeMenuItemsByPage(menuItems) }
 }
 
 export async function getSecurityRoleOptions() {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
-  return db.select().from(securityRoles).orderBy(securityRoles.name);
+  return db.select().from(securityRoles).orderBy(securityRoles.name)
 }
 
 export async function getSidebarDataForUser(email: string) {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   const [employee] = await db
     .select({
@@ -3218,54 +3329,54 @@ export async function getSidebarDataForUser(email: string) {
     })
     .from(employees)
     .where(eq(employees.email, email))
-    .limit(1);
+    .limit(1)
 
-  const roleName = employee?.accessRole ?? "Super Admin";
+  const roleName = employee?.accessRole ?? 'Super Admin'
   const [role] = await db
     .select()
     .from(securityRoles)
     .where(eq(securityRoles.name, roleName))
-    .limit(1);
+    .limit(1)
 
   if (!role) {
     return {
       navMain: [] as Array<{
-        id?: number;
-        menuArea: string;
-        section: string;
-        title: string;
-        url: string;
-        iconName: string;
-        resource?: string;
-        sortOrder?: number;
-        isVisible?: boolean;
-        openInNewTab?: boolean;
+        id?: number
+        menuArea: string
+        section: string
+        title: string
+        url: string
+        iconName: string
+        resource?: string
+        sortOrder?: number
+        isVisible?: boolean
+        openInNewTab?: boolean
       }>,
       navSecondary: [] as Array<{
-        id?: number;
-        menuArea: string;
-        section: string;
-        title: string;
-        url: string;
-        iconName: string;
-        resource?: string;
-        sortOrder?: number;
-        isVisible?: boolean;
-        openInNewTab?: boolean;
+        id?: number
+        menuArea: string
+        section: string
+        title: string
+        url: string
+        iconName: string
+        resource?: string
+        sortOrder?: number
+        isVisible?: boolean
+        openInNewTab?: boolean
       }>,
       documents: [] as Array<{
-        id?: number;
-        menuArea: string;
-        section: string;
-        title: string;
-        url: string;
-        iconName: string;
-        resource?: string;
-        sortOrder?: number;
-        isVisible?: boolean;
-        openInNewTab?: boolean;
+        id?: number
+        menuArea: string
+        section: string
+        title: string
+        url: string
+        iconName: string
+        resource?: string
+        sortOrder?: number
+        isVisible?: boolean
+        openInNewTab?: boolean
       }>,
-    };
+    }
   }
 
   const permittedMenuItems = await db
@@ -3285,27 +3396,21 @@ export async function getSidebarDataForUser(email: string) {
     .from(roleMenuPermissions)
     .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
     .where(eq(roleMenuPermissions.roleId, role.id))
-    .orderBy(
-      navbarMenuItems.menuArea,
-      navbarMenuItems.section,
-      navbarMenuItems.sortOrder,
-    );
+    .orderBy(navbarMenuItems.menuArea, navbarMenuItems.section, navbarMenuItems.sortOrder)
 
   const visibleItems = dedupeMenuItemsByPage(
-    permittedMenuItems.filter(
-    (item) => item.isVisible && item.canView,
-    ),
-  );
+    permittedMenuItems.filter((item) => item.isVisible && item.canView)
+  )
 
   return {
-    navMain: visibleItems.filter((item) => item.menuArea === "main"),
-    navSecondary: visibleItems.filter((item) => item.menuArea === "secondary"),
-    documents: visibleItems.filter((item) => item.menuArea === "document"),
-  };
+    navMain: visibleItems.filter((item) => item.menuArea === 'main'),
+    navSecondary: visibleItems.filter((item) => item.menuArea === 'secondary'),
+    documents: visibleItems.filter((item) => item.menuArea === 'document'),
+  }
 }
 
 export async function getEmployeeDisplayDataByEmail(email: string) {
-  await ensureHeroGovernanceSeedData();
+  await ensureHeroGovernanceSeedData()
 
   const [employee] = await db
     .select({
@@ -3316,16 +3421,20 @@ export async function getEmployeeDisplayDataByEmail(email: string) {
     })
     .from(employees)
     .where(eq(employees.email, email))
-    .limit(1);
+    .limit(1)
 
-  return employee ?? null;
+  return employee ?? null
 }
 
 export async function getExecutiveHighlights() {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
-  const site = await db.select().from(sites).limit(1);
-  const [report] = await db.select().from(dailyReports).orderBy(desc(dailyReports.reportDate)).limit(1);
+  const site = await db.select().from(sites).limit(1)
+  const [report] = await db
+    .select()
+    .from(dailyReports)
+    .orderBy(desc(dailyReports.reportDate))
+    .limit(1)
   const [topPerformer] = await db
     .select({
       name: employees.name,
@@ -3334,11 +3443,11 @@ export async function getExecutiveHighlights() {
     })
     .from(employees)
     .orderBy(desc(employees.totalPoints))
-    .limit(1);
+    .limit(1)
 
   return {
     site: site[0],
     report,
     topPerformer,
-  };
+  }
 }

@@ -391,7 +391,7 @@ function parseDateDay(value: string, period: string) {
         : null
   }
 
-  // Format: "01-Apr-2026" or "01-Apr-2026 06:23:25" (dd-Mon-yyyy with optional time)
+  // Format: "01-Apr-2026" (dd-Mon-yyyy with optional time)
   const monthNames: Record<string, number> = {
     jan: 1,
     feb: 2,
@@ -417,6 +417,11 @@ function parseDateDay(value: string, period: string) {
     return null
   }
 
+  // Format: "2026-04-01" (ISO yyyy-mm-dd) — check BEFORE normalize to avoid mangling
+  const isoDay = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (isoDay && `${isoDay[1]}-${isoDay[2]}` === period) return Number(isoDay[3])
+
+  // Format: "01/04/2026" or "01.04.2026" (dd/mm/yyyy or mm/dd/yyyy)
   const normalized = trimmed.replace(/\./g, '/').replace(/-/g, '/')
   const parts = normalized
     .split('/')
@@ -435,9 +440,6 @@ function parseDateDay(value: string, period: string) {
     )
       return day
   }
-
-  const isoDay = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (isoDay && `${isoDay[1]}-${isoDay[2]}` === period) return Number(isoDay[3])
 
   return null
 }

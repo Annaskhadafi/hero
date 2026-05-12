@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import React, { useEffect, useMemo, useState, useTransition } from 'react'
 import * as XLSX from 'xlsx'
 import Fuse from 'fuse.js'
 import {
@@ -85,6 +85,7 @@ type EmployeeOption = {
   email: string
   employeeSn?: string | null
   role: string
+  department?: string | null
   section?: string | null
   siteId: number | null
   locationName?: string | null
@@ -812,6 +813,7 @@ export function SchedulingTimesheetWorkspace({
     filename: string
     matched: number
     unmatched: number
+    unmatchedNames?: string[]
   } | null>(null)
   const [isSavingSchedule, startSavingSchedule] = useTransition()
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false)
@@ -2371,11 +2373,13 @@ export function SchedulingTimesheetWorkspace({
       const cellUpdates: Record<string, ManualAttendanceCell> = {}
       let matchedCount = 0
       let unmatchedCount = 0
+      const unmatchedNames: string[] = []
 
       // Build Fuse index for fuzzy name matching
       const fuseIndex = allEmployeesForMatch.map((emp) => ({
         employee: emp,
         normalizedName: emp.name.toLowerCase().trim(),
+        normalizedSn: (emp.employeeSn || '').toLowerCase().trim(),
       }))
       const nameFuse = new Fuse(fuseIndex, {
         keys: ['normalizedName'],
@@ -2384,19 +2388,31 @@ export function SchedulingTimesheetWorkspace({
         minMatchCharLength: 3,
         includeScore: true,
       })
+      // Build SN lookup map for exact SN matching (Support Finger format)
+      const bySn = new Map(
+        allEmployeesForMatch
+          .filter((emp) => emp.employeeSn)
+          .map((emp) => [(emp.employeeSn || '').toLowerCase().trim(), emp])
+      )
 
       for (const row of parsed.rows) {
         const rawName = (row.employeeName || '').toLowerCase().trim()
-        if (!rawName) {
+        const originalName = (row.employeeName || '').trim()
+        const rawSn = (row.employeeSn || '').toLowerCase().trim()
+        if (!rawName && !rawSn) {
           unmatchedCount++
           continue
         }
 
-        // Try exact match first, then fuzzy
-        let matchedEmployee = allEmployeesForMatch.find(
-          (emp) => emp.name.toLowerCase().trim() === rawName
-        )
-        if (!matchedEmployee) {
+        // 1. Try SN exact match first (Support Finger: ID column = employeeSn)
+        let matchedEmployee = rawSn ? (bySn.get(rawSn) ?? null) : null
+        // 2. Try exact name match
+        if (!matchedEmployee && rawName) {
+          matchedEmployee =
+            allEmployeesForMatch.find((emp) => emp.name.toLowerCase().trim() === rawName) ?? null
+        }
+        // 3. Fuzzy name match
+        if (!matchedEmployee && rawName) {
           const fuseResult = nameFuse.search(rawName)[0]
           if (fuseResult && (fuseResult.score ?? 1) <= 0.35) {
             matchedEmployee = fuseResult.item.employee
@@ -2404,6 +2420,10 @@ export function SchedulingTimesheetWorkspace({
         }
         if (!matchedEmployee) {
           unmatchedCount++
+          // Collect unique original names (not lowercase) for display
+          if (originalName && !unmatchedNames.some((n) => n.toLowerCase() === rawName)) {
+            unmatchedNames.push(originalName)
+          }
           continue
         }
         if (row.status !== 'present' && !row.clockIn && !row.clockOut) continue
@@ -2446,36 +2466,41 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
-      console.log(
-        '[Import] Matched:',
-        matchedCount,
-        'Unmatched:',
-        unmatchedCount,
-        'Saving to DB...'
+      console.log('[Import] Matched:', matchedCount, 'Unmatched:', unmatchedCount, 'Saving...')
+
+      // Apply ke cell UI langsung agar user lihat hasilnya
+      setManualAttendance((current) => ({ ...current, ...cellUpdates }))
+      setIsAttendanceDirty(true)
+      setLastImportSuccess({
+        filename: file.name,
+        matched: matchedCount,
+        unmatched: unmatchedCount,
+        unmatchedNames: unmatchedNames.slice(0, 50),
+      })
+      toast.success(
+        `${matchedCount} data attendance masuk ke cell.${unmatchedNames.length > 0 ? ` ${unmatchedNames.length} karyawan tidak cocok.` : ''}`
       )
 
-      // Save ke database DULU, baru update UI
-      const result = await saveAttendanceRealOverridesAction({
-        siteId: numericSiteId,
-        period: activePeriod,
-        overrides: importOverrides,
-      })
-
-      if (result.ok) {
-        // Baru apply ke cell UI setelah DB save berhasil
-        setManualAttendance((current) => ({ ...current, ...cellUpdates }))
-        setAttendanceSavedAt(new Date().toISOString())
-        setIsAttendanceDirty(false)
-        setLastImportSuccess({
-          filename: file.name,
-          matched: matchedCount,
-          unmatched: unmatchedCount,
+      // Save ke database di background
+      try {
+        const result = await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period: activePeriod,
+          overrides: importOverrides,
         })
-        toast.success(
-          `${matchedCount} data attendance tersimpan.${unmatchedCount > 0 ? ` ${unmatchedCount} nama tidak cocok.` : ''}`
+        if (result.ok) {
+          setAttendanceSavedAt(new Date().toISOString())
+          setIsAttendanceDirty(false)
+          toast.success('Data tersimpan ke database — aman untuk reload.')
+        }
+      } catch (saveError) {
+        console.error('[Import] Save to DB failed:', saveError)
+        toast.error(
+          'Data tampil di cell tapi BELUM tersimpan ke database. Klik "Save Attendance" untuk retry.',
+          {
+            duration: 10000,
+          }
         )
-      } else {
-        toast.error('Save ke database gagal.')
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -3525,29 +3550,53 @@ export function SchedulingTimesheetWorkspace({
             </div>
           </Card>
           {lastImportSuccess ? (
-            <div className="flex items-center gap-3 rounded-[0.9rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
-              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
-                <Check className="size-3.5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-emerald-900">
-                  Import berhasil — {lastImportSuccess.matched} karyawan matched
-                </p>
-                <p className="truncate text-xs text-emerald-700">
-                  {lastImportSuccess.filename}
-                  {lastImportSuccess.unmatched > 0
-                    ? ` · ${lastImportSuccess.unmatched} tidak cocok (perlu fix manual di preview)`
-                    : ' · Semua karyawan teridentifikasi'}
-                </p>
+            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+              <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
+                  <Check className="size-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-emerald-900">
+                    Import berhasil — {lastImportSuccess.matched} karyawan matched
+                  </p>
+                  <p className="text-xs text-emerald-700">
+                    {lastImportSuccess.filename}
+                    {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0
+                      ? ` · ${lastImportSuccess.unmatchedNames.length} karyawan tidak cocok`
+                      : ' · Semua karyawan teridentifikasi'}
+                  </p>
+                </div>
+                <button
+                  className="shrink-0 rounded p-1 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-900"
+                  onClick={() => setLastImportSuccess(null)}
+                  aria-label="Tutup"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                className="shrink-0 rounded p-1 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-900"
-                onClick={() => setLastImportSuccess(null)}
-                aria-label="Tutup notifikasi"
-              >
-                ✕
-              </button>
-            </div>
+              {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0 ? (
+                <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="mb-2 text-xs font-semibold text-amber-900">
+                    {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan di
+                    sistem:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {lastImportSuccess.unmatchedNames.map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    Pastikan nama di Excel sama persis dengan nama di Data Induk Karyawan, atau
+                    tambahkan alias di menu Setup.
+                  </p>
+                </div>
+              ) : null}
+            </Card>
           ) : null}
           {holidays.length ? (
             <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">
@@ -3795,62 +3844,110 @@ export function SchedulingTimesheetWorkspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedAttendanceRows.map((row) => (
-                    <tr key={row.employee.id} className="border-b border-slate-100">
-                      <td className="text-foreground sticky left-0 z-20 min-w-[220px] bg-white px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
-                        {row.employee.name}
-                        <p className="text-muted-foreground text-[10px] font-normal">
-                          {row.employee.role}
-                        </p>
-                      </td>
-                      {days.map((day) => {
-                        const cell = getAttendanceCell(row.employee.id, day)
-                        const isSelected = selectedAttendanceKeys.includes(
-                          attendanceKey(row.employee.id, day)
-                        )
-                        const isConflict =
-                          cell.status === 'present' &&
-                          ['OFF', 'Libur', 'Sakit', 'FB'].includes(row.schedule[day - 1])
-                        const holiday = holidaysByDay.get(day)
-                        const holidayName = holiday?.localName ?? holiday?.name
-                        return (
+                  {(() => {
+                    // Group by Department > Section
+                    const grouped = new Map<string, Map<string, typeof displayedAttendanceRows>>()
+                    for (const row of displayedAttendanceRows) {
+                      const dept = row.employee.department || 'Tanpa Departemen'
+                      const section = row.employee.section || row.employee.role || 'Umum'
+                      if (!grouped.has(dept)) grouped.set(dept, new Map())
+                      const deptMap = grouped.get(dept)!
+                      if (!deptMap.has(section)) deptMap.set(section, [])
+                      deptMap.get(section)!.push(row)
+                    }
+                    return Array.from(grouped.entries()).map(([dept, sections]) => (
+                      <React.Fragment key={dept}>
+                        <tr className="bg-slate-100">
                           <td
-                            key={day}
-                            className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${holiday ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
-                            title={holidayName}
+                            colSpan={days.length + 1}
+                            className="text-foreground sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase"
                           >
-                            <button
-                              className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${holiday ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
-                              onClick={() =>
-                                multiSelectAttendance
-                                  ? toggleAttendanceSelection(row.employee.id, day)
-                                  : setSelectedAttendanceCell({ employeeId: row.employee.id, day })
-                              }
-                              onDoubleClick={() => cycleAttendanceCell(row.employee.id, day)}
-                              title={
-                                isConflict
-                                  ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk`
-                                  : holidayName || cell.note || attendanceStatusLabel(cell.status)
-                              }
-                            >
-                              {isConflict ? (
-                                <span className="absolute top-1 right-1 text-[10px]">!</span>
-                              ) : null}
-                              {holiday ? (
-                                <span className="absolute top-1 right-1 text-[9px]">L</span>
-                              ) : null}
-                              <span>{attendanceStatusLabel(cell.status)}</span>
-                              {cell.clockIn || cell.clockOut ? (
-                                <span className="mt-1 block font-mono text-[10px]">
-                                  {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}
-                                </span>
-                              ) : null}
-                            </button>
+                            {dept}
                           </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
+                        </tr>
+                        {Array.from(sections.entries()).map(([section, sectionRows]) => (
+                          <React.Fragment key={`${dept}-${section}`}>
+                            <tr className="bg-surface-container-low/60">
+                              <td
+                                colSpan={days.length + 1}
+                                className="text-muted-foreground sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase"
+                              >
+                                {section}{' '}
+                                <span className="font-normal">({sectionRows.length})</span>
+                              </td>
+                            </tr>
+                            {sectionRows.map((row) => (
+                              <tr key={row.employee.id} className="border-b border-slate-100">
+                                <td className="text-foreground sticky left-0 z-20 min-w-[220px] bg-white px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
+                                  {row.employee.name}
+                                  <p className="text-muted-foreground text-[10px] font-normal">
+                                    {row.employee.section || row.employee.role}
+                                  </p>
+                                </td>
+                                {days.map((day) => {
+                                  const cell = getAttendanceCell(row.employee.id, day)
+                                  const isSelected = selectedAttendanceKeys.includes(
+                                    attendanceKey(row.employee.id, day)
+                                  )
+                                  const isConflict =
+                                    cell.status === 'present' &&
+                                    ['OFF', 'Libur', 'Sakit', 'FB'].includes(row.schedule[day - 1])
+                                  const holiday = holidaysByDay.get(day)
+                                  const holidayName = holiday?.localName ?? holiday?.name
+                                  return (
+                                    <td
+                                      key={day}
+                                      className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${holiday ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
+                                      title={holidayName}
+                                    >
+                                      <button
+                                        className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${holiday ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
+                                        onClick={() =>
+                                          multiSelectAttendance
+                                            ? toggleAttendanceSelection(row.employee.id, day)
+                                            : setSelectedAttendanceCell({
+                                                employeeId: row.employee.id,
+                                                day,
+                                              })
+                                        }
+                                        onDoubleClick={() =>
+                                          cycleAttendanceCell(row.employee.id, day)
+                                        }
+                                        title={
+                                          isConflict
+                                            ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk`
+                                            : holidayName ||
+                                              cell.note ||
+                                              attendanceStatusLabel(cell.status)
+                                        }
+                                      >
+                                        {isConflict ? (
+                                          <span className="absolute top-1 right-1 text-[10px]">
+                                            !
+                                          </span>
+                                        ) : null}
+                                        {holiday ? (
+                                          <span className="absolute top-1 right-1 text-[9px]">
+                                            L
+                                          </span>
+                                        ) : null}
+                                        <span>{attendanceStatusLabel(cell.status)}</span>
+                                        {cell.clockIn || cell.clockOut ? (
+                                          <span className="mt-1 block font-mono text-[10px]">
+                                            {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}
+                                          </span>
+                                        ) : null}
+                                      </button>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </React.Fragment>
+                    ))
+                  })()}
                 </tbody>
               </table>
             </div>

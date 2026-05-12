@@ -1,30 +1,30 @@
-﻿"use server";
+﻿'use server'
 
-import { logAuditEvent } from "@/lib/audit-logger";
-import { 
-  notifyPasswordReset, 
-  notifyRoleChanged, 
-  notifyAccountBanned 
-} from "@/lib/user-notifications";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { logAuditEvent } from '@/lib/audit-logger'
+import {
+  notifyPasswordReset,
+  notifyRoleChanged,
+  notifyAccountBanned,
+} from '@/lib/user-notifications'
+import { headers } from 'next/headers'
+import { auth } from '@/lib/auth'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    return session?.user?.email ?? undefined;
+    const session = await auth.api.getSession({ headers: await headers() })
+    return session?.user?.email ?? undefined
   } catch {
-    return undefined;
+    return undefined
   }
 }
 
-import { randomUUID } from "crypto";
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { hashPassword } from "better-auth/crypto";
-import { db } from "@/db";
-import { account, session, user } from "@/db/schema/auth";
+import { randomUUID } from 'crypto'
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { hashPassword } from 'better-auth/crypto'
+import { db } from '@/db'
+import { account, session, user } from '@/db/schema/auth'
 import {
   activities,
   approvals,
@@ -53,39 +53,51 @@ import {
   timesheetEntries,
   trainingRecords,
   wellnessRecords,
-} from "@/db/schema/hero";
-import { indonesiaHolidays, timesheetAttendanceEmployeeAliases, timesheetAttendanceImportPreviews, timesheetAttendanceImportTemplates, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
-import { fetchIndonesiaHolidays } from "@/lib/openholiday";
-import { buildAttendanceImportPreview, attendanceImportRawRowsSchema, type AttendancePreviewConflict, type AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
-import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
+} from '@/db/schema/hero'
+import {
+  indonesiaHolidays,
+  timesheetAttendanceEmployeeAliases,
+  timesheetAttendanceImportPreviews,
+  timesheetAttendanceImportTemplates,
+  timesheetAttendanceRealOverrides,
+  timesheetFieldBreakPlans,
+  timesheetSchedulingConfigs,
+  timesheetSchedulingPlans,
+  timesheetSchedulingStatuses,
+} from '@/db/schema/timesheet'
+import { fetchIndonesiaHolidays } from '@/lib/openholiday'
+import {
+  buildAttendanceImportPreview,
+  attendanceImportRawRowsSchema,
+  type AttendancePreviewConflict,
+  type AttendancePreviewRow,
+} from '@/lib/timesheet/attendance-import'
+import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
   evaluatePointThresholdBadges,
-} from "@/lib/hero-admin";
-import {
-  createNotificationEventForEmployee,
-  sendPushNotification,
-} from "@/lib/push-notifications";
+} from '@/lib/hero-admin'
+import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
 import {
   getMappedValue,
   parseCsvToRecords,
   type UserImportMapping,
-} from "@/lib/security-user-import";
+} from '@/lib/security-user-import'
 import {
   autoMapTrainingRecordHeaders,
   getTrainingRecordImportValue,
   INITIAL_TRAINING_RECORD_IMPORT_STATE,
   parseTrainingRecordCsv,
   type TrainingRecordImportState,
-} from "@/lib/training-record-import";
-import { normalizeBirthDateValue } from "@/lib/birth-date";
+} from '@/lib/training-record-import'
+import { normalizeBirthDateValue } from '@/lib/birth-date'
 import {
   type ApprovalRouteResolution,
   type ResolvedApprovalStep,
   resolveApprovalRouteForActivity,
   serializeApprovalRoute,
-} from "@/lib/approval-engine";
+} from '@/lib/approval-engine'
 import {
   cancelFormSubmissionDraft,
   cloneFormTemplateVersion,
@@ -97,91 +109,148 @@ import {
   saveFormTemplateLayout,
   saveActivityDraftSubmission,
   syncActivityWorkflowArtifacts,
-} from "@/lib/approval-blueprint";
-import { appendApprovalNoteEntry } from "@/lib/approval-notes";
-import { getCurrentMenuPermission } from "@/lib/hero-access";
+} from '@/lib/approval-blueprint'
+import { appendApprovalNoteEntry } from '@/lib/approval-notes'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 
-async function requireSchedulingTimesheetAccess(permission: "edit" | "finalize" = "edit") {
-  const access = await getCurrentMenuPermission("scheduling_timesheet");
-  const allowed = permission === "finalize" ? access.canDelete || access.canSelectAll : access.canEdit || access.canDelete || access.canSelectAll;
-  if (!allowed) throw new Error("Unauthorized scheduling timesheet access");
-  return access;
+async function requireSchedulingTimesheetAccess(permission: 'edit' | 'finalize' = 'edit') {
+  const access = await getCurrentMenuPermission('scheduling_timesheet')
+  const allowed =
+    permission === 'finalize'
+      ? access.canDelete || access.canSelectAll
+      : access.canEdit || access.canDelete || access.canSelectAll
+  if (!allowed) throw new Error('Unauthorized scheduling timesheet access')
+  return access
 }
 
 async function getCurrentActorUserId(actorEmail?: string) {
-  const actor = actorEmail ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1) : [];
-  return actor[0]?.id ?? null;
+  const actor = actorEmail
+    ? await db.select({ id: user.id }).from(user).where(eq(user.email, actorEmail)).limit(1)
+    : []
+  return actor[0]?.id ?? null
 }
 
 async function assertSchedulingPeriodOpen(siteId: number, period: string) {
-  await ensureSchedulingTimesheetTables();
-  const [status] = await db.select().from(timesheetSchedulingStatuses).where(and(eq(timesheetSchedulingStatuses.siteId, siteId), eq(timesheetSchedulingStatuses.period, period))).limit(1);
-  if (status?.finalizedAt || status?.scheduleStatus === "finalized" || status?.attendanceStatus === "finalized") {
-    throw new Error("Scheduling period is finalized. Reopen before editing.");
+  await ensureSchedulingTimesheetTables()
+  const [status] = await db
+    .select()
+    .from(timesheetSchedulingStatuses)
+    .where(
+      and(
+        eq(timesheetSchedulingStatuses.siteId, siteId),
+        eq(timesheetSchedulingStatuses.period, period)
+      )
+    )
+    .limit(1)
+  if (
+    status?.finalizedAt ||
+    status?.scheduleStatus === 'finalized' ||
+    status?.attendanceStatus === 'finalized'
+  ) {
+    throw new Error('Scheduling period is finalized. Reopen before editing.')
   }
 }
 
-const indonesiaHolidaySyncSchema = z.object({ year: z.number().int().min(2000).max(2100) });
-const indonesiaHolidayPeriodSchema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) });
+const indonesiaHolidaySyncSchema = z.object({ year: z.number().int().min(2000).max(2100) })
+const indonesiaHolidayPeriodSchema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) })
 
-export async function syncIndonesiaHolidaysAction(input: z.infer<typeof indonesiaHolidaySyncSchema>) {
-  const payload = indonesiaHolidaySyncSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const holidays = await fetchIndonesiaHolidays(payload.year);
-  await upsertIndonesiaHolidays(holidays);
+export async function syncIndonesiaHolidaysAction(
+  input: z.infer<typeof indonesiaHolidaySyncSchema>
+) {
+  const payload = indonesiaHolidaySyncSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const holidays = await fetchIndonesiaHolidays(payload.year)
+  await upsertIndonesiaHolidays(holidays)
 
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true, count: holidays.length };
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true, count: holidays.length }
 }
 
-async function upsertIndonesiaHolidays(holidays: Awaited<ReturnType<typeof fetchIndonesiaHolidays>>) {
-  const now = new Date();
+async function upsertIndonesiaHolidays(
+  holidays: Awaited<ReturnType<typeof fetchIndonesiaHolidays>>
+) {
+  const now = new Date()
 
   if (holidays.length) {
-    await db.insert(indonesiaHolidays).values(holidays.map((holiday) => ({
-      date: holiday.date,
-      name: holiday.name,
-      localName: holiday.localName,
-      source: "api-hari-libur",
-      sourceId: holiday.sourceId,
-      types: holiday.types,
-      nationwide: holiday.nationwide,
-      rawPayload: holiday.rawPayload,
-      syncedAt: now,
-      updatedAt: now,
-    }))).onConflictDoUpdate({
-      target: [indonesiaHolidays.date, indonesiaHolidays.source],
-      set: {
-        name: sql`excluded.name`,
-        localName: sql`excluded.local_name`,
-        sourceId: sql`excluded.source_id`,
-        types: sql`excluded.types`,
-        nationwide: sql`excluded.nationwide`,
-        rawPayload: sql`excluded.raw_payload`,
-        syncedAt: now,
-        updatedAt: now,
-      },
-    });
+    await db
+      .insert(indonesiaHolidays)
+      .values(
+        holidays.map((holiday) => ({
+          date: holiday.date,
+          name: holiday.name,
+          localName: holiday.localName,
+          source: 'api-hari-libur',
+          sourceId: holiday.sourceId,
+          types: holiday.types,
+          nationwide: holiday.nationwide,
+          rawPayload: holiday.rawPayload,
+          syncedAt: now,
+          updatedAt: now,
+        }))
+      )
+      .onConflictDoUpdate({
+        target: [indonesiaHolidays.date, indonesiaHolidays.source],
+        set: {
+          name: sql`excluded.name`,
+          localName: sql`excluded.local_name`,
+          sourceId: sql`excluded.source_id`,
+          types: sql`excluded.types`,
+          nationwide: sql`excluded.nationwide`,
+          rawPayload: sql`excluded.raw_payload`,
+          syncedAt: now,
+          updatedAt: now,
+        },
+      })
   }
 }
 
-export async function getIndonesiaHolidaysAction(input: z.infer<typeof indonesiaHolidayPeriodSchema>) {
-  const payload = indonesiaHolidayPeriodSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const [year, month] = payload.period.split("-").map(Number);
-  const start = `${payload.period}-01`;
-  const end = `${payload.period}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
-  let rows = await db.select({ date: indonesiaHolidays.date, name: indonesiaHolidays.name, localName: indonesiaHolidays.localName }).from(indonesiaHolidays).where(and(eq(indonesiaHolidays.source, "api-hari-libur"), sql`${indonesiaHolidays.date} >= ${start}`, sql`${indonesiaHolidays.date} <= ${end}`)).orderBy(asc(indonesiaHolidays.date));
+export async function getIndonesiaHolidaysAction(
+  input: z.infer<typeof indonesiaHolidayPeriodSchema>
+) {
+  const payload = indonesiaHolidayPeriodSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const [year, month] = payload.period.split('-').map(Number)
+  const start = `${payload.period}-01`
+  const end = `${payload.period}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
+  let rows = await db
+    .select({
+      date: indonesiaHolidays.date,
+      name: indonesiaHolidays.name,
+      localName: indonesiaHolidays.localName,
+    })
+    .from(indonesiaHolidays)
+    .where(
+      and(
+        eq(indonesiaHolidays.source, 'api-hari-libur'),
+        sql`${indonesiaHolidays.date} >= ${start}`,
+        sql`${indonesiaHolidays.date} <= ${end}`
+      )
+    )
+    .orderBy(asc(indonesiaHolidays.date))
 
   if (rows.length === 0) {
-    const holidays = await fetchIndonesiaHolidays(year);
-    await upsertIndonesiaHolidays(holidays);
-    rows = await db.select({ date: indonesiaHolidays.date, name: indonesiaHolidays.name, localName: indonesiaHolidays.localName }).from(indonesiaHolidays).where(and(eq(indonesiaHolidays.source, "api-hari-libur"), sql`${indonesiaHolidays.date} >= ${start}`, sql`${indonesiaHolidays.date} <= ${end}`)).orderBy(asc(indonesiaHolidays.date));
+    const holidays = await fetchIndonesiaHolidays(year)
+    await upsertIndonesiaHolidays(holidays)
+    rows = await db
+      .select({
+        date: indonesiaHolidays.date,
+        name: indonesiaHolidays.name,
+        localName: indonesiaHolidays.localName,
+      })
+      .from(indonesiaHolidays)
+      .where(
+        and(
+          eq(indonesiaHolidays.source, 'api-hari-libur'),
+          sql`${indonesiaHolidays.date} >= ${start}`,
+          sql`${indonesiaHolidays.date} <= ${end}`
+        )
+      )
+      .orderBy(asc(indonesiaHolidays.date))
   }
 
-  return rows.map((holiday) => ({ ...holiday, day: Number(holiday.date.slice(-2)) }));
+  return rows.map((holiday) => ({ ...holiday, day: Number(holiday.date.slice(-2)) }))
 }
 
 const createActivitySchema = z.object({
@@ -195,60 +264,53 @@ const createActivitySchema = z.object({
   priority: z.string().trim().min(3),
   overtimeMinutes: z.coerce.number().int().min(0).max(720),
   remarks: z.string().trim().min(3),
-});
+})
 
-const scheduleCodeSchema = z.enum(["IN", "DS", "NS", "OFF", "FB", "Libur", "Sakit", "Emergency"]);
+const scheduleCodeSchema = z.enum(['IN', 'DS', 'NS', 'OFF', 'FB', 'Libur', 'Sakit', 'Emergency'])
 const schedulingPlanRowSchema = z.object({
   employeeId: z.number().int(),
   schedule: z.array(scheduleCodeSchema),
-});
+})
 const schedulingEmployeeProfileSchema = z.object({
   employeeId: z.number().int(),
   section: z.string().max(80),
   positionOnSite: z.string().max(120),
   kimperLv: z.boolean(),
   kimperTh: z.boolean(),
-});
+})
 
 const saveSchedulingTimesheetPlanSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  siteScheduleType: z.enum(["office", "shift"]),
+  siteScheduleType: z.enum(['office', 'shift']),
   draftSchedule: z.array(schedulingPlanRowSchema),
   fixedSchedule: z.array(schedulingPlanRowSchema),
   employeeProfiles: z.array(schedulingEmployeeProfileSchema),
-  fieldBreakConfig: z.object({
-    workWeeks: z.number().int().min(1),
-    breakWeeks: z.number().int().min(1),
-  }).nullable(),
-});
+  fieldBreakConfig: z
+    .object({
+      workWeeks: z.number().int().min(1),
+      breakWeeks: z.number().int().min(1),
+    })
+    .nullable(),
+})
 
-export async function saveSchedulingTimesheetPlanAction(input: z.infer<typeof saveSchedulingTimesheetPlanSchema>) {
-  const payload = saveSchedulingTimesheetPlanSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
+export async function saveSchedulingTimesheetPlanAction(
+  input: z.infer<typeof saveSchedulingTimesheetPlanSchema>
+) {
+  const payload = saveSchedulingTimesheetPlanSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
 
   await db.transaction(async (tx) => {
     await tx
-    .insert(timesheetSchedulingPlans)
-    .values({
-      siteId: payload.siteId,
-      period: payload.period,
-      siteScheduleType: payload.siteScheduleType,
-      draftSchedule: payload.draftSchedule,
-      fixedSchedule: payload.fixedSchedule,
-      employeeProfiles: payload.employeeProfiles,
-      fieldBreakConfig: payload.fieldBreakConfig,
-      savedByUserId,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [timesheetSchedulingPlans.siteId, timesheetSchedulingPlans.period],
-      set: {
+      .insert(timesheetSchedulingPlans)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
         siteScheduleType: payload.siteScheduleType,
         draftSchedule: payload.draftSchedule,
         fixedSchedule: payload.fixedSchedule,
@@ -256,41 +318,81 @@ export async function saveSchedulingTimesheetPlanAction(input: z.infer<typeof sa
         fieldBreakConfig: payload.fieldBreakConfig,
         savedByUserId,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingPlans.siteId, timesheetSchedulingPlans.period],
+        set: {
+          siteScheduleType: payload.siteScheduleType,
+          draftSchedule: payload.draftSchedule,
+          fixedSchedule: payload.fixedSchedule,
+          employeeProfiles: payload.employeeProfiles,
+          fieldBreakConfig: payload.fieldBreakConfig,
+          savedByUserId,
+          updatedAt: now,
+        },
+      })
 
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now } });
-  });
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        scheduleStatus: 'saved',
+        lastSavedAt: now,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: { scheduleStatus: 'saved', lastSavedAt: now, savedByUserId, updatedAt: now },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.schedule_saved", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Saved scheduling plan (${payload.fixedSchedule.length} rows).` });
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_saved',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Saved scheduling plan (${payload.fixedSchedule.length} rows).`,
+  })
 
-  revalidatePath("/dashboard/scheduling-timesheet");
+  revalidatePath('/dashboard/scheduling-timesheet')
 
-  return { ok: true };
+  return { ok: true }
 }
 
 const saveTimesheetFieldBreakPlansSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  plans: z.array(z.object({
-    employeeId: z.number().int().positive(),
-    employeeName: z.string().min(1).max(200),
-    sectionName: z.string().max(160),
-    rosterSection: z.string().max(120),
-    onSiteDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-    dayCount: z.number().int().min(1).max(365).nullable(),
-    fieldBreakDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  })),
-});
+  plans: z.array(
+    z.object({
+      employeeId: z.number().int().positive(),
+      employeeName: z.string().min(1).max(200),
+      sectionName: z.string().max(160),
+      rosterSection: z.string().max(120),
+      onSiteDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .nullable(),
+      dayCount: z.number().int().min(1).max(365).nullable(),
+      fieldBreakDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .nullable(),
+    })
+  ),
+})
 
-export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>) {
-  const payload = saveTimesheetFieldBreakPlansSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
+export async function saveTimesheetFieldBreakPlansAction(
+  input: z.infer<typeof saveTimesheetFieldBreakPlansSchema>
+) {
+  const payload = saveTimesheetFieldBreakPlansSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
 
   await db.transaction(async (tx) => {
     for (const plan of payload.plans) {
@@ -310,7 +412,11 @@ export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof s
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: [timesheetFieldBreakPlans.siteId, timesheetFieldBreakPlans.period, timesheetFieldBreakPlans.employeeId],
+          target: [
+            timesheetFieldBreakPlans.siteId,
+            timesheetFieldBreakPlans.period,
+            timesheetFieldBreakPlans.employeeId,
+          ],
           set: {
             employeeName: plan.employeeName,
             sectionName: plan.sectionName,
@@ -321,62 +427,118 @@ export async function saveTimesheetFieldBreakPlansAction(input: z.infer<typeof s
             savedByUserId,
             updatedAt: now,
           },
-        });
+        })
     }
 
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now } });
-  });
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        scheduleStatus: 'saved',
+        lastSavedAt: now,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: { scheduleStatus: 'saved', lastSavedAt: now, savedByUserId, updatedAt: now },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.field_break_saved", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Saved field break plans (${payload.plans.length} rows).` });
-  revalidatePath("/dashboard/scheduling-timesheet");
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.field_break_saved',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Saved field break plans (${payload.plans.length} rows).`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
 
-  return { ok: true };
+  return { ok: true }
 }
 
-const attendanceRealStatusSchema = z.enum(["present", "empty", "sick", "leave", "absent"]);
+const attendanceRealStatusSchema = z.enum(['present', 'empty', 'sick', 'leave', 'absent'])
 const saveAttendanceRealOverridesSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  overrides: z.array(z.object({
-    employeeId: z.number().int().positive(),
-    day: z.number().int().min(1).max(31),
-    status: attendanceRealStatusSchema,
-    clockIn: z.string().max(8).default(""),
-    clockOut: z.string().max(8).default(""),
-    note: z.string().max(240).default(""),
-    source: z.enum(["manual", "excel", "attendance"]).default("manual"),
-  })),
-});
+  overrides: z.array(
+    z.object({
+      employeeId: z.number().int().positive(),
+      day: z.number().int().min(1).max(31),
+      status: attendanceRealStatusSchema,
+      clockIn: z.string().max(8).default(''),
+      clockOut: z.string().max(8).default(''),
+      note: z.string().max(240).default(''),
+      source: z.enum(['manual', 'excel', 'attendance']).default('manual'),
+    })
+  ),
+})
 
-export async function saveAttendanceRealOverridesAction(input: z.infer<typeof saveAttendanceRealOverridesSchema>) {
-  const payload = saveAttendanceRealOverridesSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
+export async function saveAttendanceRealOverridesAction(
+  input: z.infer<typeof saveAttendanceRealOverridesSchema>
+) {
+  const payload = saveAttendanceRealOverridesSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
 
-  if (!payload.overrides.length) return { ok: true, savedCount: 0 };
+  if (!payload.overrides.length) return { ok: true, savedCount: 0 }
+
+  // Ensure site exists in sites table — FK constraint requires valid site_id
+  const [existingSite] = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(eq(sites.id, payload.siteId))
+    .limit(1)
+  if (!existingSite) {
+    // Auto-create site with specific ID via raw SQL
+    await db.execute(sql`
+      INSERT INTO hero_sites (id, name, location, customer_name, contract_number, is_active, created_at)
+      VALUES (${payload.siteId}, ${'Site ' + payload.siteId}, '', ${'Site ' + payload.siteId}, '', true, NOW())
+      ON CONFLICT (id) DO NOTHING
+    `)
+  }
+
+  // Filter overrides to only include valid employee IDs that exist in DB
+  const employeeIds = [...new Set(payload.overrides.map((o) => o.employeeId))]
+  const validEmployees = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(inArray(employees.id, employeeIds))
+  const validEmployeeIds = new Set(validEmployees.map((e) => e.id))
+  const validOverrides = payload.overrides.filter((o) => validEmployeeIds.has(o.employeeId))
+
+  if (!validOverrides.length) return { ok: true, savedCount: 0 }
 
   await db.transaction(async (tx) => {
     await tx
       .insert(timesheetAttendanceRealOverrides)
-      .values(payload.overrides.map((override) => ({
-        siteId: payload.siteId,
-        period: payload.period,
-        employeeId: override.employeeId,
-        day: override.day,
-        status: override.status,
-        clockIn: override.clockIn,
-        clockOut: override.clockOut,
-        note: override.note,
-        source: override.source,
-        savedByUserId,
-        updatedAt: now,
-      })))
+      .values(
+        validOverrides.map((override) => ({
+          siteId: payload.siteId,
+          period: payload.period,
+          employeeId: override.employeeId,
+          day: override.day,
+          status: override.status,
+          clockIn: override.clockIn,
+          clockOut: override.clockOut,
+          note: override.note,
+          source: override.source,
+          savedByUserId,
+          updatedAt: now,
+        }))
+      )
       .onConflictDoUpdate({
-        target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day],
+        target: [
+          timesheetAttendanceRealOverrides.siteId,
+          timesheetAttendanceRealOverrides.period,
+          timesheetAttendanceRealOverrides.employeeId,
+          timesheetAttendanceRealOverrides.day,
+        ],
         set: {
           status: sql`excluded.status`,
           clockIn: sql`excluded.clock_in`,
@@ -386,57 +548,142 @@ export async function saveAttendanceRealOverridesAction(input: z.infer<typeof sa
           savedByUserId,
           updatedAt: now,
         },
-      });
+      })
 
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, attendanceStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "saved", lastSavedAt: now, savedByUserId, updatedAt: now } });
-  });
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        attendanceStatus: 'saved',
+        lastSavedAt: now,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: { attendanceStatus: 'saved', lastSavedAt: now, savedByUserId, updatedAt: now },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.attendance_saved", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Saved attendance overrides (${payload.overrides.length} cells).` });
-  revalidatePath("/dashboard/scheduling-timesheet");
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.attendance_saved',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Saved attendance overrides (${payload.overrides.length} cells).`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
 
-  return { ok: true, savedCount: payload.overrides.length };
+  return { ok: true, savedCount: validOverrides.length }
 }
 
 const finalizeSchedulingPeriodSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  reason: z.string().max(500).optional().default(""),
-});
+  reason: z.string().max(500).optional().default(''),
+})
 
 const reopenSchedulingPeriodSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
   reason: z.string().trim().min(1).max(500),
-});
+})
 
-export async function finalizeSchedulingPeriodAction(input: z.infer<typeof finalizeSchedulingPeriodSchema>) {
-  const payload = finalizeSchedulingPeriodSchema.parse(input);
-  await requireSchedulingTimesheetAccess("finalize");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
+export async function finalizeSchedulingPeriodAction(
+  input: z.infer<typeof finalizeSchedulingPeriodSchema>
+) {
+  const payload = finalizeSchedulingPeriodSchema.parse(input)
+  await requireSchedulingTimesheetAccess('finalize')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
 
-  await db.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "finalized", attendanceStatus: "finalized", importStatus: "finalized", finalizedAt: now, savedByUserId, metadata: { finalizedReason: payload.reason }, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "finalized", attendanceStatus: "finalized", importStatus: "finalized", finalizedAt: now, savedByUserId, metadata: { finalizedReason: payload.reason }, updatedAt: now } });
+  await db
+    .insert(timesheetSchedulingStatuses)
+    .values({
+      siteId: payload.siteId,
+      period: payload.period,
+      scheduleStatus: 'finalized',
+      attendanceStatus: 'finalized',
+      importStatus: 'finalized',
+      finalizedAt: now,
+      savedByUserId,
+      metadata: { finalizedReason: payload.reason },
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+      set: {
+        scheduleStatus: 'finalized',
+        attendanceStatus: 'finalized',
+        importStatus: 'finalized',
+        finalizedAt: now,
+        savedByUserId,
+        metadata: { finalizedReason: payload.reason },
+        updatedAt: now,
+      },
+    })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.period_finalized", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Finalized scheduling period. ${payload.reason}`.trim(), severity: "warning" });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.period_finalized',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Finalized scheduling period. ${payload.reason}`.trim(),
+    severity: 'warning',
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
-export async function reopenSchedulingPeriodAction(input: z.infer<typeof reopenSchedulingPeriodSchema>) {
-  const payload = reopenSchedulingPeriodSchema.parse(input);
-  await requireSchedulingTimesheetAccess("finalize");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
+export async function reopenSchedulingPeriodAction(
+  input: z.infer<typeof reopenSchedulingPeriodSchema>
+) {
+  const payload = reopenSchedulingPeriodSchema.parse(input)
+  await requireSchedulingTimesheetAccess('finalize')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
 
-  await db.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, scheduleStatus: "reopened", attendanceStatus: "reopened", importStatus: "none", finalizedAt: null, savedByUserId, metadata: { reopenedReason: payload.reason }, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { scheduleStatus: "reopened", attendanceStatus: "reopened", importStatus: "none", finalizedAt: null, savedByUserId, metadata: { reopenedReason: payload.reason }, updatedAt: now } });
+  await db
+    .insert(timesheetSchedulingStatuses)
+    .values({
+      siteId: payload.siteId,
+      period: payload.period,
+      scheduleStatus: 'reopened',
+      attendanceStatus: 'reopened',
+      importStatus: 'none',
+      finalizedAt: null,
+      savedByUserId,
+      metadata: { reopenedReason: payload.reason },
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+      set: {
+        scheduleStatus: 'reopened',
+        attendanceStatus: 'reopened',
+        importStatus: 'none',
+        finalizedAt: null,
+        savedByUserId,
+        metadata: { reopenedReason: payload.reason },
+        updatedAt: now,
+      },
+    })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.period_reopened", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Reopened scheduling period. ${payload.reason}`, severity: "warning" });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.period_reopened',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Reopened scheduling period. ${payload.reason}`,
+    severity: 'warning',
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
 const createAttendanceImportPreviewSchema = z.object({
@@ -445,202 +692,625 @@ const createAttendanceImportPreviewSchema = z.object({
   filename: z.string().min(1).max(240),
   rows: attendanceImportRawRowsSchema,
   fixedSchedule: z.array(schedulingPlanRowSchema).default([]),
-  detection: z.object({ sheetName: z.string().default(""), kind: z.string().default("auto"), confidence: z.number().default(0), warnings: z.array(z.string()).default([]) }).optional(),
-});
+  detection: z
+    .object({
+      sheetName: z.string().default(''),
+      kind: z.string().default('auto'),
+      confidence: z.number().default(0),
+      warnings: z.array(z.string()).default([]),
+    })
+    .optional(),
+})
 
-const attendanceImportPreviewIdSchema = z.object({ previewId: z.number().int().positive() });
-const applyAttendanceImportPreviewSchema = attendanceImportPreviewIdSchema.extend({ mode: z.enum(["skip-conflicts", "overwrite-conflicts"]).default("skip-conflicts") });
+const attendanceImportPreviewIdSchema = z.object({ previewId: z.number().int().positive() })
+const applyAttendanceImportPreviewSchema = attendanceImportPreviewIdSchema.extend({
+  mode: z.enum(['skip-conflicts', 'overwrite-conflicts']).default('skip-conflicts'),
+})
 const clearAttendanceRealOverridesSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  source: z.enum(["excel", "manual", "attendance", "all"]).default("excel"),
-});
-const updateAttendanceImportPreviewMatchSchema = z.object({ previewId: z.number().int().positive(), importRowId: z.string().min(1), employeeId: z.number().int().positive(), saveAlias: z.boolean().default(true) });
-const attendanceImportHistorySchema = z.object({ siteId: z.number().int().positive(), period: z.string().regex(/^\d{4}-\d{2}$/) });
-const saveAttendanceEmployeeAliasSchema = z.object({ siteId: z.number().int().positive(), employeeId: z.number().int().positive(), aliasName: z.string().max(160).default(""), aliasSn: z.string().max(80).default(""), source: z.string().max(80).default("manual") });
-const deleteAttendanceEmployeeAliasSchema = z.object({ aliasId: z.number().int().positive() });
+  source: z.enum(['excel', 'manual', 'attendance', 'all']).default('excel'),
+})
+const updateAttendanceImportPreviewMatchSchema = z.object({
+  previewId: z.number().int().positive(),
+  importRowId: z.string().min(1),
+  employeeId: z.number().int().positive(),
+  saveAlias: z.boolean().default(true),
+})
+const attendanceImportHistorySchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+})
+const saveAttendanceEmployeeAliasSchema = z.object({
+  siteId: z.number().int().positive(),
+  employeeId: z.number().int().positive(),
+  aliasName: z.string().max(160).default(''),
+  aliasSn: z.string().max(80).default(''),
+  source: z.string().max(80).default('manual'),
+})
+const deleteAttendanceEmployeeAliasSchema = z.object({ aliasId: z.number().int().positive() })
 
-export async function createAttendanceImportPreviewAction(input: z.infer<typeof createAttendanceImportPreviewSchema>) {
-  const payload = createAttendanceImportPreviewSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const siteEmployees = await db.select({ id: employees.id, name: employees.name, employeeSn: employees.employeeSn, siteId: employees.siteId, siteName: sites.name }).from(employees).leftJoin(sites, eq(employees.siteId, sites.id));
-  const aliases = await db.select({ employeeId: timesheetAttendanceEmployeeAliases.employeeId, aliasName: timesheetAttendanceEmployeeAliases.aliasName, aliasSn: timesheetAttendanceEmployeeAliases.aliasSn }).from(timesheetAttendanceEmployeeAliases).where(eq(timesheetAttendanceEmployeeAliases.siteId, payload.siteId));
-  const [site] = await db.select({ name: sites.name }).from(sites).where(eq(sites.id, payload.siteId)).limit(1);
-  const detection = payload.detection ?? { sheetName: "", kind: "auto", confidence: 0, warnings: [] };
-  const headerSignature = `${detection.kind}:${detection.sheetName}`;
-  let templateId: number | null = null;
-  const preview = buildAttendanceImportPreview({ rows: payload.rows, employees: siteEmployees, aliases, siteId: payload.siteId, siteName: site?.name, fixedSchedule: payload.fixedSchedule });
-  let previewId = 0;
+export async function createAttendanceImportPreviewAction(
+  input: z.infer<typeof createAttendanceImportPreviewSchema>
+) {
+  const payload = createAttendanceImportPreviewSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const siteEmployees = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
+      siteName: sites.name,
+    })
+    .from(employees)
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+  const aliases = await db
+    .select({
+      employeeId: timesheetAttendanceEmployeeAliases.employeeId,
+      aliasName: timesheetAttendanceEmployeeAliases.aliasName,
+      aliasSn: timesheetAttendanceEmployeeAliases.aliasSn,
+    })
+    .from(timesheetAttendanceEmployeeAliases)
+    .where(eq(timesheetAttendanceEmployeeAliases.siteId, payload.siteId))
+  const [site] = await db
+    .select({ name: sites.name })
+    .from(sites)
+    .where(eq(sites.id, payload.siteId))
+    .limit(1)
+  const detection = payload.detection ?? {
+    sheetName: '',
+    kind: 'auto',
+    confidence: 0,
+    warnings: [],
+  }
+  const headerSignature = `${detection.kind}:${detection.sheetName}`
+  let templateId: number | null = null
+  const preview = buildAttendanceImportPreview({
+    rows: payload.rows,
+    employees: siteEmployees,
+    aliases,
+    siteId: payload.siteId,
+    siteName: site?.name,
+    fixedSchedule: payload.fixedSchedule,
+  })
+  let previewId = 0
 
   await db.transaction(async (tx) => {
-    const [template] = await tx.insert(timesheetAttendanceImportTemplates).values({ siteId: payload.siteId, templateName: headerSignature || payload.filename, sourceType: "attendance", sheetName: detection.sheetName, templateKind: detection.kind, headerSignature, confidence: Math.round(detection.confidence), usageCount: 1, lastUsedAt: now, updatedAt: now }).onConflictDoUpdate({ target: [timesheetAttendanceImportTemplates.siteId, timesheetAttendanceImportTemplates.templateName], set: { sheetName: detection.sheetName, templateKind: detection.kind, headerSignature, confidence: Math.round(detection.confidence), usageCount: sql`${timesheetAttendanceImportTemplates.usageCount} + 1`, lastUsedAt: now, updatedAt: now } }).returning({ id: timesheetAttendanceImportTemplates.id });
-    templateId = template?.id ?? null;
-    const [inserted] = await tx.insert(timesheetAttendanceImportPreviews).values({ siteId: payload.siteId, period: payload.period, filename: payload.filename, status: "preview", matchedCount: preview.matchedCount, unmatchedCount: preview.unmatchedCount, cellCount: preview.cellCount, conflictCount: preview.conflictCount, previewRows: preview.previewRows, conflicts: preview.conflicts, templateId, templateKind: detection.kind, sheetName: detection.sheetName, detectionSummary: detection, validationSummary: preview.validationSummary, uploadedByUserId: savedByUserId, createdAt: now }).returning({ id: timesheetAttendanceImportPreviews.id });
-    previewId = inserted.id;
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, importStatus: "preview", conflictCount: preview.conflictCount, lastImportedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "preview", conflictCount: preview.conflictCount, lastImportedAt: now, savedByUserId, updatedAt: now } });
-  });
+    const [template] = await tx
+      .insert(timesheetAttendanceImportTemplates)
+      .values({
+        siteId: payload.siteId,
+        templateName: headerSignature || payload.filename,
+        sourceType: 'attendance',
+        sheetName: detection.sheetName,
+        templateKind: detection.kind,
+        headerSignature,
+        confidence: Math.round(detection.confidence),
+        usageCount: 1,
+        lastUsedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          timesheetAttendanceImportTemplates.siteId,
+          timesheetAttendanceImportTemplates.templateName,
+        ],
+        set: {
+          sheetName: detection.sheetName,
+          templateKind: detection.kind,
+          headerSignature,
+          confidence: Math.round(detection.confidence),
+          usageCount: sql`${timesheetAttendanceImportTemplates.usageCount} + 1`,
+          lastUsedAt: now,
+          updatedAt: now,
+        },
+      })
+      .returning({ id: timesheetAttendanceImportTemplates.id })
+    templateId = template?.id ?? null
+    const [inserted] = await tx
+      .insert(timesheetAttendanceImportPreviews)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        filename: payload.filename,
+        status: 'preview',
+        matchedCount: preview.matchedCount,
+        unmatchedCount: preview.unmatchedCount,
+        cellCount: preview.cellCount,
+        conflictCount: preview.conflictCount,
+        previewRows: preview.previewRows,
+        conflicts: preview.conflicts,
+        templateId,
+        templateKind: detection.kind,
+        sheetName: detection.sheetName,
+        detectionSummary: detection,
+        validationSummary: preview.validationSummary,
+        uploadedByUserId: savedByUserId,
+        createdAt: now,
+      })
+      .returning({ id: timesheetAttendanceImportPreviews.id })
+    previewId = inserted.id
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        importStatus: 'preview',
+        conflictCount: preview.conflictCount,
+        lastImportedAt: now,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: {
+          importStatus: 'preview',
+          conflictCount: preview.conflictCount,
+          lastImportedAt: now,
+          savedByUserId,
+          updatedAt: now,
+        },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.import_previewed", entityType: "timesheet_scheduling_import", entityLabel: `${payload.siteId}:${payload.period}:${previewId}`, description: `Previewed attendance import (${preview.cellCount} cells, ${preview.conflictCount} conflicts).` });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true, previewId, ...preview };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.import_previewed',
+    entityType: 'timesheet_scheduling_import',
+    entityLabel: `${payload.siteId}:${payload.period}:${previewId}`,
+    description: `Previewed attendance import (${preview.cellCount} cells, ${preview.conflictCount} conflicts).`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true, previewId, ...preview }
 }
 
-export async function applyAttendanceImportPreviewAction(input: z.infer<typeof applyAttendanceImportPreviewSchema>) {
-  const payload = applyAttendanceImportPreviewSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
-  if (!preview || preview.status !== "preview") throw new Error("Import preview not found.");
-  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
-  const rows = preview.previewRows as AttendancePreviewRow[];
-  const conflicts = preview.conflicts as AttendancePreviewConflict[];
-  const conflictKeys = new Set(conflicts.map((conflict) => `${conflict.employeeId}:${conflict.day}`));
-  const writableRows = rows.filter((row) => row.employeeId && !row.unmatched && !row.duplicate && !row.crossSite && (payload.mode === "overwrite-conflicts" || !conflictKeys.has(`${row.employeeId}:${row.day}`)));
+export async function applyAttendanceImportPreviewAction(
+  input: z.infer<typeof applyAttendanceImportPreviewSchema>
+) {
+  const payload = applyAttendanceImportPreviewSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const [preview] = await db
+    .select()
+    .from(timesheetAttendanceImportPreviews)
+    .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    .limit(1)
+  if (!preview || preview.status !== 'preview') throw new Error('Import preview not found.')
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period)
+  const rows = preview.previewRows as AttendancePreviewRow[]
+  const conflicts = preview.conflicts as AttendancePreviewConflict[]
+  const conflictKeys = new Set(
+    conflicts.map((conflict) => `${conflict.employeeId}:${conflict.day}`)
+  )
+  const writableRows = rows.filter(
+    (row) =>
+      row.employeeId &&
+      !row.unmatched &&
+      !row.duplicate &&
+      !row.crossSite &&
+      (payload.mode === 'overwrite-conflicts' || !conflictKeys.has(`${row.employeeId}:${row.day}`))
+  )
 
   await db.transaction(async (tx) => {
     if (writableRows.length) {
-      await tx.insert(timesheetAttendanceRealOverrides).values(writableRows.map((row) => ({ siteId: preview.siteId, period: preview.period, employeeId: row.employeeId!, day: row.day, status: row.status, clockIn: row.clockIn, clockOut: row.clockOut, note: row.note, source: "excel" as const, importPreviewId: payload.previewId, validationFlags: row.validationFlags ?? [], workMinutes: row.workMinutes ?? null, savedByUserId, updatedAt: now }))).onConflictDoUpdate({ target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day], set: { status: sql`excluded.status`, clockIn: sql`excluded.clock_in`, clockOut: sql`excluded.clock_out`, note: sql`excluded.note`, source: sql`excluded.source`, importPreviewId: payload.previewId, validationFlags: sql`excluded.validation_flags`, workMinutes: sql`excluded.work_minutes`, savedByUserId, updatedAt: now } });
+      await tx
+        .insert(timesheetAttendanceRealOverrides)
+        .values(
+          writableRows.map((row) => ({
+            siteId: preview.siteId,
+            period: preview.period,
+            employeeId: row.employeeId!,
+            day: row.day,
+            status: row.status,
+            clockIn: row.clockIn,
+            clockOut: row.clockOut,
+            note: row.note,
+            source: 'excel' as const,
+            importPreviewId: payload.previewId,
+            validationFlags: row.validationFlags ?? [],
+            workMinutes: row.workMinutes ?? null,
+            savedByUserId,
+            updatedAt: now,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: [
+            timesheetAttendanceRealOverrides.siteId,
+            timesheetAttendanceRealOverrides.period,
+            timesheetAttendanceRealOverrides.employeeId,
+            timesheetAttendanceRealOverrides.day,
+          ],
+          set: {
+            status: sql`excluded.status`,
+            clockIn: sql`excluded.clock_in`,
+            clockOut: sql`excluded.clock_out`,
+            note: sql`excluded.note`,
+            source: sql`excluded.source`,
+            importPreviewId: payload.previewId,
+            validationFlags: sql`excluded.validation_flags`,
+            workMinutes: sql`excluded.work_minutes`,
+            savedByUserId,
+            updatedAt: now,
+          },
+        })
     }
-    await tx.update(timesheetAttendanceImportPreviews).set({ status: "applied", appliedAt: now }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, attendanceStatus: "saved", importStatus: "applied", conflictCount: payload.mode === "skip-conflicts" ? conflicts.length : 0, lastImportedAt: now, lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "saved", importStatus: "applied", conflictCount: payload.mode === "skip-conflicts" ? conflicts.length : 0, lastImportedAt: now, lastSavedAt: now, savedByUserId, updatedAt: now } });
-  });
+    await tx
+      .update(timesheetAttendanceImportPreviews)
+      .set({ status: 'applied', appliedAt: now })
+      .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: preview.siteId,
+        period: preview.period,
+        attendanceStatus: 'saved',
+        importStatus: 'applied',
+        conflictCount: payload.mode === 'skip-conflicts' ? conflicts.length : 0,
+        lastImportedAt: now,
+        lastSavedAt: now,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: {
+          attendanceStatus: 'saved',
+          importStatus: 'applied',
+          conflictCount: payload.mode === 'skip-conflicts' ? conflicts.length : 0,
+          lastImportedAt: now,
+          lastSavedAt: now,
+          savedByUserId,
+          updatedAt: now,
+        },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.import_applied", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: `Applied attendance import (${writableRows.length} cells, mode ${payload.mode}).` });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true, savedCount: writableRows.length, rows: writableRows };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.import_applied',
+    entityType: 'timesheet_scheduling_import',
+    entityLabel: String(payload.previewId),
+    description: `Applied attendance import (${writableRows.length} cells, mode ${payload.mode}).`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true, savedCount: writableRows.length, rows: writableRows }
 }
 
-export async function updateAttendanceImportPreviewMatchAction(input: z.infer<typeof updateAttendanceImportPreviewMatchSchema>) {
-  const payload = updateAttendanceImportPreviewMatchSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
-  if (!preview || preview.status !== "preview") throw new Error("Import preview not found.");
-  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
-  const [employee] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(eq(employees.id, payload.employeeId)).limit(1);
-  if (!employee) throw new Error("Employee not found.");
-  const rows = preview.previewRows as AttendancePreviewRow[];
-  const nextRows = rows.map((row) => row.importRowId === payload.importRowId ? { ...row, employeeId: employee.id, matchedName: employee.name, unmatched: false, crossSite: false, duplicate: false, matchMethod: "alias" as const, matchScore: 0, matchWarning: undefined, validationFlags: (row.validationFlags ?? []).filter((flag) => flag !== "low-confidence") } : row);
-  const fixedRow = nextRows.find((row) => row.importRowId === payload.importRowId);
-  if (!fixedRow) throw new Error("Preview row not found.");
+export async function updateAttendanceImportPreviewMatchAction(
+  input: z.infer<typeof updateAttendanceImportPreviewMatchSchema>
+) {
+  const payload = updateAttendanceImportPreviewMatchSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const [preview] = await db
+    .select()
+    .from(timesheetAttendanceImportPreviews)
+    .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    .limit(1)
+  if (!preview || preview.status !== 'preview') throw new Error('Import preview not found.')
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period)
+  const [employee] = await db
+    .select({ id: employees.id, name: employees.name })
+    .from(employees)
+    .where(eq(employees.id, payload.employeeId))
+    .limit(1)
+  if (!employee) throw new Error('Employee not found.')
+  const rows = preview.previewRows as AttendancePreviewRow[]
+  const nextRows = rows.map((row) =>
+    row.importRowId === payload.importRowId
+      ? {
+          ...row,
+          employeeId: employee.id,
+          matchedName: employee.name,
+          unmatched: false,
+          crossSite: false,
+          duplicate: false,
+          matchMethod: 'alias' as const,
+          matchScore: 0,
+          matchWarning: undefined,
+          validationFlags: (row.validationFlags ?? []).filter((flag) => flag !== 'low-confidence'),
+        }
+      : row
+  )
+  const fixedRow = nextRows.find((row) => row.importRowId === payload.importRowId)
+  if (!fixedRow) throw new Error('Preview row not found.')
 
   await db.transaction(async (tx) => {
-    await tx.update(timesheetAttendanceImportPreviews).set({ previewRows: nextRows, matchedCount: nextRows.filter((row) => row.employeeId && !row.crossSite && !row.duplicate).length, unmatchedCount: nextRows.filter((row) => row.unmatched || row.crossSite || row.duplicate).length }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
+    await tx
+      .update(timesheetAttendanceImportPreviews)
+      .set({
+        previewRows: nextRows,
+        matchedCount: nextRows.filter((row) => row.employeeId && !row.crossSite && !row.duplicate)
+          .length,
+        unmatchedCount: nextRows.filter((row) => row.unmatched || row.crossSite || row.duplicate)
+          .length,
+      })
+      .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
     if (payload.saveAlias && (fixedRow.employeeName || fixedRow.employeeSn)) {
-      await tx.insert(timesheetAttendanceEmployeeAliases).values({ siteId: preview.siteId, employeeId: employee.id, aliasName: fixedRow.employeeName, aliasSn: fixedRow.employeeSn, source: "preview-fix", updatedAt: now }).onConflictDoUpdate({ target: [timesheetAttendanceEmployeeAliases.siteId, timesheetAttendanceEmployeeAliases.aliasName, timesheetAttendanceEmployeeAliases.aliasSn], set: { employeeId: employee.id, source: "preview-fix", updatedAt: now } });
+      await tx
+        .insert(timesheetAttendanceEmployeeAliases)
+        .values({
+          siteId: preview.siteId,
+          employeeId: employee.id,
+          aliasName: fixedRow.employeeName,
+          aliasSn: fixedRow.employeeSn,
+          source: 'preview-fix',
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            timesheetAttendanceEmployeeAliases.siteId,
+            timesheetAttendanceEmployeeAliases.aliasName,
+            timesheetAttendanceEmployeeAliases.aliasSn,
+          ],
+          set: { employeeId: employee.id, source: 'preview-fix', updatedAt: now },
+        })
     }
-  });
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.import_previewed", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: `Fixed attendance preview match for ${employee.name}.` });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true, previewRows: nextRows, savedByUserId };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.import_previewed',
+    entityType: 'timesheet_scheduling_import',
+    entityLabel: String(payload.previewId),
+    description: `Fixed attendance preview match for ${employee.name}.`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true, previewRows: nextRows, savedByUserId }
 }
 
-export async function rollbackAttendanceImportPreviewAction(input: z.infer<typeof attendanceImportPreviewIdSchema>) {
-  const payload = attendanceImportPreviewIdSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
-  if (!preview || preview.status !== "applied") throw new Error("Applied import not found.");
-  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
+export async function rollbackAttendanceImportPreviewAction(
+  input: z.infer<typeof attendanceImportPreviewIdSchema>
+) {
+  const payload = attendanceImportPreviewIdSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const [preview] = await db
+    .select()
+    .from(timesheetAttendanceImportPreviews)
+    .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    .limit(1)
+  if (!preview || preview.status !== 'applied') throw new Error('Applied import not found.')
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period)
 
   await db.transaction(async (tx) => {
-    await tx.delete(timesheetAttendanceRealOverrides).where(eq(timesheetAttendanceRealOverrides.importPreviewId, payload.previewId));
-    await tx.update(timesheetAttendanceImportPreviews).set({ status: "rolled_back", rolledBackAt: now }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, importStatus: "rolled_back", savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "rolled_back", savedByUserId, updatedAt: now } });
-  });
+    await tx
+      .delete(timesheetAttendanceRealOverrides)
+      .where(eq(timesheetAttendanceRealOverrides.importPreviewId, payload.previewId))
+    await tx
+      .update(timesheetAttendanceImportPreviews)
+      .set({ status: 'rolled_back', rolledBackAt: now })
+      .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: preview.siteId,
+        period: preview.period,
+        importStatus: 'rolled_back',
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: { importStatus: 'rolled_back', savedByUserId, updatedAt: now },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.import_discarded", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: "Rolled back attendance import batch." });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.import_discarded',
+    entityType: 'timesheet_scheduling_import',
+    entityLabel: String(payload.previewId),
+    description: 'Rolled back attendance import batch.',
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
-export async function getAttendanceImportHistoryAction(input: z.infer<typeof attendanceImportHistorySchema>) {
-  const payload = attendanceImportHistorySchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  return db.select({ id: timesheetAttendanceImportPreviews.id, filename: timesheetAttendanceImportPreviews.filename, status: timesheetAttendanceImportPreviews.status, matchedCount: timesheetAttendanceImportPreviews.matchedCount, unmatchedCount: timesheetAttendanceImportPreviews.unmatchedCount, cellCount: timesheetAttendanceImportPreviews.cellCount, conflictCount: timesheetAttendanceImportPreviews.conflictCount, templateKind: timesheetAttendanceImportPreviews.templateKind, sheetName: timesheetAttendanceImportPreviews.sheetName, validationSummary: timesheetAttendanceImportPreviews.validationSummary, createdAt: timesheetAttendanceImportPreviews.createdAt, appliedAt: timesheetAttendanceImportPreviews.appliedAt, rolledBackAt: timesheetAttendanceImportPreviews.rolledBackAt }).from(timesheetAttendanceImportPreviews).where(and(eq(timesheetAttendanceImportPreviews.siteId, payload.siteId), eq(timesheetAttendanceImportPreviews.period, payload.period))).orderBy(desc(timesheetAttendanceImportPreviews.createdAt)).limit(10);
+export async function getAttendanceImportHistoryAction(
+  input: z.infer<typeof attendanceImportHistorySchema>
+) {
+  const payload = attendanceImportHistorySchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  return db
+    .select({
+      id: timesheetAttendanceImportPreviews.id,
+      filename: timesheetAttendanceImportPreviews.filename,
+      status: timesheetAttendanceImportPreviews.status,
+      matchedCount: timesheetAttendanceImportPreviews.matchedCount,
+      unmatchedCount: timesheetAttendanceImportPreviews.unmatchedCount,
+      cellCount: timesheetAttendanceImportPreviews.cellCount,
+      conflictCount: timesheetAttendanceImportPreviews.conflictCount,
+      templateKind: timesheetAttendanceImportPreviews.templateKind,
+      sheetName: timesheetAttendanceImportPreviews.sheetName,
+      validationSummary: timesheetAttendanceImportPreviews.validationSummary,
+      createdAt: timesheetAttendanceImportPreviews.createdAt,
+      appliedAt: timesheetAttendanceImportPreviews.appliedAt,
+      rolledBackAt: timesheetAttendanceImportPreviews.rolledBackAt,
+    })
+    .from(timesheetAttendanceImportPreviews)
+    .where(
+      and(
+        eq(timesheetAttendanceImportPreviews.siteId, payload.siteId),
+        eq(timesheetAttendanceImportPreviews.period, payload.period)
+      )
+    )
+    .orderBy(desc(timesheetAttendanceImportPreviews.createdAt))
+    .limit(10)
 }
 
-export async function saveAttendanceEmployeeAliasAction(input: z.infer<typeof saveAttendanceEmployeeAliasSchema>) {
-  const payload = saveAttendanceEmployeeAliasSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const now = new Date();
-  await db.insert(timesheetAttendanceEmployeeAliases).values({ siteId: payload.siteId, employeeId: payload.employeeId, aliasName: payload.aliasName, aliasSn: payload.aliasSn, source: payload.source, updatedAt: now }).onConflictDoUpdate({ target: [timesheetAttendanceEmployeeAliases.siteId, timesheetAttendanceEmployeeAliases.aliasName, timesheetAttendanceEmployeeAliases.aliasSn], set: { employeeId: payload.employeeId, source: payload.source, updatedAt: now } });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+export async function saveAttendanceEmployeeAliasAction(
+  input: z.infer<typeof saveAttendanceEmployeeAliasSchema>
+) {
+  const payload = saveAttendanceEmployeeAliasSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const now = new Date()
+  await db
+    .insert(timesheetAttendanceEmployeeAliases)
+    .values({
+      siteId: payload.siteId,
+      employeeId: payload.employeeId,
+      aliasName: payload.aliasName,
+      aliasSn: payload.aliasSn,
+      source: payload.source,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        timesheetAttendanceEmployeeAliases.siteId,
+        timesheetAttendanceEmployeeAliases.aliasName,
+        timesheetAttendanceEmployeeAliases.aliasSn,
+      ],
+      set: { employeeId: payload.employeeId, source: payload.source, updatedAt: now },
+    })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
-export async function deleteAttendanceEmployeeAliasAction(input: z.infer<typeof deleteAttendanceEmployeeAliasSchema>) {
-  const payload = deleteAttendanceEmployeeAliasSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  await db.delete(timesheetAttendanceEmployeeAliases).where(eq(timesheetAttendanceEmployeeAliases.id, payload.aliasId));
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+export async function deleteAttendanceEmployeeAliasAction(
+  input: z.infer<typeof deleteAttendanceEmployeeAliasSchema>
+) {
+  const payload = deleteAttendanceEmployeeAliasSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await db
+    .delete(timesheetAttendanceEmployeeAliases)
+    .where(eq(timesheetAttendanceEmployeeAliases.id, payload.aliasId))
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
-export async function discardAttendanceImportPreviewAction(input: z.infer<typeof attendanceImportPreviewIdSchema>) {
-  const payload = attendanceImportPreviewIdSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
-  if (!preview || preview.status !== "preview") throw new Error("Import preview not found.");
-  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
+export async function discardAttendanceImportPreviewAction(
+  input: z.infer<typeof attendanceImportPreviewIdSchema>
+) {
+  const payload = attendanceImportPreviewIdSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const [preview] = await db
+    .select()
+    .from(timesheetAttendanceImportPreviews)
+    .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    .limit(1)
+  if (!preview || preview.status !== 'preview') throw new Error('Import preview not found.')
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period)
 
   await db.transaction(async (tx) => {
-    await tx.update(timesheetAttendanceImportPreviews).set({ status: "discarded" }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, importStatus: "discarded", savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "discarded", savedByUserId, updatedAt: now } });
-  });
+    await tx
+      .update(timesheetAttendanceImportPreviews)
+      .set({ status: 'discarded' })
+      .where(eq(timesheetAttendanceImportPreviews.id, payload.previewId))
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: preview.siteId,
+        period: preview.period,
+        importStatus: 'discarded',
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: { importStatus: 'discarded', savedByUserId, updatedAt: now },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.import_discarded", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: "Discarded attendance import preview." });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.import_discarded',
+    entityType: 'timesheet_scheduling_import',
+    entityLabel: String(payload.previewId),
+    description: 'Discarded attendance import preview.',
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
-export async function clearAttendanceRealOverridesAction(input: z.infer<typeof clearAttendanceRealOverridesSchema>) {
-  const payload = clearAttendanceRealOverridesSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const conditions = [eq(timesheetAttendanceRealOverrides.siteId, payload.siteId), eq(timesheetAttendanceRealOverrides.period, payload.period)];
-  if (payload.source !== "all") conditions.push(eq(timesheetAttendanceRealOverrides.source, payload.source));
+export async function clearAttendanceRealOverridesAction(
+  input: z.infer<typeof clearAttendanceRealOverridesSchema>
+) {
+  const payload = clearAttendanceRealOverridesSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const conditions = [
+    eq(timesheetAttendanceRealOverrides.siteId, payload.siteId),
+    eq(timesheetAttendanceRealOverrides.period, payload.period),
+  ]
+  if (payload.source !== 'all')
+    conditions.push(eq(timesheetAttendanceRealOverrides.source, payload.source))
 
   await db.transaction(async (tx) => {
-    await tx.delete(timesheetAttendanceRealOverrides).where(and(...conditions));
-    await tx.update(timesheetAttendanceImportPreviews).set({ status: "discarded" }).where(and(eq(timesheetAttendanceImportPreviews.siteId, payload.siteId), eq(timesheetAttendanceImportPreviews.period, payload.period), eq(timesheetAttendanceImportPreviews.status, "preview")));
-    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, attendanceStatus: "draft", importStatus: "none", conflictCount: 0, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "draft", importStatus: "none", conflictCount: 0, savedByUserId, updatedAt: now } });
-  });
+    await tx.delete(timesheetAttendanceRealOverrides).where(and(...conditions))
+    await tx
+      .update(timesheetAttendanceImportPreviews)
+      .set({ status: 'discarded' })
+      .where(
+        and(
+          eq(timesheetAttendanceImportPreviews.siteId, payload.siteId),
+          eq(timesheetAttendanceImportPreviews.period, payload.period),
+          eq(timesheetAttendanceImportPreviews.status, 'preview')
+        )
+      )
+    await tx
+      .insert(timesheetSchedulingStatuses)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        attendanceStatus: 'draft',
+        importStatus: 'none',
+        conflictCount: 0,
+        savedByUserId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
+        set: {
+          attendanceStatus: 'draft',
+          importStatus: 'none',
+          conflictCount: 0,
+          savedByUserId,
+          updatedAt: now,
+        },
+      })
+  })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.attendance_cleared", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Cleared ${payload.source} attendance overrides.` });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.attendance_cleared',
+    entityType: 'timesheet_scheduling',
+    entityLabel: `${payload.siteId}:${payload.period}`,
+    description: `Cleared ${payload.source} attendance overrides.`,
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
 const saveSchedulingConfigSchema = z.object({
   siteId: z.number().int().positive(),
-  scheduleType: z.enum(["office", "shift"]),
+  scheduleType: z.enum(['office', 'shift']),
   rosterType: z.string().max(40),
   msaType: z.string().max(60),
   mealsType: z.string().max(60),
@@ -648,176 +1318,197 @@ const saveSchedulingConfigSchema = z.object({
   fieldBreakConfig: z.unknown().optional().nullable(),
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),
-});
+})
 
-export async function saveSchedulingConfigAction(input: z.infer<typeof saveSchedulingConfigSchema>) {
-  const payload = saveSchedulingConfigSchema.parse(input);
-  await requireSchedulingTimesheetAccess("edit");
-  await ensureSchedulingTimesheetTables();
-  const actorEmail = await getCurrentActorEmail();
-  const savedByUserId = await getCurrentActorUserId(actorEmail);
-  const now = new Date();
-  const [site] = await db.select({ id: sites.id }).from(sites).where(eq(sites.id, payload.siteId)).limit(1);
-  if (!site) return { ok: false, error: "Site not found" };
+export async function saveSchedulingConfigAction(
+  input: z.infer<typeof saveSchedulingConfigSchema>
+) {
+  const payload = saveSchedulingConfigSchema.parse(input)
+  await requireSchedulingTimesheetAccess('edit')
+  await ensureSchedulingTimesheetTables()
+  const actorEmail = await getCurrentActorEmail()
+  const savedByUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+  const [site] = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(eq(sites.id, payload.siteId))
+    .limit(1)
+  if (!site) return { ok: false, error: 'Site not found' }
 
-  await db.insert(timesheetSchedulingConfigs).values({ ...payload, savedByUserId, updatedAt: now }).onConflictDoUpdate({
-    target: [timesheetSchedulingConfigs.siteId],
-    set: {
-      scheduleType: payload.scheduleType,
-      rosterType: payload.rosterType,
-      msaType: payload.msaType,
-      mealsType: payload.mealsType,
-      overtimeType: payload.overtimeType,
-      fieldBreakConfig: payload.fieldBreakConfig,
-      allowanceVariables: payload.allowanceVariables,
-      overtimeVariables: payload.overtimeVariables,
-      savedByUserId,
-      updatedAt: now,
-    },
-  });
+  await db
+    .insert(timesheetSchedulingConfigs)
+    .values({ ...payload, savedByUserId, updatedAt: now })
+    .onConflictDoUpdate({
+      target: [timesheetSchedulingConfigs.siteId],
+      set: {
+        scheduleType: payload.scheduleType,
+        rosterType: payload.rosterType,
+        msaType: payload.msaType,
+        mealsType: payload.mealsType,
+        overtimeType: payload.overtimeType,
+        fieldBreakConfig: payload.fieldBreakConfig,
+        allowanceVariables: payload.allowanceVariables,
+        overtimeVariables: payload.overtimeVariables,
+        savedByUserId,
+        updatedAt: now,
+      },
+    })
 
-  await logAuditEvent({ actorEmail, action: "timesheet.config_saved", entityType: "timesheet_scheduling_config", entityLabel: String(payload.siteId), description: "Saved scheduling timesheet configuration." });
-  revalidatePath("/dashboard/scheduling-timesheet");
-  return { ok: true };
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.config_saved',
+    entityType: 'timesheet_scheduling_config',
+    entityLabel: String(payload.siteId),
+    description: 'Saved scheduling timesheet configuration.',
+  })
+  revalidatePath('/dashboard/scheduling-timesheet')
+  return { ok: true }
 }
 
 const saveActivityDraftSchema = z.object({
   employeeId: z.coerce.number().int().positive(),
-  activityCode: z.string().trim().max(4).optional().default(""),
-  activityType: z.string().trim().max(100).optional().default(""),
-  title: z.string().trim().max(200).optional().default(""),
-  unitNumber: z.string().trim().max(100).optional().default(""),
-  startTime: z.string().trim().optional().default(""),
-  endTime: z.string().trim().optional().default(""),
-  priority: z.string().trim().max(50).optional().default("Normal"),
+  activityCode: z.string().trim().max(4).optional().default(''),
+  activityType: z.string().trim().max(100).optional().default(''),
+  title: z.string().trim().max(200).optional().default(''),
+  unitNumber: z.string().trim().max(100).optional().default(''),
+  startTime: z.string().trim().optional().default(''),
+  endTime: z.string().trim().optional().default(''),
+  priority: z.string().trim().max(50).optional().default('Normal'),
   overtimeMinutes: z.coerce.number().int().min(0).max(720).optional().default(0),
-  remarks: z.string().trim().max(1000).optional().default(""),
-});
+  remarks: z.string().trim().max(1000).optional().default(''),
+})
 
 const reviewApprovalSchema = z.object({
   approvalId: z.coerce.number().int().positive(),
-  decision: z.enum(["approved", "rejected", "needs_correction"]),
+  decision: z.enum(['approved', 'rejected', 'needs_correction']),
   note: z.preprocess(
     (value) => (value === null || value === undefined ? undefined : value),
-    z.string().trim().max(1000).optional().default(""),
+    z.string().trim().max(1000).optional().default('')
   ),
-});
+})
 
 const bulkApproveApprovalSchema = z.object({
   approvalIds: z.array(z.coerce.number().int().positive()).min(1),
   note: z.preprocess(
     (value) => (value === null || value === undefined ? undefined : value),
-    z.string().trim().max(1000).optional().default(""),
+    z.string().trim().max(1000).optional().default('')
   ),
-});
+})
 
 const approvalCommentSchema = z.object({
   approvalId: z.coerce.number().int().positive(),
   comment: z.string().trim().min(3).max(1000),
-});
+})
 
 const cancelDraftSchema = z.object({
   submissionId: z.coerce.number().int().positive(),
-});
+})
 
 const createFormSectionSchema = z.object({
   versionId: z.coerce.number().int().positive(),
   label: z.string().trim().min(2).max(120),
-  description: z.string().trim().max(500).optional().default(""),
-  isCollapsible: z.preprocess((value) => value === "on" || value === "true", z.boolean()).optional().default(false),
-});
+  description: z.string().trim().max(500).optional().default(''),
+  isCollapsible: z
+    .preprocess((value) => value === 'on' || value === 'true', z.boolean())
+    .optional()
+    .default(false),
+})
 
 const createFormFieldSchema = z.object({
   versionId: z.coerce.number().int().positive(),
   sectionId: z.preprocess(
-    (value) => (value === "" || value == null ? null : value),
-    z.coerce.number().int().positive().nullable(),
+    (value) => (value === '' || value == null ? null : value),
+    z.coerce.number().int().positive().nullable()
   ),
   label: z.string().trim().min(2).max(120),
-  fieldKey: z.string().trim().max(80).optional().default(""),
+  fieldKey: z.string().trim().max(80).optional().default(''),
   fieldType: z.string().trim().min(2).max(80),
-  placeholder: z.string().trim().max(200).optional().default(""),
-  helpText: z.string().trim().max(500).optional().default(""),
-  defaultValue: z.string().trim().max(500).optional().default(""),
-  isRequired: z.preprocess((value) => value === "on" || value === "true", z.boolean()).optional().default(false),
-  optionLines: z.string().trim().max(3000).optional().default(""),
-  validationRuleType: z.string().trim().max(80).optional().default(""),
-  validationOperator: z.string().trim().max(40).optional().default("="),
-  validationValue: z.string().trim().max(500).optional().default(""),
-  validationMessage: z.string().trim().max(500).optional().default(""),
-  allowedMimeTypes: z.string().trim().max(300).optional().default(""),
+  placeholder: z.string().trim().max(200).optional().default(''),
+  helpText: z.string().trim().max(500).optional().default(''),
+  defaultValue: z.string().trim().max(500).optional().default(''),
+  isRequired: z
+    .preprocess((value) => value === 'on' || value === 'true', z.boolean())
+    .optional()
+    .default(false),
+  optionLines: z.string().trim().max(3000).optional().default(''),
+  validationRuleType: z.string().trim().max(80).optional().default(''),
+  validationOperator: z.string().trim().max(40).optional().default('='),
+  validationValue: z.string().trim().max(500).optional().default(''),
+  validationMessage: z.string().trim().max(500).optional().default(''),
+  allowedMimeTypes: z.string().trim().max(300).optional().default(''),
   maxSizeMb: z.coerce.number().min(0).max(100).optional().default(10),
-});
+})
 
 const formTemplateVersionSchema = z.object({
   versionId: z.coerce.number().int().positive(),
-});
+})
 
 const saveFormLayoutSchema = z.object({
   versionId: z.coerce.number().int().positive(),
   layoutJson: z.string().trim().min(2),
-});
+})
 
 const createWorkflowConditionSchema = z.object({
   workflowVersionId: z.coerce.number().int().positive(),
   parentConditionId: z.preprocess(
-    (value) => (value === "" || value == null ? null : value),
-    z.coerce.number().int().positive().nullable(),
+    (value) => (value === '' || value == null ? null : value),
+    z.coerce.number().int().positive().nullable()
   ),
   fieldKey: z.string().trim().min(2).max(120),
   operator: z.string().trim().min(1).max(40),
-  compareValue: z.string().trim().max(500).optional().default(""),
-  logicalJoin: z.enum(["AND", "OR"]).optional().default("AND"),
-  groupLabel: z.string().trim().max(120).optional().default("Custom Condition Group"),
-});
+  compareValue: z.string().trim().max(500).optional().default(''),
+  logicalJoin: z.enum(['AND', 'OR']).optional().default('AND'),
+  groupLabel: z.string().trim().max(120).optional().default('Custom Condition Group'),
+})
 
 const importUsersSchema = z.object({
-  rawCsv: z.string().trim().min(1, "CSV file is required."),
-  mappingJson: z.string().trim().min(2, "Mapping import belum lengkap."),
-});
+  rawCsv: z.string().trim().min(1, 'CSV file is required.'),
+  mappingJson: z.string().trim().min(2, 'Mapping import belum lengkap.'),
+})
 
 export type ImportUsersActionState = {
-  status: "idle" | "success" | "error";
-  message: string;
-  importedCount?: number;
-  updatedCount?: number;
-  skippedCount?: number;
-};
+  status: 'idle' | 'success' | 'error'
+  message: string
+  importedCount?: number
+  updatedCount?: number
+  skippedCount?: number
+}
 
 export type AdminMutationState = {
-  status: "idle" | "success" | "error";
-  message: string;
-};
+  status: 'idle' | 'success' | 'error'
+  message: string
+}
 
 const optionalFormString = z.preprocess(
   (value) => (value === null || value === undefined ? undefined : value),
-  z.string().trim().optional(),
-);
+  z.string().trim().optional()
+)
 
 const optionalPositiveInt = z.preprocess(
-  (value) => (value === "" || value === null || value === undefined ? undefined : value),
-  z.coerce.number().int().positive().optional(),
-);
+  (value) => (value === '' || value === null || value === undefined ? undefined : value),
+  z.coerce.number().int().positive().optional()
+)
 
 const navbarThemeSchema = z.object({
   headerBackgroundColor: z
     .string()
     .trim()
-    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Header color must be a valid hex color."),
-});
+    .regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, 'Header color must be a valid hex color.'),
+})
 
 const manageSecurityUserSchema = z.object({
   intent: z.enum([
-    "create-user",
-    "update-profile",
-    "ban-user",
-    "delete-user",
-    "change-role",
-    "change-password",
+    'create-user',
+    'update-profile',
+    'ban-user',
+    'delete-user',
+    'change-role',
+    'change-password',
   ]),
   employeeId: z.preprocess(
-    (value) => (value === "" || value === null || value === undefined ? undefined : value),
-    z.coerce.number().int().positive().optional(),
+    (value) => (value === '' || value === null || value === undefined ? undefined : value),
+    z.coerce.number().int().positive().optional()
   ),
   siteId: optionalPositiveInt,
   fullName: optionalFormString,
@@ -838,167 +1529,169 @@ const manageSecurityUserSchema = z.object({
   accessRole: optionalFormString,
   password: optionalFormString,
   newPassword: optionalFormString,
-});
+})
 
 const manageSecurityRoleSchema = z.object({
-  intent: z.enum([
-    "create-role",
-    "duplicate-role",
-    "delete-role",
-    "save-menu-permissions",
-  ]),
+  intent: z.enum(['create-role', 'duplicate-role', 'delete-role', 'save-menu-permissions']),
   roleId: optionalFormString,
   roleName: optionalFormString,
   description: optionalFormString,
   scope: optionalFormString,
   sourceRoleId: optionalFormString,
   permissionsJson: optionalFormString,
-});
+})
 
 const optionalRecordId = z.preprocess(
-  (value) => (value === "" || value === null || value === undefined ? undefined : value),
-  z.coerce.number().int().positive().optional(),
-);
+  (value) => (value === '' || value === null || value === undefined ? undefined : value),
+  z.coerce.number().int().positive().optional()
+)
 
 const optionalEmployeeId = z.preprocess(
-  (value) => (value === "" || value === "none" || value === null || value === undefined ? null : value),
-  z.coerce.number().int().positive().nullable(),
-);
+  (value) =>
+    value === '' || value === 'none' || value === null || value === undefined ? null : value,
+  z.coerce.number().int().positive().nullable()
+)
 
 const manageHseObservationSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   siteId: z.coerce.number().int().positive().optional(),
   employeeId: optionalEmployeeId.optional().default(null),
-  category: z.string().trim().max(120).optional().default("Observation"),
-  title: z.string().trim().max(200).optional().default(""),
-  location: z.string().trim().max(200).optional().default(""),
-  severity: z.string().trim().max(50).optional().default("Low"),
-  status: z.string().trim().max(50).optional().default("open"),
-  notes: z.string().trim().max(1000).optional().default(""),
-  observedAt: z.string().trim().optional().default(""),
-});
+  category: z.string().trim().max(120).optional().default('Observation'),
+  title: z.string().trim().max(200).optional().default(''),
+  location: z.string().trim().max(200).optional().default(''),
+  severity: z.string().trim().max(50).optional().default('Low'),
+  status: z.string().trim().max(50).optional().default('open'),
+  notes: z.string().trim().max(1000).optional().default(''),
+  observedAt: z.string().trim().optional().default(''),
+})
 
 const manageHseIncidentSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   siteId: z.coerce.number().int().positive().optional(),
-  type: z.string().trim().max(120).optional().default("Incident"),
-  title: z.string().trim().max(200).optional().default(""),
-  unitNumber: z.string().trim().max(120).optional().default("-"),
-  impact: z.string().trim().max(500).optional().default(""),
-  status: z.string().trim().max(50).optional().default("investigating"),
-  reportedAt: z.string().trim().optional().default(""),
-});
+  type: z.string().trim().max(120).optional().default('Incident'),
+  title: z.string().trim().max(200).optional().default(''),
+  unitNumber: z.string().trim().max(120).optional().default('-'),
+  impact: z.string().trim().max(500).optional().default(''),
+  status: z.string().trim().max(50).optional().default('investigating'),
+  reportedAt: z.string().trim().optional().default(''),
+})
 
 const manageTrainingRecordSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
-  trainingName: z.string().trim().max(200).optional().default(""),
-  provider: z.string().trim().max(160).optional().default("-"),
-  completedYear: z.coerce.number().int().min(1900).max(2100).optional().default(new Date().getFullYear()),
-  expiresAt: z.string().trim().optional().default(""),
-  status: z.string().trim().max(50).optional().default("active"),
-});
+  trainingName: z.string().trim().max(200).optional().default(''),
+  provider: z.string().trim().max(160).optional().default('-'),
+  completedYear: z.coerce
+    .number()
+    .int()
+    .min(1900)
+    .max(2100)
+    .optional()
+    .default(new Date().getFullYear()),
+  expiresAt: z.string().trim().optional().default(''),
+  status: z.string().trim().max(50).optional().default('active'),
+})
 
 const manageWellnessRecordSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
-  metricType: z.string().trim().max(120).optional().default("Fit for Work"),
-  metricValue: z.string().trim().max(120).optional().default(""),
-  status: z.string().trim().max(50).optional().default("healthy"),
-  notes: z.string().trim().max(1000).optional().default(""),
-  recordedAt: z.string().trim().optional().default(""),
-});
+  metricType: z.string().trim().max(120).optional().default('Fit for Work'),
+  metricValue: z.string().trim().max(120).optional().default(''),
+  status: z.string().trim().max(50).optional().default('healthy'),
+  notes: z.string().trim().max(1000).optional().default(''),
+  recordedAt: z.string().trim().optional().default(''),
+})
 
 const manageAttendanceRecordSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
   siteId: z.coerce.number().int().positive().optional(),
-  eventType: z.string().trim().max(80).optional().default("checked-in"),
-  eventTime: z.string().trim().optional().default(""),
-  status: z.string().trim().max(80).optional().default("verified"),
-  locationNote: z.string().trim().max(1000).optional().default(""),
-  photoUrl: z.string().trim().max(1000).optional().default(""),
-  latitude: z.string().trim().max(80).optional().default(""),
-  longitude: z.string().trim().max(80).optional().default(""),
-});
+  eventType: z.string().trim().max(80).optional().default('checked-in'),
+  eventTime: z.string().trim().optional().default(''),
+  status: z.string().trim().max(80).optional().default('verified'),
+  locationNote: z.string().trim().max(1000).optional().default(''),
+  photoUrl: z.string().trim().max(1000).optional().default(''),
+  latitude: z.string().trim().max(80).optional().default(''),
+  longitude: z.string().trim().max(80).optional().default(''),
+})
 
 const manageTimesheetEntrySchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
   siteId: z.coerce.number().int().positive().optional(),
-  periodLabel: z.string().trim().max(160).optional().default(""),
+  periodLabel: z.string().trim().max(160).optional().default(''),
   regularMinutes: z.coerce.number().int().min(0).max(43200).optional().default(0),
   overtimeMinutes: z.coerce.number().int().min(0).max(43200).optional().default(0),
   overtimeAmount: z.coerce.number().int().min(0).max(1_000_000_000).optional().default(0),
-  status: z.string().trim().max(50).optional().default("pending"),
-});
+  status: z.string().trim().max(50).optional().default('pending'),
+})
 
 const manageDailyReportSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: optionalRecordId,
   siteId: z.coerce.number().int().positive().optional(),
-  reportDate: z.string().trim().optional().default(""),
-  customerName: z.string().trim().max(200).optional().default(""),
+  reportDate: z.string().trim().optional().default(''),
+  customerName: z.string().trim().max(200).optional().default(''),
   totalSections: z.coerce.number().int().min(1).max(50).optional().default(4),
   readySections: z.coerce.number().int().min(0).max(50).optional().default(0),
   jobsCompleted: z.coerce.number().int().min(0).max(10000).optional().default(0),
   manpowerPresent: z.coerce.number().int().min(0).max(10000).optional().default(0),
-  hseSummary: z.string().trim().max(1000).optional().default(""),
-  status: z.string().trim().max(50).optional().default("draft"),
-});
+  hseSummary: z.string().trim().max(1000).optional().default(''),
+  status: z.string().trim().max(50).optional().default('draft'),
+})
 
 const managePointEventSchema = z.object({
-  intent: z.enum(["create", "update", "delete"]),
+  intent: z.enum(['create', 'update', 'delete']),
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
-  category: z.string().trim().max(120).optional().default("Manual Adjustment"),
-  label: z.string().trim().max(200).optional().default(""),
+  category: z.string().trim().max(120).optional().default('Manual Adjustment'),
+  label: z.string().trim().max(200).optional().default(''),
   points: z.coerce.number().int().min(-10000).max(10000).optional().default(0),
-});
+})
 
 function parseDateTime(value: string) {
-  const date = new Date(value);
+  const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {
-    throw new Error("Activity date is invalid.");
+    throw new Error('Activity date is invalid.')
   }
 
-  return date;
+  return date
 }
 
 function getPointsForPriority(priority: string) {
   switch (priority.toLowerCase()) {
-    case "emergency":
-      return 20;
-    case "safety":
-      return 10;
+    case 'emergency':
+      return 20
+    case 'safety':
+      return 10
     default:
-      return 5;
+      return 5
   }
 }
 
 function getPeriodLabel(date: Date) {
-  const month = date.toLocaleString("en-US", { month: "long" });
-  const week = Math.max(1, Math.ceil(date.getDate() / 7));
-  return `${month} ${date.getFullYear()} â€¢ Week ${week}`;
+  const month = date.toLocaleString('en-US', { month: 'long' })
+  const week = Math.max(1, Math.ceil(date.getDate() / 7))
+  return `${month} ${date.getFullYear()} â€¢ Week ${week}`
 }
 
 function getPendingActivityStatus(level: number) {
   if (level > 0) {
-    return `Pending L${level}`;
+    return `Pending L${level}`
   }
 
-  return "Pending Approval";
+  return 'Pending Approval'
 }
 
 function getRouteStepGroup(steps: ResolvedApprovalStep[], stepOrder: number) {
-  return steps.filter((step) => step.stepOrder === stepOrder);
+  return steps.filter((step) => step.stepOrder === stepOrder)
 }
 
 function getNextRouteStepGroup(steps: ResolvedApprovalStep[], currentStepOrder: number) {
@@ -1006,21 +1699,21 @@ function getNextRouteStepGroup(steps: ResolvedApprovalStep[], currentStepOrder: 
     steps
       .map((step) => step.stepOrder)
       .filter((stepOrder) => stepOrder > currentStepOrder)
-      .sort((left, right) => left - right)[0] ?? null;
+      .sort((left, right) => left - right)[0] ?? null
 
-  return nextStepOrder == null ? [] : getRouteStepGroup(steps, nextStepOrder);
+  return nextStepOrder == null ? [] : getRouteStepGroup(steps, nextStepOrder)
 }
 
 async function createPendingApprovalsForStepGroup(params: {
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0];
-  activityId: number;
-  stepGroup: ResolvedApprovalStep[];
-  approvalRoute: ApprovalRouteResolution;
-  submittedAt: Date;
-  overtimeMinutes: number;
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0]
+  activityId: number
+  stepGroup: ResolvedApprovalStep[]
+  approvalRoute: ApprovalRouteResolution
+  submittedAt: Date
+  overtimeMinutes: number
 }) {
   if (params.stepGroup.length === 0) {
-    return;
+    return
   }
 
   const existingApprovals = await params.tx
@@ -1033,17 +1726,17 @@ async function createPendingApprovalsForStepGroup(params: {
     .where(
       and(
         eq(approvals.activityId, params.activityId),
-        eq(approvals.level, params.stepGroup[0].stepOrder),
-      ),
-    );
+        eq(approvals.level, params.stepGroup[0].stepOrder)
+      )
+    )
 
   const existingStepIds = new Set(
-    existingApprovals.map((row) => `${row.level}:${row.approvalStepId ?? "none"}`),
-  );
+    existingApprovals.map((row) => `${row.level}:${row.approvalStepId ?? 'none'}`)
+  )
 
   const rowsToInsert = params.stepGroup
     .filter(
-      (step) => !existingStepIds.has(`${step.stepOrder}:${step.approvalMatrixStepId ?? "none"}`),
+      (step) => !existingStepIds.has(`${step.stepOrder}:${step.approvalMatrixStepId ?? 'none'}`)
     )
     .map((step) => ({
       activityId: params.activityId,
@@ -1053,41 +1746,41 @@ async function createPendingApprovalsForStepGroup(params: {
       approverNodeId: step.approverNodeId,
       approvalMatrixId: params.approvalRoute.matrixId,
       approvalStepId: step.approvalMatrixStepId,
-      status: "pending",
+      status: 'pending',
       submittedAt: params.submittedAt,
       overtimeMinutes: params.overtimeMinutes,
       resolutionSource: step.resolutionSource,
       routeSnapshot: serializeApprovalRoute(params.approvalRoute),
-    }));
+    }))
 
   if (rowsToInsert.length > 0) {
-    await params.tx.insert(approvals).values(rowsToInsert);
+    await params.tx.insert(approvals).values(rowsToInsert)
   }
 }
 
 function parseApprovalRouteSnapshot(routeSnapshot: string) {
-  const trimmedSnapshot = routeSnapshot.trim();
+  const trimmedSnapshot = routeSnapshot.trim()
 
   if (!trimmedSnapshot) {
-    return null;
+    return null
   }
 
   try {
-    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution;
+    return JSON.parse(trimmedSnapshot) as ApprovalRouteResolution
   } catch {
-    return null;
+    return null
   }
 }
 
 async function applyApprovalDecision(params: {
-  approvalId: number;
-  decision: "approved" | "rejected" | "needs_correction";
-  note: string;
+  approvalId: number
+  decision: 'approved' | 'rejected' | 'needs_correction'
+  note: string
 }) {
-  const trimmedNote = params.note.trim();
+  const trimmedNote = params.note.trim()
 
-  if (params.decision === "rejected" && !trimmedNote) {
-    throw new Error("Rejection comment is required.");
+  if (params.decision === 'rejected' && !trimmedNote) {
+    throw new Error('Rejection comment is required.')
   }
 
   const [approval] = await db
@@ -1115,42 +1808,44 @@ async function applyApprovalDecision(params: {
     .from(approvals)
     .innerJoin(activities, eq(approvals.activityId, activities.id))
     .where(eq(approvals.id, params.approvalId))
-    .limit(1);
+    .limit(1)
 
   if (!approval) {
-    throw new Error("Approval not found.");
+    throw new Error('Approval not found.')
   }
 
-  if (approval.status !== "pending") {
-    return false;
+  if (approval.status !== 'pending') {
+    return false
   }
 
-  const now = new Date();
-  const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot);
+  const now = new Date()
+  const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
   const currentStepIndex =
     approvalRoute?.steps.findIndex(
       (step) =>
         step.stepOrder === approval.level &&
-        (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId),
-    ) ?? -1;
+        (approval.approvalStepId == null || step.approvalMatrixStepId === approval.approvalStepId)
+    ) ?? -1
   const currentStep =
-    approvalRoute != null && currentStepIndex >= 0 ? approvalRoute.steps[currentStepIndex] ?? null : null;
+    approvalRoute != null && currentStepIndex >= 0
+      ? (approvalRoute.steps[currentStepIndex] ?? null)
+      : null
   const currentStepGroup =
     approvalRoute != null && currentStep != null
       ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
-      : [];
+      : []
   const nextStepGroup =
     approvalRoute != null && currentStep != null
       ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
-      : [];
+      : []
 
   await db.transaction(async (tx) => {
     const defaultDecisionMessage =
-      params.decision === "approved"
-        ? "Approval diteruskan sesuai workflow."
-        : params.decision === "rejected"
-          ? "Request ditolak pada step ini."
-          : "Request dikembalikan untuk revisi.";
+      params.decision === 'approved'
+        ? 'Approval diteruskan sesuai workflow.'
+        : params.decision === 'rejected'
+          ? 'Request ditolak pada step ini.'
+          : 'Request dikembalikan untuk revisi.'
 
     await tx
       .update(approvals)
@@ -1164,66 +1859,66 @@ async function applyApprovalDecision(params: {
           at: now.toISOString(),
         }),
       })
-      .where(eq(approvals.id, approval.approvalId));
+      .where(eq(approvals.id, approval.approvalId))
 
-    if (params.decision === "needs_correction") {
+    if (params.decision === 'needs_correction') {
       if (currentStepGroup.length > 1) {
         await tx
           .update(approvals)
           .set({
-            status: "skipped",
+            status: 'skipped',
             reviewedAt: now,
           })
           .where(
             and(
               eq(approvals.activityId, approval.activityId),
               eq(approvals.level, approval.level),
-              eq(approvals.status, "pending"),
-            ),
-          );
+              eq(approvals.status, 'pending')
+            )
+          )
       }
 
       await tx
         .update(activities)
         .set({
-          status: "Needs Correction",
+          status: 'Needs Correction',
         })
-        .where(eq(activities.id, approval.activityId));
+        .where(eq(activities.id, approval.activityId))
 
-      return;
+      return
     }
 
-    if (params.decision === "rejected") {
+    if (params.decision === 'rejected') {
       if (currentStepGroup.length > 1) {
         await tx
           .update(approvals)
           .set({
-            status: "skipped",
+            status: 'skipped',
             reviewedAt: now,
           })
           .where(
             and(
               eq(approvals.activityId, approval.activityId),
               eq(approvals.level, approval.level),
-              eq(approvals.status, "pending"),
-            ),
-          );
+              eq(approvals.status, 'pending')
+            )
+          )
       }
 
       await tx
         .update(activities)
         .set({
-          status: "Rejected",
+          status: 'Rejected',
         })
-        .where(eq(activities.id, approval.activityId));
+        .where(eq(activities.id, approval.activityId))
 
-      return;
+      return
     }
 
     if (
       currentStep != null &&
-      normalizeLookupValue(currentStep.approvalMode) !== "parallel_any" &&
-      normalizeLookupValue(currentStep.approvalMode) !== "any_one"
+      normalizeLookupValue(currentStep.approvalMode) !== 'parallel_any' &&
+      normalizeLookupValue(currentStep.approvalMode) !== 'any_one'
     ) {
       const sameLevelApprovals = await tx
         .select({
@@ -1232,38 +1927,35 @@ async function applyApprovalDecision(params: {
         })
         .from(approvals)
         .where(
-          and(
-            eq(approvals.activityId, approval.activityId),
-            eq(approvals.level, approval.level),
-          ),
-        );
+          and(eq(approvals.activityId, approval.activityId), eq(approvals.level, approval.level))
+        )
 
-      if (sameLevelApprovals.some((row) => row.status === "pending")) {
+      if (sameLevelApprovals.some((row) => row.status === 'pending')) {
         await tx
           .update(activities)
           .set({
             status: getPendingActivityStatus(approval.level),
           })
-          .where(eq(activities.id, approval.activityId));
+          .where(eq(activities.id, approval.activityId))
 
-        return;
+        return
       }
     }
 
     if (
       currentStep != null &&
-      (normalizeLookupValue(currentStep.approvalMode) === "parallel_any" ||
-        normalizeLookupValue(currentStep.approvalMode) === "any_one")
+      (normalizeLookupValue(currentStep.approvalMode) === 'parallel_any' ||
+        normalizeLookupValue(currentStep.approvalMode) === 'any_one')
     ) {
       await tx
         .update(approvals)
         .set({
-          status: "skipped",
+          status: 'skipped',
           reviewedAt: now,
-          decisionNote: appendApprovalNoteEntry("", {
-            kind: "system",
+          decisionNote: appendApprovalNoteEntry('', {
+            kind: 'system',
             actor: approval.approverName,
-            message: "Step parallel-any diselesaikan oleh approver lain pada level yang sama.",
+            message: 'Step parallel-any diselesaikan oleh approver lain pada level yang sama.',
             at: now.toISOString(),
           }),
         })
@@ -1271,9 +1963,9 @@ async function applyApprovalDecision(params: {
           and(
             eq(approvals.activityId, approval.activityId),
             eq(approvals.level, approval.level),
-            eq(approvals.status, "pending"),
-          ),
-        );
+            eq(approvals.status, 'pending')
+          )
+        )
     }
 
     if (nextStepGroup.length > 0 && approvalRoute != null) {
@@ -1284,16 +1976,16 @@ async function applyApprovalDecision(params: {
         approvalRoute,
         submittedAt: now,
         overtimeMinutes: approval.overtimeMinutes,
-      });
+      })
 
       await tx
         .update(activities)
         .set({
           status: getPendingActivityStatus(nextStepGroup[0].stepOrder),
         })
-        .where(eq(activities.id, approval.activityId));
+        .where(eq(activities.id, approval.activityId))
 
-      return;
+      return
     }
 
     if (approvalRoute == null || currentStepIndex < 0) {
@@ -1302,13 +1994,13 @@ async function applyApprovalDecision(params: {
         activityType: approval.activityType,
         priority: approval.priority,
         overtimeMinutes: approval.overtimeMinutes,
-        transactionType: "activity",
+        transactionType: 'activity',
         at: approval.endTime,
-      });
-      const fallbackNextStep = fallbackRoute.steps.find((step) => step.stepOrder > approval.level);
+      })
+      const fallbackNextStep = fallbackRoute.steps.find((step) => step.stepOrder > approval.level)
 
       if (fallbackNextStep) {
-        const fallbackNextGroup = getRouteStepGroup(fallbackRoute.steps, fallbackNextStep.stepOrder);
+        const fallbackNextGroup = getRouteStepGroup(fallbackRoute.steps, fallbackNextStep.stepOrder)
         await createPendingApprovalsForStepGroup({
           tx,
           activityId: approval.activityId,
@@ -1316,26 +2008,26 @@ async function applyApprovalDecision(params: {
           approvalRoute: fallbackRoute,
           submittedAt: now,
           overtimeMinutes: approval.overtimeMinutes,
-        });
+        })
 
         await tx
           .update(activities)
           .set({
             status: getPendingActivityStatus(fallbackNextStep.stepOrder),
           })
-          .where(eq(activities.id, approval.activityId));
+          .where(eq(activities.id, approval.activityId))
 
-        return;
+        return
       }
     }
 
     const durationMinutes = Math.max(
       0,
-      Math.round((approval.endTime.getTime() - approval.startTime.getTime()) / 60000),
-    );
-    const regularMinutes = Math.max(0, durationMinutes - approval.overtimeMinutes);
-    const overtimeRate = 70000;
-    const periodLabel = getPeriodLabel(approval.endTime);
+      Math.round((approval.endTime.getTime() - approval.startTime.getTime()) / 60000)
+    )
+    const regularMinutes = Math.max(0, durationMinutes - approval.overtimeMinutes)
+    const overtimeRate = 70000
+    const periodLabel = getPeriodLabel(approval.endTime)
 
     const [existingTimesheet] = await tx
       .select({
@@ -1349,10 +2041,10 @@ async function applyApprovalDecision(params: {
         and(
           eq(timesheetEntries.employeeId, approval.employeeId),
           eq(timesheetEntries.siteId, approval.siteId),
-          eq(timesheetEntries.periodLabel, periodLabel),
-        ),
+          eq(timesheetEntries.periodLabel, periodLabel)
+        )
       )
-      .limit(1);
+      .limit(1)
 
     if (existingTimesheet) {
       await tx
@@ -1363,10 +2055,10 @@ async function applyApprovalDecision(params: {
           overtimeAmount:
             existingTimesheet.overtimeAmount +
             Math.round((approval.overtimeMinutes / 60) * overtimeRate),
-          status: "ready_for_payroll",
+          status: 'ready_for_payroll',
           updatedAt: now,
         })
-        .where(eq(timesheetEntries.id, existingTimesheet.id));
+        .where(eq(timesheetEntries.id, existingTimesheet.id))
     } else {
       await tx.insert(timesheetEntries).values({
         employeeId: approval.employeeId,
@@ -1375,9 +2067,9 @@ async function applyApprovalDecision(params: {
         regularMinutes,
         overtimeMinutes: approval.overtimeMinutes,
         overtimeAmount: Math.round((approval.overtimeMinutes / 60) * overtimeRate),
-        status: "ready_for_payroll",
+        status: 'ready_for_payroll',
         updatedAt: now,
-      });
+      })
     }
 
     if (approval.submissionTime != null) {
@@ -1385,32 +2077,29 @@ async function applyApprovalDecision(params: {
         .select({ id: pointEvents.id })
         .from(pointEvents)
         .where(
-          and(
-            eq(pointEvents.sourceType, "activity"),
-            eq(pointEvents.sourceId, approval.activityId),
-          ),
+          and(eq(pointEvents.sourceType, 'activity'), eq(pointEvents.sourceId, approval.activityId))
         )
-        .limit(1);
+        .limit(1)
 
       if (!existingAwardEvent) {
-        const netPoints = approval.pointsAwarded - approval.penaltyDeducted;
+        const netPoints = approval.pointsAwarded - approval.penaltyDeducted
         const [employeePointState] = await tx
           .select({
             totalPoints: employees.totalPoints,
           })
           .from(employees)
           .where(eq(employees.id, approval.employeeId))
-          .limit(1);
+          .limit(1)
 
         if (employeePointState) {
-          const updatedBalance = Math.max(0, employeePointState.totalPoints + netPoints);
+          const updatedBalance = Math.max(0, employeePointState.totalPoints + netPoints)
 
           await tx.insert(pointEvents).values({
             employeeId: approval.employeeId,
-            transactionType: netPoints >= 0 ? "reward" : "penalty",
-            sourceType: "activity",
+            transactionType: netPoints >= 0 ? 'reward' : 'penalty',
+            sourceType: 'activity',
             sourceId: approval.activityId,
-            category: "Daily Activity Approval",
+            category: 'Daily Activity Approval',
             label: `${approval.activityTitle} â€¢ Approved`,
             points: netPoints,
             balanceAfter: updatedBalance,
@@ -1420,16 +2109,16 @@ async function applyApprovalDecision(params: {
               penaltyDeducted: approval.penaltyDeducted,
             }),
             createdAt: now,
-          });
+          })
 
           await tx
             .update(employees)
             .set({
               totalPoints: updatedBalance,
             })
-            .where(eq(employees.id, approval.employeeId));
-          
-          await evaluatePointThresholdBadges(tx, approval.employeeId, updatedBalance);
+            .where(eq(employees.id, approval.employeeId))
+
+          await evaluatePointThresholdBadges(tx, approval.employeeId, updatedBalance)
         }
       }
     }
@@ -1437,111 +2126,111 @@ async function applyApprovalDecision(params: {
     await tx
       .update(activities)
       .set({
-        status: "Approved",
+        status: 'Approved',
       })
-      .where(eq(activities.id, approval.activityId));
-  });
+      .where(eq(activities.id, approval.activityId))
+  })
 
-  await syncActivityWorkflowArtifacts(approval.activityId);
-  await runApprovalAutomationTick();
+  await syncActivityWorkflowArtifacts(approval.activityId)
+  await runApprovalAutomationTick()
 
-  return true;
+  return true
 }
 
 function normalizeEmail(value: string) {
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase()
 }
 
 function parseJoinYear(value: string) {
-  const digits = value.replace(/\D/g, "");
-  const parsed = Number.parseInt(digits, 10);
+  const digits = value.replace(/\D/g, '')
+  const parsed = Number.parseInt(digits, 10)
 
   if (Number.isNaN(parsed) || parsed < 1980 || parsed > 2100) {
-    return new Date().getFullYear();
+    return new Date().getFullYear()
   }
 
-  return parsed;
+  return parsed
 }
 
 function normalizeEmploymentStatus(value: string) {
-  const normalized = value.trim().toLowerCase();
+  const normalized = value.trim().toLowerCase()
 
   if (!normalized) {
-    return { status: "active", isActive: true };
+    return { status: 'active', isActive: true }
   }
 
   if (
-    normalized.includes("inactive") ||
-    normalized.includes("nonaktif") ||
-    normalized.includes("suspend") ||
-    normalized.includes("resign")
+    normalized.includes('inactive') ||
+    normalized.includes('nonaktif') ||
+    normalized.includes('suspend') ||
+    normalized.includes('resign')
   ) {
     return {
-      status: normalized.includes("resign") ? "resigned" : "inactive",
+      status: normalized.includes('resign') ? 'resigned' : 'inactive',
       isActive: false,
-    };
+    }
   }
 
-  if (normalized.includes("probation")) {
-    return { status: "probation", isActive: true };
+  if (normalized.includes('probation')) {
+    return { status: 'probation', isActive: true }
   }
 
-  if (normalized.includes("cuti") || normalized.includes("leave")) {
-    return { status: "on_leave", isActive: true };
+  if (normalized.includes('cuti') || normalized.includes('leave')) {
+    return { status: 'on_leave', isActive: true }
   }
 
-  if (normalized.includes("contract") || normalized.includes("kontrak")) {
-    return { status: "contract", isActive: true };
+  if (normalized.includes('contract') || normalized.includes('kontrak')) {
+    return { status: 'contract', isActive: true }
   }
 
-  return { status: normalized.replace(/\s+/g, "_"), isActive: true };
+  return { status: normalized.replace(/\s+/g, '_'), isActive: true }
 }
 
 function parseOptionalManagerId(value: string | undefined) {
-  if (!value || value === "none") {
-    return null;
+  if (!value || value === 'none') {
+    return null
   }
 
-  const parsed = Number.parseInt(value, 10);
-  return Number.isNaN(parsed) ? null : parsed;
+  const parsed = Number.parseInt(value, 10)
+  return Number.isNaN(parsed) ? null : parsed
 }
 
 function normalizeLookupValue(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
+  return (value ?? '').trim().toLowerCase()
 }
 
 function extractActivitySupplementalPayload(formData: FormData) {
   const checklistCompletion = formData
-    .getAll("checklistCompletion")
+    .getAll('checklistCompletion')
     .map((value) => `${value}`.trim())
-    .filter(Boolean);
+    .filter(Boolean)
   const additionalWatchers = formData
-    .getAll("additionalWatchers")
+    .getAll('additionalWatchers')
     .map((value) => `${value}`.trim())
-    .filter(Boolean);
+    .filter(Boolean)
 
   return {
-    workDate: `${formData.get("workDate") ?? ""}`.trim(),
-    shift: `${formData.get("shift") ?? ""}`.trim(),
-    riskCategory: `${formData.get("riskCategory") ?? ""}`.trim(),
-    referenceCode: `${formData.get("referenceCode") ?? ""}`.trim(),
-    manpowerInvolved: `${formData.get("manpowerInvolved") ?? ""}`.trim(),
+    workDate: `${formData.get('workDate') ?? ''}`.trim(),
+    shift: `${formData.get('shift') ?? ''}`.trim(),
+    riskCategory: `${formData.get('riskCategory') ?? ''}`.trim(),
+    referenceCode: `${formData.get('referenceCode') ?? ''}`.trim(),
+    manpowerInvolved: `${formData.get('manpowerInvolved') ?? ''}`.trim(),
     checklistCompletion,
-    department: `${formData.get("department") ?? ""}`.trim(),
-    section: `${formData.get("section") ?? ""}`.trim(),
-    photoAttachmentUrl: `${formData.get("photoAttachmentUrl") ?? ""}`.trim(),
-    documentAttachmentUrl: `${formData.get("documentAttachmentUrl") ?? ""}`.trim(),
-    signatureName: `${formData.get("signatureName") ?? ""}`.trim(),
-    latitude: `${formData.get("latitude") ?? ""}`.trim(),
-    longitude: `${formData.get("longitude") ?? ""}`.trim(),
+    department: `${formData.get('department') ?? ''}`.trim(),
+    section: `${formData.get('section') ?? ''}`.trim(),
+    photoAttachmentUrl: `${formData.get('photoAttachmentUrl') ?? ''}`.trim(),
+    documentAttachmentUrl: `${formData.get('documentAttachmentUrl') ?? ''}`.trim(),
+    signatureName: `${formData.get('signatureName') ?? ''}`.trim(),
+    latitude: `${formData.get('latitude') ?? ''}`.trim(),
+    longitude: `${formData.get('longitude') ?? ''}`.trim(),
     additionalWatchers,
-  };
+  }
 }
 
 async function resolveEmployeeGovernanceIds(params: {
-  department: string;
-  section: string;
-  jobTitle: string;
+  department: string
+  section: string
+  jobTitle: string
 }) {
   const [departments, sections, positions] = await Promise.all([
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments),
@@ -1559,34 +2248,35 @@ async function resolveEmployeeGovernanceIds(params: {
         departmentId: masterPositions.departmentId,
       })
       .from(masterPositions),
-  ]);
+  ])
 
   const department =
-    departments.find((item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.department)) ??
-    null;
+    departments.find(
+      (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.department)
+    ) ?? null
   const section =
     sections.find(
       (item) =>
         normalizeLookupValue(item.name) === normalizeLookupValue(params.section) &&
-        (department?.id == null || item.departmentId === department.id),
-    ) ?? null;
+        (department?.id == null || item.departmentId === department.id)
+    ) ?? null
   const position =
     positions.find(
       (item) =>
         normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle) &&
-        (department?.id == null || item.departmentId === department.id),
-    ) ?? null;
+        (department?.id == null || item.departmentId === department.id)
+    ) ?? null
 
   return {
     departmentId: department?.id ?? null,
     sectionId: section?.id ?? null,
     positionId: position?.id ?? null,
-  };
+  }
 }
 
 async function resolveDefaultOrgNodeId(positionId: number | null) {
   if (positionId == null) {
-    return null;
+    return null
   }
 
   const [node] = await db
@@ -1595,50 +2285,50 @@ async function resolveDefaultOrgNodeId(positionId: number | null) {
     .leftJoin(orgChartStructures, eq(orgChartNodes.structureId, orgChartStructures.id))
     .where(eq(orgChartNodes.positionId, positionId))
     .orderBy(desc(orgChartStructures.isDefault), asc(orgChartNodes.id))
-    .limit(1);
+    .limit(1)
 
-  return node?.id ?? null;
+  return node?.id ?? null
 }
 
 function parseRoleId(value: string | undefined) {
   if (!value) {
-    return null;
+    return null
   }
 
-  const parsed = Number.parseInt(value, 10);
-  return Number.isNaN(parsed) ? null : parsed;
+  const parsed = Number.parseInt(value, 10)
+  return Number.isNaN(parsed) ? null : parsed
 }
 
 function normalizeProfileImageValue(value: string | undefined) {
-  const trimmedValue = value?.trim() ?? "";
+  const trimmedValue = value?.trim() ?? ''
 
   if (!trimmedValue) {
-    return "";
+    return ''
   }
 
-  if (trimmedValue.startsWith("data:image/")) {
+  if (trimmedValue.startsWith('data:image/')) {
     if (trimmedValue.length > 3_000_000) {
-      throw new Error("Profile photo too large. Max 2MB.");
+      throw new Error('Profile photo too large. Max 2MB.')
     }
 
-    return trimmedValue;
+    return trimmedValue
   }
 
   try {
-    const parsedUrl = new URL(trimmedValue);
+    const parsedUrl = new URL(trimmedValue)
 
-    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-      throw new Error("URL protocol is not supported.");
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error('URL protocol is not supported.')
     }
 
-    return parsedUrl.toString();
+    return parsedUrl.toString()
   } catch {
-    throw new Error("Profile photo format is invalid.");
+    throw new Error('Profile photo format is invalid.')
   }
 }
 
 function normalizeAuthEmail(email: string) {
-  return email.trim().toLowerCase();
+  return email.trim().toLowerCase()
 }
 
 async function upsertCredentialAccount({
@@ -1647,57 +2337,54 @@ async function upsertCredentialAccount({
   password,
   now,
 }: {
-  authUserId: string;
-  email: string;
-  password: string;
-  now: Date;
+  authUserId: string
+  email: string
+  password: string
+  now: Date
 }) {
-  const normalizedEmail = normalizeAuthEmail(email);
-  const passwordHash = await hashPassword(password);
+  const normalizedEmail = normalizeAuthEmail(email)
+  const passwordHash = await hashPassword(password)
 
   const [existingCredential] = await db
     .select({ id: account.id })
     .from(account)
     .where(
       and(
-        eq(account.providerId, "credential"),
+        eq(account.providerId, 'credential'),
         or(
           eq(account.userId, authUserId),
           eq(account.accountId, normalizedEmail),
-          eq(account.accountId, authUserId),
-        ),
-      ),
+          eq(account.accountId, authUserId)
+        )
+      )
     )
-    .limit(1);
+    .limit(1)
 
   const credentialValues = {
     accountId: normalizedEmail,
-    providerId: "credential" as const,
+    providerId: 'credential' as const,
     userId: authUserId,
     password: passwordHash,
     updatedAt: now,
-  };
+  }
 
   if (existingCredential) {
-    await db
-      .update(account)
-      .set(credentialValues)
-      .where(eq(account.id, existingCredential.id));
-    return;
+    await db.update(account).set(credentialValues).where(eq(account.id, existingCredential.id))
+    return
   }
 
   await db.insert(account).values({
     id: randomUUID(),
     ...credentialValues,
     createdAt: now,
-  });
+  })
 }
 
 async function ensureAuthUserForEmployee(employee: {
-  id: number;
-  authUserId: string | null;
-  name: string;
-  email: string;
+  id: number
+  authUserId: string | null
+  name: string
+  email: string
 }) {
   if (employee.authUserId) {
     await db
@@ -1707,16 +2394,16 @@ async function ensureAuthUserForEmployee(employee: {
         email: employee.email,
         updatedAt: new Date(),
       })
-      .where(eq(user.id, employee.authUserId));
+      .where(eq(user.id, employee.authUserId))
 
-    return employee.authUserId;
+    return employee.authUserId
   }
 
   const [existingUser] = await db
     .select({ id: user.id })
     .from(user)
     .where(eq(user.email, employee.email))
-    .limit(1);
+    .limit(1)
 
   if (existingUser) {
     await db
@@ -1725,18 +2412,18 @@ async function ensureAuthUserForEmployee(employee: {
         name: employee.name,
         updatedAt: new Date(),
       })
-      .where(eq(user.id, existingUser.id));
+      .where(eq(user.id, existingUser.id))
 
     await db
       .update(employees)
       .set({ authUserId: existingUser.id })
-      .where(eq(employees.id, employee.id));
+      .where(eq(employees.id, employee.id))
 
-    return existingUser.id;
+    return existingUser.id
   }
 
-  const authUserId = randomUUID();
-  const now = new Date();
+  const authUserId = randomUUID()
+  const now = new Date()
 
   await db.insert(user).values({
     id: authUserId,
@@ -1745,64 +2432,61 @@ async function ensureAuthUserForEmployee(employee: {
     emailVerified: true,
     createdAt: now,
     updatedAt: now,
-  });
+  })
 
-  await db
-    .update(employees)
-    .set({ authUserId })
-    .where(eq(employees.id, employee.id));
+  await db.update(employees).set({ authUserId }).where(eq(employees.id, employee.id))
 
-  return authUserId;
+  return authUserId
 }
 
 function revalidateAdminSurfaces() {
   const paths = [
-    "/dashboard/analytics",
-    "/dashboard/activity-hub/my-day",
-    "/dashboard/activity-hub/team-board",
-    "/dashboard/approval",
-    "/dashboard/request-center",
-    "/dashboard/form-studio",
-    "/dashboard/workflow-studio",
-    "/dashboard/notifications",
-    "/dashboard/timesheet",
-    "/dashboard/reports",
-    "/dashboard/leaderboard",
-    "/dashboard/security",
-    "/dashboard/security/users",
-    "/mobile",
-    "/mobile/dashboard",
-    "/mobile/activity",
-    "/mobile/approval",
-  ];
+    '/dashboard/analytics',
+    '/dashboard/activity-hub/my-day',
+    '/dashboard/activity-hub/team-board',
+    '/dashboard/approval',
+    '/dashboard/request-center',
+    '/dashboard/form-studio',
+    '/dashboard/workflow-studio',
+    '/dashboard/notifications',
+    '/dashboard/timesheet',
+    '/dashboard/reports',
+    '/dashboard/leaderboard',
+    '/dashboard/security',
+    '/dashboard/security/users',
+    '/mobile',
+    '/mobile/dashboard',
+    '/mobile/activity',
+    '/mobile/approval',
+  ]
 
   for (const path of paths) {
-    revalidatePath(path);
+    revalidatePath(path)
   }
 }
 
 export async function createActivityAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
-  const supplementalPayload = extractActivitySupplementalPayload(formData);
+  const supplementalPayload = extractActivitySupplementalPayload(formData)
   const payload = createActivitySchema.parse({
-    employeeId: formData.get("employeeId"),
-    activityCode: formData.get("activityCode"),
-    activityType: formData.get("activityType"),
-    title: formData.get("title"),
-    unitNumber: formData.get("unitNumber"),
-    startTime: formData.get("startTime"),
-    endTime: formData.get("endTime"),
-    priority: formData.get("priority"),
-    overtimeMinutes: formData.get("overtimeMinutes"),
-    remarks: formData.get("remarks"),
-  });
+    employeeId: formData.get('employeeId'),
+    activityCode: formData.get('activityCode'),
+    activityType: formData.get('activityType'),
+    title: formData.get('title'),
+    unitNumber: formData.get('unitNumber'),
+    startTime: formData.get('startTime'),
+    endTime: formData.get('endTime'),
+    priority: formData.get('priority'),
+    overtimeMinutes: formData.get('overtimeMinutes'),
+    remarks: formData.get('remarks'),
+  })
 
-  const startTime = parseDateTime(payload.startTime);
-  const endTime = parseDateTime(payload.endTime);
+  const startTime = parseDateTime(payload.startTime)
+  const endTime = parseDateTime(payload.endTime)
 
   if (endTime <= startTime) {
-    throw new Error("End time must be greater than start time.");
+    throw new Error('End time must be greater than start time.')
   }
 
   const [employee] = await db
@@ -1814,10 +2498,10 @@ export async function createActivityAction(formData: FormData) {
     })
     .from(employees)
     .where(eq(employees.id, payload.employeeId))
-    .limit(1);
+    .limit(1)
 
   if (!employee) {
-    throw new Error("Employee not found.");
+    throw new Error('Employee not found.')
   }
 
   const approvalRoute = await resolveApprovalRouteForActivity({
@@ -1825,18 +2509,18 @@ export async function createActivityAction(formData: FormData) {
     activityType: payload.activityType,
     priority: payload.priority,
     overtimeMinutes: payload.overtimeMinutes,
-    transactionType: "activity",
+    transactionType: 'activity',
     at: endTime,
-  });
-  const firstStep = approvalRoute.steps[0];
+  })
+  const firstStep = approvalRoute.steps[0]
 
   if (!firstStep) {
-    throw new Error("Approval route for this activity not found.");
+    throw new Error('Approval route for this activity not found.')
   }
-  const firstGroup = getRouteStepGroup(approvalRoute.steps, firstStep.stepOrder);
+  const firstGroup = getRouteStepGroup(approvalRoute.steps, firstStep.stepOrder)
 
-  const points = getPointsForPriority(payload.priority);
-  let createdActivityId: number | null = null;
+  const points = getPointsForPriority(payload.priority)
+  let createdActivityId: number | null = null
 
   await db.transaction(async (tx) => {
     const [activity] = await tx
@@ -1855,8 +2539,8 @@ export async function createActivityAction(formData: FormData) {
         remarks: payload.remarks,
         pointsAwarded: points,
       })
-      .returning({ id: activities.id });
-    createdActivityId = activity.id;
+      .returning({ id: activities.id })
+    createdActivityId = activity.id
 
     await createPendingApprovalsForStepGroup({
       tx,
@@ -1865,97 +2549,97 @@ export async function createActivityAction(formData: FormData) {
       approvalRoute,
       submittedAt: endTime,
       overtimeMinutes: payload.overtimeMinutes,
-    });
+    })
 
     await tx.insert(pointEvents).values({
       employeeId: employee.id,
-      category: "Activity Input",
+      category: 'Activity Input',
       label: `${payload.activityType} â€¢ ${payload.unitNumber}`,
       points,
-    });
+    })
 
     await tx
       .update(employees)
       .set({
         totalPoints: employee.totalPoints + points,
       })
-      .where(eq(employees.id, employee.id));
-  });
+      .where(eq(employees.id, employee.id))
+  })
 
   if (createdActivityId != null) {
-    await syncActivityWorkflowArtifacts(createdActivityId, supplementalPayload);
+    await syncActivityWorkflowArtifacts(createdActivityId, supplementalPayload)
   }
 
-  revalidateAdminSurfaces();
+  revalidateAdminSurfaces()
 }
 
 export async function saveActivityDraftAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = saveActivityDraftSchema.parse({
-    employeeId: formData.get("employeeId"),
-    activityCode: formData.get("activityCode"),
-    activityType: formData.get("activityType"),
-    title: formData.get("title"),
-    unitNumber: formData.get("unitNumber"),
-    startTime: formData.get("startTime"),
-    endTime: formData.get("endTime"),
-    priority: formData.get("priority"),
-    overtimeMinutes: formData.get("overtimeMinutes"),
-    remarks: formData.get("remarks"),
-  });
+    employeeId: formData.get('employeeId'),
+    activityCode: formData.get('activityCode'),
+    activityType: formData.get('activityType'),
+    title: formData.get('title'),
+    unitNumber: formData.get('unitNumber'),
+    startTime: formData.get('startTime'),
+    endTime: formData.get('endTime'),
+    priority: formData.get('priority'),
+    overtimeMinutes: formData.get('overtimeMinutes'),
+    remarks: formData.get('remarks'),
+  })
 
   await saveActivityDraftSubmission({
     ...payload,
     supplementalPayload: extractActivitySupplementalPayload(formData),
-  });
+  })
 
-  revalidateAdminSurfaces();
+  revalidateAdminSurfaces()
 }
 
 export async function reviewApprovalAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = reviewApprovalSchema.parse({
-    approvalId: formData.get("approvalId"),
-    decision: formData.get("decision"),
-    note: formData.get("note"),
-  });
+    approvalId: formData.get('approvalId'),
+    decision: formData.get('decision'),
+    note: formData.get('note'),
+  })
   await applyApprovalDecision({
     approvalId: payload.approvalId,
     decision: payload.decision,
     note: payload.note,
-  });
+  })
 
-  revalidateAdminSurfaces();
+  revalidateAdminSurfaces()
 }
 
 export async function approveApprovalGroupAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = bulkApproveApprovalSchema.parse({
-    approvalIds: formData.getAll("approvalIds"),
-    note: formData.get("note"),
-  });
+    approvalIds: formData.getAll('approvalIds'),
+    note: formData.get('note'),
+  })
 
   for (const approvalId of payload.approvalIds) {
     await applyApprovalDecision({
       approvalId,
-      decision: "approved",
+      decision: 'approved',
       note: payload.note,
-    });
+    })
   }
 
-  revalidateAdminSurfaces();
+  revalidateAdminSurfaces()
 }
 
 export async function addApprovalCommentAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = approvalCommentSchema.parse({
-    approvalId: formData.get("approvalId"),
-    comment: formData.get("comment"),
-  });
+    approvalId: formData.get('approvalId'),
+    comment: formData.get('comment'),
+  })
 
   const [approval] = await db
     .select({
@@ -1965,189 +2649,191 @@ export async function addApprovalCommentAction(formData: FormData) {
     })
     .from(approvals)
     .where(eq(approvals.id, payload.approvalId))
-    .limit(1);
+    .limit(1)
 
   if (!approval) {
-    throw new Error("Approval not found to add comment.");
+    throw new Error('Approval not found to add comment.')
   }
 
   await db
     .update(approvals)
     .set({
       decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
-        kind: "comment",
+        kind: 'comment',
         actor: approval.approverName,
         message: payload.comment,
       }),
     })
-    .where(eq(approvals.id, approval.id));
+    .where(eq(approvals.id, approval.id))
 
   const [activityApproval] = await db
     .select({ activityId: approvals.activityId })
     .from(approvals)
     .where(eq(approvals.id, approval.id))
-    .limit(1);
+    .limit(1)
 
   if (activityApproval) {
-    await syncActivityWorkflowArtifacts(activityApproval.activityId);
+    await syncActivityWorkflowArtifacts(activityApproval.activityId)
   }
 
-  revalidateAdminSurfaces();
+  revalidateAdminSurfaces()
 }
 
 export async function cancelDraftSubmissionAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = cancelDraftSchema.parse({
-    submissionId: formData.get("submissionId"),
-  });
+    submissionId: formData.get('submissionId'),
+  })
 
-  await cancelFormSubmissionDraft(payload.submissionId);
-  revalidateAdminSurfaces();
+  await cancelFormSubmissionDraft(payload.submissionId)
+  revalidateAdminSurfaces()
 }
 
 export async function createFormSectionAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = createFormSectionSchema.parse({
-    versionId: formData.get("versionId"),
-    label: formData.get("label"),
-    description: formData.get("description"),
-    isCollapsible: formData.get("isCollapsible"),
-  });
+    versionId: formData.get('versionId'),
+    label: formData.get('label'),
+    description: formData.get('description'),
+    isCollapsible: formData.get('isCollapsible'),
+  })
 
-  await createFormTemplateSection(payload);
-  revalidateAdminSurfaces();
+  await createFormTemplateSection(payload)
+  revalidateAdminSurfaces()
 }
 
 export async function createFormFieldAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = createFormFieldSchema.parse({
-    versionId: formData.get("versionId"),
-    sectionId: formData.get("sectionId"),
-    label: formData.get("label"),
-    fieldKey: formData.get("fieldKey"),
-    fieldType: formData.get("fieldType"),
-    placeholder: formData.get("placeholder"),
-    helpText: formData.get("helpText"),
-    defaultValue: formData.get("defaultValue"),
-    isRequired: formData.get("isRequired"),
-    optionLines: formData.get("optionLines"),
-    validationRuleType: formData.get("validationRuleType"),
-    validationOperator: formData.get("validationOperator"),
-    validationValue: formData.get("validationValue"),
-    validationMessage: formData.get("validationMessage"),
-    allowedMimeTypes: formData.get("allowedMimeTypes"),
-    maxSizeMb: formData.get("maxSizeMb"),
-  });
+    versionId: formData.get('versionId'),
+    sectionId: formData.get('sectionId'),
+    label: formData.get('label'),
+    fieldKey: formData.get('fieldKey'),
+    fieldType: formData.get('fieldType'),
+    placeholder: formData.get('placeholder'),
+    helpText: formData.get('helpText'),
+    defaultValue: formData.get('defaultValue'),
+    isRequired: formData.get('isRequired'),
+    optionLines: formData.get('optionLines'),
+    validationRuleType: formData.get('validationRuleType'),
+    validationOperator: formData.get('validationOperator'),
+    validationValue: formData.get('validationValue'),
+    validationMessage: formData.get('validationMessage'),
+    allowedMimeTypes: formData.get('allowedMimeTypes'),
+    maxSizeMb: formData.get('maxSizeMb'),
+  })
 
-  await createFormTemplateField(payload);
-  revalidateAdminSurfaces();
+  await createFormTemplateField(payload)
+  revalidateAdminSurfaces()
 }
 
 export async function saveFormTemplateLayoutAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = saveFormLayoutSchema.parse({
-    versionId: formData.get("versionId"),
-    layoutJson: formData.get("layoutJson"),
-  });
+    versionId: formData.get('versionId'),
+    layoutJson: formData.get('layoutJson'),
+  })
   const layout = z
     .object({
-      sections: z.array(z.object({ id: z.number().int().positive(), sortOrder: z.number().int().positive() })),
+      sections: z.array(
+        z.object({ id: z.number().int().positive(), sortOrder: z.number().int().positive() })
+      ),
       fields: z.array(
         z.object({
           id: z.number().int().positive(),
           sectionId: z.number().int().positive().nullable(),
           sortOrder: z.number().int().positive(),
-        }),
+        })
       ),
     })
-    .parse(JSON.parse(payload.layoutJson));
+    .parse(JSON.parse(payload.layoutJson))
 
   await saveFormTemplateLayout({
     versionId: payload.versionId,
     sections: layout.sections,
     fields: layout.fields,
-  });
-  revalidateAdminSurfaces();
+  })
+  revalidateAdminSurfaces()
 }
 
 export async function publishFormTemplateVersionAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = formTemplateVersionSchema.parse({
-    versionId: formData.get("versionId"),
-  });
+    versionId: formData.get('versionId'),
+  })
 
-  await publishFormTemplateVersion(payload.versionId);
-  revalidateAdminSurfaces();
+  await publishFormTemplateVersion(payload.versionId)
+  revalidateAdminSurfaces()
 }
 
 export async function cloneFormTemplateVersionAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = formTemplateVersionSchema.parse({
-    versionId: formData.get("versionId"),
-  });
+    versionId: formData.get('versionId'),
+  })
 
-  await cloneFormTemplateVersion(payload.versionId);
-  revalidateAdminSurfaces();
+  await cloneFormTemplateVersion(payload.versionId)
+  revalidateAdminSurfaces()
 }
 
 export async function createWorkflowConditionAction(formData: FormData) {
-  await ensureHeroSeedData();
+  await ensureHeroSeedData()
 
   const payload = createWorkflowConditionSchema.parse({
-    workflowVersionId: formData.get("workflowVersionId"),
-    parentConditionId: formData.get("parentConditionId"),
-    fieldKey: formData.get("fieldKey"),
-    operator: formData.get("operator"),
-    compareValue: formData.get("compareValue"),
-    logicalJoin: formData.get("logicalJoin"),
-    groupLabel: formData.get("groupLabel"),
-  });
+    workflowVersionId: formData.get('workflowVersionId'),
+    parentConditionId: formData.get('parentConditionId'),
+    fieldKey: formData.get('fieldKey'),
+    operator: formData.get('operator'),
+    compareValue: formData.get('compareValue'),
+    logicalJoin: formData.get('logicalJoin'),
+    groupLabel: formData.get('groupLabel'),
+  })
 
-  await createWorkflowCondition(payload);
-  revalidateAdminSurfaces();
+  await createWorkflowCondition(payload)
+  revalidateAdminSurfaces()
 }
 
 export async function runApprovalAutomationAction() {
-  await ensureHeroSeedData();
-  await runApprovalAutomationTick();
-  revalidateAdminSurfaces();
+  await ensureHeroSeedData()
+  await runApprovalAutomationTick()
+  revalidateAdminSurfaces()
 }
 
 export async function importSecurityUsersAction(
   _previousState: ImportUsersActionState,
-  formData: FormData,
+  formData: FormData
 ): Promise<ImportUsersActionState> {
   try {
-    await ensureHeroGovernanceSeedData();
+    await ensureHeroGovernanceSeedData()
 
     const payload = importUsersSchema.parse({
-      rawCsv: formData.get("rawCsv"),
-      mappingJson: formData.get("mappingJson"),
-    });
+      rawCsv: formData.get('rawCsv'),
+      mappingJson: formData.get('mappingJson'),
+    })
 
-    const mapping = JSON.parse(payload.mappingJson) as UserImportMapping;
-    const { records, headers } = parseCsvToRecords(payload.rawCsv);
+    const mapping = JSON.parse(payload.mappingJson) as UserImportMapping
+    const { records, headers } = parseCsvToRecords(payload.rawCsv)
 
     if (records.length === 0) {
       return {
-        status: "error",
-        message: "CSV has no data rows to import.",
-      };
+        status: 'error',
+        message: 'CSV has no data rows to import.',
+      }
     }
 
-    const [defaultSite] = await db.select().from(sites).limit(1);
+    const [defaultSite] = await db.select().from(sites).limit(1)
 
     if (!defaultSite) {
       return {
-        status: "error",
-        message: "Site default belum tersedia untuk import user.",
-      };
+        status: 'error',
+        message: 'Site default belum tersedia untuk import user.',
+      }
     }
 
     const existingEmployees = await db
@@ -2160,53 +2846,56 @@ export async function importSecurityUsersAction(
         levelName: employees.levelName,
         fitStatus: employees.fitStatus,
       })
-      .from(employees);
-    const existingAuthUsers = await db.select({ id: user.id, email: user.email }).from(user);
-    const authUserByEmail = new Map(existingAuthUsers.map((authUser) => [normalizeEmail(authUser.email), authUser]));
+      .from(employees)
+    const existingAuthUsers = await db.select({ id: user.id, email: user.email }).from(user)
+    const authUserByEmail = new Map(
+      existingAuthUsers.map((authUser) => [normalizeEmail(authUser.email), authUser])
+    )
 
     const employeeByEmail = new Map(
-      existingEmployees.map((employee) => [normalizeEmail(employee.email), employee]),
-    );
-    let importedCount = 0;
-    let updatedCount = 0;
-    let skippedCount = 0;
-    const managerAssignments: { employeeId: number; managerLabel: string }[] = [];
+      existingEmployees.map((employee) => [normalizeEmail(employee.email), employee])
+    )
+    let importedCount = 0
+    let updatedCount = 0
+    let skippedCount = 0
+    const managerAssignments: { employeeId: number; managerLabel: string }[] = []
 
-     for (const record of records) {
-       const fullName = getMappedValue(record, headers, mapping, "fullName");
-       const email = normalizeEmail(getMappedValue(record, headers, mapping, "email"));
+    for (const record of records) {
+      const fullName = getMappedValue(record, headers, mapping, 'fullName')
+      const email = normalizeEmail(getMappedValue(record, headers, mapping, 'email'))
 
-       if (!fullName || !email) {
-         skippedCount += 1;
-         continue;
-       }
+      if (!fullName || !email) {
+        skippedCount += 1
+        continue
+      }
 
-       const managerLabel = getMappedValue(record, headers, mapping, "directManager");
-       const department = getMappedValue(record, headers, mapping, "department") || "General";
-       const section = getMappedValue(record, headers, mapping, "section") || department;
-       const jobTitle = getMappedValue(record, headers, mapping, "jobTitle") || "Staff";
-       const normalizedStatus = normalizeEmploymentStatus(
-         getMappedValue(record, headers, mapping, "status"),
-       );
-       const employeeStatusType = getMappedValue(record, headers, mapping, "employeeStatusType") || "Permanen | Staff";
+      const managerLabel = getMappedValue(record, headers, mapping, 'directManager')
+      const department = getMappedValue(record, headers, mapping, 'department') || 'General'
+      const section = getMappedValue(record, headers, mapping, 'section') || department
+      const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
+      const normalizedStatus = normalizeEmploymentStatus(
+        getMappedValue(record, headers, mapping, 'status')
+      )
+      const employeeStatusType =
+        getMappedValue(record, headers, mapping, 'employeeStatusType') || 'Permanen | Staff'
       const governanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
         jobTitle,
-      });
-      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
-      const existing = employeeByEmail.get(email);
+      })
+      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId)
+      const existing = employeeByEmail.get(email)
 
-      const linkedAuthUserId = existing?.authUserId ?? authUserByEmail.get(email)?.id ?? null;
+      const linkedAuthUserId = existing?.authUserId ?? authUserByEmail.get(email)?.id ?? null
       const values = {
         authUserId: linkedAuthUserId,
         siteId: defaultSite.id,
         name: fullName,
         email,
-        employeeSn: getMappedValue(record, headers, mapping, "employeeSn"),
-        joinYear: parseJoinYear(getMappedValue(record, headers, mapping, "joinYear")),
-        birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, "ttl")),
-        domicile: getMappedValue(record, headers, mapping, "domicile") || "Belum diisi",
+        employeeSn: getMappedValue(record, headers, mapping, 'employeeSn'),
+        joinYear: parseJoinYear(getMappedValue(record, headers, mapping, 'joinYear')),
+        birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, 'ttl')),
+        domicile: getMappedValue(record, headers, mapping, 'domicile') || 'Belum diisi',
         sectionId: governanceIds.sectionId,
         section,
         departmentId: governanceIds.departmentId,
@@ -2215,28 +2904,24 @@ export async function importSecurityUsersAction(
         orgNodeId,
         role: jobTitle,
         jobTitle,
-        workLocation:
-          getMappedValue(record, headers, mapping, "workLocation") || defaultSite.name,
-        phoneNumber: getMappedValue(record, headers, mapping, "phoneNumber"),
+        workLocation: getMappedValue(record, headers, mapping, 'workLocation') || defaultSite.name,
+        phoneNumber: getMappedValue(record, headers, mapping, 'phoneNumber'),
         employmentStatus: normalizedStatus.status,
         employeeStatusType: employeeStatusType,
         isActive: normalizedStatus.isActive,
-      };
+      }
 
       if (existing) {
-        await db
-          .update(employees)
-          .set(values)
-          .where(eq(employees.id, existing.id));
+        await db.update(employees).set(values).where(eq(employees.id, existing.id))
 
-        updatedCount += 1;
+        updatedCount += 1
 
         if (managerLabel) {
-          managerAssignments.push({ employeeId: existing.id, managerLabel });
+          managerAssignments.push({ employeeId: existing.id, managerLabel })
         }
 
-        employeeByEmail.set(email, { ...existing, authUserId: linkedAuthUserId });
-        continue;
+        employeeByEmail.set(email, { ...existing, authUserId: linkedAuthUserId })
+        continue
       }
 
       const [inserted] = await db
@@ -2244,28 +2929,28 @@ export async function importSecurityUsersAction(
         .values({
           ...values,
           totalPoints: 0,
-          levelName: "Rookie",
-          fitStatus: "fit",
+          levelName: 'Rookie',
+          fitStatus: 'fit',
         })
         .returning({
           id: employees.id,
           name: employees.name,
           email: employees.email,
-        });
+        })
 
-      importedCount += 1;
+      importedCount += 1
 
       if (managerLabel) {
-        managerAssignments.push({ employeeId: inserted.id, managerLabel });
+        managerAssignments.push({ employeeId: inserted.id, managerLabel })
       }
 
       employeeByEmail.set(email, {
         ...inserted,
         authUserId: linkedAuthUserId,
         totalPoints: 0,
-        levelName: "Rookie",
-        fitStatus: "fit",
-      });
+        levelName: 'Rookie',
+        fitStatus: 'fit',
+      })
     }
 
     if (managerAssignments.length > 0) {
@@ -2275,122 +2960,117 @@ export async function importSecurityUsersAction(
           name: employees.name,
           email: employees.email,
         })
-        .from(employees);
+        .from(employees)
 
       const managerByEmail = new Map(
-        refreshedEmployees.map((employee) => [normalizeEmail(employee.email), employee]),
-      );
+        refreshedEmployees.map((employee) => [normalizeEmail(employee.email), employee])
+      )
       const managerByName = new Map(
-        refreshedEmployees.map((employee) => [employee.name.trim().toLowerCase(), employee]),
-      );
+        refreshedEmployees.map((employee) => [employee.name.trim().toLowerCase(), employee])
+      )
 
       for (const assignment of managerAssignments) {
         const manager =
           managerByEmail.get(normalizeEmail(assignment.managerLabel)) ??
-          managerByName.get(assignment.managerLabel.trim().toLowerCase());
+          managerByName.get(assignment.managerLabel.trim().toLowerCase())
 
         if (!manager || manager.id === assignment.employeeId) {
-          continue;
+          continue
         }
 
         await db
           .update(employees)
           .set({ directManagerId: manager.id })
-          .where(eq(employees.id, assignment.employeeId));
+          .where(eq(employees.id, assignment.employeeId))
       }
     }
 
-    const actorEmail = await getCurrentActorEmail();
+    const actorEmail = await getCurrentActorEmail()
     await logAuditEvent({
       actorEmail,
-      action: "user.bulk_imported",
-      entityType: "user_import",
-      entityLabel: "security_users_csv",
+      action: 'user.bulk_imported',
+      entityType: 'user_import',
+      entityLabel: 'security_users_csv',
       description: `Imported ${importedCount} users, updated ${updatedCount}, skipped ${skippedCount}.`,
-    });
+    })
 
-    revalidateAdminSurfaces();
+    revalidateAdminSurfaces()
 
     return {
-      status: "success",
-      message: "User import processed successfully.",
+      status: 'success',
+      message: 'User import processed successfully.',
       importedCount,
       updatedCount,
       skippedCount,
-    };
+    }
   } catch (error) {
     return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "An issue occurred while importing users.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'An issue occurred while importing users.',
+    }
   }
 }
 
 export async function manageSecurityUserAction(
   _previousState: AdminMutationState,
-  formData: FormData,
+  formData: FormData
 ): Promise<AdminMutationState> {
   try {
-    await ensureHeroGovernanceSeedData();
+    await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityUserSchema.parse({
-      intent: formData.get("intent"),
-      employeeId: formData.get("employeeId"),
-      siteId: formData.get("siteId"),
-      fullName: formData.get("fullName"),
-      employeeSn: formData.get("employeeSn"),
-      profileImage: formData.get("profileImage"),
-      joinYear: formData.get("joinYear"),
-      birthPlaceDate: formData.get("birthPlaceDate"),
-      domicile: formData.get("domicile"),
-      directManagerId: formData.get("directManagerId"),
-      section: formData.get("section"),
-      department: formData.get("department"),
-      jobTitle: formData.get("jobTitle"),
-      workLocation: formData.get("workLocation"),
-      phoneNumber: formData.get("phoneNumber"),
-      email: formData.get("email"),
-      employmentStatus: formData.get("employmentStatus"),
-      accessRole: formData.get("accessRole"),
-      password: formData.get("password"),
-      newPassword: formData.get("newPassword"),
-      employeeStatusType: formData.get("employeeStatusType"),
-    });
+      intent: formData.get('intent'),
+      employeeId: formData.get('employeeId'),
+      siteId: formData.get('siteId'),
+      fullName: formData.get('fullName'),
+      employeeSn: formData.get('employeeSn'),
+      profileImage: formData.get('profileImage'),
+      joinYear: formData.get('joinYear'),
+      birthPlaceDate: formData.get('birthPlaceDate'),
+      domicile: formData.get('domicile'),
+      directManagerId: formData.get('directManagerId'),
+      section: formData.get('section'),
+      department: formData.get('department'),
+      jobTitle: formData.get('jobTitle'),
+      workLocation: formData.get('workLocation'),
+      phoneNumber: formData.get('phoneNumber'),
+      email: formData.get('email'),
+      employmentStatus: formData.get('employmentStatus'),
+      accessRole: formData.get('accessRole'),
+      password: formData.get('password'),
+      newPassword: formData.get('newPassword'),
+      employeeStatusType: formData.get('employeeStatusType'),
+    })
 
-    if (payload.intent === "create-user") {
-      const fullName = payload.fullName?.trim() ?? "";
-      const email = normalizeEmail(payload.email ?? "");
-      const password = payload.password ?? "";
-      const department = payload.department?.trim() || "General";
-      const section = payload.section?.trim() || department;
-      const jobTitle = payload.jobTitle?.trim() || "Staff";
-      const directManagerId = parseOptionalManagerId(payload.directManagerId);
-      const normalizedStatus = normalizeEmploymentStatus(
-        payload.employmentStatus ?? "active",
-      );
-      const profileImage = normalizeProfileImageValue(payload.profileImage);
+    if (payload.intent === 'create-user') {
+      const fullName = payload.fullName?.trim() ?? ''
+      const email = normalizeEmail(payload.email ?? '')
+      const password = payload.password ?? ''
+      const department = payload.department?.trim() || 'General'
+      const section = payload.section?.trim() || department
+      const jobTitle = payload.jobTitle?.trim() || 'Staff'
+      const directManagerId = parseOptionalManagerId(payload.directManagerId)
+      const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
+      const profileImage = normalizeProfileImageValue(payload.profileImage)
       const governanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
         jobTitle,
-      });
-      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
+      })
+      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId)
 
       if (!fullName || !email || !payload.accessRole) {
         return {
-          status: "error",
-          message: "Full name, email, and role are required.",
-        };
+          status: 'error',
+          message: 'Full name, email, and role are required.',
+        }
       }
 
       if (password.length < 8) {
         return {
-          status: "error",
-          message: "Initial password minimum 8 characters.",
-        };
+          status: 'error',
+          message: 'Initial password minimum 8 characters.',
+        }
       }
 
       const [[currentDefaultSite], [selectedSite], [existingEmployee], [existingAuthUser], [role]] =
@@ -2404,30 +3084,26 @@ export async function manageSecurityUserAction(
             .from(employees)
             .where(eq(employees.email, email))
             .limit(1),
-          db
-            .select({ id: user.id })
-            .from(user)
-            .where(eq(user.email, email))
-            .limit(1),
+          db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1),
           db
             .select()
             .from(securityRoles)
             .where(eq(securityRoles.name, payload.accessRole))
             .limit(1),
-        ]);
+        ])
 
       if (existingEmployee || existingAuthUser) {
         return {
-          status: "error",
-          message: "Email is already used by another user.",
-        };
+          status: 'error',
+          message: 'Email is already used by another user.',
+        }
       }
 
       if (!role) {
         return {
-          status: "error",
-          message: "Selected role is invalid.",
-        };
+          status: 'error',
+          message: 'Selected role is invalid.',
+        }
       }
 
       const defaultSite =
@@ -2437,17 +3113,17 @@ export async function manageSecurityUserAction(
           await db
             .insert(sites)
             .values({
-              name: payload.workLocation?.trim() || "Default Site",
-              location: payload.workLocation?.trim() || "Default Site",
-              customerName: "PT Chitra Paratama",
-              contractNumber: "MANUAL-DEFAULT",
+              name: payload.workLocation?.trim() || 'Default Site',
+              location: payload.workLocation?.trim() || 'Default Site',
+              customerName: 'PT Chitra Paratama',
+              contractNumber: 'MANUAL-DEFAULT',
               isActive: true,
             })
             .returning()
-        )[0];
+        )[0]
 
-      const authUserId = randomUUID();
-      const now = new Date();
+      const authUserId = randomUUID()
+      const now = new Date()
 
       await db.insert(user).values({
         id: authUserId,
@@ -2457,19 +3133,19 @@ export async function manageSecurityUserAction(
         image: profileImage || null,
         createdAt: now,
         updatedAt: now,
-      });
+      })
 
-      await upsertCredentialAccount({ authUserId, email, password, now });
+      await upsertCredentialAccount({ authUserId, email, password, now })
 
       await db.insert(employees).values({
         authUserId,
         siteId: defaultSite.id,
         name: fullName,
         email,
-        employeeSn: payload.employeeSn?.trim() || "",
-        joinYear: parseJoinYear(payload.joinYear ?? ""),
-        birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ""),
-        domicile: payload.domicile?.trim() || "Belum diisi",
+        employeeSn: payload.employeeSn?.trim() || '',
+        joinYear: parseJoinYear(payload.joinYear ?? ''),
+        birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+        domicile: payload.domicile?.trim() || 'Belum diisi',
         directManagerId,
         departmentId: governanceIds.departmentId,
         sectionId: governanceIds.sectionId,
@@ -2480,22 +3156,22 @@ export async function manageSecurityUserAction(
         role: jobTitle,
         jobTitle,
         workLocation: payload.workLocation?.trim() || defaultSite.name,
-        phoneNumber: payload.phoneNumber?.trim() || "",
+        phoneNumber: payload.phoneNumber?.trim() || '',
         employmentStatus: normalizedStatus.status,
-        employeeStatusType: payload.employeeStatusType || "Permanen | Staff",
+        employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
         accessRole: role.name,
-        levelName: "Rookie",
+        levelName: 'Rookie',
         totalPoints: 0,
-        fitStatus: "fit",
+        fitStatus: 'fit',
         isActive: normalizedStatus.isActive,
-      });
+      })
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "New user created successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'New user created successfully.' }
     }
 
     if (!payload.employeeId) {
-      return { status: "error", message: "Invalid user." };
+      return { status: 'error', message: 'Invalid user.' }
     }
 
     const [employee] = await db
@@ -2509,48 +3185,46 @@ export async function manageSecurityUserAction(
       })
       .from(employees)
       .where(eq(employees.id, payload.employeeId))
-      .limit(1);
+      .limit(1)
 
     if (!employee) {
-      return { status: "error", message: "User not found." };
+      return { status: 'error', message: 'User not found.' }
     }
 
-    if (payload.intent === "update-profile") {
-      const email = payload.email?.toLowerCase() ?? employee.email;
-      const department = payload.department || "General";
-      const section = payload.section || department;
-      const jobTitle = payload.jobTitle || "Staff";
-      const normalizedStatus = normalizeEmploymentStatus(
-        payload.employmentStatus ?? "active",
-      );
-      const joinYear = parseJoinYear(payload.joinYear ?? "");
-      const directManagerId = parseOptionalManagerId(payload.directManagerId);
-      const profileImage = normalizeProfileImageValue(payload.profileImage);
+    if (payload.intent === 'update-profile') {
+      const email = payload.email?.toLowerCase() ?? employee.email
+      const department = payload.department || 'General'
+      const section = payload.section || department
+      const jobTitle = payload.jobTitle || 'Staff'
+      const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
+      const joinYear = parseJoinYear(payload.joinYear ?? '')
+      const directManagerId = parseOptionalManagerId(payload.directManagerId)
+      const profileImage = normalizeProfileImageValue(payload.profileImage)
       const [selectedSite] = payload.siteId
         ? await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
-        : [];
+        : []
       const governanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
         jobTitle,
-      });
-      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
+      })
+      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId)
 
       if (directManagerId === employee.id) {
         return {
-          status: "error",
-          message: "Direct supervisor cannot be yourself.",
-        };
+          status: 'error',
+          message: 'Direct supervisor cannot be yourself.',
+        }
       }
 
       await db
         .update(employees)
         .set({
           name: payload.fullName || employee.name,
-          employeeSn: payload.employeeSn || "",
+          employeeSn: payload.employeeSn || '',
           joinYear,
-          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate || ""),
-          domicile: payload.domicile || "Belum diisi",
+          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate || ''),
+          domicile: payload.domicile || 'Belum diisi',
           directManagerId,
           departmentId: governanceIds.departmentId,
           sectionId: governanceIds.sectionId,
@@ -2561,14 +3235,14 @@ export async function manageSecurityUserAction(
           department,
           role: jobTitle,
           jobTitle,
-          workLocation: selectedSite?.name || payload.workLocation || "",
-          phoneNumber: payload.phoneNumber || "",
+          workLocation: selectedSite?.name || payload.workLocation || '',
+          phoneNumber: payload.phoneNumber || '',
           email,
           employmentStatus: normalizedStatus.status,
-          employeeStatusType: payload.employeeStatusType ?? "Permanen | Staff",
+          employeeStatusType: payload.employeeStatusType ?? 'Permanen | Staff',
           isActive: normalizedStatus.isActive,
         })
-        .where(eq(employees.id, employee.id));
+        .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
         await db
@@ -2579,14 +3253,14 @@ export async function manageSecurityUserAction(
             image: profileImage || null,
             updatedAt: new Date(),
           })
-          .where(eq(user.id, employee.authUserId));
+          .where(eq(user.id, employee.authUserId))
       } else if (profileImage) {
         const authUserId = await ensureAuthUserForEmployee({
           id: employee.id,
           authUserId: employee.authUserId,
           name: payload.fullName || employee.name,
           email,
-        });
+        })
 
         await db
           .update(user)
@@ -2594,119 +3268,116 @@ export async function manageSecurityUserAction(
             image: profileImage,
             updatedAt: new Date(),
           })
-          .where(eq(user.id, authUserId));
+          .where(eq(user.id, authUserId))
       }
 
-      const actorEmail = await getCurrentActorEmail();
+      const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: "user.updated",
-        entityType: "user",
+        action: 'user.updated',
+        entityType: 'user',
         entityLabel: payload.fullName || employee.name,
         description: `Updated profile for ${payload.fullName || employee.name} (${email}).`,
-      });
+      })
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "User profile updated successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'User profile updated successfully.' }
     }
 
-    if (payload.intent === "ban-user") {
+    if (payload.intent === 'ban-user') {
       await db
         .update(employees)
         .set({
           isActive: false,
-          employmentStatus: "inactive",
+          employmentStatus: 'inactive',
         })
-        .where(eq(employees.id, employee.id));
+        .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
-        await db.delete(session).where(eq(session.userId, employee.authUserId));
+        await db.delete(session).where(eq(session.userId, employee.authUserId))
       }
 
       // Audit log
-      const actorEmail = await getCurrentActorEmail();
+      const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: "user.banned",
-        entityType: "user",
+        action: 'user.banned',
+        entityType: 'user',
         entityLabel: employee.name,
         description: `Banned user ${employee.name} (${employee.email})`,
-        severity: "critical",
-      });
+        severity: 'critical',
+      })
 
       // Notify user
       await notifyAccountBanned({
         employeeId: employee.id,
         employeeName: employee.name,
-        bannedByName: "Admin",
-      });
+        bannedByName: 'Admin',
+      })
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "User banned successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'User banned successfully.' }
     }
 
-    if (payload.intent === "delete-user") {
+    if (payload.intent === 'delete-user') {
       await db
         .update(employees)
         .set({
           isActive: false,
-          employmentStatus: "inactive",
+          employmentStatus: 'inactive',
         })
-        .where(eq(employees.id, employee.id));
+        .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
-        await db.delete(session).where(eq(session.userId, employee.authUserId));
+        await db.delete(session).where(eq(session.userId, employee.authUserId))
       }
 
-      const actorEmail = await getCurrentActorEmail();
+      const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: "user.deleted",
-        entityType: "user",
+        action: 'user.deleted',
+        entityType: 'user',
         entityLabel: employee.name,
         description: `Deactivated user ${employee.name} (${employee.email}) and revoked sessions.`,
-        severity: "critical",
-      });
+        severity: 'critical',
+      })
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "User deactivated successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'User deactivated successfully.' }
     }
 
-    if (payload.intent === "change-role") {
+    if (payload.intent === 'change-role') {
       if (!payload.accessRole) {
-        return { status: "error", message: "New role must be selected." };
+        return { status: 'error', message: 'New role must be selected.' }
       }
 
       const [role] = await db
         .select()
         .from(securityRoles)
         .where(eq(securityRoles.name, payload.accessRole))
-        .limit(1);
+        .limit(1)
 
       if (!role) {
-        return { status: "error", message: "Selected role is invalid." };
+        return { status: 'error', message: 'Selected role is invalid.' }
       }
 
-      await db
-        .update(employees)
-        .set({ accessRole: role.name })
-        .where(eq(employees.id, employee.id));
+      await db.update(employees).set({ accessRole: role.name }).where(eq(employees.id, employee.id))
 
       // Kill session so user must re-login with new role
       if (employee.authUserId) {
-        await db.delete(session).where(eq(session.userId, employee.authUserId));
+        await db.delete(session).where(eq(session.userId, employee.authUserId))
       }
 
       // Audit log
-      const actorEmail = await getCurrentActorEmail();
+      const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: "user.role_changed",
-        entityType: "user",
+        action: 'user.role_changed',
+        entityType: 'user',
         entityLabel: employee.name,
         description: `Changed role from ${employee.accessRole} to ${role.name}`,
-        severity: "warning",
-      });
+        severity: 'warning',
+      })
 
       // Notify user
       await notifyRoleChanged({
@@ -2714,119 +3385,115 @@ export async function manageSecurityUserAction(
         employeeName: employee.name,
         oldRole: employee.accessRole,
         newRole: role.name,
-        changedByName: "Admin",
-      });
+        changedByName: 'Admin',
+      })
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "User role changed successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'User role changed successfully.' }
     }
 
-    if (payload.intent === "change-password") {
-      const newPassword = payload.newPassword ?? "";
+    if (payload.intent === 'change-password') {
+      const newPassword = payload.newPassword ?? ''
 
       if (newPassword.length < 8) {
         return {
-          status: "error",
-          message: "Password baru minimal 8 karakter.",
-        };
+          status: 'error',
+          message: 'Password baru minimal 8 karakter.',
+        }
       }
 
       const latestEmployee = {
         ...employee,
         name: payload.fullName || employee.name,
         email: (payload.email ?? employee.email).toLowerCase(),
-      };
-      const authUserId = await ensureAuthUserForEmployee(latestEmployee);
-      const now = new Date();
+      }
+      const authUserId = await ensureAuthUserForEmployee(latestEmployee)
+      const now = new Date()
 
       await upsertCredentialAccount({
         authUserId,
         email: latestEmployee.email,
         password: newPassword,
         now,
-      });
+      })
 
-      await db.delete(session).where(eq(session.userId, authUserId));
+      await db.delete(session).where(eq(session.userId, authUserId))
 
       // Audit log
-      const actorEmail = await getCurrentActorEmail();
+      const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: "user.password_reset",
-        entityType: "user",
+        action: 'user.password_reset',
+        entityType: 'user',
         entityLabel: employee.name,
         description: `Reset password for ${employee.name} (${employee.email})`,
-        severity: "warning",
-      });
+        severity: 'warning',
+      })
 
       // Notify user
       await notifyPasswordReset({
         employeeId: employee.id,
         employeeName: employee.name,
-        resetByName: "Admin",
-      });
+        resetByName: 'Admin',
+      })
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "User password changed successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'User password changed successfully.' }
     }
 
-    return { status: "error", message: "User action intent not recognized." };
+    return { status: 'error', message: 'User action intent not recognized.' }
   } catch (error) {
     return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "An issue occurred while processing user.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'An issue occurred while processing user.',
+    }
   }
 }
 
 export async function manageSecurityRoleAction(
   _previousState: AdminMutationState,
-  formData: FormData,
+  formData: FormData
 ): Promise<AdminMutationState> {
   try {
-    await ensureHeroGovernanceSeedData();
+    await ensureHeroGovernanceSeedData()
 
     const payload = manageSecurityRoleSchema.parse({
-      intent: formData.get("intent"),
-      roleId: formData.get("roleId"),
-      roleName: formData.get("roleName"),
-      description: formData.get("description"),
-      scope: formData.get("scope"),
-      sourceRoleId: formData.get("sourceRoleId"),
-      permissionsJson: formData.get("permissionsJson"),
-    });
+      intent: formData.get('intent'),
+      roleId: formData.get('roleId'),
+      roleName: formData.get('roleName'),
+      description: formData.get('description'),
+      scope: formData.get('scope'),
+      sourceRoleId: formData.get('sourceRoleId'),
+      permissionsJson: formData.get('permissionsJson'),
+    })
 
-    if (payload.intent === "create-role") {
-      const roleName = payload.roleName?.trim() ?? "";
+    if (payload.intent === 'create-role') {
+      const roleName = payload.roleName?.trim() ?? ''
 
       if (!roleName) {
-        return { status: "error", message: "Role name is required." };
+        return { status: 'error', message: 'Role name is required.' }
       }
 
       const [existingRole] = await db
         .select()
         .from(securityRoles)
         .where(eq(securityRoles.name, roleName))
-        .limit(1);
+        .limit(1)
 
       if (existingRole) {
-        return { status: "error", message: "Role name is already taken." };
+        return { status: 'error', message: 'Role name is already taken.' }
       }
 
       const [createdRole] = await db
         .insert(securityRoles)
         .values({
           name: roleName,
-          description:
-            payload.description?.trim() || "New role from role management page.",
-          scope: payload.scope?.trim() || "site",
+          description: payload.description?.trim() || 'New role from role management page.',
+          scope: payload.scope?.trim() || 'site',
         })
-        .returning();
+        .returning()
 
-      const menuItems = await db.select().from(navbarMenuItems);
+      const menuItems = await db.select().from(navbarMenuItems)
       if (menuItems.length > 0) {
         await db.insert(roleMenuPermissions).values(
           menuItems.map((menuItem) => ({
@@ -2836,66 +3503,54 @@ export async function manageSecurityRoleAction(
             canEdit: false,
             canDelete: false,
             canSelectAll: false,
-          })),
-        );
+          }))
+        )
       }
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "New role created successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'New role created successfully.' }
     }
 
-    if (payload.intent === "duplicate-role") {
-      const sourceRoleId = parseRoleId(payload.sourceRoleId);
-      const roleName = payload.roleName?.trim() ?? "";
+    if (payload.intent === 'duplicate-role') {
+      const sourceRoleId = parseRoleId(payload.sourceRoleId)
+      const roleName = payload.roleName?.trim() ?? ''
 
       if (!sourceRoleId || !roleName) {
         return {
-          status: "error",
-          message: "Source role and duplicate role name are required.",
-        };
+          status: 'error',
+          message: 'Source role and duplicate role name are required.',
+        }
       }
 
       const [sourceRole, existingRole] = await Promise.all([
-        db
-          .select()
-          .from(securityRoles)
-          .where(eq(securityRoles.id, sourceRoleId))
-          .limit(1),
-        db
-          .select()
-          .from(securityRoles)
-          .where(eq(securityRoles.name, roleName))
-          .limit(1),
-      ]);
+        db.select().from(securityRoles).where(eq(securityRoles.id, sourceRoleId)).limit(1),
+        db.select().from(securityRoles).where(eq(securityRoles.name, roleName)).limit(1),
+      ])
 
       if (!sourceRole[0]) {
-        return { status: "error", message: "Source role not found." };
+        return { status: 'error', message: 'Source role not found.' }
       }
 
       if (existingRole[0]) {
-        return { status: "error", message: "Duplicate role name is already taken." };
+        return { status: 'error', message: 'Duplicate role name is already taken.' }
       }
 
       const [duplicatedRole] = await db
         .insert(securityRoles)
         .values({
           name: roleName,
-          description:
-            payload.description?.trim() || `${sourceRole[0].description} (Copy)`,
+          description: payload.description?.trim() || `${sourceRole[0].description} (Copy)`,
           scope: payload.scope?.trim() || sourceRole[0].scope,
         })
-        .returning();
+        .returning()
 
       const [sourceMenuPermissions, sourceRolePermissions] = await Promise.all([
-        db
-          .select()
-          .from(roleMenuPermissions)
-          .where(eq(roleMenuPermissions.roleId, sourceRoleId)),
+        db.select().from(roleMenuPermissions).where(eq(roleMenuPermissions.roleId, sourceRoleId)),
         db
           .select()
           .from(securityRolePermissions)
           .where(eq(securityRolePermissions.roleId, sourceRoleId)),
-      ]);
+      ])
 
       if (sourceMenuPermissions.length > 0) {
         await db.insert(roleMenuPermissions).values(
@@ -2906,8 +3561,8 @@ export async function manageSecurityRoleAction(
             canEdit: permission.canEdit,
             canDelete: permission.canDelete,
             canSelectAll: permission.canSelectAll,
-          })),
-        );
+          }))
+        )
       }
 
       if (sourceRolePermissions.length > 0) {
@@ -2915,78 +3570,78 @@ export async function manageSecurityRoleAction(
           sourceRolePermissions.map((permission) => ({
             roleId: duplicatedRole.id,
             permissionId: permission.permissionId,
-          })),
-        );
+          }))
+        )
       }
 
-      revalidateAdminSurfaces();
-      return { status: "success", message: "Role duplicated successfully." };
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'Role duplicated successfully.' }
     }
 
-    if (payload.intent === "delete-role") {
-      const roleId = parseRoleId(payload.roleId);
+    if (payload.intent === 'delete-role') {
+      const roleId = parseRoleId(payload.roleId)
 
       if (!roleId) {
-        return { status: "error", message: "Invalid role." };
+        return { status: 'error', message: 'Invalid role.' }
       }
 
-      const roles = await db.select().from(securityRoles);
+      const roles = await db.select().from(securityRoles)
       if (roles.length <= 1) {
         return {
-          status: "error",
-          message: "Minimal harus ada satu role aktif.",
-        };
+          status: 'error',
+          message: 'Minimal harus ada satu role aktif.',
+        }
       }
 
       const [role] = await db
         .select()
         .from(securityRoles)
         .where(eq(securityRoles.id, roleId))
-        .limit(1);
+        .limit(1)
 
       if (!role) {
-        return { status: "error", message: "Role not found." };
+        return { status: 'error', message: 'Role not found.' }
       }
 
-      const fallbackRole = roles.find((item) => item.id !== role.id);
+      const fallbackRole = roles.find((item) => item.id !== role.id)
       if (!fallbackRole) {
         return {
-          status: "error",
-          message: "Replacement role is not available.",
-        };
+          status: 'error',
+          message: 'Replacement role is not available.',
+        }
       }
 
       await db
         .update(employees)
         .set({ accessRole: fallbackRole.name })
-        .where(eq(employees.accessRole, role.name));
+        .where(eq(employees.accessRole, role.name))
 
-      await db.delete(securityRoles).where(eq(securityRoles.id, role.id));
+      await db.delete(securityRoles).where(eq(securityRoles.id, role.id))
 
-      revalidateAdminSurfaces();
+      revalidateAdminSurfaces()
       return {
-        status: "success",
+        status: 'success',
         message: `Role berhasil dihapus. User lama dipindah ke ${fallbackRole.name}.`,
-      };
+      }
     }
 
-    if (payload.intent === "save-menu-permissions") {
-      const roleId = parseRoleId(payload.roleId);
+    if (payload.intent === 'save-menu-permissions') {
+      const roleId = parseRoleId(payload.roleId)
 
       if (!roleId || !payload.permissionsJson) {
         return {
-          status: "error",
-          message: "Data permission role belum lengkap.",
-        };
+          status: 'error',
+          message: 'Data permission role belum lengkap.',
+        }
       }
 
       const matrix = JSON.parse(payload.permissionsJson) as Array<{
-        menuItemId: number;
-        canView: boolean;
-        canEdit: boolean;
-        canDelete: boolean;
-        canSelectAll: boolean;
-      }>;
+        menuItemId: number
+        canView: boolean
+        canEdit: boolean
+        canDelete: boolean
+        canSelectAll: boolean
+      }>
 
       for (const item of matrix) {
         const [existingPermission] = await db
@@ -2995,10 +3650,10 @@ export async function manageSecurityRoleAction(
           .where(
             and(
               eq(roleMenuPermissions.roleId, roleId),
-              eq(roleMenuPermissions.menuItemId, item.menuItemId),
-            ),
+              eq(roleMenuPermissions.menuItemId, item.menuItemId)
+            )
           )
-          .limit(1);
+          .limit(1)
 
         if (existingPermission) {
           await db
@@ -3009,7 +3664,7 @@ export async function manageSecurityRoleAction(
               canDelete: item.canDelete,
               canSelectAll: item.canSelectAll,
             })
-            .where(eq(roleMenuPermissions.id, existingPermission.id));
+            .where(eq(roleMenuPermissions.id, existingPermission.id))
         } else {
           await db.insert(roleMenuPermissions).values({
             roleId,
@@ -3018,149 +3673,146 @@ export async function manageSecurityRoleAction(
             canEdit: item.canEdit,
             canDelete: item.canDelete,
             canSelectAll: item.canSelectAll,
-          });
+          })
         }
       }
 
-      revalidateAdminSurfaces();
+      revalidateAdminSurfaces()
       return {
-        status: "success",
-        message: "Checklist RBAC role berhasil disimpan.",
-      };
+        status: 'success',
+        message: 'Checklist RBAC role berhasil disimpan.',
+      }
     }
 
-    return { status: "error", message: "Intent role action tidak dikenali." };
+    return { status: 'error', message: 'Intent role action tidak dikenali.' }
   } catch (error) {
     return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "An issue occurred while processing role.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'An issue occurred while processing role.',
+    }
   }
 }
 
 function parseOperationalDate(value: string, fallback = new Date()) {
   if (!value) {
-    return fallback;
+    return fallback
   }
 
-  const parsed = new Date(value);
+  const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error("Tanggal tidak valid.");
+    throw new Error('Tanggal tidak valid.')
   }
 
-  return parsed;
+  return parsed
 }
 
 function parseOptionalOperationalDate(value: string) {
   if (!value) {
-    return null;
+    return null
   }
 
-  return parseOperationalDate(value);
+  return parseOperationalDate(value)
 }
 
-function getRequiredId(id: number | undefined, label = "Data") {
+function getRequiredId(id: number | undefined, label = 'Data') {
   if (!id) {
-    throw new Error(`${label} tidak valid.`);
+    throw new Error(`${label} tidak valid.`)
   }
 
-  return id;
+  return id
 }
 
 function revalidateOperationalPages(...paths: string[]) {
   for (const path of paths) {
-    revalidatePath(path);
+    revalidatePath(path)
   }
 
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/analytics");
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/analytics')
 }
 
 async function getActiveSiteEmployeeIds(siteId: number) {
   const rows = await db
     .select({ id: employees.id })
     .from(employees)
-    .where(and(eq(employees.siteId, siteId), eq(employees.isActive, true)));
+    .where(and(eq(employees.siteId, siteId), eq(employees.isActive, true)))
 
-  return rows.map((row) => row.id);
+  return rows.map((row) => row.id)
 }
 
 async function notifyEmployeesForHseAlert(input: {
-  siteId: number;
-  title: string;
-  body: string;
-  eventType: string;
+  siteId: number
+  title: string
+  body: string
+  eventType: string
 }) {
-  const employeeIds = await getActiveSiteEmployeeIds(input.siteId);
+  const employeeIds = await getActiveSiteEmployeeIds(input.siteId)
 
   await Promise.all(
     employeeIds.map(async (employeeId) => {
       const event = await createNotificationEventForEmployee({
         employeeId,
         eventType: input.eventType,
-        category: "hse_alerts",
+        category: 'hse_alerts',
         title: input.title,
         body: input.body,
-        url: "/mobile/hse",
-      });
+        url: '/mobile/hse',
+      })
 
       if (!event) {
-        return;
+        return
       }
 
       await sendPushNotification({
         employeeId,
-        category: "hse_alerts",
+        category: 'hse_alerts',
         title: input.title,
         body: input.body,
-        url: "/mobile/hse",
+        url: '/mobile/hse',
         tag: `hse-${event.id}`,
         notificationEventId: event.id,
-      });
-    }),
-  );
+      })
+    })
+  )
 }
 
 async function notifyEmployeeForPointUpdate(input: {
-  employeeId: number;
-  title: string;
-  body: string;
+  employeeId: number
+  title: string
+  body: string
 }) {
   const event = await createNotificationEventForEmployee({
     employeeId: input.employeeId,
-    eventType: "points_updated",
-    category: "points_updates",
+    eventType: 'points_updated',
+    category: 'points_updates',
     title: input.title,
     body: input.body,
-    url: "/mobile/gamification",
-  });
+    url: '/mobile/gamification',
+  })
 
   if (!event) {
-    return;
+    return
   }
 
   await sendPushNotification({
     employeeId: input.employeeId,
-    category: "points_updates",
+    category: 'points_updates',
     title: input.title,
     body: input.body,
-    url: "/mobile/gamification",
+    url: '/mobile/gamification',
     tag: `points-${event.id}`,
     notificationEventId: event.id,
-  });
+  })
 }
 
 export async function manageHseObservationAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = manageHseObservationSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageHseObservationSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.siteId || !payload.title || !payload.location || !payload.notes) {
-        return { status: "error", message: "Site, judul, lokasi, dan catatan wajib diisi." };
+        return { status: 'error', message: 'Site, judul, lokasi, dan catatan wajib diisi.' }
       }
 
       await db.insert(hseObservations).values({
@@ -3173,23 +3825,26 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
         status: payload.status,
         notes: payload.notes,
         observedAt: parseOperationalDate(payload.observedAt),
-      });
+      })
 
       await notifyEmployeesForHseAlert({
         siteId: payload.siteId,
         title: `HSE alert: ${payload.title}`,
         body: `${payload.severity} di ${payload.location}. ${payload.notes.slice(0, 96)}`,
-        eventType: "hse_observation_created",
-      });
+        eventType: 'hse_observation_created',
+      })
 
-      revalidateOperationalPages("/dashboard/hse");
-      return { status: "success", message: "Observasi HSE berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/hse')
+      return { status: 'success', message: 'Observasi HSE berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Observasi HSE");
+    const id = getRequiredId(payload.id, 'Observasi HSE')
 
-    if (payload.intent === "update-status") {
-      await db.update(hseObservations).set({ status: payload.status }).where(eq(hseObservations.id, id));
+    if (payload.intent === 'update-status') {
+      await db
+        .update(hseObservations)
+        .set({ status: payload.status })
+        .where(eq(hseObservations.id, id))
 
       const [currentObservation] = await db
         .select({
@@ -3199,24 +3854,24 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
         })
         .from(hseObservations)
         .where(eq(hseObservations.id, id))
-        .limit(1);
+        .limit(1)
 
       if (currentObservation) {
         await notifyEmployeesForHseAlert({
           siteId: currentObservation.siteId,
           title: `HSE update: ${currentObservation.title}`,
-          body: `Status berubah ke ${payload.status.replaceAll("_", " ")} di ${currentObservation.location}.`,
-          eventType: "hse_observation_status_changed",
-        });
+          body: `Status berubah ke ${payload.status.replaceAll('_', ' ')} di ${currentObservation.location}.`,
+          eventType: 'hse_observation_status_changed',
+        })
       }
 
-      revalidateOperationalPages("/dashboard/hse");
-      return { status: "success", message: "Status observasi HSE diperbarui." };
+      revalidateOperationalPages('/dashboard/hse')
+      return { status: 'success', message: 'Status observasi HSE diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.siteId || !payload.title || !payload.location || !payload.notes) {
-        return { status: "error", message: "Site, judul, lokasi, dan catatan wajib diisi." };
+        return { status: 'error', message: 'Site, judul, lokasi, dan catatan wajib diisi.' }
       }
 
       await db
@@ -3232,31 +3887,31 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
           notes: payload.notes,
           observedAt: parseOperationalDate(payload.observedAt),
         })
-        .where(eq(hseObservations.id, id));
+        .where(eq(hseObservations.id, id))
 
-      revalidateOperationalPages("/dashboard/hse");
-      return { status: "success", message: "Detail observasi HSE diperbarui." };
+      revalidateOperationalPages('/dashboard/hse')
+      return { status: 'success', message: 'Detail observasi HSE diperbarui.' }
     }
 
-    await db.delete(hseObservations).where(eq(hseObservations.id, id));
-    revalidateOperationalPages("/dashboard/hse");
-    return { status: "success", message: "Observasi HSE dihapus." };
+    await db.delete(hseObservations).where(eq(hseObservations.id, id))
+    revalidateOperationalPages('/dashboard/hse')
+    return { status: 'success', message: 'Observasi HSE dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses observasi HSE.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses observasi HSE.',
+    }
   }
 }
 
 export async function manageHseIncidentAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = manageHseIncidentSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageHseIncidentSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.siteId || !payload.title || !payload.impact) {
-        return { status: "error", message: "Site, judul, dan impact wajib diisi." };
+        return { status: 'error', message: 'Site, judul, dan impact wajib diisi.' }
       }
 
       await db.insert(hseIncidents).values({
@@ -3267,23 +3922,23 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
         impact: payload.impact,
         status: payload.status,
         reportedAt: parseOperationalDate(payload.reportedAt),
-      });
+      })
 
       await notifyEmployeesForHseAlert({
         siteId: payload.siteId,
         title: `Incident HSE: ${payload.title}`,
         body: `${payload.type} Â· ${payload.impact.slice(0, 96)}`,
-        eventType: "hse_incident_created",
-      });
+        eventType: 'hse_incident_created',
+      })
 
-      revalidateOperationalPages("/dashboard/hse");
-      return { status: "success", message: "Incident HSE berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/hse')
+      return { status: 'success', message: 'Incident HSE berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Incident HSE");
+    const id = getRequiredId(payload.id, 'Incident HSE')
 
-    if (payload.intent === "update-status") {
-      await db.update(hseIncidents).set({ status: payload.status }).where(eq(hseIncidents.id, id));
+    if (payload.intent === 'update-status') {
+      await db.update(hseIncidents).set({ status: payload.status }).where(eq(hseIncidents.id, id))
 
       const [currentIncident] = await db
         .select({
@@ -3293,24 +3948,24 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
         })
         .from(hseIncidents)
         .where(eq(hseIncidents.id, id))
-        .limit(1);
+        .limit(1)
 
       if (currentIncident) {
         await notifyEmployeesForHseAlert({
           siteId: currentIncident.siteId,
           title: `Incident update: ${currentIncident.title}`,
-          body: `Status berubah ke ${payload.status.replaceAll("_", " ")} untuk ${currentIncident.unitNumber}.`,
-          eventType: "hse_incident_status_changed",
-        });
+          body: `Status berubah ke ${payload.status.replaceAll('_', ' ')} untuk ${currentIncident.unitNumber}.`,
+          eventType: 'hse_incident_status_changed',
+        })
       }
 
-      revalidateOperationalPages("/dashboard/hse");
-      return { status: "success", message: "Status incident HSE diperbarui." };
+      revalidateOperationalPages('/dashboard/hse')
+      return { status: 'success', message: 'Status incident HSE diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.siteId || !payload.title || !payload.impact) {
-        return { status: "error", message: "Site, judul, dan impact wajib diisi." };
+        return { status: 'error', message: 'Site, judul, dan impact wajib diisi.' }
       }
 
       await db
@@ -3324,31 +3979,31 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
           status: payload.status,
           reportedAt: parseOperationalDate(payload.reportedAt),
         })
-        .where(eq(hseIncidents.id, id));
+        .where(eq(hseIncidents.id, id))
 
-      revalidateOperationalPages("/dashboard/hse");
-      return { status: "success", message: "Detail incident HSE diperbarui." };
+      revalidateOperationalPages('/dashboard/hse')
+      return { status: 'success', message: 'Detail incident HSE diperbarui.' }
     }
 
-    await db.delete(hseIncidents).where(eq(hseIncidents.id, id));
-    revalidateOperationalPages("/dashboard/hse");
-    return { status: "success", message: "Incident HSE dihapus." };
+    await db.delete(hseIncidents).where(eq(hseIncidents.id, id))
+    revalidateOperationalPages('/dashboard/hse')
+    return { status: 'success', message: 'Incident HSE dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses incident HSE.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses incident HSE.',
+    }
   }
 }
 
 export async function manageTrainingRecordAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = manageTrainingRecordSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageTrainingRecordSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.employeeId || !payload.trainingName) {
-        return { status: "error", message: "Karyawan dan training wajib diisi." };
+        return { status: 'error', message: 'Karyawan dan training wajib diisi.' }
       }
 
       await db.insert(trainingRecords).values({
@@ -3358,23 +4013,26 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
         completedYear: payload.completedYear,
         expiresAt: parseOptionalOperationalDate(payload.expiresAt),
         status: payload.status,
-      });
+      })
 
-      revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
-      return { status: "success", message: "Training record berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/hc', '/dashboard/training-records', '/mobile/training')
+      return { status: 'success', message: 'Training record berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Training record");
+    const id = getRequiredId(payload.id, 'Training record')
 
-    if (payload.intent === "update-status") {
-      await db.update(trainingRecords).set({ status: payload.status }).where(eq(trainingRecords.id, id));
-      revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
-      return { status: "success", message: "Status training diperbarui." };
+    if (payload.intent === 'update-status') {
+      await db
+        .update(trainingRecords)
+        .set({ status: payload.status })
+        .where(eq(trainingRecords.id, id))
+      revalidateOperationalPages('/dashboard/hc', '/dashboard/training-records', '/mobile/training')
+      return { status: 'success', message: 'Status training diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.employeeId || !payload.trainingName) {
-        return { status: "error", message: "Karyawan dan training wajib diisi." };
+        return { status: 'error', message: 'Karyawan dan training wajib diisi.' }
       }
 
       await db
@@ -3387,73 +4045,73 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
           expiresAt: parseOptionalOperationalDate(payload.expiresAt),
           status: payload.status,
         })
-        .where(eq(trainingRecords.id, id));
+        .where(eq(trainingRecords.id, id))
 
-      revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
-      return { status: "success", message: "Detail training diperbarui." };
+      revalidateOperationalPages('/dashboard/hc', '/dashboard/training-records', '/mobile/training')
+      return { status: 'success', message: 'Detail training diperbarui.' }
     }
 
-    await db.delete(trainingRecords).where(eq(trainingRecords.id, id));
-    revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
-    return { status: "success", message: "Training record dihapus." };
+    await db.delete(trainingRecords).where(eq(trainingRecords.id, id))
+    revalidateOperationalPages('/dashboard/hc', '/dashboard/training-records', '/mobile/training')
+    return { status: 'success', message: 'Training record dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses training record.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses training record.',
+    }
   }
 }
 
 function normalizeTrainingRecordKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
 function inferTrainingStatus(expiresAt: Date | null) {
   if (!expiresAt) {
-    return "active";
+    return 'active'
   }
 
-  const daysUntilExpiry = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+  const daysUntilExpiry = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
   if (daysUntilExpiry <= 7) {
-    return "urgent";
+    return 'urgent'
   }
 
   if (daysUntilExpiry <= 30) {
-    return "expiring_soon";
+    return 'expiring_soon'
   }
 
-  return "active";
+  return 'active'
 }
 
 export async function importTrainingRecordsAction(
   _previousState: TrainingRecordImportState = INITIAL_TRAINING_RECORD_IMPORT_STATE,
-  formData: FormData,
+  formData: FormData
 ): Promise<TrainingRecordImportState> {
   try {
-    await ensureHeroSeedData();
+    await ensureHeroSeedData()
 
-    const rawCsv = `${formData.get("rawCsv") ?? ""}`.trim();
+    const rawCsv = `${formData.get('rawCsv') ?? ''}`.trim()
     if (!rawCsv) {
       return {
-        status: "error",
-        message: "CSV training belum diisi.",
-      };
+        status: 'error',
+        message: 'CSV training belum diisi.',
+      }
     }
 
-    const parsed = parseTrainingRecordCsv(rawCsv);
+    const parsed = parseTrainingRecordCsv(rawCsv)
     if (parsed.records.length === 0) {
       return {
-        status: "error",
-        message: "Training CSV is empty or header cannot be read.",
-      };
+        status: 'error',
+        message: 'Training CSV is empty or header cannot be read.',
+      }
     }
 
-    const mapping = autoMapTrainingRecordHeaders(parsed.headers);
+    const mapping = autoMapTrainingRecordHeaders(parsed.headers)
     if (!mapping.trainingName || !mapping.completedYear) {
       return {
-        status: "error",
-        message: "Header minimal wajib ada: Training dan Tahun.",
-      };
+        status: 'error',
+        message: 'Header minimal wajib ada: Training dan Tahun.',
+      }
     }
 
     const employeeRows = await db
@@ -3465,7 +4123,7 @@ export async function importTrainingRecordsAction(
         department: employees.department,
       })
       .from(employees)
-      .where(eq(employees.isActive, true));
+      .where(eq(employees.isActive, true))
 
     const existingRows = await db
       .select({
@@ -3474,64 +4132,69 @@ export async function importTrainingRecordsAction(
         trainingName: trainingRecords.trainingName,
         completedYear: trainingRecords.completedYear,
       })
-      .from(trainingRecords);
+      .from(trainingRecords)
 
     const employeeBySn = new Map(
       employeeRows
         .filter((employee) => employee.employeeSn.trim())
-        .map((employee) => [normalizeTrainingRecordKey(employee.employeeSn), employee]),
-    );
+        .map((employee) => [normalizeTrainingRecordKey(employee.employeeSn), employee])
+    )
     const employeeByEmail = new Map(
       employeeRows
         .filter((employee) => employee.email.trim())
-        .map((employee) => [normalizeTrainingRecordKey(employee.email), employee]),
-    );
-    const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>((map, employee) => {
-      const key = normalizeTrainingRecordKey(employee.name);
-      const current = map.get(key) ?? [];
-      current.push(employee);
-      map.set(key, current);
-      return map;
-    }, new Map());
+        .map((employee) => [normalizeTrainingRecordKey(employee.email), employee])
+    )
+    const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>(
+      (map, employee) => {
+        const key = normalizeTrainingRecordKey(employee.name)
+        const current = map.get(key) ?? []
+        current.push(employee)
+        map.set(key, current)
+        return map
+      },
+      new Map()
+    )
     const existingByCompositeKey = new Map(
       existingRows.map((row) => [
         `${row.employeeId}:${normalizeTrainingRecordKey(row.trainingName)}:${row.completedYear}`,
         row,
-      ]),
-    );
+      ])
+    )
 
-    let importedCount = 0;
-    let updatedCount = 0;
-    let skippedCount = 0;
+    let importedCount = 0
+    let updatedCount = 0
+    let skippedCount = 0
 
     for (const row of parsed.records) {
-      const employeeSn = getTrainingRecordImportValue(row, mapping, "employeeSn");
-      const employeeName = getTrainingRecordImportValue(row, mapping, "employeeName");
-      const email = getTrainingRecordImportValue(row, mapping, "email");
-      const department = normalizeTrainingRecordKey(getTrainingRecordImportValue(row, mapping, "department"));
-      const trainingName = getTrainingRecordImportValue(row, mapping, "trainingName");
-      const provider = getTrainingRecordImportValue(row, mapping, "provider") || "-";
-      const completedYearValue = getTrainingRecordImportValue(row, mapping, "completedYear");
-      const expiresAtValue = getTrainingRecordImportValue(row, mapping, "expiresAt");
-      const rawStatus = getTrainingRecordImportValue(row, mapping, "status");
+      const employeeSn = getTrainingRecordImportValue(row, mapping, 'employeeSn')
+      const employeeName = getTrainingRecordImportValue(row, mapping, 'employeeName')
+      const email = getTrainingRecordImportValue(row, mapping, 'email')
+      const department = normalizeTrainingRecordKey(
+        getTrainingRecordImportValue(row, mapping, 'department')
+      )
+      const trainingName = getTrainingRecordImportValue(row, mapping, 'trainingName')
+      const provider = getTrainingRecordImportValue(row, mapping, 'provider') || '-'
+      const completedYearValue = getTrainingRecordImportValue(row, mapping, 'completedYear')
+      const expiresAtValue = getTrainingRecordImportValue(row, mapping, 'expiresAt')
+      const rawStatus = getTrainingRecordImportValue(row, mapping, 'status')
 
       if (!trainingName || !completedYearValue) {
-        skippedCount += 1;
-        continue;
+        skippedCount += 1
+        continue
       }
 
-      const completedYear = Number.parseInt(completedYearValue, 10);
+      const completedYear = Number.parseInt(completedYearValue, 10)
       if (!Number.isInteger(completedYear) || completedYear < 1900 || completedYear > 2100) {
-        skippedCount += 1;
-        continue;
+        skippedCount += 1
+        continue
       }
 
-      const expiresAt = parseOptionalOperationalDate(expiresAtValue);
-      const status = rawStatus || inferTrainingStatus(expiresAt);
+      const expiresAt = parseOptionalOperationalDate(expiresAtValue)
+      const status = rawStatus || inferTrainingStatus(expiresAt)
 
       const employeeCandidatesFromName = employeeName
         ? [...(employeesByName.get(normalizeTrainingRecordKey(employeeName)) ?? [])]
-        : [];
+        : []
 
       let employee =
         (employeeSn ? employeeBySn.get(normalizeTrainingRecordKey(employeeSn)) : undefined) ??
@@ -3540,22 +4203,22 @@ export async function importTrainingRecordsAction(
           ? employeeCandidatesFromName[0]
           : department
             ? employeeCandidatesFromName.find(
-                (candidate) => normalizeTrainingRecordKey(candidate.department) === department,
+                (candidate) => normalizeTrainingRecordKey(candidate.department) === department
               )
-            : undefined);
+            : undefined)
 
       if (!employee) {
-        skippedCount += 1;
-        continue;
+        skippedCount += 1
+        continue
       }
 
       if (department && normalizeTrainingRecordKey(employee.department) !== department) {
-        skippedCount += 1;
-        continue;
+        skippedCount += 1
+        continue
       }
 
-      const compositeKey = `${employee.id}:${normalizeTrainingRecordKey(trainingName)}:${completedYear}`;
-      const existing = existingByCompositeKey.get(compositeKey);
+      const compositeKey = `${employee.id}:${normalizeTrainingRecordKey(trainingName)}:${completedYear}`
+      const existing = existingByCompositeKey.get(compositeKey)
 
       if (existing) {
         await db
@@ -3565,9 +4228,9 @@ export async function importTrainingRecordsAction(
             expiresAt,
             status,
           })
-          .where(eq(trainingRecords.id, existing.id));
-        updatedCount += 1;
-        continue;
+          .where(eq(trainingRecords.id, existing.id))
+        updatedCount += 1
+        continue
       }
 
       await db.insert(trainingRecords).values({
@@ -3577,35 +4240,35 @@ export async function importTrainingRecordsAction(
         completedYear,
         expiresAt,
         status,
-      });
-      importedCount += 1;
+      })
+      importedCount += 1
     }
 
-    revalidateOperationalPages("/dashboard/hc", "/dashboard/training-records", "/mobile/training");
+    revalidateOperationalPages('/dashboard/hc', '/dashboard/training-records', '/mobile/training')
 
     return {
-      status: "success",
-      message: "Import training selesai diproses.",
+      status: 'success',
+      message: 'Import training selesai diproses.',
       importedCount,
       updatedCount,
       skippedCount,
-    };
+    }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal import training records.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal import training records.',
+    }
   }
 }
 
 export async function manageWellnessRecordAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = manageWellnessRecordSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageWellnessRecordSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.employeeId || !payload.metricValue || !payload.notes) {
-        return { status: "error", message: "Karyawan, nilai metrik, dan catatan wajib diisi." };
+        return { status: 'error', message: 'Karyawan, nilai metrik, dan catatan wajib diisi.' }
       }
 
       await db.insert(wellnessRecords).values({
@@ -3615,23 +4278,26 @@ export async function manageWellnessRecordAction(formData: FormData): Promise<Ad
         status: payload.status,
         notes: payload.notes,
         recordedAt: parseOperationalDate(payload.recordedAt),
-      });
+      })
 
-      revalidateOperationalPages("/dashboard/hc");
-      return { status: "success", message: "Wellness record berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/hc')
+      return { status: 'success', message: 'Wellness record berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Wellness record");
+    const id = getRequiredId(payload.id, 'Wellness record')
 
-    if (payload.intent === "update-status") {
-      await db.update(wellnessRecords).set({ status: payload.status }).where(eq(wellnessRecords.id, id));
-      revalidateOperationalPages("/dashboard/hc");
-      return { status: "success", message: "Status wellness diperbarui." };
+    if (payload.intent === 'update-status') {
+      await db
+        .update(wellnessRecords)
+        .set({ status: payload.status })
+        .where(eq(wellnessRecords.id, id))
+      revalidateOperationalPages('/dashboard/hc')
+      return { status: 'success', message: 'Status wellness diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.employeeId || !payload.metricValue || !payload.notes) {
-        return { status: "error", message: "Karyawan, nilai metrik, dan catatan wajib diisi." };
+        return { status: 'error', message: 'Karyawan, nilai metrik, dan catatan wajib diisi.' }
       }
 
       await db
@@ -3644,31 +4310,36 @@ export async function manageWellnessRecordAction(formData: FormData): Promise<Ad
           notes: payload.notes,
           recordedAt: parseOperationalDate(payload.recordedAt),
         })
-        .where(eq(wellnessRecords.id, id));
+        .where(eq(wellnessRecords.id, id))
 
-      revalidateOperationalPages("/dashboard/hc");
-      return { status: "success", message: "Detail wellness diperbarui." };
+      revalidateOperationalPages('/dashboard/hc')
+      return { status: 'success', message: 'Detail wellness diperbarui.' }
     }
 
-    await db.delete(wellnessRecords).where(eq(wellnessRecords.id, id));
-    revalidateOperationalPages("/dashboard/hc");
-    return { status: "success", message: "Wellness record dihapus." };
+    await db.delete(wellnessRecords).where(eq(wellnessRecords.id, id))
+    revalidateOperationalPages('/dashboard/hc')
+    return { status: 'success', message: 'Wellness record dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses wellness record.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses wellness record.',
+    }
   }
 }
 
-export async function manageAttendanceRecordAction(formData: FormData): Promise<AdminMutationState> {
+export async function manageAttendanceRecordAction(
+  formData: FormData
+): Promise<AdminMutationState> {
   try {
-    const payload = manageAttendanceRecordSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageAttendanceRecordSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.employeeId || !payload.siteId || !payload.eventTime || !payload.locationNote) {
-        return { status: "error", message: "Karyawan, site, waktu, dan catatan lokasi wajib diisi." };
+        return {
+          status: 'error',
+          message: 'Karyawan, site, waktu, dan catatan lokasi wajib diisi.',
+        }
       }
 
       await db.insert(attendanceRecords).values({
@@ -3681,23 +4352,29 @@ export async function manageAttendanceRecordAction(formData: FormData): Promise<
         photoUrl: payload.photoUrl || null,
         latitude: payload.latitude || null,
         longitude: payload.longitude || null,
-      });
+      })
 
-      revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
-      return { status: "success", message: "Attendance record berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/hc', '/dashboard/attendance/records')
+      return { status: 'success', message: 'Attendance record berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Attendance record");
+    const id = getRequiredId(payload.id, 'Attendance record')
 
-    if (payload.intent === "update-status") {
-      await db.update(attendanceRecords).set({ status: payload.status }).where(eq(attendanceRecords.id, id));
-      revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
-      return { status: "success", message: "Status attendance diperbarui." };
+    if (payload.intent === 'update-status') {
+      await db
+        .update(attendanceRecords)
+        .set({ status: payload.status })
+        .where(eq(attendanceRecords.id, id))
+      revalidateOperationalPages('/dashboard/hc', '/dashboard/attendance/records')
+      return { status: 'success', message: 'Status attendance diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.employeeId || !payload.siteId || !payload.eventTime || !payload.locationNote) {
-        return { status: "error", message: "Karyawan, site, waktu, dan catatan lokasi wajib diisi." };
+        return {
+          status: 'error',
+          message: 'Karyawan, site, waktu, dan catatan lokasi wajib diisi.',
+        }
       }
 
       await db
@@ -3713,31 +4390,31 @@ export async function manageAttendanceRecordAction(formData: FormData): Promise<
           latitude: payload.latitude || null,
           longitude: payload.longitude || null,
         })
-        .where(eq(attendanceRecords.id, id));
+        .where(eq(attendanceRecords.id, id))
 
-      revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
-      return { status: "success", message: "Detail attendance diperbarui." };
+      revalidateOperationalPages('/dashboard/hc', '/dashboard/attendance/records')
+      return { status: 'success', message: 'Detail attendance diperbarui.' }
     }
 
-    await db.delete(attendanceRecords).where(eq(attendanceRecords.id, id));
-    revalidateOperationalPages("/dashboard/hc", "/dashboard/attendance/records");
-    return { status: "success", message: "Attendance record dihapus." };
+    await db.delete(attendanceRecords).where(eq(attendanceRecords.id, id))
+    revalidateOperationalPages('/dashboard/hc', '/dashboard/attendance/records')
+    return { status: 'success', message: 'Attendance record dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses attendance record.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses attendance record.',
+    }
   }
 }
 
 export async function manageTimesheetEntryAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = manageTimesheetEntrySchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageTimesheetEntrySchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.employeeId || !payload.siteId || !payload.periodLabel) {
-        return { status: "error", message: "Karyawan, site, dan periode wajib diisi." };
+        return { status: 'error', message: 'Karyawan, site, dan periode wajib diisi.' }
       }
 
       await db.insert(timesheetEntries).values({
@@ -3749,26 +4426,26 @@ export async function manageTimesheetEntryAction(formData: FormData): Promise<Ad
         overtimeAmount: payload.overtimeAmount,
         status: payload.status,
         updatedAt: new Date(),
-      });
+      })
 
-      revalidateOperationalPages("/dashboard/timesheet");
-      return { status: "success", message: "Timesheet entry berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/timesheet')
+      return { status: 'success', message: 'Timesheet entry berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Timesheet entry");
+    const id = getRequiredId(payload.id, 'Timesheet entry')
 
-    if (payload.intent === "update-status") {
+    if (payload.intent === 'update-status') {
       await db
         .update(timesheetEntries)
         .set({ status: payload.status, updatedAt: new Date() })
-        .where(eq(timesheetEntries.id, id));
-      revalidateOperationalPages("/dashboard/timesheet");
-      return { status: "success", message: "Status timesheet diperbarui." };
+        .where(eq(timesheetEntries.id, id))
+      revalidateOperationalPages('/dashboard/timesheet')
+      return { status: 'success', message: 'Status timesheet diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.employeeId || !payload.siteId || !payload.periodLabel) {
-        return { status: "error", message: "Karyawan, site, dan periode wajib diisi." };
+        return { status: 'error', message: 'Karyawan, site, dan periode wajib diisi.' }
       }
 
       await db
@@ -3783,31 +4460,31 @@ export async function manageTimesheetEntryAction(formData: FormData): Promise<Ad
           status: payload.status,
           updatedAt: new Date(),
         })
-        .where(eq(timesheetEntries.id, id));
+        .where(eq(timesheetEntries.id, id))
 
-      revalidateOperationalPages("/dashboard/timesheet");
-      return { status: "success", message: "Detail timesheet diperbarui." };
+      revalidateOperationalPages('/dashboard/timesheet')
+      return { status: 'success', message: 'Detail timesheet diperbarui.' }
     }
 
-    await db.delete(timesheetEntries).where(eq(timesheetEntries.id, id));
-    revalidateOperationalPages("/dashboard/timesheet");
-    return { status: "success", message: "Timesheet entry dihapus." };
+    await db.delete(timesheetEntries).where(eq(timesheetEntries.id, id))
+    revalidateOperationalPages('/dashboard/timesheet')
+    return { status: 'success', message: 'Timesheet entry dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses timesheet.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses timesheet.',
+    }
   }
 }
 
 export async function manageDailyReportAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = manageDailyReportSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = manageDailyReportSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.siteId || !payload.reportDate || !payload.customerName || !payload.hseSummary) {
-        return { status: "error", message: "Site, tanggal, customer, dan HSE summary wajib diisi." };
+        return { status: 'error', message: 'Site, tanggal, customer, dan HSE summary wajib diisi.' }
       }
 
       await db.insert(dailyReports).values({
@@ -3820,23 +4497,23 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
         manpowerPresent: payload.manpowerPresent,
         hseSummary: payload.hseSummary,
         status: payload.status,
-      });
+      })
 
-      revalidateOperationalPages("/dashboard/reports");
-      return { status: "success", message: "Daily report berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/reports')
+      return { status: 'success', message: 'Daily report berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Daily report");
+    const id = getRequiredId(payload.id, 'Daily report')
 
-    if (payload.intent === "update-status") {
-      await db.update(dailyReports).set({ status: payload.status }).where(eq(dailyReports.id, id));
-      revalidateOperationalPages("/dashboard/reports");
-      return { status: "success", message: "Status daily report diperbarui." };
+    if (payload.intent === 'update-status') {
+      await db.update(dailyReports).set({ status: payload.status }).where(eq(dailyReports.id, id))
+      revalidateOperationalPages('/dashboard/reports')
+      return { status: 'success', message: 'Status daily report diperbarui.' }
     }
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.siteId || !payload.reportDate || !payload.customerName || !payload.hseSummary) {
-        return { status: "error", message: "Site, tanggal, customer, dan HSE summary wajib diisi." };
+        return { status: 'error', message: 'Site, tanggal, customer, dan HSE summary wajib diisi.' }
       }
 
       await db
@@ -3852,31 +4529,31 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
           hseSummary: payload.hseSummary,
           status: payload.status,
         })
-        .where(eq(dailyReports.id, id));
+        .where(eq(dailyReports.id, id))
 
-      revalidateOperationalPages("/dashboard/reports");
-      return { status: "success", message: "Detail daily report diperbarui." };
+      revalidateOperationalPages('/dashboard/reports')
+      return { status: 'success', message: 'Detail daily report diperbarui.' }
     }
 
-    await db.delete(dailyReports).where(eq(dailyReports.id, id));
-    revalidateOperationalPages("/dashboard/reports");
-    return { status: "success", message: "Daily report dihapus." };
+    await db.delete(dailyReports).where(eq(dailyReports.id, id))
+    revalidateOperationalPages('/dashboard/reports')
+    return { status: 'success', message: 'Daily report dihapus.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses daily report.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses daily report.',
+    }
   }
 }
 
 export async function managePointEventAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = managePointEventSchema.parse(Object.fromEntries(formData));
-    await ensureHeroSeedData();
+    const payload = managePointEventSchema.parse(Object.fromEntries(formData))
+    await ensureHeroSeedData()
 
-    if (payload.intent === "create") {
+    if (payload.intent === 'create') {
       if (!payload.employeeId || !payload.label || payload.points === 0) {
-        return { status: "error", message: "Karyawan, label, dan poin selain 0 wajib diisi." };
+        return { status: 'error', message: 'Karyawan, label, dan poin selain 0 wajib diisi.' }
       }
 
       await db.transaction(async (tx) => {
@@ -3886,37 +4563,41 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
           label: payload.label,
           points: payload.points,
           createdAt: new Date(),
-        });
+        })
         const [updatedEmployee] = await tx
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} + ${payload.points}` })
           .where(eq(employees.id, payload.employeeId!))
-          .returning({ totalPoints: employees.totalPoints });
-        
-        await evaluatePointThresholdBadges(tx, payload.employeeId!, updatedEmployee.totalPoints);
-      });
+          .returning({ totalPoints: employees.totalPoints })
+
+        await evaluatePointThresholdBadges(tx, payload.employeeId!, updatedEmployee.totalPoints)
+      })
 
       await notifyEmployeeForPointUpdate({
         employeeId: payload.employeeId,
-        title: payload.points > 0 ? "Points added" : "Points adjusted",
-        body: `${payload.label} â€¢ ${payload.points > 0 ? "+" : ""}${payload.points} poin.`,
-      });
+        title: payload.points > 0 ? 'Points added' : 'Points adjusted',
+        body: `${payload.label} â€¢ ${payload.points > 0 ? '+' : ''}${payload.points} poin.`,
+      })
 
-      revalidateOperationalPages("/dashboard/leaderboard");
-      return { status: "success", message: "Point event berhasil ditambahkan." };
+      revalidateOperationalPages('/dashboard/leaderboard')
+      return { status: 'success', message: 'Point event berhasil ditambahkan.' }
     }
 
-    const id = getRequiredId(payload.id, "Point event");
+    const id = getRequiredId(payload.id, 'Point event')
 
-    if (payload.intent === "update") {
+    if (payload.intent === 'update') {
       if (!payload.employeeId || !payload.label || payload.points === 0) {
-        return { status: "error", message: "Karyawan, label, dan poin selain 0 wajib diisi." };
+        return { status: 'error', message: 'Karyawan, label, dan poin selain 0 wajib diisi.' }
       }
 
-      const [existingEvent] = await db.select().from(pointEvents).where(eq(pointEvents.id, id)).limit(1);
+      const [existingEvent] = await db
+        .select()
+        .from(pointEvents)
+        .where(eq(pointEvents.id, id))
+        .limit(1)
 
       if (!existingEvent) {
-        return { status: "error", message: "Point event tidak ditemukan." };
+        return { status: 'error', message: 'Point event tidak ditemukan.' }
       }
 
       await db.transaction(async (tx) => {
@@ -3928,80 +4609,85 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
             label: payload.label,
             points: payload.points,
           })
-          .where(eq(pointEvents.id, id));
+          .where(eq(pointEvents.id, id))
 
         await tx
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} - ${existingEvent.points}` })
-          .where(eq(employees.id, existingEvent.employeeId));
+          .where(eq(employees.id, existingEvent.employeeId))
 
         await tx
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} + ${payload.points}` })
-          .where(eq(employees.id, payload.employeeId!));
-      });
+          .where(eq(employees.id, payload.employeeId!))
+      })
 
       await notifyEmployeeForPointUpdate({
         employeeId: payload.employeeId,
-        title: "Points updated",
-        body: `${payload.label} disesuaikan menjadi ${payload.points > 0 ? "+" : ""}${payload.points} poin.`,
-      });
+        title: 'Points updated',
+        body: `${payload.label} disesuaikan menjadi ${payload.points > 0 ? '+' : ''}${payload.points} poin.`,
+      })
 
-      revalidateOperationalPages("/dashboard/leaderboard");
-      return { status: "success", message: "Detail point event diperbarui." };
+      revalidateOperationalPages('/dashboard/leaderboard')
+      return { status: 'success', message: 'Detail point event diperbarui.' }
     }
 
-    const [event] = await db.select().from(pointEvents).where(eq(pointEvents.id, id)).limit(1);
+    const [event] = await db.select().from(pointEvents).where(eq(pointEvents.id, id)).limit(1)
 
     if (!event) {
-      return { status: "error", message: "Point event tidak ditemukan." };
+      return { status: 'error', message: 'Point event tidak ditemukan.' }
     }
 
     await db.transaction(async (tx) => {
-      await tx.delete(pointEvents).where(eq(pointEvents.id, id));
+      await tx.delete(pointEvents).where(eq(pointEvents.id, id))
       await tx
         .update(employees)
         .set({ totalPoints: sql`${employees.totalPoints} - ${event.points}` })
-        .where(eq(employees.id, event.employeeId));
-    });
+        .where(eq(employees.id, event.employeeId))
+    })
 
-    revalidateOperationalPages("/dashboard/leaderboard");
-    return { status: "success", message: "Point event dihapus dan poin karyawan disesuaikan." };
+    revalidateOperationalPages('/dashboard/leaderboard')
+    return { status: 'success', message: 'Point event dihapus dan poin karyawan disesuaikan.' }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal memproses point event.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal memproses point event.',
+    }
   }
 }
 
 type PointEventImportPayload = {
-  headers: string[];
-  rows: string[][];
-  mapping: Record<string, string>;
-};
+  headers: string[]
+  rows: string[][]
+  mapping: Record<string, string>
+}
 
 function findMappedColumnIndex(headers: string[], mappedHeader: string | undefined) {
-  return mappedHeader ? headers.findIndex((header) => header === mappedHeader) : -1;
+  return mappedHeader ? headers.findIndex((header) => header === mappedHeader) : -1
 }
 
 function parseImportedPointValue(value: string) {
-  const normalized = value.replace(/[^0-9.-]+/g, "");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : NaN;
+  const normalized = value.replace(/[^0-9.-]+/g, '')
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : NaN
 }
 
-export async function importPointEventsAction(payload: PointEventImportPayload): Promise<AdminMutationState> {
+export async function importPointEventsAction(
+  payload: PointEventImportPayload
+): Promise<AdminMutationState> {
   try {
-    await ensureHeroSeedData();
+    await ensureHeroSeedData()
 
-    const employeeIndex = findMappedColumnIndex(payload.headers, payload.mapping.employee);
-    const categoryIndex = findMappedColumnIndex(payload.headers, payload.mapping.category);
-    const labelIndex = findMappedColumnIndex(payload.headers, payload.mapping.label);
-    const pointsIndex = findMappedColumnIndex(payload.headers, payload.mapping.points);
+    const employeeIndex = findMappedColumnIndex(payload.headers, payload.mapping.employee)
+    const categoryIndex = findMappedColumnIndex(payload.headers, payload.mapping.category)
+    const labelIndex = findMappedColumnIndex(payload.headers, payload.mapping.label)
+    const pointsIndex = findMappedColumnIndex(payload.headers, payload.mapping.points)
 
     if ([employeeIndex, categoryIndex, labelIndex, pointsIndex].some((index) => index < 0)) {
-      return { status: "error", message: "Mapping Employee, Category, Label, dan Points wajib lengkap." };
+      return {
+        status: 'error',
+        message: 'Mapping Employee, Category, Label, dan Points wajib lengkap.',
+      }
     }
 
     const directory = await db
@@ -4010,41 +4696,43 @@ export async function importPointEventsAction(payload: PointEventImportPayload):
         name: employees.name,
         email: employees.email,
       })
-      .from(employees);
+      .from(employees)
 
-    const employeeByName = new Map(directory.map((employee) => [employee.name.trim().toLowerCase(), employee]));
+    const employeeByName = new Map(
+      directory.map((employee) => [employee.name.trim().toLowerCase(), employee])
+    )
     const employeeByEmail = new Map(
       directory
         .filter((employee) => employee.email)
-        .map((employee) => [employee.email!.trim().toLowerCase(), employee]),
-    );
+        .map((employee) => [employee.email!.trim().toLowerCase(), employee])
+    )
 
-    let importedCount = 0;
-    const failures: string[] = [];
+    let importedCount = 0
+    const failures: string[] = []
 
     for (const [rowIndex, row] of payload.rows.entries()) {
-      const employeeRef = row[employeeIndex]?.trim();
-      const category = row[categoryIndex]?.trim();
-      const label = row[labelIndex]?.trim();
-      const pointValue = row[pointsIndex]?.trim();
+      const employeeRef = row[employeeIndex]?.trim()
+      const category = row[categoryIndex]?.trim()
+      const label = row[labelIndex]?.trim()
+      const pointValue = row[pointsIndex]?.trim()
 
       if (!employeeRef && !category && !label && !pointValue) {
-        continue;
+        continue
       }
 
-      const employee = employeeRef?.includes("@")
+      const employee = employeeRef?.includes('@')
         ? employeeByEmail.get(employeeRef.toLowerCase())
-        : employeeByName.get((employeeRef ?? "").toLowerCase());
-      const points = parseImportedPointValue(pointValue ?? "");
+        : employeeByName.get((employeeRef ?? '').toLowerCase())
+      const points = parseImportedPointValue(pointValue ?? '')
 
       if (!employee) {
-        failures.push(`Baris ${rowIndex + 2}: employee "${employeeRef}" tidak ditemukan.`);
-        continue;
+        failures.push(`Baris ${rowIndex + 2}: employee "${employeeRef}" tidak ditemukan.`)
+        continue
       }
 
       if (!category || !label || !Number.isFinite(points) || points === 0) {
-        failures.push(`Baris ${rowIndex + 2}: Category, Label, atau Points tidak valid.`);
-        continue;
+        failures.push(`Baris ${rowIndex + 2}: Category, Label, atau Points tidak valid.`)
+        continue
       }
 
       await db.transaction(async (tx) => {
@@ -4054,62 +4742,63 @@ export async function importPointEventsAction(payload: PointEventImportPayload):
           label,
           points,
           createdAt: new Date(),
-        });
+        })
 
         const [updatedEmployee] = await tx
           .update(employees)
           .set({ totalPoints: sql`${employees.totalPoints} + ${points}` })
           .where(eq(employees.id, employee.id))
-          .returning({ totalPoints: employees.totalPoints });
+          .returning({ totalPoints: employees.totalPoints })
 
-        await evaluatePointThresholdBadges(tx, employee.id, updatedEmployee.totalPoints);
-      });
+        await evaluatePointThresholdBadges(tx, employee.id, updatedEmployee.totalPoints)
+      })
 
-      importedCount += 1;
+      importedCount += 1
     }
 
-    revalidateOperationalPages("/dashboard/leaderboard");
+    revalidateOperationalPages('/dashboard/leaderboard')
 
     if (importedCount === 0) {
       return {
-        status: "error",
-        message: failures[0] ?? "Tidak ada point event yang berhasil diimport.",
-      };
+        status: 'error',
+        message: failures[0] ?? 'Tidak ada point event yang berhasil diimport.',
+      }
     }
 
     return {
-      status: "success",
-      message: failures.length > 0
-        ? `${importedCount} point event berhasil diimport. ${failures.length} baris dilewati.`
-        : `${importedCount} point event berhasil diimport.`,
-    };
+      status: 'success',
+      message:
+        failures.length > 0
+          ? `${importedCount} point event berhasil diimport. ${failures.length} baris dilewati.`
+          : `${importedCount} point event berhasil diimport.`,
+    }
   } catch (error) {
     return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal import point events.",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal import point events.',
+    }
   }
 }
 
 export async function updateNavbarThemeAction(
   _previousState: AdminMutationState,
-  formData: FormData,
+  formData: FormData
 ): Promise<AdminMutationState> {
   try {
     const payload = navbarThemeSchema.parse({
-      headerBackgroundColor: formData.get("headerBackgroundColor"),
-    });
+      headerBackgroundColor: formData.get('headerBackgroundColor'),
+    })
 
-    await ensureHeroGovernanceSeedData();
+    await ensureHeroGovernanceSeedData()
 
     const [latestTheme] = await db
       .select()
       .from(navbarThemes)
       .orderBy(desc(navbarThemes.createdAt))
-      .limit(1);
+      .limit(1)
 
     if (!latestTheme) {
-      return { status: "error", message: "Theme navbar belum tersedia." };
+      return { status: 'error', message: 'Theme navbar belum tersedia.' }
     }
 
     await db
@@ -4117,187 +4806,198 @@ export async function updateNavbarThemeAction(
       .set({
         headerBackgroundColor: payload.headerBackgroundColor,
       })
-      .where(eq(navbarThemes.id, latestTheme.id));
+      .where(eq(navbarThemes.id, latestTheme.id))
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/settings/navbar");
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/settings/navbar')
 
     return {
-      status: "success",
-      message: "Warna header navbar berhasil diperbarui.",
-    };
+      status: 'success',
+      message: 'Warna header navbar berhasil diperbarui.',
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       return {
-        status: "error",
-        message: error.issues[0]?.message ?? "Input warna header tidak valid.",
-      };
+        status: 'error',
+        message: error.issues[0]?.message ?? 'Input warna header tidak valid.',
+      }
     }
 
-    console.error("updateNavbarThemeAction error", error);
+    console.error('updateNavbarThemeAction error', error)
     return {
-      status: "error",
-      message: "Gagal memperbarui warna header navbar.",
-    };
+      status: 'error',
+      message: 'Gagal memperbarui warna header navbar.',
+    }
   }
 }
 
 const managePenaltyEventSchema = z.object({
   employeeId: z.coerce.number().int().positive(),
   penaltyCode: z.string().trim().min(2).max(100),
-  description: z.string().trim().max(1000).optional().default(""),
+  description: z.string().trim().max(1000).optional().default(''),
   pointsDeducted: z.coerce.number().int().min(1).max(10000),
-});
+})
 
 const resolveDisputeSchema = z.object({
   disputeId: z.coerce.number().int().positive(),
-  status: z.enum(["accepted", "rejected"]),
-  resolutionNotes: z.string().trim().max(1000).optional().default(""),
-});
+  status: z.enum(['accepted', 'rejected']),
+  resolutionNotes: z.string().trim().max(1000).optional().default(''),
+})
 
 export async function createPenaltyEvent(
   _previousState: AdminMutationState,
-  formData: FormData,
+  formData: FormData
 ): Promise<AdminMutationState> {
   try {
     const payload = managePenaltyEventSchema.parse({
-      employeeId: formData.get("employeeId"),
-      penaltyCode: formData.get("penaltyCode"),
-      description: formData.get("description"),
-      pointsDeducted: formData.get("pointsDeducted"),
-    });
+      employeeId: formData.get('employeeId'),
+      penaltyCode: formData.get('penaltyCode'),
+      description: formData.get('description'),
+      pointsDeducted: formData.get('pointsDeducted'),
+    })
 
     await db.transaction(async (tx) => {
       const [employee] = await tx
         .select({ siteId: employees.siteId })
         .from(employees)
         .where(eq(employees.id, payload.employeeId))
-        .limit(1);
+        .limit(1)
 
       if (!employee) {
-        throw new Error("Employee not found.");
+        throw new Error('Employee not found.')
       }
 
       await tx.insert(penaltyEvents).values({
         employeeId: payload.employeeId,
         siteId: employee.siteId,
         penaltyCode: payload.penaltyCode,
-        penaltyType: "manual",
+        penaltyType: 'manual',
         description: payload.description,
         pointsDeducted: payload.pointsDeducted,
-      });
+      })
 
       await tx
         .update(employees)
         .set({ totalPoints: sql`${employees.totalPoints} - ${payload.pointsDeducted}` })
-        .where(eq(employees.id, payload.employeeId));
-    });
+        .where(eq(employees.id, payload.employeeId))
+    })
 
-    revalidatePath("/dashboard/leaderboard");
-    return { status: "success", message: "Penalty berhasil ditambahkan." };
+    revalidatePath('/dashboard/leaderboard')
+    return { status: 'success', message: 'Penalty berhasil ditambahkan.' }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { status: "error", message: error.issues[0]?.message ?? "Input tidak valid." };
+      return { status: 'error', message: error.issues[0]?.message ?? 'Input tidak valid.' }
     }
-    return { status: "error", message: "Gagal memproses penalty event." };
+    return { status: 'error', message: 'Gagal memproses penalty event.' }
   }
 }
 
 export async function resolveDisputeAction(
   _previousState: AdminMutationState,
-  formData: FormData,
+  formData: FormData
 ): Promise<AdminMutationState> {
   try {
     const payload = resolveDisputeSchema.parse({
-      disputeId: formData.get("disputeId"),
-      status: formData.get("status"),
-      resolutionNotes: formData.get("resolutionNotes"),
-    });
+      disputeId: formData.get('disputeId'),
+      status: formData.get('status'),
+      resolutionNotes: formData.get('resolutionNotes'),
+    })
 
     const [dispute] = await db
       .select()
       .from(pointDisputes)
       .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
       .where(eq(pointDisputes.id, payload.disputeId))
-      .limit(1);
+      .limit(1)
 
-    if (!dispute) return { status: "error", message: "Dispute tidak ditemukan." };
-    if (dispute.hero_point_disputes.status !== "pending") {
-      return { status: "error", message: "Dispute sudah diproses." };
+    if (!dispute) return { status: 'error', message: 'Dispute tidak ditemukan.' }
+    if (dispute.hero_point_disputes.status !== 'pending') {
+      return { status: 'error', message: 'Dispute sudah diproses.' }
     }
 
     await db.transaction(async (tx) => {
-      await tx.update(pointDisputes).set({
-        status: payload.status,
-        resolutionNotes: payload.resolutionNotes,
-        resolvedAt: new Date(),
-      }).where(eq(pointDisputes.id, payload.disputeId));
+      await tx
+        .update(pointDisputes)
+        .set({
+          status: payload.status,
+          resolutionNotes: payload.resolutionNotes,
+          resolvedAt: new Date(),
+        })
+        .where(eq(pointDisputes.id, payload.disputeId))
 
-      if (payload.status === "accepted") {
+      if (payload.status === 'accepted') {
         // Refund points if accepted
         const [updatedEmployee] = await tx
           .update(employees)
-          .set({ totalPoints: sql`${employees.totalPoints} + ${dispute.hero_penalty_events.pointsDeducted}` })
+          .set({
+            totalPoints: sql`${employees.totalPoints} + ${dispute.hero_penalty_events.pointsDeducted}`,
+          })
           .where(eq(employees.id, dispute.hero_penalty_events.employeeId))
-          .returning({ totalPoints: employees.totalPoints });
-          
-        await evaluatePointThresholdBadges(tx, dispute.hero_penalty_events.employeeId, updatedEmployee.totalPoints);
+          .returning({ totalPoints: employees.totalPoints })
+
+        await evaluatePointThresholdBadges(
+          tx,
+          dispute.hero_penalty_events.employeeId,
+          updatedEmployee.totalPoints
+        )
       }
 
-      await tx.update(penaltyEvents).set({ isDisputed: false })
-        .where(eq(penaltyEvents.id, dispute.hero_penalty_events.id));
-    });
+      await tx
+        .update(penaltyEvents)
+        .set({ isDisputed: false })
+        .where(eq(penaltyEvents.id, dispute.hero_penalty_events.id))
+    })
 
-    revalidatePath("/dashboard/leaderboard");
-    return { status: "success", message: `Dispute berhasil di-${payload.status}.` };
+    revalidatePath('/dashboard/leaderboard')
+    return { status: 'success', message: `Dispute berhasil di-${payload.status}.` }
   } catch (error) {
-    return { status: "error", message: "Gagal memproses dispute." };
+    return { status: 'error', message: 'Gagal memproses dispute.' }
   }
 }
 
 export async function exportPointsExcel() {
   // Stub for Excel export. This would typically return a URL or trigger a client-side download based on provided filters.
   // In a Server Action, we either send data down or handle via a dedicated API route. We will wire this up later.
-  return { status: "success", data: "Data exported" };
+  return { status: 'success', data: 'Data exported' }
 }
 
 const manageLevelSchema = z.object({
   id: z.coerce.number().optional(),
-  name: z.string().min(1, "Nama level harus diisi"),
-  minPoints: z.coerce.number().min(0, "Poin minimum harus >= 0"),
-  description: z.string().optional().default(""),
-  colorCode: z.string().min(1, "Kode warna harus diisi"),
+  name: z.string().min(1, 'Nama level harus diisi'),
+  minPoints: z.coerce.number().min(0, 'Poin minimum harus >= 0'),
+  description: z.string().optional().default(''),
+  colorCode: z.string().min(1, 'Kode warna harus diisi'),
   isActive: z.coerce.boolean().default(true),
-});
+})
 
 export async function manageLevelAction(
   _prevState: AdminMutationState,
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
-    const intent = formData.get("intent");
+    const intent = formData.get('intent')
     const payload = manageLevelSchema.parse({
-      id: formData.get("id"),
-      name: formData.get("name"),
-      minPoints: formData.get("minPoints"),
-      description: formData.get("description"),
-      colorCode: formData.get("colorCode"),
-      isActive: formData.get("isActive") === "true",
-    });
+      id: formData.get('id'),
+      name: formData.get('name'),
+      minPoints: formData.get('minPoints'),
+      description: formData.get('description'),
+      colorCode: formData.get('colorCode'),
+      isActive: formData.get('isActive') === 'true',
+    })
 
-    if (intent === "create") {
+    if (intent === 'create') {
       await db.insert(levels).values({
         name: payload.name,
         minPoints: payload.minPoints,
         description: payload.description,
         colorCode: payload.colorCode,
         isActive: payload.isActive,
-      });
-      revalidatePath("/dashboard/leaderboard");
-      return { status: "success", message: "Level berhasil dibuat." };
+      })
+      revalidatePath('/dashboard/leaderboard')
+      return { status: 'success', message: 'Level berhasil dibuat.' }
     }
 
-    if (intent === "update" && payload.id) {
+    if (intent === 'update' && payload.id) {
       await db
         .update(levels)
         .set({
@@ -4307,56 +5007,56 @@ export async function manageLevelAction(
           colorCode: payload.colorCode,
           isActive: payload.isActive,
         })
-        .where(eq(levels.id, payload.id));
-      revalidatePath("/dashboard/leaderboard");
-      return { status: "success", message: "Level berhasil diupdate." };
+        .where(eq(levels.id, payload.id))
+      revalidatePath('/dashboard/leaderboard')
+      return { status: 'success', message: 'Level berhasil diupdate.' }
     }
 
-    if (intent === "delete" && payload.id) {
-      await db.delete(levels).where(eq(levels.id, payload.id));
-      revalidatePath("/dashboard/leaderboard");
-      return { status: "success", message: "Level berhasil dihapus." };
+    if (intent === 'delete' && payload.id) {
+      await db.delete(levels).where(eq(levels.id, payload.id))
+      revalidatePath('/dashboard/leaderboard')
+      return { status: 'success', message: 'Level berhasil dihapus.' }
     }
 
-    return { status: "error", message: "Intent tidak valid." };
+    return { status: 'error', message: 'Intent tidak valid.' }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const e = error as z.ZodError<any>;
-      return { status: "error", message: e.issues[0]?.message || "Input tidak valid." };
+      const e = error as z.ZodError<any>
+      return { status: 'error', message: e.issues[0]?.message || 'Input tidak valid.' }
     }
-    return { status: "error", message: "Gagal menyimpan level." };
+    return { status: 'error', message: 'Gagal menyimpan level.' }
   }
 }
 
 const manageBadgeSchema = z.object({
   id: z.coerce.number().optional(),
-  name: z.string().min(1, "Nama badge harus diisi"),
-  description: z.string().optional().default(""),
-  iconUrl: z.string().optional().default("ðŸ†"), // Support lucide/emoji text if no actual file
-  colorCode: z.string().min(1, "Kode warna harus diisi"),
-  autoAssignRule: z.enum(["none", "points_threshold"]).default("none"),
+  name: z.string().min(1, 'Nama badge harus diisi'),
+  description: z.string().optional().default(''),
+  iconUrl: z.string().optional().default('ðŸ†'), // Support lucide/emoji text if no actual file
+  colorCode: z.string().min(1, 'Kode warna harus diisi'),
+  autoAssignRule: z.enum(['none', 'points_threshold']).default('none'),
   autoAssignThreshold: z.coerce.number().default(0),
   isActive: z.coerce.boolean().default(true),
-});
+})
 
 export async function manageBadgeAction(
   _prevState: AdminMutationState,
   formData: FormData
 ): Promise<AdminMutationState> {
   try {
-    const intent = formData.get("intent");
+    const intent = formData.get('intent')
     const payload = manageBadgeSchema.parse({
-      id: formData.get("id"),
-      name: formData.get("name"),
-      description: formData.get("description"),
-      iconUrl: formData.get("iconUrl"),
-      colorCode: formData.get("colorCode"),
-      autoAssignRule: formData.get("autoAssignRule"),
-      autoAssignThreshold: formData.get("autoAssignThreshold"),
-      isActive: formData.get("isActive") === "true",
-    });
+      id: formData.get('id'),
+      name: formData.get('name'),
+      description: formData.get('description'),
+      iconUrl: formData.get('iconUrl'),
+      colorCode: formData.get('colorCode'),
+      autoAssignRule: formData.get('autoAssignRule'),
+      autoAssignThreshold: formData.get('autoAssignThreshold'),
+      isActive: formData.get('isActive') === 'true',
+    })
 
-    if (intent === "create") {
+    if (intent === 'create') {
       await db.insert(badges).values({
         name: payload.name,
         description: payload.description,
@@ -4365,12 +5065,12 @@ export async function manageBadgeAction(
         autoAssignRule: payload.autoAssignRule,
         autoAssignThreshold: payload.autoAssignThreshold,
         isActive: payload.isActive,
-      });
-      revalidatePath("/dashboard/leaderboard");
-      return { status: "success", message: "Badge berhasil dibuat." };
+      })
+      revalidatePath('/dashboard/leaderboard')
+      return { status: 'success', message: 'Badge berhasil dibuat.' }
     }
 
-    if (intent === "update" && payload.id) {
+    if (intent === 'update' && payload.id) {
       await db
         .update(badges)
         .set({
@@ -4382,148 +5082,138 @@ export async function manageBadgeAction(
           autoAssignThreshold: payload.autoAssignThreshold,
           isActive: payload.isActive,
         })
-        .where(eq(badges.id, payload.id));
-      revalidatePath("/dashboard/leaderboard");
-      return { status: "success", message: "Badge berhasil diupdate." };
+        .where(eq(badges.id, payload.id))
+      revalidatePath('/dashboard/leaderboard')
+      return { status: 'success', message: 'Badge berhasil diupdate.' }
     }
 
-    if (intent === "delete" && payload.id) {
-      await db.delete(badges).where(eq(badges.id, payload.id));
-      revalidatePath("/dashboard/leaderboard");
-      return { status: "success", message: "Badge berhasil dihapus." };
+    if (intent === 'delete' && payload.id) {
+      await db.delete(badges).where(eq(badges.id, payload.id))
+      revalidatePath('/dashboard/leaderboard')
+      return { status: 'success', message: 'Badge berhasil dihapus.' }
     }
 
-    return { status: "error", message: "Intent tidak valid." };
+    return { status: 'error', message: 'Intent tidak valid.' }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const e = error as z.ZodError<any>;
-      return { status: "error", message: e.issues[0]?.message || "Input tidak valid." };
+      const e = error as z.ZodError<any>
+      return { status: 'error', message: e.issues[0]?.message || 'Input tidak valid.' }
     }
-    return { status: "error", message: "Gagal menyimpan badge." };
+    return { status: 'error', message: 'Gagal menyimpan badge.' }
   }
 }
 
-
-
-
-
-
-export async function bulkUserActionsAction(
-  formData: FormData,
-): Promise<AdminMutationState> {
+export async function bulkUserActionsAction(formData: FormData): Promise<AdminMutationState> {
   try {
-    const action = formData.get("action") as string;
-    const employeeIds = JSON.parse(formData.get("employeeIds") as string) as number[];
+    const action = formData.get('action') as string
+    const employeeIds = JSON.parse(formData.get('employeeIds') as string) as number[]
 
     if (!employeeIds || employeeIds.length === 0) {
-      return { status: "error", message: "No users selected" };
+      return { status: 'error', message: 'No users selected' }
     }
 
-    const actorEmail = await getCurrentActorEmail();
+    const actorEmail = await getCurrentActorEmail()
 
-    if (action === "activate") {
+    if (action === 'activate') {
       await db
         .update(employees)
         .set({
           isActive: true,
-          employmentStatus: "active",
+          employmentStatus: 'active',
         })
-        .where(inArray(employees.id, employeeIds));
+        .where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,
-        action: "user.bulk_activated",
-        entityType: "user",
+        action: 'user.bulk_activated',
+        entityType: 'user',
         entityLabel: `${employeeIds.length} users`,
-        description: `Bulk activated ${employeeIds.length} users: ${employeeIds.join(", ")}`,
-        severity: "info",
-      });
+        description: `Bulk activated ${employeeIds.length} users: ${employeeIds.join(', ')}`,
+        severity: 'info',
+      })
 
-      revalidateAdminSurfaces();
+      revalidateAdminSurfaces()
       return {
-        status: "success",
+        status: 'success',
         message: `Successfully activated ${employeeIds.length} users`,
-      };
+      }
     }
 
-    if (action === "ban") {
+    if (action === 'ban') {
       await db
         .update(employees)
         .set({
           isActive: false,
-          employmentStatus: "inactive",
+          employmentStatus: 'inactive',
         })
-        .where(inArray(employees.id, employeeIds));
+        .where(inArray(employees.id, employeeIds))
 
       const bannedUsers = await db
         .select({ authUserId: employees.authUserId })
         .from(employees)
-        .where(inArray(employees.id, employeeIds));
+        .where(inArray(employees.id, employeeIds))
 
       const authUserIds = bannedUsers
         .map((u) => u.authUserId)
-        .filter((id): id is string => id !== null);
+        .filter((id): id is string => id !== null)
 
       if (authUserIds.length > 0) {
-        await db.delete(session).where(inArray(session.userId, authUserIds));
+        await db.delete(session).where(inArray(session.userId, authUserIds))
       }
 
       await logAuditEvent({
         actorEmail,
-        action: "user.bulk_banned",
-        entityType: "user",
+        action: 'user.bulk_banned',
+        entityType: 'user',
         entityLabel: `${employeeIds.length} users`,
-        description: `Bulk banned ${employeeIds.length} users: ${employeeIds.join(", ")}`,
-        severity: "warning",
-      });
+        description: `Bulk banned ${employeeIds.length} users: ${employeeIds.join(', ')}`,
+        severity: 'warning',
+      })
 
-      revalidateAdminSurfaces();
+      revalidateAdminSurfaces()
       return {
-        status: "success",
+        status: 'success',
         message: `Successfully banned ${employeeIds.length} users`,
-      };
+      }
     }
 
-    if (action === "delete") {
+    if (action === 'delete') {
       const usersToDelete = await db
         .select({ authUserId: employees.authUserId })
         .from(employees)
-        .where(inArray(employees.id, employeeIds));
+        .where(inArray(employees.id, employeeIds))
 
       const authUserIds = usersToDelete
         .map((u) => u.authUserId)
-        .filter((id): id is string => id !== null);
+        .filter((id): id is string => id !== null)
 
       if (authUserIds.length > 0) {
-        await db.delete(user).where(inArray(user.id, authUserIds));
+        await db.delete(user).where(inArray(user.id, authUserIds))
       }
 
-      await db.delete(employees).where(inArray(employees.id, employeeIds));
+      await db.delete(employees).where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,
-        action: "user.bulk_deleted",
-        entityType: "user",
+        action: 'user.bulk_deleted',
+        entityType: 'user',
         entityLabel: `${employeeIds.length} users`,
-        description: `Bulk deleted ${employeeIds.length} users: ${employeeIds.join(", ")}`,
-        severity: "critical",
-      });
+        description: `Bulk deleted ${employeeIds.length} users: ${employeeIds.join(', ')}`,
+        severity: 'critical',
+      })
 
-      revalidateAdminSurfaces();
+      revalidateAdminSurfaces()
       return {
-        status: "success",
+        status: 'success',
         message: `Successfully deleted ${employeeIds.length} users`,
-      };
+      }
     }
 
-    return { status: "error", message: "Invalid bulk action" };
+    return { status: 'error', message: 'Invalid bulk action' }
   } catch (error) {
     return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to perform bulk action",
-    };
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Failed to perform bulk action',
+    }
   }
 }
