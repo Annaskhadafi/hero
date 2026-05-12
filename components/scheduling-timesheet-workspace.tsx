@@ -2278,11 +2278,24 @@ export function SchedulingTimesheetWorkspace({
 
   async function importAttendanceExcel(file: File | null) {
     if (!file || !guardOpenPeriod('Import attendance')) return
+    const numericSiteId = Number(siteId)
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) {
+      toast.error('Pilih site terlebih dahulu sebelum import.')
+      return
+    }
     try {
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
-      const parsed = parseAttendanceWorkbook({ workbook, period, employees: visibleEmployees })
-      const numericSiteId = Number(siteId)
+      // Pass ALL employees (not just visibleEmployees) so Fuse.js can match
+      // even if site filter hasn't been applied yet
+      const allEmployeesForMatch = employees.length > 0 ? employees : visibleEmployees
+      const parsed = parseAttendanceWorkbook({ workbook, period, employees: allEmployeesForMatch })
+      if (parsed.rows.length === 0) {
+        toast.warning('Tidak ada data terbaca dari file ini.', {
+          description: parsed.warnings.join(' '),
+        })
+        return
+      }
       const result = await createAttendanceImportPreviewAction({
         siteId: numericSiteId,
         period,
@@ -2306,7 +2319,9 @@ export function SchedulingTimesheetWorkspace({
         conflicts: result.conflicts,
       })
       await refreshAttendanceImportHistory()
-      toast.success('Import preview ready')
+      toast.success(
+        `Import preview ready — ${result.matchedCount} matched, ${result.unmatchedCount} unmatched`
+      )
     } catch (error) {
       toast.error('Import preview failed', {
         description: error instanceof Error ? error.message : 'Unknown error',
