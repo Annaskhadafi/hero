@@ -2874,68 +2874,27 @@ function serializeAttendanceOverride(override: typeof timesheetAttendanceRealOve
 }
 
 export async function getSchedulingTimesheetOverviewOptions() {
-  const base = await getSchedulingTimesheetBaseOptions();
-  const [schedulingConfigs, schedulingStatuses] = await Promise.all([
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-  ]);
-  return { ...base, schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+  return getSchedulingTimesheetOptions();
 }
 
 export async function getSchedulingTimesheetSetupOptions() {
-  const base = await getSchedulingTimesheetBaseOptions();
-  const [schedulingConfigs, schedulingStatuses] = await Promise.all([
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-  ]);
-  return { ...base, schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+  return getSchedulingTimesheetOptions();
 }
 
 export async function getSchedulingTimesheetScheduleOptions() {
-  const base = await getSchedulingTimesheetBaseOptions();
-  const [savedPlans, fieldBreakPlans, schedulingConfigs, schedulingStatuses] = await Promise.all([
-    db.select().from(timesheetSchedulingPlans).catch(() => []),
-    db.select().from(timesheetFieldBreakPlans).catch(() => []),
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-  ]);
-  return { ...base, savedPlans: savedPlans.map(serializeSavedPlan), fieldBreakPlans: fieldBreakPlans.map(serializeFieldBreakPlan), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+  return getSchedulingTimesheetOptions();
 }
 
 export async function getSchedulingTimesheetAttendanceOptions() {
-  const base = await getSchedulingTimesheetBaseOptions();
-  const [savedPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses, importPreviews] = await Promise.all([
-    db.select().from(timesheetSchedulingPlans).catch(() => []),
-    db.select().from(attendanceRecords).catch(() => []),
-    db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-    db.select().from(timesheetAttendanceImportPreviews).catch(() => []),
-  ]);
-  return { ...base, savedPlans: savedPlans.map(serializeSavedPlan), attendanceRecords: attendanceRows.map(serializeAttendanceRecord), attendanceOverrides: attendanceOverrides.map(serializeAttendanceOverride), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus), importPreviews };
+  return getSchedulingTimesheetOptions();
 }
 
 export async function getSchedulingTimesheetFieldBreakOptions() {
-  const base = await getSchedulingTimesheetBaseOptions();
-  const [fieldBreakPlans, schedulingConfigs, schedulingStatuses] = await Promise.all([
-    db.select().from(timesheetFieldBreakPlans).catch(() => []),
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-  ]);
-  return { ...base, fieldBreakPlans: fieldBreakPlans.map(serializeFieldBreakPlan), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+  return getSchedulingTimesheetOptions();
 }
 
 export async function getSchedulingTimesheetPayrollOptions() {
-  const base = await getSchedulingTimesheetBaseOptions();
-  const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses] = await Promise.all([
-    db.select().from(timesheetSchedulingPlans).catch(() => []),
-    db.select().from(timesheetFieldBreakPlans).catch(() => []),
-    db.select().from(attendanceRecords).catch(() => []),
-    db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
-    db.select().from(timesheetSchedulingConfigs).catch(() => []),
-    db.select().from(timesheetSchedulingStatuses).catch(() => []),
-  ]);
-  return { ...base, savedPlans: savedPlans.map(serializeSavedPlan), fieldBreakPlans: fieldBreakPlans.map(serializeFieldBreakPlan), attendanceRecords: attendanceRows.map(serializeAttendanceRecord), attendanceOverrides: attendanceOverrides.map(serializeAttendanceOverride), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+  return getSchedulingTimesheetOptions();
 }
 
 export async function getSecurityOverviewData() {
