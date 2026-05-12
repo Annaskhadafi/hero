@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { ThemeProvider } from "@/components/theme-provider"
 import { getServerSession } from "@/lib/auth-session"
 import { isMobileUserAgent } from "@/lib/device"
 import { getEmployeeDisplayDataByEmail, getNavbarSettingsData, getSidebarDataForUser } from "@/lib/hero-admin"
@@ -42,38 +43,40 @@ export default async function DashboardLayout({
   ])
 
   return (
-    <SidebarProvider
-      defaultOpen={defaultOpen}
-      style={
-        {
-          "--sidebar-width": "15.5rem",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar
-        variant="inset"
-        user={{
-          name: employeeDisplay?.name || session.user.name || "User",
-          email: employeeDisplay?.email || session.user.email,
-          avatar: session.user.image || "/logo.png",
-          unreadNotifications,
-        }}
-        navMain={sidebarData.navMain}
-        navSecondary={sidebarData.navSecondary}
-        documents={sidebarData.documents}
-      />
-      <SidebarInset data-admin-dashboard-shell>
-        <SiteHeader
-          eyebrow="Chitra Hub"
-          title="Employee Reporting & Operational"
-          subtitle=""
-          backgroundColor={navbarSettings.theme?.headerBackgroundColor ?? "#FFFFFF"}
-          textColor={navbarSettings.theme?.textColor ?? "#0F172A"}
-          navMain={JSON.parse(JSON.stringify(sidebarData.navMain))}
-          navSecondary={JSON.parse(JSON.stringify(sidebarData.navSecondary))}
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <SidebarProvider
+        defaultOpen={defaultOpen}
+        style={
+          {
+            "--sidebar-width": "15.5rem",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar
+          variant="inset"
+          user={{
+            name: employeeDisplay?.name || session.user.name || "User",
+            email: employeeDisplay?.email || session.user.email,
+            avatar: session.user.image || "/logo.png",
+            unreadNotifications,
+          }}
+          navMain={sidebarData.navMain}
+          navSecondary={sidebarData.navSecondary}
+          documents={sidebarData.documents}
         />
-        <div className="flex flex-1 flex-col">{children}</div>
-      </SidebarInset>
-    </SidebarProvider>
+        <SidebarInset data-admin-dashboard-shell>
+          <SiteHeader
+            eyebrow="Chitra Hub"
+            title="Employee Reporting & Operational"
+            subtitle=""
+            backgroundColor={navbarSettings.theme?.headerBackgroundColor ?? "#FFFFFF"}
+            textColor={navbarSettings.theme?.textColor ?? "#0F172A"}
+            navMain={JSON.parse(JSON.stringify(sidebarData.navMain))}
+            navSecondary={JSON.parse(JSON.stringify(sidebarData.navSecondary))}
+          />
+          <div className="flex flex-1 flex-col">{children}</div>
+        </SidebarInset>
+      </SidebarProvider>
+    </ThemeProvider>
   )
 }

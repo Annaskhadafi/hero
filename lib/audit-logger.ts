@@ -22,6 +22,7 @@ export type AuditAction =
   | "timesheet.schedule_saved"
   | "timesheet.field_break_saved"
   | "timesheet.attendance_saved"
+  | "timesheet.attendance_cleared"
   | "timesheet.import_previewed"
   | "timesheet.import_applied"
   | "timesheet.import_discarded"

@@ -22,84 +22,6 @@ const manrope = Manrope({
   display: "swap",
 });
 
-const stripExtensionHydrationAttrs = `
-(() => {
-  const fixedAttributes = new Set([
-    "bis_skin_checked",
-    "bis_register",
-    "data-atm-ext-installed"
-  ]);
-
-  const shouldStrip = (name) => fixedAttributes.has(name) || /^__processed_[\\w-]+__$/.test(name);
-
-  const shouldRemoveNode = (node) => {
-    if (!node || node.nodeType !== 1) return false;
-    if (node.tagName !== "SCRIPT") return false;
-
-    const src = node.getAttribute("src") || "";
-    return (
-      src.startsWith("chrome-extension://") ||
-      src.startsWith("moz-extension://") ||
-      node.hasAttribute("bis_use") ||
-      node.hasAttribute("data-bis-config") ||
-      node.hasAttribute("data-dynamic-id")
-    );
-  };
-
-  const stripNode = (node) => {
-    if (!node || node.nodeType !== 1) return;
-    if (shouldRemoveNode(node)) {
-      node.remove();
-      return;
-    }
-
-    for (const attr of Array.from(node.attributes)) {
-      if (shouldStrip(attr.name)) node.removeAttribute(attr.name);
-    }
-  };
-
-  const stripTree = (root) => {
-    stripNode(root);
-    if (!document.createTreeWalker) return;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-    let node = walker.nextNode();
-    while (node) {
-      stripNode(node);
-      node = walker.nextNode();
-    }
-  };
-
-  const start = () => {
-    stripTree(document.documentElement);
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === "attributes") {
-          stripNode(mutation.target);
-          continue;
-        }
-        for (const node of mutation.addedNodes) {
-          stripTree(node);
-        }
-      }
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      childList: true,
-      subtree: true
-    });
-    window.addEventListener("load", () => window.setTimeout(() => observer.disconnect(), 3000), {
-      once: true
-    });
-  };
-
-  if (document.readyState === "loading") {
-    start();
-  } else {
-    start();
-  }
-})();
-`;
-
 export const metadata: Metadata = {
   title: "HERO",
   description:
@@ -129,12 +51,6 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
-      <head>
-        <script
-          id="strip-extension-hydration-attrs"
-          dangerouslySetInnerHTML={{ __html: stripExtensionHydrationAttrs }}
-        />
-      </head>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning

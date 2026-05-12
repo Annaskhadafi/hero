@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import * as XLSX from "xlsx";
-import { CalendarDays, Calculator, Check, Clock3, Download, RefreshCw, Save, Settings2, Upload, Lock } from "lucide-react";
+import { CalendarDays, Calculator, Check, Clock3, Download, History, RefreshCw, Save, Settings2, Upload, Lock, Trash2, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,19 +12,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { applyAttendanceImportPreviewAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, getIndonesiaHolidaysAction, reopenSchedulingPeriodAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction, syncIndonesiaHolidaysAction } from "@/app/dashboard/admin-actions";
+import { applyAttendanceImportPreviewAction, clearAttendanceRealOverridesAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, getAttendanceImportHistoryAction, getIndonesiaHolidaysAction, reopenSchedulingPeriodAction, rollbackAttendanceImportPreviewAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction, syncIndonesiaHolidaysAction, updateAttendanceImportPreviewMatchAction } from "@/app/dashboard/admin-actions";
 import { applyHolidayPolicy, canSwapOff, classifyOvertimeDay, dateKey, daysInMonth, hoursFromCode, isHoliday, isWeekend, swapScheduleCodes, type HolidayLike } from "@/lib/timesheet-scheduling";
 import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-real-tab";
 import { AttendanceImportPreviewDialog } from "@/components/timesheet/attendance-import-preview-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { attendanceStatusLabel, calculateAttendanceOvertime, normalizeAttendanceStatus, type AttendanceCellStatus } from "@/lib/timesheet/attendance-real";
+import { parseAttendanceWorkbook } from "@/lib/timesheet/attendance-template-parser";
 import type { AttendancePreviewConflict, AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
 
 type EmployeeOption = {
   id: number;
   name: string;
   email: string;
+  employeeSn?: string | null;
   role: string;
   section?: string | null;
   siteId: number | null;
@@ -84,7 +86,7 @@ type SavedFieldBreakPlan = {
   sectionName: string;
   rosterSection: string;
   onSiteDate: string;
-  dayCount: number;
+  dayCount: number | null;
   fieldBreakDate: string;
   updatedAt: string;
 };
@@ -122,6 +124,22 @@ type SavedAttendanceOverride = {
   updatedAt: string;
 };
 
+type AttendanceImportHistoryItem = {
+  id: number;
+  filename: string;
+  status: string;
+  matchedCount: number;
+  unmatchedCount: number;
+  cellCount: number;
+  conflictCount: number;
+  templateKind: string;
+  sheetName: string;
+  validationSummary: unknown;
+  createdAt: Date | string;
+  appliedAt: Date | string | null;
+  rolledBackAt: Date | string | null;
+};
+
 type AllowanceVariable = { project: string; msaStaff: number; msaNonStaff: number; mealsStaff: number; mealsNonStaff: number };
 type OvertimeVariable = { roster: SiteRosterType; dayType: "work" | "off"; totalHours: number; overtimeHours: number };
 
@@ -133,16 +151,10 @@ type BackupAssignment = {
   dateRange: string;
 };
 
-type FieldBreakConfig = {
-  siteId: string;
-  workWeeks: number;
-  breakWeeks: number;
-};
-
 type FieldBreakDraft = {
   employeeId: number;
   onSiteDate: string;
-  dayCount: number;
+  dayCount: number | null;
   fieldBreakDate?: string;
 };
 
@@ -257,17 +269,7 @@ function isLeadershipPosition(value?: string | null) {
 function buildSchedule(employeeIndex: number, day: number, scheduleType: SiteScheduleType, period: string): ScheduleCode {
   if (scheduleType === "office") return isWeekend(period, day) ? "OFF" : "IN";
   if ((day + employeeIndex) % 9 === 0) return "OFF";
-  if (day >= 18 && day <= 28 && employeeIndex % 5 === 1) return "FB";
   return (day + employeeIndex) % 2 === 0 ? "DS" : "NS";
-}
-
-function buildFieldBreakSchedule(day: number, workWeeks: number, breakWeeks: number): ScheduleCode | null {
-  const safeWorkWeeks = Math.max(1, workWeeks);
-  const safeBreakWeeks = Math.max(1, breakWeeks);
-  const cycleDays = (safeWorkWeeks + safeBreakWeeks) * 7;
-  const cycleDay = (day - 1) % cycleDays;
-
-  return cycleDay >= safeWorkWeeks * 7 ? "FB" : null;
 }
 
 function codeClass(code: ScheduleCode) {
@@ -391,6 +393,10 @@ async function fetchHolidayFallback(period: string): Promise<HolidayLike[]> {
   }
 }
 
+function employeeSnLabel(employee: EmployeeOption) {
+  return employee.employeeSn?.trim() || String(employee.id);
+}
+
 function timeFromIso(value?: string) {
   if (!value) return "";
   const date = new Date(value);
@@ -421,10 +427,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [permanentBase, setPermanentBase] = useState<Record<string, ScheduleCode>>({});
   const [permanentOverrides, setPermanentOverrides] = useState<Record<string, ScheduleCode>>({});
   const [scheduleSavedAt, setScheduleSavedAt] = useState<string | null>(null);
-  const [fieldBreakConfigs, setFieldBreakConfigs] = useState<Record<string, FieldBreakConfig>>({});
   const [fieldBreakSiteId, setFieldBreakSiteId] = useState(String(sites[0]?.id ?? ""));
-  const [fieldBreakWorkWeeks, setFieldBreakWorkWeeks] = useState(4);
-  const [fieldBreakRestWeeks, setFieldBreakRestWeeks] = useState(2);
   const [fieldBreakDrafts, setFieldBreakDrafts] = useState<Record<number, FieldBreakDraft>>({});
   const [isSavingFieldBreak, startSavingFieldBreak] = useTransition();
   const [siteScheduleTypes, setSiteScheduleTypes] = useState<Record<string, SiteScheduleType>>({});
@@ -437,8 +440,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [selectedAttendanceCell, setSelectedAttendanceCell] = useState<{ employeeId: number; day: number } | null>(null);
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false);
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([]);
-  const [attendanceImportPreview, setAttendanceImportPreview] = useState<{ previewId: number; matchedCount: number; unmatchedCount: number; cellCount: number; conflictCount: number; previewRows: AttendancePreviewRow[]; conflicts: AttendancePreviewConflict[] } | null>(null);
+  const [attendanceImportPreview, setAttendanceImportPreview] = useState<{ previewId: number; matchedCount: number; unmatchedCount: number; cellCount: number; conflictCount: number; validationSummary?: unknown; previewRows: AttendancePreviewRow[]; conflicts: AttendancePreviewConflict[] } | null>(null);
   const [attendanceImportMode, setAttendanceImportMode] = useState<"skip-conflicts" | "overwrite-conflicts">("skip-conflicts");
+  const [attendanceImportHistory, setAttendanceImportHistory] = useState<AttendanceImportHistoryItem[]>([]);
   const [showConflictsOnly, setShowConflictsOnly] = useState(false);
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null);
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false);
@@ -450,6 +454,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const [reopenReason, setReopenReason] = useState("");
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false);
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false);
+  const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false);
 
   useEffect(() => {
     setSwapTargetEmployeeId("");
@@ -522,6 +527,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     setAttendanceSavedAt(scoped.reduce<string | null>((latest, override) => latest && latest > override.updatedAt ? latest : override.updatedAt, null));
     setIsAttendanceDirty(false);
     setSelectedAttendanceKeys([]);
+    void refreshAttendanceImportHistory();
   }, [attendanceOverrides, period, siteId]);
 
   useEffect(() => {
@@ -598,14 +604,11 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     const employeeRosterSection = rosterSectionByEmployee.get(employee.id) ?? "Crew Office";
     const forceDayShift = (employeeRosterSection === "Service Operation" || employeeRosterSection === "Repair Retread") && (rosterSectionCounts[employeeRosterSection] ?? 0) < 3;
     const schedule = days.map((day) => {
-      const fieldBreakConfig = fieldBreakConfigs[String(employee.siteId ?? siteId)];
-      const fieldBreakCode = fieldBreakConfig ? buildFieldBreakSchedule(day, fieldBreakConfig.workWeeks, fieldBreakConfig.breakWeeks) : null;
       const scheduleType = siteScheduleTypes[siteId] ?? "office";
       const generatedCode = forceDayShift ? "DS" : buildSchedule(employeeIndex, day, scheduleType, period);
       const holidayAdjustedCode = applyHolidayPolicy(generatedCode, { scheduleType, rosterType: siteConfig.rosterType, isHoliday: isHoliday(period, day, holidays) });
-      const code = overrides[`${employee.id}-${day}`] ?? fieldBreakCode ?? holidayAdjustedCode;
 
-      return code === "FB" && !fieldBreakConfig ? generatedCode : code;
+      return overrides[`${employee.id}-${day}`] ?? holidayAdjustedCode;
     });
     const workDays = schedule.filter((code) => code === "IN" || code === "DS" || code === "NS" || code === "FB").length;
     const msaDays = schedule.filter((code, index) => (code === "IN" || code === "DS" || code === "NS" || code === "FB") && !isHoliday(period, index + 1, holidays)).length;
@@ -679,7 +682,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold"><button className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline" onClick={() => openEmployeeForm(row.employee.id)}>{row.employee.name}</button></td>
                   <td className="px-3 py-2 text-center">{row.profile.kimperLv ? "✓" : ""}</td>
                   <td className="px-3 py-2 text-center">{row.profile.kimperTh ? "✓" : ""}</td>
-                  <td className="px-3 py-2 text-center">{row.employee.id}</td>
+                  <td className="px-3 py-2 text-center">{employeeSnLabel(row.employee)}</td>
                   <td className="px-3 py-2 text-center">{row.sectionLabel}</td>
                   <td className="px-3 py-2 text-center font-semibold uppercase">{row.profile.positionOnSite}</td>
                   {row.schedule.map((code, index) => {
@@ -742,13 +745,11 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   const permanentRows = rows.map((row) => ({
     ...row,
     schedule: row.schedule.map((code, index) => {
-      const fieldBreakConfig = fieldBreakConfigs[String(row.employee.siteId ?? siteId)];
       const day = index + 1;
       const key = `${row.employee.id}-${day}`;
       const savedCode = permanentOverrides[key] ?? permanentBase[key] ?? code;
-      const holidayCode = permanentOverrides[key] ? savedCode : applyHolidayPolicy(savedCode, { scheduleType: siteConfig.scheduleType, rosterType: siteConfig.rosterType, isHoliday: isHoliday(period, day, holidays) });
 
-      return holidayCode === "FB" && !fieldBreakConfig ? code : holidayCode;
+      return permanentOverrides[key] ? savedCode : applyHolidayPolicy(savedCode, { scheduleType: siteConfig.scheduleType, rosterType: siteConfig.rosterType, isHoliday: isHoliday(period, day, holidays) });
     }),
   })).map((row) => ({
     ...row,
@@ -767,13 +768,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }) : [];
   const selectedSwapTargetRow = swapTargetRows.find((row) => String(row.employee.id) === swapTargetEmployeeId) ?? null;
   const savedFieldBreakByEmployee = new Map(fieldBreakPlans.filter((plan) => String(plan.siteId) === fieldBreakSiteId && plan.period === period).map((plan) => [plan.employeeId, plan]));
-  const fieldBreakRows = rows.map((row, index) => {
+  const fieldBreakRows = rows.map((row) => {
     const savedPlan = savedFieldBreakByEmployee.get(row.employee.id);
     const draft = fieldBreakDrafts[row.employee.id];
-    const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? addDays(`${period}-01`, index * 7);
-    const savedFieldBreakDate = savedPlan?.fieldBreakDate ?? addDays(onSiteDate, savedPlan?.dayCount ?? 90);
-    const fieldBreakDate = draft?.fieldBreakDate ?? savedFieldBreakDate;
-    const dayCountValue = draft?.dayCount ?? Math.max(1, Math.round((new Date(`${fieldBreakDate}T00:00:00`).getTime() - new Date(`${onSiteDate}T00:00:00`).getTime()) / 86400000));
+    const onSiteDate = draft?.onSiteDate ?? savedPlan?.onSiteDate ?? "";
+    const fieldBreakDate = draft?.fieldBreakDate ?? savedPlan?.fieldBreakDate ?? "";
+    const dayCountValue = draft?.dayCount ?? savedPlan?.dayCount ?? null;
 
     return { ...row, onSiteDate, dayCount: dayCountValue, fieldBreakDate, savedAt: savedPlan?.updatedAt ?? null };
   });
@@ -855,9 +855,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         draftSchedule: rows.map((row) => ({ employeeId: row.employee.id, schedule: row.schedule })),
         fixedSchedule: fixedRows,
         employeeProfiles: rows.map((row) => employeeProfiles[row.employee.id] ?? row.profile),
-        fieldBreakConfig: fieldBreakConfigs[siteId]
-          ? { workWeeks: fieldBreakConfigs[siteId].workWeeks, breakWeeks: fieldBreakConfigs[siteId].breakWeeks }
-          : null,
+        fieldBreakConfig: null,
       });
     });
   }
@@ -876,30 +874,15 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     });
   }
 
-  function saveFieldBreakConfig() {
-    if (!fieldBreakSiteId) return;
-
-    setFieldBreakConfigs((currentConfigs) => ({
-      ...currentConfigs,
-      [fieldBreakSiteId]: {
-        siteId: fieldBreakSiteId,
-        workWeeks: fieldBreakWorkWeeks,
-        breakWeeks: fieldBreakRestWeeks,
-      },
-    }));
-    setOverrides({});
-    setSelectedCell(null);
-  }
-
   function updateFieldBreakDraft(employeeId: number, key: keyof FieldBreakDraft, value: string | number) {
     if (!guardOpenPeriod("Edit field break")) return;
     setFieldBreakDrafts((current) => {
       const row = fieldBreakRows.find((item) => item.employee.id === employeeId);
-      const existing = current[employeeId] ?? { employeeId, onSiteDate: row?.onSiteDate ?? `${period}-01`, dayCount: row?.dayCount ?? 90, fieldBreakDate: row?.fieldBreakDate ?? addDays(`${period}-01`, 90) };
-      const next = { ...existing, [key]: key === "dayCount" ? Number(value || 1) : String(value) };
-      const startTime = new Date(`${next.onSiteDate}T00:00:00`).getTime();
-      const endTime = new Date(`${next.fieldBreakDate ?? existing.fieldBreakDate}T00:00:00`).getTime();
-      const dayCountValue = Number.isFinite(startTime) && Number.isFinite(endTime) ? Math.max(1, Math.round((endTime - startTime) / 86400000)) : next.dayCount;
+      const existing = current[employeeId] ?? { employeeId, onSiteDate: row?.onSiteDate ?? "", dayCount: row?.dayCount ?? null, fieldBreakDate: row?.fieldBreakDate ?? "" };
+      const next = { ...existing, [key]: key === "dayCount" ? Number(value) || null : String(value) };
+      const startTime = next.onSiteDate ? new Date(`${next.onSiteDate}T00:00:00`).getTime() : Number.NaN;
+      const endTime = next.fieldBreakDate ? new Date(`${next.fieldBreakDate}T00:00:00`).getTime() : Number.NaN;
+      const dayCountValue = Number.isFinite(startTime) && Number.isFinite(endTime) ? Math.max(1, Math.round((endTime - startTime) / 86400000)) : null;
 
       return {
         ...current,
@@ -925,13 +908,11 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           employeeName: row.employee.name,
           sectionName: row.sectionLabel,
           rosterSection: row.rosterSection,
-          onSiteDate: row.onSiteDate,
+          onSiteDate: row.onSiteDate || null,
           dayCount: row.dayCount,
-          fieldBreakDate: row.fieldBreakDate,
+          fieldBreakDate: row.fieldBreakDate || null,
         })),
       });
-
-      saveFieldBreakConfig();
     });
   }
 
@@ -939,7 +920,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     if (!guardOpenPeriod("Save site settings")) return;
     if (siteId === "all") return;
 
-    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: null, allowanceVariables, overtimeVariables });
     setRoster(siteConfig.rosterType);
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: siteConfig.scheduleType }));
     setOverrides({});
@@ -970,12 +951,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function saveAllowanceVariables() {
-    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: null, allowanceVariables, overtimeVariables });
   }
 
   function resetAllowanceVariables() {
     setAllowanceVariables(defaultAllowanceVariables);
-    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables: defaultAllowanceVariables, overtimeVariables });
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: null, allowanceVariables: defaultAllowanceVariables, overtimeVariables });
   }
 
   function updateOvertimeVariable(index: number, key: keyof OvertimeVariable, value: string | number) {
@@ -991,12 +972,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
   }
 
   function saveOvertimeVariables() {
-    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables });
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: null, allowanceVariables, overtimeVariables });
   }
 
   function resetOvertimeVariables() {
     setOvertimeVariables(defaultOvertimeVariables);
-    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: fieldBreakConfigs[siteId] ?? null, allowanceVariables, overtimeVariables: defaultOvertimeVariables });
+    void saveSchedulingConfigAction({ siteId: Number(siteId), ...siteConfig, fieldBreakConfig: null, allowanceVariables, overtimeVariables: defaultOvertimeVariables });
   }
 
   function setSelectedCode(code: ScheduleCode) {
@@ -1076,7 +1057,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
       const showOperatorTotals = section === "Service Operation" || section === "Repair Retread";
       const rowsBySection: Array<Array<string | number>> = [
         [styles.title, "", "", "", "", period, ...days.map(() => ""), ""],
-        ...sectionRows.map((row) => [row.employee.name, row.profile.kimperLv ? "?" : "", row.profile.kimperTh ? "?" : "", row.employee.id, row.sectionLabel, row.profile.positionOnSite, ...row.schedule, row.totalHours]),
+        ...sectionRows.map((row) => [row.employee.name, row.profile.kimperLv ? "?" : "", row.profile.kimperTh ? "?" : "", employeeSnLabel(row.employee), row.sectionLabel, row.profile.positionOnSite, ...row.schedule, row.totalHours]),
         ["Dayshift", "", "", "", "", "Day Shift", ...totals.map((item) => item.ds), totals.reduce((sum, item) => sum + item.ds, 0)],
         ["Nightshift", "", "", "", "", "Night Shift", ...totals.map((item) => item.ns), totals.reduce((sum, item) => sum + item.ns, 0)],
       ];
@@ -1108,7 +1089,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
       const totals = rosterSectionTotals(sectionRows);
       const showOperatorTotals = section === "Service Operation" || section === "Repair Retread";
       const bodyRows = sectionRows.map((row) => `
-        <tr><td>${row.employee.name}</td><td>${row.profile.kimperLv ? "?" : ""}</td><td>${row.profile.kimperTh ? "?" : ""}</td><td>${row.employee.id}</td><td>${row.sectionLabel}</td><td>${row.profile.positionOnSite}</td>${row.schedule.map((code) => `<td class="cell ${code.toLowerCase()}">${codeLabel(code)}</td>`).join("")}<td>${row.totalHours}</td></tr>
+        <tr><td>${row.employee.name}</td><td>${row.profile.kimperLv ? "?" : ""}</td><td>${row.profile.kimperTh ? "?" : ""}</td><td>${employeeSnLabel(row.employee)}</td><td>${row.sectionLabel}</td><td>${row.profile.positionOnSite}</td>${row.schedule.map((code) => `<td class="cell ${code.toLowerCase()}">${codeLabel(code)}</td>`).join("")}<td>${row.totalHours}</td></tr>
       `).join("");
       const totalRow = (label: string, subLabel: string, key: "ds" | "ns" | "dayOperator" | "nightOperator" | "off" | "manpower", className = "") => `
         <tr class="total ${className}"><td>${label}</td><td colspan="5">${subLabel}</td>${totals.map((item) => `<td>${item[key]}</td>`).join("")}<td>${key === "manpower" ? sectionRows.length : totals.reduce((sum, item) => sum + item[key], 0)}</td></tr>
@@ -1352,28 +1333,28 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     setMultiSelectAttendance(false);
   }
 
+  async function refreshAttendanceImportHistory() {
+    const numericSiteId = Number(siteId);
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) return;
+    try {
+      const history = await getAttendanceImportHistoryAction({ siteId: numericSiteId, period });
+      setAttendanceImportHistory(history as AttendanceImportHistoryItem[]);
+    } catch {
+      setAttendanceImportHistory([]);
+    }
+  }
+
   async function importAttendanceExcel(file: File | null) {
     if (!file || !guardOpenPeriod("Import attendance")) return;
     try {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-    const rawRows = records.flatMap((record) => {
-      const employeeSn = String(record.SN ?? record.sn ?? record.EmployeeSN ?? record.employeeSn ?? "");
-      const employeeName = String(record.Nama ?? record.nama ?? record.Employee ?? record.employee ?? "");
-      const siteName = String(record.Site ?? record.site ?? record.Project ?? record.project ?? "");
-      return days.map((day) => {
-        const raw = String(record[`D${day}`] ?? record[String(day)] ?? record[`Tgl ${day}`] ?? "").trim();
-        const clockIn = String(record[`Masuk ${day}`] ?? record[`In ${day}`] ?? "").trim();
-        const clockOut = String(record[`Pulang ${day}`] ?? record[`Out ${day}`] ?? "").trim();
-        if (!raw && !clockIn && !clockOut) return null;
-        return { employeeSn, employeeName, siteName, day, status: normalizeAttendanceStatus(raw || (clockIn ? "Masuk" : "")), clockIn, clockOut, note: raw };
-      }).filter(Boolean);
-    });
-    const numericSiteId = Number(siteId);
-    const result = await createAttendanceImportPreviewAction({ siteId: numericSiteId, period, filename: file.name, rows: rawRows as any, fixedSchedule: rows.map((row) => ({ employeeId: row.employee.id, schedule: row.schedule })) });
-      setAttendanceImportPreview({ previewId: result.previewId, matchedCount: result.matchedCount, unmatchedCount: result.unmatchedCount, cellCount: result.cellCount, conflictCount: result.conflictCount, previewRows: result.previewRows, conflicts: result.conflicts });
+      const parsed = parseAttendanceWorkbook({ workbook, period, employees: visibleEmployees });
+      const numericSiteId = Number(siteId);
+      const result = await createAttendanceImportPreviewAction({ siteId: numericSiteId, period, filename: file.name, rows: parsed.rows, fixedSchedule: rows.map((row) => ({ employeeId: row.employee.id, schedule: row.schedule })), detection: parsed.detection });
+      if (parsed.warnings.length) toast.warning("Import attendance terbaca dengan catatan", { description: parsed.warnings.join(" ") });
+      setAttendanceImportPreview({ previewId: result.previewId, matchedCount: result.matchedCount, unmatchedCount: result.unmatchedCount, cellCount: result.cellCount, conflictCount: result.conflictCount, validationSummary: result.validationSummary, previewRows: result.previewRows, conflicts: result.conflicts });
+      await refreshAttendanceImportHistory();
       toast.success("Import preview ready");
     } catch (error) {
       toast.error("Import preview failed", { description: error instanceof Error ? error.message : "Unknown error" });
@@ -1402,6 +1383,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         setAttendanceImportPreview(null);
         setAttendanceSavedAt(new Date().toISOString());
         setIsAttendanceDirty(false);
+        await refreshAttendanceImportHistory();
         toast.success("Attendance import applied");
       } catch (error) {
         toast.error("Apply import failed", { description: error instanceof Error ? error.message : "Unknown error" });
@@ -1432,6 +1414,52 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     });
   }
 
+  function clearImportedAttendance() {
+    if (!guardOpenPeriod("Delete Excel import")) return;
+    const numericSiteId = Number(siteId);
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return;
+    startSavingAttendance(async () => {
+      try {
+        await clearAttendanceRealOverridesAction({ siteId: numericSiteId, period, source: "excel" });
+        setManualAttendance((current) => Object.fromEntries(Object.entries(current).filter(([, cell]) => cell.source !== "excel")));
+        setAttendanceImportPreview(null);
+        setClearExcelImportDialogOpen(false);
+        setAttendanceSavedAt(new Date().toISOString());
+        setIsAttendanceDirty(false);
+        await refreshAttendanceImportHistory();
+        toast.success("Excel import deleted");
+      } catch (error) {
+        toast.error("Delete Excel import failed", { description: error instanceof Error ? error.message : "Unknown error" });
+      }
+    });
+  }
+
+  function rollbackAttendanceImport(previewId: number) {
+    if (!guardOpenPeriod("Rollback attendance import")) return;
+    startSavingAttendance(async () => {
+      try {
+        await rollbackAttendanceImportPreviewAction({ previewId });
+        setManualAttendance((current) => Object.fromEntries(Object.entries(current).filter(([, cell]) => cell.source !== "excel")));
+        setAttendanceSavedAt(new Date().toISOString());
+        await refreshAttendanceImportHistory();
+        toast.success("Import rolled back");
+      } catch (error) {
+        toast.error("Rollback failed", { description: error instanceof Error ? error.message : "Unknown error" });
+      }
+    });
+  }
+
+  async function fixAttendanceImportMatch(importRowId: string, employeeId: number) {
+    if (!attendanceImportPreview) return;
+    try {
+      const result = await updateAttendanceImportPreviewMatchAction({ previewId: attendanceImportPreview.previewId, importRowId, employeeId, saveAlias: true });
+      setAttendanceImportPreview((current) => current ? { ...current, previewRows: result.previewRows as AttendancePreviewRow[] } : current);
+      toast.success("Employee match saved");
+    } catch (error) {
+      toast.error("Fix match failed", { description: error instanceof Error ? error.message : "Unknown error" });
+    }
+  }
+
   function discardAttendanceImportPreview() {
     if (!attendanceImportPreview) return;
     startSavingAttendance(async () => {
@@ -1439,6 +1467,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         await discardAttendanceImportPreviewAction({ previewId: attendanceImportPreview.previewId });
         setAttendanceImportPreview(null);
         setDiscardImportDialogOpen(false);
+        await refreshAttendanceImportHistory();
         toast.success("Import preview discarded");
       } catch (error) {
         toast.error("Discard failed", { description: error instanceof Error ? error.message : "Unknown error" });
@@ -1514,7 +1543,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
     const templateRows = visibleEmployees.map((employee) => {
       const row: Record<string, string | number> = {
         Nama: employee.name,
-        SN: employee.id,
+        SN: employeeSnLabel(employee),
         Jabatan: employee.role,
         Site: employee.locationName ?? site?.name ?? "",
       };
@@ -1805,6 +1834,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               <Button variant="outline" onClick={downloadAttendanceTemplate}>
                 <Download className="mr-2 size-4" /> Template Excel
               </Button>
+              <Button variant="outline" disabled={isSavingAttendance || siteId === "all" || isFinalized} onClick={() => setClearExcelImportDialogOpen(true)}>
+                <Trash2 className="mr-2 size-4" /> Delete Excel Import
+              </Button>
               <Button disabled={!isAttendanceDirty || isSavingAttendance || siteId === "all" || isFinalized} onClick={saveAttendanceReal}>
                 <Save className="mr-2 size-4" /> {isSavingAttendance ? "Menyimpan..." : "Save Attendance Real"}
               </Button>
@@ -1825,6 +1857,25 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               {attendanceImportPreview ? <span className="text-muted-foreground">Import preview: {attendanceImportPreview.matchedCount} matched, {attendanceImportPreview.cellCount} cells, {attendanceImportPreview.conflictCount} conflicts</span> : null}
             </Card>
           ) : null}
+          <Card className="surface-module-card space-y-3 rounded-[1rem] border-0 p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><p className="font-semibold text-foreground"><History className="mr-2 inline size-4" />Import History</p><p className="text-muted-foreground">Rollback hapus batch import tertentu; Delete Excel Import hapus semua Excel bulan ini.</p></div>
+              <Button size="sm" variant="outline" onClick={() => void refreshAttendanceImportHistory()}>Refresh</Button>
+            </div>
+            <div className="space-y-2">
+              {attendanceImportHistory.slice(0, 5).map((item) => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                  <div><p className="font-medium">{item.filename}</p><p className="text-xs text-muted-foreground">{item.templateKind} · {item.sheetName || "auto"} · {new Date(item.createdAt).toLocaleString("id-ID")}</p></div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{item.status}</Badge>
+                    <span className="text-muted-foreground">{item.matchedCount} matched · {item.unmatchedCount} fix · {item.conflictCount} conflict</span>
+                    <Button size="sm" variant="outline" disabled={isSavingAttendance || isFinalized || item.status !== "applied"} onClick={() => rollbackAttendanceImport(item.id)}><Undo2 className="mr-2 size-4" />Rollback</Button>
+                  </div>
+                </div>
+              ))}
+              {!attendanceImportHistory.length ? <div className="rounded-lg border px-3 py-2 text-muted-foreground">Belum ada import history.</div> : null}
+            </div>
+          </Card>
           {attendanceConflicts.length ? (
             <Card className="surface-module-card rounded-[1rem] border-0 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1903,11 +1954,11 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
 
         <TabsContent value="field-break" className="space-y-4">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-            <div><p className="font-semibold text-foreground">Schedule Field Break</p><p className="text-sm text-muted-foreground">Atur estimasi FB per karyawan, simpan ke database, lalu sync ke Schedule dan Schedule Tetap.</p></div>
-            <TabExportActions tabTitle="Schedule Field Break" columns={["Nama", "Section", "Roster", "On Site", "Day", "FB", "Updated"]} exportRows={fieldBreakRows.map((row) => [row.employee.name, row.sectionLabel, rosterSectionLabel(row.rosterSection), formatShortDate(row.onSiteDate), row.dayCount, formatShortDate(row.fieldBreakDate), row.savedAt ? new Date(row.savedAt).toLocaleString("id-ID") : "Belum tersimpan"])} />
+            <div><p className="font-semibold text-foreground">Schedule Field Break</p><p className="text-sm text-muted-foreground">Isi manual tanggal field break per karyawan, lalu simpan ke database.</p></div>
+            <TabExportActions tabTitle="Schedule Field Break" columns={["Nama", "Section", "Roster", "On Site", "Day", "FB", "Updated"]} exportRows={fieldBreakRows.map((row) => [row.employee.name, row.sectionLabel, rosterSectionLabel(row.rosterSection), formatShortDate(row.onSiteDate), row.dayCount ?? "", formatShortDate(row.fieldBreakDate), row.savedAt ? new Date(row.savedAt).toLocaleString("id-ID") : "Belum tersimpan"])} />
           </Card>
           <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
-            <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_auto] lg:items-end">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
               <div className="space-y-2">
                 <Label>Site Field Break</Label>
                 <Select value={fieldBreakSiteId} onValueChange={setFieldBreakSiteId}>
@@ -1915,26 +1966,18 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
                   <SelectContent>{sites.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Minggu Masuk</Label>
-                <Input min={1} type="number" value={fieldBreakWorkWeeks} onChange={(event) => setFieldBreakWorkWeeks(Number(event.target.value || 1))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Minggu Libur</Label>
-                <Input min={1} type="number" value={fieldBreakRestWeeks} onChange={(event) => setFieldBreakRestWeeks(Number(event.target.value || 1))} />
-              </div>
-              <Button className="h-10" disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized} onClick={syncFieldBreakPlansToDatabase}>{isSavingFieldBreak ? "Menyimpan..." : "Simpan DB + Sync"}</Button>
+              <Button className="h-10" disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized} onClick={syncFieldBreakPlansToDatabase}>{isSavingFieldBreak ? "Menyimpan..." : "Simpan DB"}</Button>
             </div>
           </Card>
           <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
             <div className="overflow-auto">
               <table className="w-full min-w-[920px] text-sm">
                 <thead><tr className="bg-surface-container-low text-left text-xs uppercase tracking-[0.12em] text-muted-foreground"><th className="px-4 py-3">Nama</th><th className="px-4 py-3">Section</th><th className="px-4 py-3">Roster</th><th className="px-4 py-3">Mulai</th><th className="px-4 py-3">Akhir</th><th className="px-4 py-3">Day</th></tr></thead>
-                <tbody>{fieldBreakRows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 hover:bg-muted/35"><td className="px-4 py-3 font-medium">{row.employee.name}</td><td className="px-4 py-3">{row.sectionLabel}</td><td className="px-4 py-3">{rosterSectionLabel(row.rosterSection)}</td><td className="px-4 py-3"><Input type="date" value={row.onSiteDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "onSiteDate", event.target.value)} /></td><td className="px-4 py-3"><Input type="date" min={row.onSiteDate} value={row.fieldBreakDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "fieldBreakDate", event.target.value)} /></td><td className="px-4 py-3 font-semibold">{row.dayCount}</td></tr>)}</tbody>
+                <tbody>{fieldBreakRows.map((row) => <tr key={row.employee.id} className="border-b border-slate-100 hover:bg-muted/35"><td className="px-4 py-3 font-medium">{row.employee.name}</td><td className="px-4 py-3">{row.sectionLabel}</td><td className="px-4 py-3">{rosterSectionLabel(row.rosterSection)}</td><td className="px-4 py-3"><Input type="date" value={row.onSiteDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "onSiteDate", event.target.value)} /></td><td className="px-4 py-3"><Input type="date" min={row.onSiteDate} value={row.fieldBreakDate} onChange={(event) => updateFieldBreakDraft(row.employee.id, "fieldBreakDate", event.target.value)} /></td><td className="px-4 py-3 font-semibold">{row.dayCount ?? ""}</td></tr>)}</tbody>
               </table>
             </div>
           </Card>
-          <SummaryTable columns={["Nama", "Section", "Roster", "On Site", "Day", "FB", "History"]} rows={fieldBreakRows.map((row) => [row.employee.name, row.sectionLabel, rosterSectionLabel(row.rosterSection), formatShortDate(row.onSiteDate), row.dayCount, formatShortDate(row.fieldBreakDate), row.savedAt ? `Tersimpan ${new Date(row.savedAt).toLocaleString("id-ID")}` : "Belum tersimpan"])} />
+          <SummaryTable columns={["Nama", "Section", "Roster", "On Site", "Day", "FB", "History"]} rows={fieldBreakRows.map((row) => [row.employee.name, row.sectionLabel, rosterSectionLabel(row.rosterSection), formatShortDate(row.onSiteDate), row.dayCount ?? "", formatShortDate(row.fieldBreakDate), row.savedAt ? `Tersimpan ${new Date(row.savedAt).toLocaleString("id-ID")}` : "Belum tersimpan"])} />
         </TabsContent>
 
         <TabsContent value="allowance" className="space-y-4">
@@ -2054,7 +2097,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           </div>
         </DialogContent>
       </Dialog>
-      <AttendanceImportPreviewDialog open={Boolean(attendanceImportPreview)} preview={attendanceImportPreview} mode={attendanceImportMode} disabled={isSavingAttendance || isFinalized} onModeChange={setAttendanceImportMode} onApply={applyAttendanceImportPreview} onDiscard={discardAttendanceImportPreview} onRequestClose={() => setDiscardImportDialogOpen(true)} />
+      <AttendanceImportPreviewDialog open={Boolean(attendanceImportPreview)} preview={attendanceImportPreview} employees={visibleEmployees.map((employee) => ({ id: employee.id, name: employee.name }))} mode={attendanceImportMode} disabled={isSavingAttendance || isFinalized} onModeChange={setAttendanceImportMode} onApply={applyAttendanceImportPreview} onDiscard={discardAttendanceImportPreview} onFixMatch={(importRowId, employeeId) => void fixAttendanceImportMatch(importRowId, employeeId)} onRequestClose={() => setDiscardImportDialogOpen(true)} />
       <AlertDialog open={discardImportDialogOpen} onOpenChange={setDiscardImportDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Discard import preview?</AlertDialogTitle><AlertDialogDescription>Preview data will be removed. Imported attendance will not be applied.</AlertDialogDescription></AlertDialogHeader>
@@ -2065,6 +2108,12 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Overwrite attendance conflicts?</AlertDialogTitle><AlertDialogDescription>{attendanceImportPreview?.conflictCount ?? 0} conflicting cells will overwrite current values.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { setOverwriteImportDialogOpen(false); confirmApplyAttendanceImportPreview(); }}>Overwrite conflicts</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={clearExcelImportDialogOpen} onOpenChange={setClearExcelImportDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Delete Excel Import?</AlertDialogTitle><AlertDialogDescription>Only Excel-sourced attendance cells for this site and period will be deleted. Manual and face/location cells stay.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={clearImportedAttendance}>Delete Excel Import</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <Dialog open={finalizeDialogOpen} onOpenChange={setFinalizeDialogOpen}>

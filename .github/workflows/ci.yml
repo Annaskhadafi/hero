@@ -108,3 +108,14 @@ jobs:
           BETTER_AUTH_SECRET: test-secret-key-for-ci
           BETTER_AUTH_URL: http://localhost:3000
           NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
+
+      - name: Run attendance import QA
+        run: npm run qa:attendance-import
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          BETTER_AUTH_SECRET: test-secret-key-for-ci
+          BETTER_AUTH_URL: http://localhost:3000
+          NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
+
+      - name: Check attendance DB drift
+        run: npm run check:attendance-db

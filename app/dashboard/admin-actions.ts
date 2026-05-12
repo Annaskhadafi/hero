@@ -54,7 +54,7 @@ import {
   trainingRecords,
   wellnessRecords,
 } from "@/db/schema/hero";
-import { indonesiaHolidays, timesheetAttendanceImportPreviews, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
+import { indonesiaHolidays, timesheetAttendanceEmployeeAliases, timesheetAttendanceImportPreviews, timesheetAttendanceImportTemplates, timesheetAttendanceRealOverrides, timesheetFieldBreakPlans, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingStatuses } from "@/db/schema/timesheet";
 import { fetchIndonesiaHolidays } from "@/lib/openholiday";
 import { buildAttendanceImportPreview, attendanceImportRawRowsSchema, type AttendancePreviewConflict, type AttendancePreviewRow } from "@/lib/timesheet/attendance-import";
 import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
@@ -277,9 +277,9 @@ const saveTimesheetFieldBreakPlansSchema = z.object({
     employeeName: z.string().min(1).max(200),
     sectionName: z.string().max(160),
     rosterSection: z.string().max(120),
-    onSiteDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    dayCount: z.number().int().min(1).max(365),
-    fieldBreakDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    onSiteDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    dayCount: z.number().int().min(1).max(365).nullable(),
+    fieldBreakDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   })),
 });
 
@@ -445,10 +445,20 @@ const createAttendanceImportPreviewSchema = z.object({
   filename: z.string().min(1).max(240),
   rows: attendanceImportRawRowsSchema,
   fixedSchedule: z.array(schedulingPlanRowSchema).default([]),
+  detection: z.object({ sheetName: z.string().default(""), kind: z.string().default("auto"), confidence: z.number().default(0), warnings: z.array(z.string()).default([]) }).optional(),
 });
 
 const attendanceImportPreviewIdSchema = z.object({ previewId: z.number().int().positive() });
 const applyAttendanceImportPreviewSchema = attendanceImportPreviewIdSchema.extend({ mode: z.enum(["skip-conflicts", "overwrite-conflicts"]).default("skip-conflicts") });
+const clearAttendanceRealOverridesSchema = z.object({
+  siteId: z.number().int().positive(),
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  source: z.enum(["excel", "manual", "attendance", "all"]).default("excel"),
+});
+const updateAttendanceImportPreviewMatchSchema = z.object({ previewId: z.number().int().positive(), importRowId: z.string().min(1), employeeId: z.number().int().positive(), saveAlias: z.boolean().default(true) });
+const attendanceImportHistorySchema = z.object({ siteId: z.number().int().positive(), period: z.string().regex(/^\d{4}-\d{2}$/) });
+const saveAttendanceEmployeeAliasSchema = z.object({ siteId: z.number().int().positive(), employeeId: z.number().int().positive(), aliasName: z.string().max(160).default(""), aliasSn: z.string().max(80).default(""), source: z.string().max(80).default("manual") });
+const deleteAttendanceEmployeeAliasSchema = z.object({ aliasId: z.number().int().positive() });
 
 export async function createAttendanceImportPreviewAction(input: z.infer<typeof createAttendanceImportPreviewSchema>) {
   const payload = createAttendanceImportPreviewSchema.parse(input);
@@ -459,12 +469,18 @@ export async function createAttendanceImportPreviewAction(input: z.infer<typeof 
   const savedByUserId = await getCurrentActorUserId(actorEmail);
   const now = new Date();
   const siteEmployees = await db.select({ id: employees.id, name: employees.name, employeeSn: employees.employeeSn, siteId: employees.siteId, siteName: sites.name }).from(employees).leftJoin(sites, eq(employees.siteId, sites.id));
+  const aliases = await db.select({ employeeId: timesheetAttendanceEmployeeAliases.employeeId, aliasName: timesheetAttendanceEmployeeAliases.aliasName, aliasSn: timesheetAttendanceEmployeeAliases.aliasSn }).from(timesheetAttendanceEmployeeAliases).where(eq(timesheetAttendanceEmployeeAliases.siteId, payload.siteId));
   const [site] = await db.select({ name: sites.name }).from(sites).where(eq(sites.id, payload.siteId)).limit(1);
-  const preview = buildAttendanceImportPreview({ rows: payload.rows, employees: siteEmployees, siteId: payload.siteId, siteName: site?.name, fixedSchedule: payload.fixedSchedule });
+  const detection = payload.detection ?? { sheetName: "", kind: "auto", confidence: 0, warnings: [] };
+  const headerSignature = `${detection.kind}:${detection.sheetName}`;
+  let templateId: number | null = null;
+  const preview = buildAttendanceImportPreview({ rows: payload.rows, employees: siteEmployees, aliases, siteId: payload.siteId, siteName: site?.name, fixedSchedule: payload.fixedSchedule });
   let previewId = 0;
 
   await db.transaction(async (tx) => {
-    const [inserted] = await tx.insert(timesheetAttendanceImportPreviews).values({ siteId: payload.siteId, period: payload.period, filename: payload.filename, status: "preview", matchedCount: preview.matchedCount, unmatchedCount: preview.unmatchedCount, cellCount: preview.cellCount, conflictCount: preview.conflictCount, previewRows: preview.previewRows, conflicts: preview.conflicts, uploadedByUserId: savedByUserId, createdAt: now }).returning({ id: timesheetAttendanceImportPreviews.id });
+    const [template] = await tx.insert(timesheetAttendanceImportTemplates).values({ siteId: payload.siteId, templateName: headerSignature || payload.filename, sourceType: "attendance", sheetName: detection.sheetName, templateKind: detection.kind, headerSignature, confidence: Math.round(detection.confidence), usageCount: 1, lastUsedAt: now, updatedAt: now }).onConflictDoUpdate({ target: [timesheetAttendanceImportTemplates.siteId, timesheetAttendanceImportTemplates.templateName], set: { sheetName: detection.sheetName, templateKind: detection.kind, headerSignature, confidence: Math.round(detection.confidence), usageCount: sql`${timesheetAttendanceImportTemplates.usageCount} + 1`, lastUsedAt: now, updatedAt: now } }).returning({ id: timesheetAttendanceImportTemplates.id });
+    templateId = template?.id ?? null;
+    const [inserted] = await tx.insert(timesheetAttendanceImportPreviews).values({ siteId: payload.siteId, period: payload.period, filename: payload.filename, status: "preview", matchedCount: preview.matchedCount, unmatchedCount: preview.unmatchedCount, cellCount: preview.cellCount, conflictCount: preview.conflictCount, previewRows: preview.previewRows, conflicts: preview.conflicts, templateId, templateKind: detection.kind, sheetName: detection.sheetName, detectionSummary: detection, validationSummary: preview.validationSummary, uploadedByUserId: savedByUserId, createdAt: now }).returning({ id: timesheetAttendanceImportPreviews.id });
     previewId = inserted.id;
     await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, importStatus: "preview", conflictCount: preview.conflictCount, lastImportedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "preview", conflictCount: preview.conflictCount, lastImportedAt: now, savedByUserId, updatedAt: now } });
   });
@@ -491,7 +507,7 @@ export async function applyAttendanceImportPreviewAction(input: z.infer<typeof a
 
   await db.transaction(async (tx) => {
     if (writableRows.length) {
-      await tx.insert(timesheetAttendanceRealOverrides).values(writableRows.map((row) => ({ siteId: preview.siteId, period: preview.period, employeeId: row.employeeId!, day: row.day, status: row.status, clockIn: row.clockIn, clockOut: row.clockOut, note: row.note, source: "excel" as const, savedByUserId, updatedAt: now }))).onConflictDoUpdate({ target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day], set: { status: sql`excluded.status`, clockIn: sql`excluded.clock_in`, clockOut: sql`excluded.clock_out`, note: sql`excluded.note`, source: sql`excluded.source`, savedByUserId, updatedAt: now } });
+      await tx.insert(timesheetAttendanceRealOverrides).values(writableRows.map((row) => ({ siteId: preview.siteId, period: preview.period, employeeId: row.employeeId!, day: row.day, status: row.status, clockIn: row.clockIn, clockOut: row.clockOut, note: row.note, source: "excel" as const, importPreviewId: payload.previewId, validationFlags: row.validationFlags ?? [], workMinutes: row.workMinutes ?? null, savedByUserId, updatedAt: now }))).onConflictDoUpdate({ target: [timesheetAttendanceRealOverrides.siteId, timesheetAttendanceRealOverrides.period, timesheetAttendanceRealOverrides.employeeId, timesheetAttendanceRealOverrides.day], set: { status: sql`excluded.status`, clockIn: sql`excluded.clock_in`, clockOut: sql`excluded.clock_out`, note: sql`excluded.note`, source: sql`excluded.source`, importPreviewId: payload.previewId, validationFlags: sql`excluded.validation_flags`, workMinutes: sql`excluded.work_minutes`, savedByUserId, updatedAt: now } });
     }
     await tx.update(timesheetAttendanceImportPreviews).set({ status: "applied", appliedAt: now }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
     await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, attendanceStatus: "saved", importStatus: "applied", conflictCount: payload.mode === "skip-conflicts" ? conflicts.length : 0, lastImportedAt: now, lastSavedAt: now, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "saved", importStatus: "applied", conflictCount: payload.mode === "skip-conflicts" ? conflicts.length : 0, lastImportedAt: now, lastSavedAt: now, savedByUserId, updatedAt: now } });
@@ -500,6 +516,83 @@ export async function applyAttendanceImportPreviewAction(input: z.infer<typeof a
   await logAuditEvent({ actorEmail, action: "timesheet.import_applied", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: `Applied attendance import (${writableRows.length} cells, mode ${payload.mode}).` });
   revalidatePath("/dashboard/scheduling-timesheet");
   return { ok: true, savedCount: writableRows.length, rows: writableRows };
+}
+
+export async function updateAttendanceImportPreviewMatchAction(input: z.infer<typeof updateAttendanceImportPreviewMatchSchema>) {
+  const payload = updateAttendanceImportPreviewMatchSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
+  if (!preview || preview.status !== "preview") throw new Error("Import preview not found.");
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
+  const [employee] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(eq(employees.id, payload.employeeId)).limit(1);
+  if (!employee) throw new Error("Employee not found.");
+  const rows = preview.previewRows as AttendancePreviewRow[];
+  const nextRows = rows.map((row) => row.importRowId === payload.importRowId ? { ...row, employeeId: employee.id, matchedName: employee.name, unmatched: false, crossSite: false, duplicate: false, matchMethod: "alias" as const, matchScore: 0, matchWarning: undefined, validationFlags: (row.validationFlags ?? []).filter((flag) => flag !== "low-confidence") } : row);
+  const fixedRow = nextRows.find((row) => row.importRowId === payload.importRowId);
+  if (!fixedRow) throw new Error("Preview row not found.");
+
+  await db.transaction(async (tx) => {
+    await tx.update(timesheetAttendanceImportPreviews).set({ previewRows: nextRows, matchedCount: nextRows.filter((row) => row.employeeId && !row.crossSite && !row.duplicate).length, unmatchedCount: nextRows.filter((row) => row.unmatched || row.crossSite || row.duplicate).length }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
+    if (payload.saveAlias && (fixedRow.employeeName || fixedRow.employeeSn)) {
+      await tx.insert(timesheetAttendanceEmployeeAliases).values({ siteId: preview.siteId, employeeId: employee.id, aliasName: fixedRow.employeeName, aliasSn: fixedRow.employeeSn, source: "preview-fix", updatedAt: now }).onConflictDoUpdate({ target: [timesheetAttendanceEmployeeAliases.siteId, timesheetAttendanceEmployeeAliases.aliasName, timesheetAttendanceEmployeeAliases.aliasSn], set: { employeeId: employee.id, source: "preview-fix", updatedAt: now } });
+    }
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.import_previewed", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: `Fixed attendance preview match for ${employee.name}.` });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true, previewRows: nextRows, savedByUserId };
+}
+
+export async function rollbackAttendanceImportPreviewAction(input: z.infer<typeof attendanceImportPreviewIdSchema>) {
+  const payload = attendanceImportPreviewIdSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+  const [preview] = await db.select().from(timesheetAttendanceImportPreviews).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId)).limit(1);
+  if (!preview || preview.status !== "applied") throw new Error("Applied import not found.");
+  await assertSchedulingPeriodOpen(preview.siteId, preview.period);
+
+  await db.transaction(async (tx) => {
+    await tx.delete(timesheetAttendanceRealOverrides).where(eq(timesheetAttendanceRealOverrides.importPreviewId, payload.previewId));
+    await tx.update(timesheetAttendanceImportPreviews).set({ status: "rolled_back", rolledBackAt: now }).where(eq(timesheetAttendanceImportPreviews.id, payload.previewId));
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: preview.siteId, period: preview.period, importStatus: "rolled_back", savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { importStatus: "rolled_back", savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.import_discarded", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: "Rolled back attendance import batch." });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
+}
+
+export async function getAttendanceImportHistoryAction(input: z.infer<typeof attendanceImportHistorySchema>) {
+  const payload = attendanceImportHistorySchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
+  return db.select({ id: timesheetAttendanceImportPreviews.id, filename: timesheetAttendanceImportPreviews.filename, status: timesheetAttendanceImportPreviews.status, matchedCount: timesheetAttendanceImportPreviews.matchedCount, unmatchedCount: timesheetAttendanceImportPreviews.unmatchedCount, cellCount: timesheetAttendanceImportPreviews.cellCount, conflictCount: timesheetAttendanceImportPreviews.conflictCount, templateKind: timesheetAttendanceImportPreviews.templateKind, sheetName: timesheetAttendanceImportPreviews.sheetName, validationSummary: timesheetAttendanceImportPreviews.validationSummary, createdAt: timesheetAttendanceImportPreviews.createdAt, appliedAt: timesheetAttendanceImportPreviews.appliedAt, rolledBackAt: timesheetAttendanceImportPreviews.rolledBackAt }).from(timesheetAttendanceImportPreviews).where(and(eq(timesheetAttendanceImportPreviews.siteId, payload.siteId), eq(timesheetAttendanceImportPreviews.period, payload.period))).orderBy(desc(timesheetAttendanceImportPreviews.createdAt)).limit(10);
+}
+
+export async function saveAttendanceEmployeeAliasAction(input: z.infer<typeof saveAttendanceEmployeeAliasSchema>) {
+  const payload = saveAttendanceEmployeeAliasSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
+  const now = new Date();
+  await db.insert(timesheetAttendanceEmployeeAliases).values({ siteId: payload.siteId, employeeId: payload.employeeId, aliasName: payload.aliasName, aliasSn: payload.aliasSn, source: payload.source, updatedAt: now }).onConflictDoUpdate({ target: [timesheetAttendanceEmployeeAliases.siteId, timesheetAttendanceEmployeeAliases.aliasName, timesheetAttendanceEmployeeAliases.aliasSn], set: { employeeId: payload.employeeId, source: payload.source, updatedAt: now } });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
+}
+
+export async function deleteAttendanceEmployeeAliasAction(input: z.infer<typeof deleteAttendanceEmployeeAliasSchema>) {
+  const payload = deleteAttendanceEmployeeAliasSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
+  await db.delete(timesheetAttendanceEmployeeAliases).where(eq(timesheetAttendanceEmployeeAliases.id, payload.aliasId));
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
 }
 
 export async function discardAttendanceImportPreviewAction(input: z.infer<typeof attendanceImportPreviewIdSchema>) {
@@ -519,6 +612,28 @@ export async function discardAttendanceImportPreviewAction(input: z.infer<typeof
   });
 
   await logAuditEvent({ actorEmail, action: "timesheet.import_discarded", entityType: "timesheet_scheduling_import", entityLabel: String(payload.previewId), description: "Discarded attendance import preview." });
+  revalidatePath("/dashboard/scheduling-timesheet");
+  return { ok: true };
+}
+
+export async function clearAttendanceRealOverridesAction(input: z.infer<typeof clearAttendanceRealOverridesSchema>) {
+  const payload = clearAttendanceRealOverridesSchema.parse(input);
+  await requireSchedulingTimesheetAccess("edit");
+  await ensureSchedulingTimesheetTables();
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period);
+  const actorEmail = await getCurrentActorEmail();
+  const savedByUserId = await getCurrentActorUserId(actorEmail);
+  const now = new Date();
+  const conditions = [eq(timesheetAttendanceRealOverrides.siteId, payload.siteId), eq(timesheetAttendanceRealOverrides.period, payload.period)];
+  if (payload.source !== "all") conditions.push(eq(timesheetAttendanceRealOverrides.source, payload.source));
+
+  await db.transaction(async (tx) => {
+    await tx.delete(timesheetAttendanceRealOverrides).where(and(...conditions));
+    await tx.update(timesheetAttendanceImportPreviews).set({ status: "discarded" }).where(and(eq(timesheetAttendanceImportPreviews.siteId, payload.siteId), eq(timesheetAttendanceImportPreviews.period, payload.period), eq(timesheetAttendanceImportPreviews.status, "preview")));
+    await tx.insert(timesheetSchedulingStatuses).values({ siteId: payload.siteId, period: payload.period, attendanceStatus: "draft", importStatus: "none", conflictCount: 0, savedByUserId, updatedAt: now }).onConflictDoUpdate({ target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period], set: { attendanceStatus: "draft", importStatus: "none", conflictCount: 0, savedByUserId, updatedAt: now } });
+  });
+
+  await logAuditEvent({ actorEmail, action: "timesheet.attendance_cleared", entityType: "timesheet_scheduling", entityLabel: `${payload.siteId}:${payload.period}`, description: `Cleared ${payload.source} attendance overrides.` });
   revalidatePath("/dashboard/scheduling-timesheet");
   return { ok: true };
 }

@@ -222,6 +222,28 @@ export const timesheetSchedulingStatuses = pgTable("hero_timesheet_scheduling_st
   sitePeriodUnique: uniqueIndex("hero_timesheet_scheduling_statuses_site_period_uidx").on(table.siteId, table.period),
 }));
 
+export const timesheetAttendanceImportTemplates = pgTable("hero_timesheet_attendance_import_templates", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  templateName: text("template_name").notNull(),
+  sourceType: text("source_type").notNull().default("fingerprint"),
+  sheetName: text("sheet_name").notNull().default(""),
+  headerRow: integer("header_row"),
+  columnMapping: jsonb("column_mapping").notNull().default({}),
+  matchRules: jsonb("match_rules").notNull().default({}),
+  templateKind: text("template_kind").notNull().default("auto"),
+  headerSignature: text("header_signature").notNull().default(""),
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").notNull().default(0),
+  confidence: integer("confidence").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  siteTemplateUnique: uniqueIndex("hero_timesheet_attendance_import_templates_site_name_uidx").on(table.siteId, table.templateName),
+}));
+
 export const timesheetAttendanceImportPreviews = pgTable("hero_timesheet_attendance_import_previews", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id")
@@ -236,9 +258,16 @@ export const timesheetAttendanceImportPreviews = pgTable("hero_timesheet_attenda
   conflictCount: integer("conflict_count").notNull().default(0),
   previewRows: jsonb("preview_rows").notNull().default([]),
   conflicts: jsonb("conflicts").notNull().default([]),
+  templateId: integer("template_id").references(() => timesheetAttendanceImportTemplates.id, { onDelete: "set null" }),
+  templateKind: text("template_kind").notNull().default("auto"),
+  sheetName: text("sheet_name").notNull().default(""),
+  detectionSummary: jsonb("detection_summary").notNull().default({}),
+  validationSummary: jsonb("validation_summary").notNull().default({}),
   uploadedByUserId: text("uploaded_by_user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   appliedAt: timestamp("applied_at"),
+  deletedAt: timestamp("deleted_at"),
+  rolledBackAt: timestamp("rolled_back_at"),
 });
 
 export const timesheetSchedulingPlans = pgTable("hero_timesheet_scheduling_plans", {
@@ -271,14 +300,31 @@ export const timesheetFieldBreakPlans = pgTable("hero_timesheet_field_break_plan
   employeeName: text("employee_name").notNull(),
   sectionName: text("section_name").notNull().default(""),
   rosterSection: text("roster_section").notNull().default(""),
-  onSiteDate: date("on_site_date").notNull(),
-  dayCount: integer("day_count").notNull().default(90),
-  fieldBreakDate: date("field_break_date").notNull(),
+  onSiteDate: date("on_site_date"),
+  dayCount: integer("day_count"),
+  fieldBreakDate: date("field_break_date"),
   savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   employeePeriodUnique: uniqueIndex("hero_timesheet_field_break_plans_employee_period_uidx").on(table.siteId, table.period, table.employeeId),
+}));
+
+export const timesheetAttendanceEmployeeAliases = pgTable("hero_timesheet_attendance_employee_aliases", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  aliasName: text("alias_name").notNull().default(""),
+  aliasSn: text("alias_sn").notNull().default(""),
+  source: text("source").notNull().default("attendance-import"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  siteAliasUnique: uniqueIndex("hero_timesheet_attendance_employee_aliases_site_alias_uidx").on(table.siteId, table.aliasName, table.aliasSn),
 }));
 
 export const timesheetAttendanceRealOverrides = pgTable("hero_timesheet_attendance_real_overrides", {
@@ -296,6 +342,9 @@ export const timesheetAttendanceRealOverrides = pgTable("hero_timesheet_attendan
   clockOut: text("clock_out").notNull().default(""),
   note: text("note").notNull().default(""),
   source: text("source").notNull().default("manual"),
+  importPreviewId: integer("import_preview_id").references(() => timesheetAttendanceImportPreviews.id, { onDelete: "set null" }),
+  validationFlags: jsonb("validation_flags").notNull().default([]),
+  workMinutes: integer("work_minutes"),
   savedByUserId: text("saved_by_user_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

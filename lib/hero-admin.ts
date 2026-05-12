@@ -58,6 +58,7 @@ import {
   ensureMasterCategoryTables,
   getActiveMasterCategoryOptionMap,
 } from "@/lib/master-categories";
+import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
 import { ensureDepartmentSectionSeedData } from "@/lib/org-seed-data";
 
 let seedPromise: Promise<void> | null = null;
@@ -2570,6 +2571,7 @@ export async function getOperationalCrudOptions() {
 }
 
 export async function getSchedulingTimesheetOptions() {
+  await ensureSchedulingTimesheetTables();
   const users = await getSecurityUsersData();
   const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses, importPreviews] = await Promise.all([
     db.select().from(timesheetSchedulingPlans).catch(() => []),
@@ -2599,6 +2601,7 @@ export async function getSchedulingTimesheetOptions() {
       id: user.id,
       name: user.name,
       email: user.email,
+      employeeSn: user.employeeSn,
       role: user.jobTitle || user.role,
       section: user.section,
       siteId: user.siteId ?? null,
@@ -2622,9 +2625,9 @@ export async function getSchedulingTimesheetOptions() {
       employeeName: plan.employeeName,
       sectionName: plan.sectionName,
       rosterSection: plan.rosterSection,
-      onSiteDate: String(plan.onSiteDate),
-      dayCount: plan.dayCount,
-      fieldBreakDate: String(plan.fieldBreakDate),
+      onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : "",
+      dayCount: plan.dayCount ?? null,
+      fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : "",
       updatedAt: plan.updatedAt.toISOString(),
     })),
     attendanceRecords: attendanceRows.map((record) => ({

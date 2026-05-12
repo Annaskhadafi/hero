@@ -101,13 +101,22 @@ export async function ensureSchedulingTimesheetTables() {
         employee_name text not null,
         section_name text not null default '',
         roster_section text not null default '',
-        on_site_date date not null,
-        day_count integer not null default 90,
-        field_break_date date not null,
+        on_site_date date,
+        day_count integer,
+        field_break_date date,
         saved_by_user_id text references "user"(id) on delete set null,
         created_at timestamp not null default now(),
         updated_at timestamp not null default now()
       );
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_field_break_plans alter column on_site_date drop not null;
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_field_break_plans alter column day_count drop not null;
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_field_break_plans alter column field_break_date drop not null;
     `);
     await tx.execute(sql`
       create unique index if not exists hero_timesheet_field_break_plans_employee_period_uidx
@@ -125,6 +134,9 @@ export async function ensureSchedulingTimesheetTables() {
         clock_out text not null default '',
         note text not null default '',
         source text not null default 'manual',
+        import_preview_id integer,
+        validation_flags jsonb not null default '[]'::jsonb,
+        work_minutes integer,
         saved_by_user_id text references "user"(id) on delete set null,
         created_at timestamp not null default now(),
         updated_at timestamp not null default now()
@@ -133,6 +145,44 @@ export async function ensureSchedulingTimesheetTables() {
     await tx.execute(sql`
       create unique index if not exists hero_timesheet_attendance_real_overrides_employee_day_uidx
       on hero_timesheet_attendance_real_overrides(site_id, period, employee_id, day);
+    `);
+    await tx.execute(sql`
+      create table if not exists hero_timesheet_attendance_import_templates (
+        id serial primary key,
+        site_id integer not null references hero_sites(id) on delete cascade,
+        template_name text not null,
+        source_type text not null default 'fingerprint',
+        sheet_name text not null default '',
+        header_row integer,
+        column_mapping jsonb not null default '{}'::jsonb,
+        match_rules jsonb not null default '{}'::jsonb,
+        template_kind text not null default 'auto',
+        header_signature text not null default '',
+        last_used_at timestamp,
+        usage_count integer not null default 0,
+        confidence integer not null default 0,
+        created_at timestamp not null default now(),
+        updated_at timestamp not null default now()
+      );
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_attendance_import_templates add column if not exists template_kind text not null default 'auto';
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_attendance_import_templates add column if not exists header_signature text not null default '';
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_attendance_import_templates add column if not exists last_used_at timestamp;
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_attendance_import_templates add column if not exists usage_count integer not null default 0;
+    `);
+    await tx.execute(sql`
+      alter table hero_timesheet_attendance_import_templates add column if not exists confidence integer not null default 0;
+    `);
+    await tx.execute(sql`
+      create unique index if not exists hero_timesheet_attendance_import_templates_site_name_uidx
+      on hero_timesheet_attendance_import_templates(site_id, template_name);
     `);
     await tx.execute(sql`
       create table if not exists hero_timesheet_attendance_import_previews (
@@ -147,11 +197,44 @@ export async function ensureSchedulingTimesheetTables() {
         conflict_count integer not null default 0,
         preview_rows jsonb not null default '[]'::jsonb,
         conflicts jsonb not null default '[]'::jsonb,
+        template_id integer references hero_timesheet_attendance_import_templates(id) on delete set null,
+        template_kind text not null default 'auto',
+        sheet_name text not null default '',
+        detection_summary jsonb not null default '{}'::jsonb,
+        validation_summary jsonb not null default '{}'::jsonb,
         uploaded_by_user_id text references "user"(id) on delete set null,
         created_at timestamp not null default now(),
-        applied_at timestamp
+        applied_at timestamp,
+        deleted_at timestamp,
+        rolled_back_at timestamp
       );
     `);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists template_id integer references hero_timesheet_attendance_import_templates(id) on delete set null;`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists template_kind text not null default 'auto';`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists sheet_name text not null default '';`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists detection_summary jsonb not null default '{}'::jsonb;`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists validation_summary jsonb not null default '{}'::jsonb;`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists deleted_at timestamp;`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_import_previews add column if not exists rolled_back_at timestamp;`);
+    await tx.execute(sql`create index if not exists hero_timesheet_attendance_import_previews_site_period_created_idx on hero_timesheet_attendance_import_previews(site_id, period, created_at);`);
+    await tx.execute(sql`
+      create table if not exists hero_timesheet_attendance_employee_aliases (
+        id serial primary key,
+        site_id integer not null references hero_sites(id) on delete cascade,
+        employee_id integer not null references hero_employees(id) on delete cascade,
+        alias_name text not null default '',
+        alias_sn text not null default '',
+        source text not null default 'attendance-import',
+        created_at timestamp not null default now(),
+        updated_at timestamp not null default now()
+      );
+    `);
+    await tx.execute(sql`create unique index if not exists hero_timesheet_attendance_employee_aliases_site_alias_uidx on hero_timesheet_attendance_employee_aliases(site_id, alias_name, alias_sn);`);
+    await tx.execute(sql`create index if not exists hero_timesheet_attendance_employee_aliases_employee_idx on hero_timesheet_attendance_employee_aliases(employee_id);`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_real_overrides add column if not exists import_preview_id integer references hero_timesheet_attendance_import_previews(id) on delete set null;`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_real_overrides add column if not exists validation_flags jsonb not null default '[]'::jsonb;`);
+    await tx.execute(sql`alter table hero_timesheet_attendance_real_overrides add column if not exists work_minutes integer;`);
+    await tx.execute(sql`create index if not exists hero_timesheet_attendance_real_overrides_import_preview_idx on hero_timesheet_attendance_real_overrides(import_preview_id);`);
   }).catch((error) => {
     schedulingInfrastructurePromise = null;
     throw error;
