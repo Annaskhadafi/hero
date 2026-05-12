@@ -11,7 +11,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { applyAttendanceImportPreviewAction, clearAttendanceRealOverridesAction, createAttendanceImportPreviewAction, discardAttendanceImportPreviewAction, finalizeSchedulingPeriodAction, getAttendanceImportHistoryAction, getIndonesiaHolidaysAction, reopenSchedulingPeriodAction, rollbackAttendanceImportPreviewAction, saveAttendanceRealOverridesAction, saveSchedulingConfigAction, saveSchedulingTimesheetPlanAction, saveTimesheetFieldBreakPlansAction, syncIndonesiaHolidaysAction, updateAttendanceImportPreviewMatchAction } from "@/app/dashboard/admin-actions";
 import { applyHolidayPolicy, canSwapOff, classifyOvertimeDay, dateKey, daysInMonth, hoursFromCode, isHoliday, isWeekend, swapScheduleCodes, type HolidayLike } from "@/lib/timesheet-scheduling";
 import { AttendanceRealBulkToolbar } from "@/components/timesheet/attendance-real-tab";
@@ -404,7 +403,9 @@ function timeFromIso(value?: string) {
   return date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }).replace(".", ":");
 }
 
-export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = [], fieldBreakPlans = [], attendanceRecords = [], attendanceOverrides = [], schedulingConfigs = [], schedulingStatuses = [] }: { employees: EmployeeOption[]; sites: SiteOption[]; savedPlans?: SavedSchedulingPlan[]; fieldBreakPlans?: SavedFieldBreakPlan[]; attendanceRecords?: AttendanceRealRecord[]; attendanceOverrides?: SavedAttendanceOverride[]; schedulingConfigs?: Array<{ siteId: number; scheduleType?: string; rosterType?: string; msaType?: string; mealsType?: string; overtimeType?: string; allowanceVariables?: unknown; overtimeVariables?: unknown }>; schedulingStatuses?: Array<{ siteId: number; period: string; scheduleStatus: string; attendanceStatus: string; importStatus: string; conflictCount: number; lastSavedAt?: string | null; lastImportedAt?: string | null; finalizedAt?: string | null }>; importPreviews?: unknown[] }) {
+type SchedulingTimesheetMode = "overview" | "setup" | "schedule" | "attendance" | "field-break" | "payroll";
+
+export function SchedulingTimesheetWorkspace({ mode = "overview", employees, sites, savedPlans = [], fieldBreakPlans = [], attendanceRecords = [], attendanceOverrides = [], schedulingConfigs = [], schedulingStatuses = [] }: { mode?: SchedulingTimesheetMode; employees: EmployeeOption[]; sites: SiteOption[]; savedPlans?: SavedSchedulingPlan[]; fieldBreakPlans?: SavedFieldBreakPlan[]; attendanceRecords?: AttendanceRealRecord[]; attendanceOverrides?: SavedAttendanceOverride[]; schedulingConfigs?: Array<{ siteId: number; scheduleType?: string; rosterType?: string; msaType?: string; mealsType?: string; overtimeType?: string; allowanceVariables?: unknown; overtimeVariables?: unknown }>; schedulingStatuses?: Array<{ siteId: number; period: string; scheduleStatus: string; attendanceStatus: string; importStatus: string; conflictCount: number; lastSavedAt?: string | null; lastImportedAt?: string | null; finalizedAt?: string | null }>; importPreviews?: unknown[] }) {
   const [period, setPeriod] = useState(currentMonthPeriod);
   const [siteId, setSiteId] = useState(String(sites[0]?.id ?? "all"));
   const [roster, setRoster] = useState("5:2");
@@ -1681,19 +1682,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
         </Card>
       ) : null}
 
-      <Tabs defaultValue="schedule" className="space-y-4">
-        <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-2xl bg-surface-container-low p-1 lg:w-auto">
-          <TabsTrigger value="settings">Setting</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="attendance-real">Attendance Real</TabsTrigger>
-          <TabsTrigger value="permanent">Schedule Tetap</TabsTrigger>
-          <TabsTrigger value="field-break">Schedule Field Break</TabsTrigger>
-          <TabsTrigger value="allowance">MSA + Meals</TabsTrigger>
-          <TabsTrigger value="overtime">Overtime</TabsTrigger>
-          <TabsTrigger value="variables">Variabel</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="settings" className="space-y-4">
+        {mode === "setup" ? <section className="space-y-4">
           <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1740,9 +1729,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
               </div>
             </div>
           </Card>
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="variables" className="space-y-4">
+        {mode === "setup" ? <section className="space-y-4">
           <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><p className="font-semibold text-foreground">Setting Variabel MSA, Meals, Overtime</p><p className="text-sm text-muted-foreground">Nama projek dipilih dari Master Site agar matching rate lebih akurat.</p></div>
@@ -1774,9 +1763,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
             </div>
             <Button className="mt-3" variant="outline" onClick={addOvertimeVariable}>Tambah Overtime</Button>
           </Card>
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="schedule" className="space-y-3">
+        {mode === "schedule" ? <section className="space-y-3">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
             <div>
               <p className="font-semibold text-foreground">Save Schedule ke Schedule Tetap</p>
@@ -1816,9 +1805,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           <div className="space-y-5">
             {sectionOptions.map((section) => renderRosterTable(rows, section, "draft", cycleCell))}
           </div>
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="attendance-real" className="space-y-3">
+        {mode === "attendance" ? <section className="space-y-3">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
             <div>
               <p className="font-semibold text-foreground">Attendance Real</p>
@@ -1929,9 +1918,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
             <p className="font-semibold text-foreground">Input manual cepat</p>
             <p className="mt-1 text-sm text-muted-foreground">Klik cell untuk edit jam/status. Double-click untuk cycle: Masuk → Sakit → Izin → Alpha → -. Excel mendukung kolom `Nama`, `D1..D31`, `Masuk 1`, `Pulang 1`.</p>
           </Card>
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="permanent" className="space-y-3">
+        {mode === "schedule" ? <section className="space-y-3">
           <Card className="surface-module-card rounded-[1rem] border-0 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1950,9 +1939,9 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           <div className="space-y-5">
             {sectionOptions.map((section) => renderRosterTable(permanentRows, section, "fixed", cyclePermanentCell))}
           </div>
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="field-break" className="space-y-4">
+        {mode === "field-break" ? <section className="space-y-4">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
             <div><p className="font-semibold text-foreground">Schedule Field Break</p><p className="text-sm text-muted-foreground">Isi manual tanggal field break per karyawan, lalu simpan ke database.</p></div>
             <TabExportActions tabTitle="Schedule Field Break" columns={["Nama", "Section", "Roster", "On Site", "Day", "FB", "Updated"]} exportRows={fieldBreakRows.map((row) => [row.employee.name, row.sectionLabel, rosterSectionLabel(row.rosterSection), formatShortDate(row.onSiteDate), row.dayCount ?? "", formatShortDate(row.fieldBreakDate), row.savedAt ? new Date(row.savedAt).toLocaleString("id-ID") : "Belum tersimpan"])} />
@@ -1978,17 +1967,17 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
             </div>
           </Card>
           <SummaryTable columns={["Nama", "Section", "Roster", "On Site", "Day", "FB", "History"]} rows={fieldBreakRows.map((row) => [row.employee.name, row.sectionLabel, rosterSectionLabel(row.rosterSection), formatShortDate(row.onSiteDate), row.dayCount ?? "", formatShortDate(row.fieldBreakDate), row.savedAt ? `Tersimpan ${new Date(row.savedAt).toLocaleString("id-ID")}` : "Belum tersimpan"])} />
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="allowance" className="space-y-4">
+        {mode === "payroll" ? <section className="space-y-4">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
             <div><p className="font-semibold text-foreground">Export MSA + Meals</p><p className="text-sm text-muted-foreground">Export khusus tab allowance.</p></div>
             <TabExportActions tabTitle="MSA Meals" columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} exportRows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.msaDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
           </Card>
           <SummaryTable columns={["Employee", "Jabatan", "Staff", "Hari MSA", "FB", "MSA", "Meals", "Total"]} rows={rows.map((row) => [row.employee.name, row.employee.role, row.staff ? "Staff" : "Non Staff", row.msaDays, row.fieldBreakDays, money(row.msa), money(row.meals), money(row.msa + row.meals)])} />
-        </TabsContent>
+        </section> : null}
 
-        <TabsContent value="overtime" className="space-y-4">
+        {mode === "payroll" ? <section className="space-y-4">
           <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
             <div><p className="font-semibold text-foreground">Export Overtime</p><p className="text-sm text-muted-foreground">Overtime otomatis dari Attendance Real: jam pulang - jam masuk, lalu dibandingkan jam dasar schedule.</p></div>
             <TabExportActions tabTitle="Overtime" columns={["Employee", "Jabatan", "Jam Attendance Real", "Jam Dasar", "Overtime", "Roster"]} exportRows={attendanceOvertimeRows.map((row) => [row.employee.name, row.employee.role, row.attendanceTotalHours, row.attendanceBaseHours, row.attendanceOvertime, roster])} />
@@ -1997,8 +1986,7 @@ export function SchedulingTimesheetWorkspace({ employees, sites, savedPlans = []
           <div className="grid gap-3 lg:grid-cols-3">
             {overtimeRules.map((rule) => <Card key={rule.roster} className="surface-module-card rounded-[1rem] border-0 p-4"><p className="font-semibold">{rule.roster}</p><p className="mt-2 text-sm text-muted-foreground">Hari kerja: {rule.work}</p><p className="text-sm text-muted-foreground">Hari libur: {rule.off}</p></Card>)}
           </div>
-        </TabsContent>
-      </Tabs>
+        </section> : null}
 
       <Dialog open={selectedAttendanceCell !== null} onOpenChange={(open) => !open && setSelectedAttendanceCell(null)}>
         <DialogContent className="sm:max-w-[560px]">

@@ -91,12 +91,14 @@ describe("scheduling timesheet workflow", () => {
     }
   });
 
-  it("uses No. ID before Emp No. for face attendance identity", () => {
+  it("uses No. ID before Emp No. and scan columns for face attendance identity", () => {
     const workbook = XLSX.readFile(path.join(process.cwd(), "attandance site", "Absensi Wajah Juli 2024.xls"));
     const result = parseAttendanceWorkbook({ workbook, period: "2024-07", employees: [{ id: 1, name: "ASMUNI", employeeSn: "01" }] });
 
-    expect(result.rows[0]).toMatchObject({ employeeSn: "01", employeeName: "ASMUNI", day: 1 });
+    expect(result.rows[0]).toMatchObject({ employeeSn: "01", employeeName: "ASMUNI", day: 1, status: "absent", clockIn: "", clockOut: "" });
     expect(result.rows[0].employeeSn).not.toBe("54");
+    expect(result.rows[0].clockIn).not.toBe("08:00");
+    expect(result.rows[0].clockOut).not.toBe("17:00");
   });
 
   it("parses repeated fingerprint scans using first and last time", () => {
@@ -191,6 +193,37 @@ describe("scheduling timesheet workflow", () => {
     const source = fs.readFileSync(path.join(process.cwd(), "components/timesheet/attendance-import-preview-dialog.tsx"), "utf8");
     expect(source).toContain("onRequestClose");
     expect(source).toContain("onOpenChange={(next) => !next && onRequestClose()}");
+  });
+
+  it("splits scheduling timesheet into routed lightweight pages", () => {
+    const root = process.cwd();
+    const workspace = fs.readFileSync(path.join(root, "components/scheduling-timesheet-workspace.tsx"), "utf8");
+    const adminSource = fs.readFileSync(path.join(root, "lib/hero-admin.ts"), "utf8");
+    const sidebarSource = fs.readFileSync(path.join(root, "components/app-sidebar.tsx"), "utf8");
+    const routes = [
+      ["app/dashboard/scheduling-timesheet/page.tsx", "getSchedulingTimesheetOverviewOptions", 'mode=\"overview\"'],
+      ["app/dashboard/scheduling-timesheet/setup/page.tsx", "getSchedulingTimesheetSetupOptions", 'mode=\"setup\"'],
+      ["app/dashboard/scheduling-timesheet/schedule/page.tsx", "getSchedulingTimesheetScheduleOptions", 'mode=\"schedule\"'],
+      ["app/dashboard/scheduling-timesheet/attendance/page.tsx", "getSchedulingTimesheetAttendanceOptions", 'mode=\"attendance\"'],
+      ["app/dashboard/scheduling-timesheet/field-break/page.tsx", "getSchedulingTimesheetFieldBreakOptions", 'mode=\"field-break\"'],
+      ["app/dashboard/scheduling-timesheet/payroll/page.tsx", "getSchedulingTimesheetPayrollOptions", 'mode=\"payroll\"'],
+    ] as const;
+
+    expect(fs.existsSync(path.join(root, "app/dashboard/scheduling-timesheet/layout.tsx"))).toBe(true);
+    expect(workspace).not.toContain("TabsTrigger");
+    expect(adminSource).toContain('section: "Scheduling Time Sheet"');
+    expect(adminSource).toContain('resource: "scheduling_timesheet_attendance"');
+    expect(sidebarSource).toContain('"Scheduling Time Sheet",');
+    for (const [file, helper, mode] of routes) {
+      const source = fs.readFileSync(path.join(root, file), "utf8");
+      expect(source).toContain(helper);
+      expect(source).toContain(mode);
+    }
+  });
+
+  it("revalidates scheduling timesheet after face attendance submission", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "app/actions/attendance.ts"), "utf8");
+    expect(source).toContain('revalidatePath("/dashboard/scheduling-timesheet")');
   });
 
   it("uses user management SN in scheduling views and exports", () => {

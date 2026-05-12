@@ -1,17 +1,8 @@
-import { AdminPageShell } from "@/components/admin-page-shell";
 import { SchedulingTimesheetWorkspace } from "@/components/scheduling-timesheet-workspace";
-import { getSchedulingTimesheetOptions } from "@/lib/hero-admin";
+import { getSchedulingTimesheetOverviewOptions } from "@/lib/hero-admin";
 
 export default async function SchedulingTimesheetPage() {
-  const options = await getSchedulingTimesheetOptions();
+  const options = await getSchedulingTimesheetOverviewOptions();
 
-  return (
-    <AdminPageShell
-      eyebrow="HC • Scheduling Timesheet"
-      title="Scheduling Time Sheet"
-      description="Auto-generate jadwal tim tambang per site, lalu turunkan schedule menjadi MSA, Meals, dan overtime."
-    >
-      <SchedulingTimesheetWorkspace employees={options.employees} sites={options.sites} savedPlans={options.savedPlans} fieldBreakPlans={options.fieldBreakPlans} attendanceRecords={options.attendanceRecords} attendanceOverrides={options.attendanceOverrides} schedulingConfigs={options.schedulingConfigs} schedulingStatuses={options.schedulingStatuses} importPreviews={options.importPreviews} />
-    </AdminPageShell>
-  );
+  return <SchedulingTimesheetWorkspace mode="overview" employees={options.employees} sites={options.sites} schedulingConfigs={options.schedulingConfigs} schedulingStatuses={options.schedulingStatuses} />;
 }

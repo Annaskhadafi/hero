@@ -86,6 +86,32 @@ export const employees = pgTable("hero_employees", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const employeeSiteAssignments = pgTable(
+  "hero_employee_site_assignments",
+  {
+    id: serial("id").primaryKey(),
+    employeeId: integer("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    siteId: integer("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    assignmentType: text("assignment_type").notNull().default("primary"),
+    effectiveFrom: date("effective_from").notNull(),
+    effectiveTo: date("effective_to"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeSiteEffectiveUnique: uniqueIndex("hero_employee_site_assignments_employee_site_effective_uq").on(
+      table.employeeId,
+      table.siteId,
+      table.effectiveFrom,
+    ),
+  }),
+);
+
 export const activityLibraries = pgTable("hero_activity_libraries", {
   id: serial("id").primaryKey(),
   siteId: integer("site_id").references(() => sites.id, { onDelete: "set null" }),

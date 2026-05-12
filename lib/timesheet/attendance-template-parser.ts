@@ -4,7 +4,7 @@ import { normalizeAttendanceImportIdentity, type AttendanceImportEmployee, type 
 import { normalizeAttendanceStatus } from "@/lib/timesheet/attendance-real";
 
 export type AttendanceTemplateKind = "matrix" | "row-log" | "fingerprint-detail";
-export type AttendanceTemplateColumnMapping = Partial<Record<"employeeSn" | "employeeName" | "siteName" | "date" | "day" | "clockIn" | "clockOut" | "scanTime" | "eventType" | "status", number>>;
+export type AttendanceTemplateColumnMapping = Partial<Record<"employeeSn" | "employeeName" | "siteName" | "date" | "day" | "clockIn" | "clockOut" | "scanTime" | "eventType" | "status" | "absentFlag", number>>;
 export type AttendanceTemplateDetection = {
   sheetName: string;
   kind: AttendanceTemplateKind;
@@ -27,16 +27,17 @@ type EmployeeMatcher = {
 };
 
 const fieldAliases: Record<keyof AttendanceTemplateColumnMapping, string[]> = {
-  employeeSn: ["sn", "pin", "noid", "no id", "nik", "userid", "user id", "badgeno", "badge no", "acno", "ac no", "id"],
+  employeeSn: ["empno", "emp no", "sn", "pin", "noid", "no id", "nik", "userid", "user id", "badgeno", "badge no", "acno", "ac no", "id"],
   employeeName: ["nama", "name", "employee", "employee name", "karyawan", "personnel"],
   siteName: ["site", "project", "lokasi", "location", "departemen", "department"],
   date: ["tanggal", "tgl", "date", "waktuabsen", "waktu absen"],
   day: ["day", "hari"],
-  clockIn: ["scanmasuk", "scan masuk", "jammasuk", "jam masuk", "masuk", "checkin", "check in", "in"],
-  clockOut: ["scanpulang", "scan pulang", "jampulang", "jam pulang", "keluar", "pulang", "checkout", "check out", "out"],
+  clockIn: ["scanmasuk", "scan masuk", "checkin", "check in", "clockin", "clock in", "masuk", "in", "jammasuk", "jam masuk"],
+  clockOut: ["scanpulang", "scan pulang", "checkout", "check out", "clockout", "clock out", "keluar", "pulang", "out", "jampulang", "jam pulang"],
   scanTime: ["jam", "time", "waktu", "scan", "datetime", "waktuabsen", "waktu absen"],
   eventType: ["inout", "event", "tipe", "type"],
-  status: ["status", "normal", "catatan", "keterangan", "absent", "autoassign", "auto assign"],
+  status: ["status", "normal", "catatan", "keterangan", "autoassign", "auto assign"],
+  absentFlag: ["absent", "absen"],
 };
 
 const employeeSnPriority = ["sn", "noid", "nik", "pin", "userid", "badgeno", "acno", "id", "empno"];
@@ -66,9 +67,12 @@ function aliasField(header: string): keyof AttendanceTemplateColumnMapping | nul
 
 function aliasPriority(field: keyof AttendanceTemplateColumnMapping, header: string) {
   const normalized = normalizeHeader(header);
-  if (field !== "employeeSn") return 0;
-  const priority = employeeSnPriority.findIndex((alias) => normalized === normalizeHeader(alias));
-  return priority === -1 ? employeeSnPriority.length : priority;
+  if (field === "employeeSn") {
+    const priority = employeeSnPriority.findIndex((alias) => normalized === normalizeHeader(alias));
+    return priority === -1 ? employeeSnPriority.length : priority;
+  }
+  if ((field === "clockIn" || field === "clockOut") && normalized.startsWith("scan")) return -1;
+  return 0;
 }
 
 function buildMapping(header: string[]) {
@@ -265,7 +269,9 @@ function parseRowLog(rows: RawSheet, detection: AttendanceTemplateDetection, per
     const scanTime = normalizeTimeValue(getCell(row, mapping.scanTime));
     const clockIn = normalizeTimeValue(getCell(row, mapping.clockIn)) || scanTime;
     const clockOut = normalizeTimeValue(getCell(row, mapping.clockOut));
-    const statusValue = getCell(row, mapping.status) || (clockIn || clockOut ? "Masuk" : "");
+    const absentFlag = getCell(row, mapping.absentFlag).toLowerCase();
+    const isAbsent = absentFlag === "true" || absentFlag === "1" || absentFlag === "yes";
+    const statusValue = clockIn || clockOut ? "Masuk" : isAbsent ? "Absent" : getCell(row, mapping.status);
 
     return [{ employeeSn, employeeName, siteName: getCell(row, mapping.siteName), day, status: normalizeAttendanceStatus(statusValue), clockIn, clockOut, note: statusValue }];
   });

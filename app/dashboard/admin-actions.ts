@@ -2153,6 +2153,7 @@ export async function importSecurityUsersAction(
     const existingEmployees = await db
       .select({
         id: employees.id,
+        authUserId: employees.authUserId,
         name: employees.name,
         email: employees.email,
         totalPoints: employees.totalPoints,
@@ -2160,6 +2161,8 @@ export async function importSecurityUsersAction(
         fitStatus: employees.fitStatus,
       })
       .from(employees);
+    const existingAuthUsers = await db.select({ id: user.id, email: user.email }).from(user);
+    const authUserByEmail = new Map(existingAuthUsers.map((authUser) => [normalizeEmail(authUser.email), authUser]));
 
     const employeeByEmail = new Map(
       existingEmployees.map((employee) => [normalizeEmail(employee.email), employee]),
@@ -2194,7 +2197,9 @@ export async function importSecurityUsersAction(
       const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId);
       const existing = employeeByEmail.get(email);
 
+      const linkedAuthUserId = existing?.authUserId ?? authUserByEmail.get(email)?.id ?? null;
       const values = {
+        authUserId: linkedAuthUserId,
         siteId: defaultSite.id,
         name: fullName,
         email,
@@ -2230,7 +2235,7 @@ export async function importSecurityUsersAction(
           managerAssignments.push({ employeeId: existing.id, managerLabel });
         }
 
-        employeeByEmail.set(email, existing);
+        employeeByEmail.set(email, { ...existing, authUserId: linkedAuthUserId });
         continue;
       }
 
@@ -2256,6 +2261,7 @@ export async function importSecurityUsersAction(
 
       employeeByEmail.set(email, {
         ...inserted,
+        authUserId: linkedAuthUserId,
         totalPoints: 0,
         levelName: "Rookie",
         fitStatus: "fit",
@@ -2293,6 +2299,15 @@ export async function importSecurityUsersAction(
           .where(eq(employees.id, assignment.employeeId));
       }
     }
+
+    const actorEmail = await getCurrentActorEmail();
+    await logAuditEvent({
+      actorEmail,
+      action: "user.bulk_imported",
+      entityType: "user_import",
+      entityLabel: "security_users_csv",
+      description: `Imported ${importedCount} users, updated ${updatedCount}, skipped ${skippedCount}.`,
+    });
 
     revalidateAdminSurfaces();
 
@@ -2582,6 +2597,15 @@ export async function manageSecurityUserAction(
           .where(eq(user.id, authUserId));
       }
 
+      const actorEmail = await getCurrentActorEmail();
+      await logAuditEvent({
+        actorEmail,
+        action: "user.updated",
+        entityType: "user",
+        entityLabel: payload.fullName || employee.name,
+        description: `Updated profile for ${payload.fullName || employee.name} (${email}).`,
+      });
+
       revalidateAdminSurfaces();
       return { status: "success", message: "User profile updated successfully." };
     }
@@ -2622,25 +2646,30 @@ export async function manageSecurityUserAction(
     }
 
     if (payload.intent === "delete-user") {
+      await db
+        .update(employees)
+        .set({
+          isActive: false,
+          employmentStatus: "inactive",
+        })
+        .where(eq(employees.id, employee.id));
+
       if (employee.authUserId) {
-        await db.delete(user).where(eq(user.id, employee.authUserId));
+        await db.delete(session).where(eq(session.userId, employee.authUserId));
       }
 
-      await db.delete(employees).where(eq(employees.id, employee.id));
-
-      // Audit log
       const actorEmail = await getCurrentActorEmail();
       await logAuditEvent({
         actorEmail,
         action: "user.deleted",
         entityType: "user",
         entityLabel: employee.name,
-        description: `Deleted user ${employee.name} (${employee.email})`,
+        description: `Deactivated user ${employee.name} (${employee.email}) and revoked sessions.`,
         severity: "critical",
       });
 
       revalidateAdminSurfaces();
-      return { status: "success", message: "User deleted successfully." };
+      return { status: "success", message: "User deactivated successfully." };
     }
 
     if (payload.intent === "change-role") {

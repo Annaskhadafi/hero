@@ -407,6 +407,7 @@ export async function submitAttendance(formData: FormData) {
     revalidatePath("/mobile/attendance");
     revalidatePath("/dashboard/attendance");
     revalidatePath("/dashboard/attendance/records");
+    revalidatePath("/dashboard/scheduling-timesheet");
 
     return { success: true, record };
   } catch (err) {

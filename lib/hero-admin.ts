@@ -439,12 +439,67 @@ const SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: "main",
-    section: "HR",
-    title: "Scheduling Time Sheet",
+    section: "Scheduling Time Sheet",
+    title: "Overview",
     url: "/dashboard/scheduling-timesheet",
     iconName: "clock",
     resource: "scheduling_timesheet",
-    sortOrder: 8,
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Scheduling Time Sheet",
+    title: "Setup",
+    url: "/dashboard/scheduling-timesheet/setup",
+    iconName: "settings",
+    resource: "scheduling_timesheet_setup",
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Scheduling Time Sheet",
+    title: "Schedule",
+    url: "/dashboard/scheduling-timesheet/schedule",
+    iconName: "clock",
+    resource: "scheduling_timesheet_schedule",
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Scheduling Time Sheet",
+    title: "Attendance",
+    url: "/dashboard/scheduling-timesheet/attendance",
+    iconName: "checklist",
+    resource: "scheduling_timesheet_attendance",
+    sortOrder: 4,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Scheduling Time Sheet",
+    title: "Field Break",
+    url: "/dashboard/scheduling-timesheet/field-break",
+    iconName: "list-details",
+    resource: "scheduling_timesheet_field_break",
+    sortOrder: 5,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: "main",
+    section: "Scheduling Time Sheet",
+    title: "Payroll",
+    url: "/dashboard/scheduling-timesheet/payroll",
+    iconName: "report",
+    resource: "scheduling_timesheet_payroll",
+    sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
@@ -2695,6 +2750,192 @@ export async function getSchedulingTimesheetOptions() {
       appliedAt: preview.appliedAt?.toISOString() ?? null,
     })),
   };
+}
+
+async function getSchedulingTimesheetBaseOptions() {
+  await ensureSchedulingTimesheetTables();
+  const users = await getSecurityUsersData();
+  const activeUsers = users.filter((user) => user.isActive);
+  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>();
+
+  for (const user of activeUsers) {
+    const siteName = user.siteName || "Belum diisi";
+    if (!siteByKey.has(siteName)) {
+      siteByKey.set(siteName, {
+        id: user.siteId ?? -siteByKey.size - 1,
+        name: siteName,
+        customerName: siteName,
+      });
+    }
+  }
+
+  return {
+    employees: activeUsers.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      employeeSn: user.employeeSn,
+      role: user.jobTitle || user.role,
+      section: user.section,
+      siteId: user.siteId ?? null,
+      locationName: user.siteName,
+    })),
+    sites: Array.from(siteByKey.values()).sort((left, right) => left.name.localeCompare(right.name, "id-ID")),
+  };
+}
+
+function serializeSchedulingConfig(config: typeof timesheetSchedulingConfigs.$inferSelect) {
+  return {
+    siteId: config.siteId,
+    scheduleType: config.scheduleType,
+    rosterType: config.rosterType,
+    msaType: config.msaType,
+    mealsType: config.mealsType,
+    overtimeType: config.overtimeType,
+    fieldBreakConfig: config.fieldBreakConfig,
+    allowanceVariables: config.allowanceVariables,
+    overtimeVariables: config.overtimeVariables,
+    updatedAt: config.updatedAt.toISOString(),
+  };
+}
+
+function serializeSchedulingStatus(status: typeof timesheetSchedulingStatuses.$inferSelect) {
+  return {
+    siteId: status.siteId,
+    period: status.period,
+    scheduleStatus: status.scheduleStatus,
+    attendanceStatus: status.attendanceStatus,
+    importStatus: status.importStatus,
+    conflictCount: status.conflictCount,
+    lastGeneratedAt: status.lastGeneratedAt?.toISOString() ?? null,
+    lastSavedAt: status.lastSavedAt?.toISOString() ?? null,
+    lastImportedAt: status.lastImportedAt?.toISOString() ?? null,
+    finalizedAt: status.finalizedAt?.toISOString() ?? null,
+    metadata: status.metadata,
+    updatedAt: status.updatedAt.toISOString(),
+  };
+}
+
+function serializeSavedPlan(plan: typeof timesheetSchedulingPlans.$inferSelect) {
+  return {
+    siteId: plan.siteId,
+    period: plan.period,
+    siteScheduleType: plan.siteScheduleType,
+    draftSchedule: plan.draftSchedule as Array<{ employeeId: number; schedule: string[] }>,
+    fixedSchedule: plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
+    employeeProfiles: plan.employeeProfiles as Array<{ employeeId: number; section: string; positionOnSite: string; kimperLv: boolean; kimperTh: boolean }>,
+    fieldBreakConfig: plan.fieldBreakConfig as { workWeeks: number; breakWeeks: number } | null,
+    updatedAt: plan.updatedAt.toISOString(),
+  };
+}
+
+function serializeFieldBreakPlan(plan: typeof timesheetFieldBreakPlans.$inferSelect) {
+  return {
+    siteId: plan.siteId,
+    period: plan.period,
+    employeeId: plan.employeeId,
+    employeeName: plan.employeeName,
+    sectionName: plan.sectionName,
+    rosterSection: plan.rosterSection,
+    onSiteDate: plan.onSiteDate ? String(plan.onSiteDate) : "",
+    dayCount: plan.dayCount ?? null,
+    fieldBreakDate: plan.fieldBreakDate ? String(plan.fieldBreakDate) : "",
+    updatedAt: plan.updatedAt.toISOString(),
+  };
+}
+
+function serializeAttendanceRecord(record: typeof attendanceRecords.$inferSelect) {
+  return {
+    employeeId: record.employeeId,
+    siteId: record.siteId,
+    eventType: record.eventType,
+    eventTime: record.eventTime.toISOString(),
+    status: record.status,
+    locationNote: record.locationNote,
+    photoUrl: record.photoUrl,
+    latitude: record.latitude,
+    longitude: record.longitude,
+  };
+}
+
+function serializeAttendanceOverride(override: typeof timesheetAttendanceRealOverrides.$inferSelect) {
+  return {
+    siteId: override.siteId,
+    period: override.period,
+    employeeId: override.employeeId,
+    day: override.day,
+    status: ["present", "empty", "sick", "leave", "absent"].includes(override.status) ? override.status : "empty",
+    clockIn: override.clockIn,
+    clockOut: override.clockOut,
+    note: override.note,
+    source: ["manual", "excel", "attendance"].includes(override.source) ? override.source : "manual",
+    updatedAt: override.updatedAt.toISOString(),
+  };
+}
+
+export async function getSchedulingTimesheetOverviewOptions() {
+  const base = await getSchedulingTimesheetBaseOptions();
+  const [schedulingConfigs, schedulingStatuses] = await Promise.all([
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+  ]);
+  return { ...base, schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+}
+
+export async function getSchedulingTimesheetSetupOptions() {
+  const base = await getSchedulingTimesheetBaseOptions();
+  const [schedulingConfigs, schedulingStatuses] = await Promise.all([
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+  ]);
+  return { ...base, schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+}
+
+export async function getSchedulingTimesheetScheduleOptions() {
+  const base = await getSchedulingTimesheetBaseOptions();
+  const [savedPlans, fieldBreakPlans, schedulingConfigs, schedulingStatuses] = await Promise.all([
+    db.select().from(timesheetSchedulingPlans).catch(() => []),
+    db.select().from(timesheetFieldBreakPlans).catch(() => []),
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+  ]);
+  return { ...base, savedPlans: savedPlans.map(serializeSavedPlan), fieldBreakPlans: fieldBreakPlans.map(serializeFieldBreakPlan), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+}
+
+export async function getSchedulingTimesheetAttendanceOptions() {
+  const base = await getSchedulingTimesheetBaseOptions();
+  const [savedPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses, importPreviews] = await Promise.all([
+    db.select().from(timesheetSchedulingPlans).catch(() => []),
+    db.select().from(attendanceRecords).catch(() => []),
+    db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+    db.select().from(timesheetAttendanceImportPreviews).catch(() => []),
+  ]);
+  return { ...base, savedPlans: savedPlans.map(serializeSavedPlan), attendanceRecords: attendanceRows.map(serializeAttendanceRecord), attendanceOverrides: attendanceOverrides.map(serializeAttendanceOverride), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus), importPreviews };
+}
+
+export async function getSchedulingTimesheetFieldBreakOptions() {
+  const base = await getSchedulingTimesheetBaseOptions();
+  const [fieldBreakPlans, schedulingConfigs, schedulingStatuses] = await Promise.all([
+    db.select().from(timesheetFieldBreakPlans).catch(() => []),
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+  ]);
+  return { ...base, fieldBreakPlans: fieldBreakPlans.map(serializeFieldBreakPlan), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
+}
+
+export async function getSchedulingTimesheetPayrollOptions() {
+  const base = await getSchedulingTimesheetBaseOptions();
+  const [savedPlans, fieldBreakPlans, attendanceRows, attendanceOverrides, schedulingConfigs, schedulingStatuses] = await Promise.all([
+    db.select().from(timesheetSchedulingPlans).catch(() => []),
+    db.select().from(timesheetFieldBreakPlans).catch(() => []),
+    db.select().from(attendanceRecords).catch(() => []),
+    db.select().from(timesheetAttendanceRealOverrides).catch(() => []),
+    db.select().from(timesheetSchedulingConfigs).catch(() => []),
+    db.select().from(timesheetSchedulingStatuses).catch(() => []),
+  ]);
+  return { ...base, savedPlans: savedPlans.map(serializeSavedPlan), fieldBreakPlans: fieldBreakPlans.map(serializeFieldBreakPlan), attendanceRecords: attendanceRows.map(serializeAttendanceRecord), attendanceOverrides: attendanceOverrides.map(serializeAttendanceOverride), schedulingConfigs: schedulingConfigs.map(serializeSchedulingConfig), schedulingStatuses: schedulingStatuses.map(serializeSchedulingStatus) };
 }
 
 export async function getSecurityOverviewData() {
