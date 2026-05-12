@@ -306,23 +306,31 @@ function detectContractorDetail(
     const mapping: AttendanceTemplateColumnMapping = {}
     normalized.forEach((cell, colIndex) => {
       if (cell === 'date' || cell === 'tanggal') mapping.date = colIndex
-      else if (cell.includes('badge') || cell.includes('badgenumber') || cell.includes('badgeno'))
+      else if (
+        (cell.includes('badge') || cell.includes('badgenumber') || cell.includes('badgeno')) &&
+        !cell.includes('name') &&
+        !cell.includes('nama')
+      )
         mapping.employeeSn = colIndex // badge slot — NOT used as internal SN for matching
       else if (cell.includes('employeename') || cell === 'name' || cell === 'nama')
         mapping.employeeName = colIndex
       else if (
-        cell.includes('checkindatetime') ||
-        cell.includes('checkindate') ||
-        cell === 'checkin'
+        cell === 'checkindatetime' ||
+        cell === 'checkindate' ||
+        (cell.includes('checkin') && !cell.includes('point') && !cell.includes('name'))
       )
         mapping.clockIn = colIndex
       else if (
-        cell.includes('checkoutdatetime') ||
-        cell.includes('checkoutdate') ||
-        cell === 'checkout'
+        cell === 'checkoutdatetime' ||
+        cell === 'checkoutdate' ||
+        (cell.includes('checkout') && !cell.includes('point') && !cell.includes('name'))
       )
         mapping.clockOut = colIndex
-      else if (cell.includes('sitename') || cell.includes('location') || cell.includes('lokasi'))
+      else if (
+        cell.includes('sitename') ||
+        (cell.includes('location') && !cell.includes('name')) ||
+        cell.includes('lokasi')
+      )
         mapping.siteName = colIndex
     })
 
@@ -381,6 +389,32 @@ function parseDateDay(value: string, period: string) {
       return parsed.m === Number(period.slice(5, 7)) && parsed.y === Number(period.slice(0, 4))
         ? parsed.d
         : null
+  }
+
+  // Format: "01-Apr-2026" or "01-Apr-2026 06:23:25" (dd-Mon-yyyy with optional time)
+  const monthNames: Record<string, number> = {
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    may: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    oct: 10,
+    nov: 11,
+    dec: 12,
+  }
+  const ddMonYyyy = trimmed.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/)
+  if (ddMonYyyy) {
+    const day = Number(ddMonYyyy[1])
+    const month = monthNames[ddMonYyyy[2].toLowerCase()] ?? 0
+    const year = Number(ddMonYyyy[3])
+    const periodYear = Number(period.slice(0, 4))
+    const periodMonth = Number(period.slice(5, 7))
+    if (year === periodYear && month === periodMonth && day >= 1 && day <= 31) return day
+    return null
   }
 
   const normalized = trimmed.replace(/\./g, '/').replace(/-/g, '/')

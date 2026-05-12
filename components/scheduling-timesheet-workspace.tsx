@@ -806,6 +806,12 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null)
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
+  const [isImportingExcel, setIsImportingExcel] = useState(false)
+  const [lastImportSuccess, setLastImportSuccess] = useState<{
+    filename: string
+    matched: number
+    unmatched: number
+  } | null>(null)
   const [isSavingSchedule, startSavingSchedule] = useTransition()
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false)
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false)
@@ -2283,11 +2289,11 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih site terlebih dahulu sebelum import.')
       return
     }
+    setIsImportingExcel(true)
+    setLastImportSuccess(null)
     try {
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
-      // Pass ALL employees (not just visibleEmployees) so Fuse.js can match
-      // even if site filter hasn't been applied yet
       const allEmployeesForMatch = employees.length > 0 ? employees : visibleEmployees
       const parsed = parseAttendanceWorkbook({ workbook, period, employees: allEmployeesForMatch })
       if (parsed.rows.length === 0) {
@@ -2296,36 +2302,87 @@ export function SchedulingTimesheetWorkspace({
         })
         return
       }
-      const result = await createAttendanceImportPreviewAction({
+
+      // Build overrides untuk save langsung ke DB
+      const importOverrides: Array<{
+        employeeId: number
+        day: number
+        status: 'present' | 'empty' | 'sick' | 'leave' | 'absent'
+        clockIn: string
+        clockOut: string
+        note: string
+        source: 'excel'
+      }> = []
+      const cellUpdates: Record<string, ManualAttendanceCell> = {}
+      let matchedCount = 0
+      let unmatchedCount = 0
+
+      for (const row of parsed.rows) {
+        const matchedEmployee = allEmployeesForMatch.find(
+          (emp) => emp.name.toLowerCase().trim() === (row.employeeName || '').toLowerCase().trim()
+        )
+        if (!matchedEmployee) {
+          unmatchedCount++
+          continue
+        }
+        if (row.status !== 'present' && !row.clockIn && !row.clockOut) continue
+
+        const status: 'present' | 'empty' = row.clockIn || row.clockOut ? 'present' : 'empty'
+        const key = attendanceKey(matchedEmployee.id, row.day)
+        cellUpdates[key] = {
+          status,
+          clockIn: row.clockIn || '',
+          clockOut: row.clockOut || '',
+          note: row.note || '',
+          source: 'excel',
+        }
+        importOverrides.push({
+          employeeId: matchedEmployee.id,
+          day: row.day,
+          status,
+          clockIn: row.clockIn || '',
+          clockOut: row.clockOut || '',
+          note: row.note || '',
+          source: 'excel',
+        })
+        matchedCount++
+      }
+
+      if (matchedCount === 0) {
+        toast.warning('Tidak ada karyawan yang cocok dengan data HERO.', {
+          description: `${unmatchedCount} nama tidak ditemukan.`,
+        })
+        return
+      }
+
+      // Apply ke cell UI langsung
+      setManualAttendance((current) => ({ ...current, ...cellUpdates }))
+
+      // Auto-save ke database
+      const result = await saveAttendanceRealOverridesAction({
         siteId: numericSiteId,
         period,
-        filename: file.name,
-        rows: parsed.rows,
-        fixedSchedule: rows.map((row) => ({ employeeId: row.employee.id, schedule: row.schedule })),
-        detection: parsed.detection,
+        overrides: importOverrides,
       })
-      if (parsed.warnings.length)
-        toast.warning('Import attendance terbaca dengan catatan', {
-          description: parsed.warnings.join(' '),
+
+      if (result.ok) {
+        setAttendanceSavedAt(new Date().toISOString())
+        setIsAttendanceDirty(false)
+        setLastImportSuccess({
+          filename: file.name,
+          matched: matchedCount,
+          unmatched: unmatchedCount,
         })
-      setAttendanceImportPreview({
-        previewId: result.previewId,
-        matchedCount: result.matchedCount,
-        unmatchedCount: result.unmatchedCount,
-        cellCount: result.cellCount,
-        conflictCount: result.conflictCount,
-        validationSummary: result.validationSummary,
-        previewRows: result.previewRows,
-        conflicts: result.conflicts,
-      })
-      await refreshAttendanceImportHistory()
-      toast.success(
-        `Import preview ready — ${result.matchedCount} matched, ${result.unmatchedCount} unmatched`
-      )
+        toast.success(
+          `${matchedCount} data attendance tersimpan.${unmatchedCount > 0 ? ` ${unmatchedCount} nama tidak cocok.` : ''}`
+        )
+      }
     } catch (error) {
-      toast.error('Import preview failed', {
+      toast.error('Import gagal', {
         description: error instanceof Error ? error.message : 'Unknown error',
       })
+    } finally {
+      setIsImportingExcel(false)
     }
   }
 
@@ -3274,12 +3331,34 @@ export function SchedulingTimesheetWorkspace({
                   Terhubung dari face/location. Edit manual atau import via Excel.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button asChild size="sm" variant="outline" disabled={isFinalized}>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Import button with loading + success state */}
+                <Button
+                  asChild
+                  size="sm"
+                  variant={lastImportSuccess ? 'default' : 'outline'}
+                  disabled={isFinalized || isImportingExcel}
+                  className={
+                    lastImportSuccess ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''
+                  }
+                >
                   <Label className="h-9 cursor-pointer px-3">
-                    <Upload className="mr-2 size-4" /> Import Excel
+                    {isImportingExcel ? (
+                      <>
+                        <RefreshCw className="mr-2 size-4 animate-spin" /> Memproses...
+                      </>
+                    ) : lastImportSuccess ? (
+                      <>
+                        <Check className="mr-2 size-4" /> Berhasil ({lastImportSuccess.matched}{' '}
+                        matched)
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 size-4" /> Import Excel
+                      </>
+                    )}
                     <Input
-                      disabled={isFinalized}
+                      disabled={isFinalized || isImportingExcel}
                       className="hidden"
                       type="file"
                       accept=".xlsx,.xls,.csv"
@@ -3343,6 +3422,31 @@ export function SchedulingTimesheetWorkspace({
               </div>
             </div>
           </Card>
+          {lastImportSuccess ? (
+            <div className="flex items-center gap-3 rounded-[0.9rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
+                <Check className="size-3.5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-emerald-900">
+                  Import berhasil — {lastImportSuccess.matched} karyawan matched
+                </p>
+                <p className="truncate text-xs text-emerald-700">
+                  {lastImportSuccess.filename}
+                  {lastImportSuccess.unmatched > 0
+                    ? ` · ${lastImportSuccess.unmatched} tidak cocok (perlu fix manual di preview)`
+                    : ' · Semua karyawan teridentifikasi'}
+                </p>
+              </div>
+              <button
+                className="shrink-0 rounded p-1 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-900"
+                onClick={() => setLastImportSuccess(null)}
+                aria-label="Tutup notifikasi"
+              >
+                ✕
+              </button>
+            </div>
+          ) : null}
           {holidays.length ? (
             <Card className="surface-module-card flex flex-wrap gap-2 rounded-[1rem] border-0 p-3 text-sm">
               {holidays.map((holiday) => (
@@ -3543,7 +3647,16 @@ export function SchedulingTimesheetWorkspace({
               </Card>
             ))}
           </div>
-          <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
+          <Card className="surface-module-card relative overflow-hidden rounded-[1.2rem] border-0 p-0">
+            {isImportingExcel ? (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-sm">
+                <RefreshCw className="text-primary size-8 animate-spin" />
+                <p className="text-foreground text-sm font-semibold">Memproses file Excel...</p>
+                <p className="text-muted-foreground text-xs">
+                  Mencocokkan nama karyawan dengan Fuse.js
+                </p>
+              </div>
+            ) : null}
             <div className="max-w-full overflow-x-auto overflow-y-visible">
               <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
                 <thead>
