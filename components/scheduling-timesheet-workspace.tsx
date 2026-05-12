@@ -787,6 +787,9 @@ export function SchedulingTimesheetWorkspace({
     day: number
   } | null>(null)
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false)
+  const [attendanceView, setAttendanceView] = useState<'attendance' | 'msa' | 'meals' | 'ovt'>(
+    'attendance'
+  )
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -3778,6 +3781,29 @@ export function SchedulingTimesheetWorkspace({
             }
             onClear={clearAttendanceSelection}
           />
+          {/* Switch View: Attendance / MSA / Meals / OVT */}
+          <div className="bg-surface-container-low flex items-center gap-1.5 rounded-[0.8rem] p-1">
+            {(
+              [
+                { key: 'attendance', label: 'Attendance' },
+                { key: 'msa', label: 'MSA' },
+                { key: 'meals', label: 'Meals' },
+                { key: 'ovt', label: 'Overtime' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setAttendanceView(tab.key)}
+                className={`rounded-[0.6rem] px-3.5 py-1.5 text-xs font-semibold transition ${
+                  attendanceView === tab.key
+                    ? 'bg-foreground text-background shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-container-lowest'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
           <div className="grid gap-3 md:grid-cols-5">
             {[
               [
@@ -3805,6 +3831,16 @@ export function SchedulingTimesheetWorkspace({
                 <p className="text-foreground text-sm font-semibold">Memproses file Excel...</p>
                 <p className="text-muted-foreground text-xs">
                   Mencocokkan nama karyawan dengan Fuse.js
+                </p>
+              </div>
+            ) : null}
+            {/* View title */}
+            {attendanceView !== 'attendance' ? (
+              <div className="border-border/40 bg-surface-container-low border-b px-4 py-2.5">
+                <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                  {attendanceView === 'msa' && 'MSA SUMMARY'}
+                  {attendanceView === 'meals' && 'MEALS SUMMARY'}
+                  {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period}
                 </p>
               </div>
             ) : null}
@@ -3841,6 +3877,9 @@ export function SchedulingTimesheetWorkspace({
                         </th>
                       )
                     })}
+                    {attendanceView !== 'attendance' ? (
+                      <th className="w-[80px] min-w-[80px] px-2 py-3 text-right">Total</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -3886,22 +3925,136 @@ export function SchedulingTimesheetWorkspace({
                                 </td>
                                 {days.map((day) => {
                                   const cell = getAttendanceCell(row.employee.id, day)
+                                  const scheduleCode = row.schedule[day - 1] as string
+                                  const holiday = holidaysByDay.get(day)
+                                  const holidayName = holiday?.localName ?? holiday?.name
+                                  const isHolidayDay = Boolean(holiday)
+                                  const isOff =
+                                    scheduleCode === 'OFF' ||
+                                    scheduleCode === 'FB' ||
+                                    scheduleCode === 'Libur' ||
+                                    scheduleCode === 'Sakit'
+                                  const staff = /manager|supervisor|lead|staff|admin/i.test(
+                                    row.employee.role
+                                  )
+
+                                  // MSA/Meals/OVT view
+                                  if (attendanceView !== 'attendance') {
+                                    let cellValue: string | number = ''
+                                    let cellBg = ''
+
+                                    if (attendanceView === 'msa') {
+                                      if (isOff || isHolidayDay || cell.status !== 'present') {
+                                        cellValue =
+                                          scheduleCode === 'FB' ? 'FB' : isOff ? scheduleCode : ''
+                                        cellBg = isOff
+                                          ? 'bg-rose-50 text-rose-700'
+                                          : isHolidayDay
+                                            ? 'bg-amber-50 text-amber-700'
+                                            : ''
+                                      } else {
+                                        const msaRate =
+                                          siteConfig.msaType === 'none'
+                                            ? 0
+                                            : siteConfig.msaType === 'same-all'
+                                              ? rate.msaNonStaff
+                                              : staff
+                                                ? rate.msaStaff
+                                                : rate.msaNonStaff
+                                        cellValue = msaRate
+                                        cellBg =
+                                          msaRate > 0
+                                            ? 'bg-white text-foreground'
+                                            : 'bg-slate-50 text-muted-foreground'
+                                      }
+                                    } else if (attendanceView === 'meals') {
+                                      if (isOff || isHolidayDay || cell.status !== 'present') {
+                                        cellValue =
+                                          scheduleCode === 'FB' ? 'FB' : isOff ? scheduleCode : ''
+                                        cellBg = isOff
+                                          ? 'bg-rose-50 text-rose-700'
+                                          : isHolidayDay
+                                            ? 'bg-amber-50 text-amber-700'
+                                            : ''
+                                      } else {
+                                        const isFbDay = scheduleCode === 'FB'
+                                        const mealsRate =
+                                          siteConfig.mealsType === 'none'
+                                            ? 0
+                                            : siteConfig.mealsType === 'field-break'
+                                              ? isFbDay
+                                                ? staff
+                                                  ? rate.mealsStaff
+                                                  : rate.mealsNonStaff
+                                                : 0
+                                              : staff
+                                                ? rate.mealsStaff
+                                                : rate.mealsNonStaff
+                                        cellValue = mealsRate
+                                        cellBg =
+                                          mealsRate > 0
+                                            ? 'bg-white text-foreground'
+                                            : 'bg-slate-50 text-muted-foreground'
+                                      }
+                                    } else if (attendanceView === 'ovt') {
+                                      if (isOff || cell.status !== 'present') {
+                                        cellValue = isOff ? scheduleCode : ''
+                                        cellBg = isOff
+                                          ? 'bg-rose-50 text-rose-700'
+                                          : isHolidayDay
+                                            ? 'bg-amber-50 text-amber-700'
+                                            : ''
+                                      } else {
+                                        const clockInMin = cell.clockIn
+                                          ? Number(cell.clockIn.split(':')[0]) * 60 +
+                                            Number(cell.clockIn.split(':')[1])
+                                          : null
+                                        const clockOutMin = cell.clockOut
+                                          ? Number(cell.clockOut.split(':')[0]) * 60 +
+                                            Number(cell.clockOut.split(':')[1])
+                                          : null
+                                        if (clockInMin != null && clockOutMin != null) {
+                                          const worked =
+                                            (clockOutMin >= clockInMin
+                                              ? clockOutMin - clockInMin
+                                              : clockOutMin + 1440 - clockInMin) / 60
+                                          const ot = Math.max(
+                                            0,
+                                            Math.round((worked - 5) * 100) / 100
+                                          )
+                                          cellValue = ot > 0 ? ot : ''
+                                          cellBg =
+                                            ot > 0 ? 'bg-white text-foreground font-semibold' : ''
+                                        }
+                                      }
+                                    }
+
+                                    return (
+                                      <td
+                                        key={day}
+                                        className={`w-[52px] min-w-[52px] px-0.5 py-1.5 text-center text-[10px] ${cellBg} ${isHolidayDay ? 'bg-amber-50' : ''}`}
+                                        title={holidayName || `${scheduleCode} · ${cell.status}`}
+                                      >
+                                        {cellValue}
+                                      </td>
+                                    )
+                                  }
+
+                                  // Normal attendance view
                                   const isSelected = selectedAttendanceKeys.includes(
                                     attendanceKey(row.employee.id, day)
                                   )
                                   const isConflict =
                                     cell.status === 'present' &&
-                                    ['OFF', 'Libur', 'Sakit', 'FB'].includes(row.schedule[day - 1])
-                                  const holiday = holidaysByDay.get(day)
-                                  const holidayName = holiday?.localName ?? holiday?.name
+                                    ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
                                   return (
                                     <td
                                       key={day}
-                                      className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${holiday ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
+                                      className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${isHolidayDay ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
                                       title={holidayName}
                                     >
                                       <button
-                                        className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${holiday ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
+                                        className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${isHolidayDay ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                         onClick={() =>
                                           multiSelectAttendance
                                             ? toggleAttendanceSelection(row.employee.id, day)
@@ -3915,7 +4068,7 @@ export function SchedulingTimesheetWorkspace({
                                         }
                                         title={
                                           isConflict
-                                            ? `Conflict schedule ${row.schedule[day - 1]} vs attendance masuk`
+                                            ? `Conflict schedule ${scheduleCode} vs attendance masuk`
                                             : holidayName ||
                                               cell.note ||
                                               attendanceStatusLabel(cell.status)
@@ -3926,7 +4079,7 @@ export function SchedulingTimesheetWorkspace({
                                             !
                                           </span>
                                         ) : null}
-                                        {holiday ? (
+                                        {isHolidayDay ? (
                                           <span className="absolute top-1 right-1 text-[9px]">
                                             L
                                           </span>
@@ -3941,6 +4094,70 @@ export function SchedulingTimesheetWorkspace({
                                     </td>
                                   )
                                 })}
+                                {/* Total column for MSA/Meals/OVT views */}
+                                {attendanceView !== 'attendance'
+                                  ? (() => {
+                                      const staff = /manager|supervisor|lead|staff|admin/i.test(
+                                        row.employee.role
+                                      )
+                                      let total = 0
+                                      for (const day of days) {
+                                        const cell = getAttendanceCell(row.employee.id, day)
+                                        const code = row.schedule[day - 1] as string
+                                        const isOff2 =
+                                          code === 'OFF' ||
+                                          code === 'FB' ||
+                                          code === 'Libur' ||
+                                          code === 'Sakit'
+                                        const hol = holidaysByDay.get(day)
+                                        if (isOff2 || hol || cell.status !== 'present') continue
+                                        if (attendanceView === 'msa') {
+                                          total +=
+                                            siteConfig.msaType === 'none'
+                                              ? 0
+                                              : siteConfig.msaType === 'same-all'
+                                                ? rate.msaNonStaff
+                                                : staff
+                                                  ? rate.msaStaff
+                                                  : rate.msaNonStaff
+                                        } else if (attendanceView === 'meals') {
+                                          const isFb = code === 'FB'
+                                          total +=
+                                            siteConfig.mealsType === 'none'
+                                              ? 0
+                                              : siteConfig.mealsType === 'field-break'
+                                                ? isFb
+                                                  ? staff
+                                                    ? rate.mealsStaff
+                                                    : rate.mealsNonStaff
+                                                  : 0
+                                                : staff
+                                                  ? rate.mealsStaff
+                                                  : rate.mealsNonStaff
+                                        } else {
+                                          const ci = cell.clockIn
+                                            ? Number(cell.clockIn.split(':')[0]) * 60 +
+                                              Number(cell.clockIn.split(':')[1])
+                                            : null
+                                          const co = cell.clockOut
+                                            ? Number(cell.clockOut.split(':')[0]) * 60 +
+                                              Number(cell.clockOut.split(':')[1])
+                                            : null
+                                          if (ci != null && co != null) {
+                                            const w = (co >= ci ? co - ci : co + 1440 - ci) / 60
+                                            total += Math.max(0, w - 5)
+                                          }
+                                        }
+                                      }
+                                      return (
+                                        <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
+                                          {attendanceView === 'ovt'
+                                            ? Math.round(total * 100) / 100
+                                            : `Rp ${total.toLocaleString('id-ID')}`}
+                                        </td>
+                                      )
+                                    })()
+                                  : null}
                               </tr>
                             ))}
                           </React.Fragment>
