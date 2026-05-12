@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import * as XLSX from 'xlsx'
+import Fuse from 'fuse.js'
 import {
   CalendarDays,
   Calculator,
@@ -2295,11 +2296,65 @@ export function SchedulingTimesheetWorkspace({
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
       const allEmployeesForMatch = employees.length > 0 ? employees : visibleEmployees
-      const parsed = parseAttendanceWorkbook({ workbook, period, employees: allEmployeesForMatch })
+      console.log('[Import] period:', period, 'employees:', allEmployeesForMatch.length)
+
+      // Parse with current period first
+      let activePeriod = period
+      let parsed = parseAttendanceWorkbook({
+        workbook,
+        period: activePeriod,
+        employees: allEmployeesForMatch,
+      })
+
+      // Auto-detect period from Excel if no rows found
       if (parsed.rows.length === 0) {
-        toast.warning('Tidak ada data terbaca dari file ini.', {
-          description: parsed.warnings.join(' '),
-        })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        const rawRows: string[][] = XLSX.utils
+          .sheet_to_json(sheet, { header: 1, defval: '', raw: false })
+          .map((r: unknown) => (r as unknown[]).map((c) => String(c ?? '').trim()))
+        const monthMap: Record<string, string> = {
+          jan: '01',
+          feb: '02',
+          mar: '03',
+          apr: '04',
+          may: '05',
+          jun: '06',
+          jul: '07',
+          aug: '08',
+          sep: '09',
+          oct: '10',
+          nov: '11',
+          dec: '12',
+        }
+        for (let i = 1; i < Math.min(rawRows.length, 30); i++) {
+          const cell = (rawRows[i]?.[0] ?? '').trim()
+          const dateMatch = cell.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/)
+          if (dateMatch) {
+            const detected = `${dateMatch[3]}-${monthMap[dateMatch[2].toLowerCase()] ?? '01'}`
+            if (detected !== activePeriod) {
+              console.log('[Import] Period mismatch! UI:', activePeriod, 'Excel:', detected)
+              activePeriod = detected
+              setPeriod(detected)
+              parsed = parseAttendanceWorkbook({
+                workbook,
+                period: detected,
+                employees: allEmployeesForMatch,
+              })
+              toast.info(`Period disesuaikan ke ${detected} sesuai data Excel.`)
+            }
+            break
+          }
+        }
+      }
+
+      console.log('[Import] Result:', parsed.detection.kind, 'rows:', parsed.rows.length)
+      if (parsed.rows.length === 0) {
+        toast.error(
+          `Tidak ada data terbaca. Pastikan periode "${period}" sesuai dengan isi Excel.`,
+          {
+            description: parsed.warnings.join(' '),
+          }
+        )
         return
       }
 
@@ -2317,10 +2372,36 @@ export function SchedulingTimesheetWorkspace({
       let matchedCount = 0
       let unmatchedCount = 0
 
+      // Build Fuse index for fuzzy name matching
+      const fuseIndex = allEmployeesForMatch.map((emp) => ({
+        employee: emp,
+        normalizedName: emp.name.toLowerCase().trim(),
+      }))
+      const nameFuse = new Fuse(fuseIndex, {
+        keys: ['normalizedName'],
+        threshold: 0.35,
+        ignoreLocation: true,
+        minMatchCharLength: 3,
+        includeScore: true,
+      })
+
       for (const row of parsed.rows) {
-        const matchedEmployee = allEmployeesForMatch.find(
-          (emp) => emp.name.toLowerCase().trim() === (row.employeeName || '').toLowerCase().trim()
+        const rawName = (row.employeeName || '').toLowerCase().trim()
+        if (!rawName) {
+          unmatchedCount++
+          continue
+        }
+
+        // Try exact match first, then fuzzy
+        let matchedEmployee = allEmployeesForMatch.find(
+          (emp) => emp.name.toLowerCase().trim() === rawName
         )
+        if (!matchedEmployee) {
+          const fuseResult = nameFuse.search(rawName)[0]
+          if (fuseResult && (fuseResult.score ?? 1) <= 0.35) {
+            matchedEmployee = fuseResult.item.employee
+          }
+        }
         if (!matchedEmployee) {
           unmatchedCount++
           continue
@@ -2349,23 +2430,40 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (matchedCount === 0) {
-        toast.warning('Tidak ada karyawan yang cocok dengan data HERO.', {
-          description: `${unmatchedCount} nama tidak ditemukan.`,
+        console.log(
+          '[Import] No matches. unmatchedCount:',
+          unmatchedCount,
+          'Sample names from Excel:',
+          parsed.rows.slice(0, 5).map((r) => r.employeeName)
+        )
+        console.log(
+          '[Import] Sample employee names in system:',
+          allEmployeesForMatch.slice(0, 5).map((e) => e.name)
+        )
+        toast.error('Tidak ada karyawan yang cocok dengan data HERO.', {
+          description: `${unmatchedCount} nama tidak ditemukan. Cek console untuk detail.`,
         })
         return
       }
 
-      // Apply ke cell UI langsung
-      setManualAttendance((current) => ({ ...current, ...cellUpdates }))
+      console.log(
+        '[Import] Matched:',
+        matchedCount,
+        'Unmatched:',
+        unmatchedCount,
+        'Saving to DB...'
+      )
 
-      // Auto-save ke database
+      // Save ke database DULU, baru update UI
       const result = await saveAttendanceRealOverridesAction({
         siteId: numericSiteId,
-        period,
+        period: activePeriod,
         overrides: importOverrides,
       })
 
       if (result.ok) {
+        // Baru apply ke cell UI setelah DB save berhasil
+        setManualAttendance((current) => ({ ...current, ...cellUpdates }))
         setAttendanceSavedAt(new Date().toISOString())
         setIsAttendanceDirty(false)
         setLastImportSuccess({
@@ -2376,10 +2474,14 @@ export function SchedulingTimesheetWorkspace({
         toast.success(
           `${matchedCount} data attendance tersimpan.${unmatchedCount > 0 ? ` ${unmatchedCount} nama tidak cocok.` : ''}`
         )
+      } else {
+        toast.error('Save ke database gagal.')
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error('[Import Attendance Error]', message, error)
       toast.error('Import gagal', {
-        description: error instanceof Error ? error.message : 'Unknown error',
+        description: message || 'Cek console untuk detail error.',
       })
     } finally {
       setIsImportingExcel(false)
@@ -3988,6 +4090,9 @@ export function SchedulingTimesheetWorkspace({
                 </p>
                 <p className="text-muted-foreground text-xs">
                   Dihitung dari Attendance Real: jam pulang − jam masuk vs jam dasar schedule.
+                  {attendanceOvertimeRows.every((r) => r.attendanceTotalHours === 0)
+                    ? ' ⚠️ Belum ada data attendance — import dulu di tab Attendance.'
+                    : ''}
                 </p>
               </div>
               <TabExportActions
