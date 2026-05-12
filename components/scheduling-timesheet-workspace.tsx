@@ -242,22 +242,22 @@ const rosterSectionStyles: Record<
   { title: string; head: string; day: string; total: string }
 > = {
   'Service Operation': {
-    title: 'ROSTER CREW SERVICEMAN',
-    head: 'bg-sky-50 text-sky-950',
-    day: 'bg-sky-100/50 text-sky-950',
-    total: 'bg-slate-50 text-slate-900',
+    title: 'Roster Crew Serviceman',
+    head: 'bg-sky-50 text-sky-900',
+    day: 'bg-sky-50/60 text-sky-900',
+    total: 'bg-surface-container-low text-foreground',
   },
   'Repair Retread': {
-    title: 'ROSTER CREW REPAIRMAN',
-    head: 'bg-emerald-50 text-emerald-950',
-    day: 'bg-emerald-100/50 text-emerald-950',
-    total: 'bg-slate-50 text-slate-900',
+    title: 'Roster Crew Repairman',
+    head: 'bg-emerald-50 text-emerald-900',
+    day: 'bg-emerald-50/60 text-emerald-900',
+    total: 'bg-surface-container-low text-foreground',
   },
   'Crew Office': {
-    title: 'ROSTER CREW OFFICE',
-    head: 'bg-orange-50 text-orange-950',
-    day: 'bg-orange-100/50 text-orange-950',
-    total: 'bg-slate-50 text-slate-900',
+    title: 'Roster Crew Office',
+    head: 'bg-orange-50 text-orange-900',
+    day: 'bg-orange-50/60 text-orange-900',
+    total: 'bg-surface-container-low text-foreground',
   },
 }
 
@@ -1165,7 +1165,7 @@ export function SchedulingTimesheetWorkspace({
     return (
       <Card
         key={`${keyPrefix}-${section}`}
-        className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0"
+        className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0"
       >
         <div className="overflow-auto">
           <table className="min-w-max border-collapse text-xs">
@@ -1173,18 +1173,20 @@ export function SchedulingTimesheetWorkspace({
               <tr className={styles.head}>
                 <th
                   colSpan={days.length + 7}
-                  className="px-3 py-2 text-left text-base font-bold tracking-tight uppercase"
+                  className="px-4 py-2.5 text-left text-sm font-semibold tracking-tight"
                 >
-                  {styles.title} {period}
+                  {styles.title} <span className="ml-1 font-normal opacity-60">{period}</span>
                 </th>
               </tr>
-              <tr className={styles.head}>
-                <th className="sticky left-0 z-20 min-w-44 px-3 py-2 text-left">Nama</th>
+              <tr className={`${styles.head} border-b border-black/5`}>
+                <th className="sticky left-0 z-20 min-w-44 px-3 py-2 text-left shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)]">
+                  Nama
+                </th>
                 <th className="min-w-16 px-3 py-2">LV</th>
                 <th className="min-w-16 px-3 py-2">TH</th>
                 <th className="min-w-24 px-3 py-2">SN</th>
                 <th className="min-w-36 px-3 py-2">Section</th>
-                <th className="min-w-36 px-3 py-2">Posisi On Site</th>
+                <th className="min-w-36 px-3 py-2">Posisi</th>
                 {days.map((day) => {
                   const holiday = holidaysByDay.get(day)
                   const holidayName = holiday?.localName ?? holiday?.name
@@ -1192,7 +1194,7 @@ export function SchedulingTimesheetWorkspace({
                     <th
                       key={day}
                       title={holidayName}
-                      className={`min-w-12 border-l border-slate-400 px-2 py-2 ${styles.day} ${holiday ? 'bg-amber-100/70 ring-1 ring-amber-300 ring-inset' : ''}`}
+                      className={`min-w-12 border-l border-black/5 px-2 py-2 ${styles.day} ${holiday ? 'bg-amber-100/70 ring-1 ring-amber-300 ring-inset' : ''}`}
                     >
                       <div>{weekdayLabel(period, day)}</div>
                       <div className="font-normal">{day}</div>
@@ -2645,25 +2647,55 @@ export function SchedulingTimesheetWorkspace({
   return (
     <div className="space-y-4">
       {isFinalized ? (
-        <Alert>
-          <Lock className="h-4 w-4" />
-          <AlertDescription>
-            Period finalized. Reopen before editing/importing/saving.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      <Card className="surface-module-card rounded-[1.2rem] border-0 p-5 shadow-sm ring-1 ring-black/5">
-        <div className="mb-4">
-          <h2 className="font-display text-foreground text-lg font-semibold tracking-tight">
-            Parameter Jadwal
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            Pilih site dan periode untuk mengelola atau membuat jadwal baru.
-          </p>
+        <div className="flex items-center gap-2.5 rounded-[0.9rem] bg-slate-900 px-4 py-3 text-sm font-medium text-white">
+          <Lock className="size-4 shrink-0" />
+          <span>
+            Periode ini sudah di-finalize. Klik <strong>Reopen</strong> untuk membuka kembali
+            sebelum mengedit.
+          </span>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs tracking-wider uppercase">Site</Label>
+      ) : null}
+      <Card className="surface-module-card rounded-[1.1rem] border-0 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="bg-surface-container-low text-primary grid size-9 place-items-center rounded-xl">
+              <CalendarDays className="size-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="font-display text-foreground text-base font-semibold">
+                {mode === 'overview' && 'Ringkasan Site'}
+                {mode === 'setup' && 'Konfigurasi Site'}
+                {mode === 'schedule' && 'Parameter Jadwal'}
+                {mode === 'attendance' && 'Attendance Workspace'}
+                {mode === 'field-break' && 'Field Break Planning'}
+                {mode === 'payroll' && 'MSA + Overtime'}
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Pilih site dan periode untuk melihat data.
+              </p>
+            </div>
+          </div>
+          {currentStatus ? (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
+                Schedule: {currentStatus.scheduleStatus || 'none'}
+              </span>
+              <span className="bg-surface-container-low text-muted-foreground ring-border/40 inline-flex items-center rounded-full px-2.5 py-1 font-medium ring-1">
+                Attendance: {currentStatus.attendanceStatus || 'none'}
+              </span>
+              {currentStatus.finalizedAt ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">
+                  <Lock className="size-3" /> Finalized
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_180px_160px_160px_auto] lg:items-end">
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+              Site
+            </Label>
             <NativeSelect
               value={siteId}
               onValueChange={setSiteId}
@@ -2673,8 +2705,8 @@ export function SchedulingTimesheetWorkspace({
               ]}
             />
           </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs tracking-wider uppercase">
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
               Periode
             </Label>
             <Input
@@ -2684,8 +2716,8 @@ export function SchedulingTimesheetWorkspace({
               className="h-10"
             />
           </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs tracking-wider uppercase">
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
               Tipe Site
             </Label>
             <NativeSelect
@@ -2697,16 +2729,16 @@ export function SchedulingTimesheetWorkspace({
               ]}
             />
           </div>
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs tracking-wider uppercase">
-              Rooster
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+              Roster
             </Label>
             <NativeSelect
               value={siteConfig.rosterType}
               onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
               options={[
-                { value: '5:2', label: 'Rooster 5 : 2' },
-                { value: '6:1', label: 'Rooster 6 : 1' },
+                { value: '5:2', label: 'Roster 5 : 2' },
+                { value: '6:1', label: 'Roster 6 : 1' },
                 { value: 'vale', label: 'Vale Sorowako' },
               ]}
             />
@@ -2745,41 +2777,40 @@ export function SchedulingTimesheetWorkspace({
         </div>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        {[
-          { label: 'Karyawan', value: rows.length, Icon: CalendarDays },
-          {
-            label: 'Total jam schedule',
-            value: rows.reduce((sum, row) => sum + row.totalHours, 0),
-            Icon: Clock3,
-          },
-          {
-            label: 'Estimasi MSA + Meals',
-            value: money(rows.reduce((sum, row) => sum + row.msa + row.meals, 0)),
-            Icon: Calculator,
-          },
-          { label: 'Backup list', value: backupAssignments.length, Icon: Settings2 },
-        ].map(({ label, value, Icon }) => (
-          <Card
-            key={label}
-            className="surface-module-card rounded-[1.2rem] border-0 p-5 shadow-sm ring-1 ring-black/5"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.16em] uppercase">
-                {label}
-              </p>
-              <div className="flex size-8 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                <Icon className="size-4" />
+      {mode === 'schedule' || mode === 'payroll' ? (
+        <div className="grid gap-3 md:grid-cols-4">
+          {[
+            { label: 'Karyawan', value: rows.length, Icon: CalendarDays },
+            {
+              label: 'Total jam schedule',
+              value: rows.reduce((sum, row) => sum + row.totalHours, 0),
+              Icon: Clock3,
+            },
+            {
+              label: 'Estimasi MSA + Meals',
+              value: money(rows.reduce((sum, row) => sum + row.msa + row.meals, 0)),
+              Icon: Calculator,
+            },
+            { label: 'Backup list', value: backupAssignments.length, Icon: Settings2 },
+          ].map(({ label, value, Icon }) => (
+            <Card key={label} className="surface-module-card rounded-[1rem] border-0 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  {label}
+                </p>
+                <div className="bg-surface-container-low text-muted-foreground flex size-7 items-center justify-center rounded-full">
+                  <Icon className="size-3.5" />
+                </div>
               </div>
-            </div>
-            <p className="font-display text-foreground mt-3 text-3xl font-bold tracking-tight">
-              {String(value)}
-            </p>
-          </Card>
-        ))}
-      </div>
+              <p className="font-display text-foreground mt-2 text-2xl font-semibold tracking-tight">
+                {String(value)}
+              </p>
+            </Card>
+          ))}
+        </div>
+      ) : null}
 
-      {backupAssignments.length > 0 ? (
+      {backupAssignments.length > 0 && mode === 'schedule' ? (
         <Card className="surface-module-card rounded-[1.1rem] border-0 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -2806,22 +2837,26 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'setup' ? (
         <section className="space-y-4">
-          <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Config card */}
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
-                <p className="text-foreground font-semibold">Konfigurasi Per Site</p>
-                <p className="text-muted-foreground text-sm">
-                  Default variabel untuk semua tab. Tersimpan per site, tidak perlu set ulang saat
-                  ganti bulan.
+                <p className="font-display text-foreground text-base font-semibold">
+                  Konfigurasi Site
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Tersimpan per site — tidak perlu set ulang setiap bulan.
                 </p>
               </div>
-              <Button disabled={siteId === 'all' || isFinalized} onClick={saveSiteConfig}>
-                <Save className="mr-2 size-4" /> Simpan Setting Site
+              <Button size="sm" disabled={siteId === 'all' || isFinalized} onClick={saveSiteConfig}>
+                <Save className="mr-2 size-4" /> Simpan Setting
               </Button>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <div className="space-y-2">
-                <Label>Tipe Shift</Label>
+            <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Tipe Shift
+                </Label>
                 <NativeSelect
                   value={siteConfig.scheduleType}
                   onValueChange={(value) =>
@@ -2833,8 +2868,10 @@ export function SchedulingTimesheetWorkspace({
                   ]}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Tipe Roster</Label>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Tipe Roster
+                </Label>
                 <NativeSelect
                   value={siteConfig.rosterType}
                   onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
@@ -2845,8 +2882,10 @@ export function SchedulingTimesheetWorkspace({
                   ]}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Tipe MSA</Label>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Tipe MSA
+                </Label>
                 <NativeSelect
                   value={siteConfig.msaType}
                   onValueChange={(value) => updateSiteConfig('msaType', value as SiteMsaType)}
@@ -2857,8 +2896,10 @@ export function SchedulingTimesheetWorkspace({
                   ]}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Tipe Meals</Label>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Tipe Meals
+                </Label>
                 <NativeSelect
                   value={siteConfig.mealsType}
                   onValueChange={(value) => updateSiteConfig('mealsType', value as SiteMealsType)}
@@ -2869,8 +2910,10 @@ export function SchedulingTimesheetWorkspace({
                   ]}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Hitungan Overtime</Label>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Hitungan OT
+                </Label>
                 <NativeSelect
                   value={siteConfig.overtimeType}
                   onValueChange={(value) =>
@@ -2887,39 +2930,38 @@ export function SchedulingTimesheetWorkspace({
           </Card>
         </section>
       ) : null}
-
       {mode === 'setup' ? (
         <section className="space-y-4">
-          <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
-                <p className="text-foreground font-semibold">
-                  Setting Variabel MSA, Meals, Overtime
+                <p className="font-display text-foreground text-base font-semibold">
+                  Variabel MSA, Meals &amp; Overtime
                 </p>
-                <p className="text-muted-foreground text-sm">
+                <p className="text-muted-foreground text-xs">
                   Nama projek dipilih dari Master Site agar matching rate lebih akurat.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={resetAllowanceVariables}>
-                  Reset MSA/Meals
+                <Button size="sm" variant="outline" onClick={resetAllowanceVariables}>
+                  Reset
                 </Button>
-                <Button onClick={saveAllowanceVariables}>
+                <Button size="sm" onClick={saveAllowanceVariables}>
                   <Save className="mr-2 size-4" /> Simpan MSA/Meals
                 </Button>
               </div>
             </div>
-            <div className="mt-4 overflow-auto">
+            <div className="overflow-auto">
               <table className="w-full min-w-[920px] text-sm">
                 <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left text-xs tracking-[0.12em] uppercase">
-                    <th className="px-3 py-2">No</th>
-                    <th className="px-3 py-2">Nama Site / Projek</th>
-                    <th className="px-3 py-2">MSA Staff</th>
-                    <th className="px-3 py-2">MSA Non Staff</th>
-                    <th className="px-3 py-2">Meals Staff</th>
-                    <th className="px-3 py-2">Meals Non Staff</th>
-                    <th className="px-3 py-2">Aksi</th>
+                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                    <th className="px-3 py-2.5 font-medium">No</th>
+                    <th className="px-3 py-2.5 font-medium">Nama Site / Projek</th>
+                    <th className="px-3 py-2.5 font-medium">MSA Staff</th>
+                    <th className="px-3 py-2.5 font-medium">MSA Non Staff</th>
+                    <th className="px-3 py-2.5 font-medium">Meals Staff</th>
+                    <th className="px-3 py-2.5 font-medium">Meals Non Staff</th>
+                    <th className="px-3 py-2.5 font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2929,7 +2971,10 @@ export function SchedulingTimesheetWorkspace({
                       : [item.project, ...siteNameOptions]
 
                     return (
-                      <tr key={`${item.project}-${index}`} className="border-b border-slate-100">
+                      <tr
+                        key={`${item.project}-${index}`}
+                        className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
+                      >
                         <td className="px-3 py-2">{index + 1}</td>
                         <td className="px-3 py-2">
                           <NativeSelect
@@ -2995,37 +3040,41 @@ export function SchedulingTimesheetWorkspace({
                 </tbody>
               </table>
             </div>
-            <Button className="mt-3" variant="outline" onClick={addAllowanceVariable}>
-              Tambah Project
-            </Button>
+            <div className="border-border/30 border-t px-4 py-3">
+              <Button size="sm" variant="outline" onClick={addAllowanceVariable}>
+                + Tambah Project
+              </Button>
+            </div>
           </Card>
 
-          <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
-                <p className="text-foreground font-semibold">Variabel Hitungan Overtime</p>
-                <p className="text-muted-foreground text-sm">
+                <p className="font-display text-foreground text-base font-semibold">
+                  Variabel Hitungan Overtime
+                </p>
+                <p className="text-muted-foreground text-xs">
                   Atur hitungan lembur per roster dan hari kerja/libur.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={resetOvertimeVariables}>
-                  Reset Overtime
+                <Button size="sm" variant="outline" onClick={resetOvertimeVariables}>
+                  Reset
                 </Button>
-                <Button onClick={saveOvertimeVariables}>
+                <Button size="sm" onClick={saveOvertimeVariables}>
                   <Save className="mr-2 size-4" /> Simpan Overtime
                 </Button>
               </div>
             </div>
-            <div className="mt-4 overflow-auto">
+            <div className="overflow-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left text-xs tracking-[0.12em] uppercase">
-                    <th className="px-3 py-2">Roster</th>
-                    <th className="px-3 py-2">Tipe Hari</th>
-                    <th className="px-3 py-2">Total Jam</th>
-                    <th className="px-3 py-2">Hitungan Lembur</th>
-                    <th className="px-3 py-2">Aksi</th>
+                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                    <th className="px-3 py-2.5 font-medium">Roster</th>
+                    <th className="px-3 py-2.5 font-medium">Tipe Hari</th>
+                    <th className="px-3 py-2.5 font-medium">Total Jam</th>
+                    <th className="px-3 py-2.5 font-medium">Hitungan Lembur</th>
+                    <th className="px-3 py-2.5 font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3089,35 +3138,47 @@ export function SchedulingTimesheetWorkspace({
                 </tbody>
               </table>
             </div>
-            <Button className="mt-3" variant="outline" onClick={addOvertimeVariable}>
-              Tambah Overtime
-            </Button>
+            <div className="border-border/30 border-t px-4 py-3">
+              <Button size="sm" variant="outline" onClick={addOvertimeVariable}>
+                + Tambah Overtime
+              </Button>
+            </div>
           </Card>
         </section>
       ) : null}
 
       {mode === 'schedule' ? (
         <section className="space-y-3">
-          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-            <div>
-              <p className="text-foreground font-semibold">Save Schedule ke Schedule Tetap</p>
-              <p className="text-muted-foreground text-sm">
-                Generate/edit draft dulu, lalu save agar jadi baseline Schedule Tetap.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={isSyncingHolidays} onClick={syncHolidays}>
-                <RefreshCw className="mr-2 size-4" />{' '}
-                {isSyncingHolidays ? 'Sync...' : 'Sync Hari Libur Nasional'}
-              </Button>
-              <TabExportActions tabTitle="Schedule" tableRows={rows} />
-              <Button
-                disabled={rows.length === 0 || isSavingSchedule || isFinalized}
-                onClick={saveScheduleToPermanent}
-              >
-                <Save className="mr-2 size-4" />{' '}
-                {isSavingSchedule ? 'Menyimpan...' : 'Save ke Schedule Tetap'}
-              </Button>
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <p className="font-display text-foreground text-base font-semibold">
+                  Draft Schedule
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Generate → edit → save ke Schedule Tetap.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSyncingHolidays}
+                  onClick={syncHolidays}
+                >
+                  <RefreshCw className="mr-2 size-4" />{' '}
+                  {isSyncingHolidays ? 'Sync...' : 'Sync Libur Nasional'}
+                </Button>
+                <TabExportActions tabTitle="Schedule" tableRows={rows} />
+                <Button
+                  size="sm"
+                  disabled={rows.length === 0 || isSavingSchedule || isFinalized}
+                  onClick={saveScheduleToPermanent}
+                >
+                  <Save className="mr-2 size-4" />{' '}
+                  {isSavingSchedule ? 'Menyimpan...' : 'Save ke Schedule Tetap'}
+                </Button>
+              </div>
             </div>
           </Card>
           {holidays.length ? (
@@ -3188,78 +3249,83 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'attendance' ? (
         <section className="space-y-3">
-          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-            <div>
-              <p className="text-foreground font-semibold">Attendance Real</p>
-              <p className="text-muted-foreground text-sm">
-                Terhubung dari attendance face/location. Cell bisa diedit manual atau diisi via
-                Excel.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" disabled={isFinalized}>
-                <Label className="h-10 cursor-pointer px-4">
-                  <Upload className="mr-2 size-4" /> Import Excel
-                  <Input
-                    disabled={isFinalized}
-                    className="hidden"
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={(event) => {
-                      void importAttendanceExcel(event.target.files?.[0] ?? null)
-                      event.currentTarget.value = ''
-                    }}
-                  />
-                </Label>
-              </Button>
-              <Button variant="outline" onClick={downloadAttendanceTemplate}>
-                <Download className="mr-2 size-4" /> Template Excel
-              </Button>
-              <Button
-                variant="outline"
-                disabled={isSavingAttendance || siteId === 'all' || isFinalized}
-                onClick={() => setClearExcelImportDialogOpen(true)}
-              >
-                <Trash2 className="mr-2 size-4" /> Delete Excel Import
-              </Button>
-              <Button
-                disabled={
-                  !isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized
-                }
-                onClick={saveAttendanceReal}
-              >
-                <Save className="mr-2 size-4" />{' '}
-                {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance Real'}
-              </Button>
-              <TabExportActions
-                tabTitle="Attendance Real"
-                columns={[
-                  'Nama',
-                  'Masuk',
-                  'Belum',
-                  'Sakit',
-                  'Izin',
-                  'Alpha',
-                  'Manual',
-                  'Excel',
-                  'FaceLoc',
-                ]}
-                exportRows={rows.map((row) => {
-                  const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
-                  const statuses = cells.map((cell) => cell.status)
-                  return [
-                    row.employee.name,
-                    statuses.filter((status) => status === 'present').length,
-                    statuses.filter((status) => status === 'empty').length,
-                    statuses.filter((status) => status === 'sick').length,
-                    statuses.filter((status) => status === 'leave').length,
-                    statuses.filter((status) => status === 'absent').length,
-                    cells.filter((cell) => cell.source === 'manual').length,
-                    cells.filter((cell) => cell.source === 'excel').length,
-                    cells.filter((cell) => cell.source === 'attendance').length,
-                  ]
-                })}
-              />
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <p className="font-display text-foreground text-base font-semibold">
+                  Attendance Real
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Terhubung dari face/location. Edit manual atau import via Excel.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild size="sm" variant="outline" disabled={isFinalized}>
+                  <Label className="h-9 cursor-pointer px-3">
+                    <Upload className="mr-2 size-4" /> Import Excel
+                    <Input
+                      disabled={isFinalized}
+                      className="hidden"
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={(event) => {
+                        void importAttendanceExcel(event.target.files?.[0] ?? null)
+                        event.currentTarget.value = ''
+                      }}
+                    />
+                  </Label>
+                </Button>
+                <Button size="sm" variant="outline" onClick={downloadAttendanceTemplate}>
+                  <Download className="mr-2 size-4" /> Template Excel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSavingAttendance || siteId === 'all' || isFinalized}
+                  onClick={() => setClearExcelImportDialogOpen(true)}
+                >
+                  <Trash2 className="mr-2 size-4" /> Delete Excel Import
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={
+                    !isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized
+                  }
+                  onClick={saveAttendanceReal}
+                >
+                  <Save className="mr-2 size-4" />{' '}
+                  {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
+                </Button>
+                <TabExportActions
+                  tabTitle="Attendance Real"
+                  columns={[
+                    'Nama',
+                    'Masuk',
+                    'Belum',
+                    'Sakit',
+                    'Izin',
+                    'Alpha',
+                    'Manual',
+                    'Excel',
+                    'FaceLoc',
+                  ]}
+                  exportRows={rows.map((row) => {
+                    const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                    const statuses = cells.map((cell) => cell.status)
+                    return [
+                      row.employee.name,
+                      statuses.filter((status) => status === 'present').length,
+                      statuses.filter((status) => status === 'empty').length,
+                      statuses.filter((status) => status === 'sick').length,
+                      statuses.filter((status) => status === 'leave').length,
+                      statuses.filter((status) => status === 'absent').length,
+                      cells.filter((cell) => cell.source === 'manual').length,
+                      cells.filter((cell) => cell.source === 'excel').length,
+                      cells.filter((cell) => cell.source === 'attendance').length,
+                    ]
+                  })}
+                />
+              </div>
             </div>
           </Card>
           {holidays.length ? (
@@ -3276,38 +3342,39 @@ export function SchedulingTimesheetWorkspace({
             </Card>
           ) : null}
           {attendanceImportPreview || attendanceSavedAt || isAttendanceDirty ? (
-            <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3 text-sm">
-              <div className="flex flex-wrap gap-2">
-                {isAttendanceDirty ? (
-                  <Badge variant="outline">Belum tersimpan</Badge>
-                ) : (
-                  <Badge variant="outline">Tersimpan</Badge>
-                )}
-                {attendanceSavedAt ? (
-                  <span className="text-muted-foreground">
-                    Last save: {new Date(attendanceSavedAt).toLocaleString('id-ID')}
-                  </span>
-                ) : null}
-              </div>
-              {attendanceImportPreview ? (
+            <div className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-[0.8rem] px-3 py-2 text-xs">
+              {isAttendanceDirty ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 ring-1 ring-amber-200">
+                  Belum tersimpan
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  Tersimpan
+                </span>
+              )}
+              {attendanceSavedAt ? (
                 <span className="text-muted-foreground">
-                  Import preview: {attendanceImportPreview.matchedCount} matched,{' '}
-                  {attendanceImportPreview.cellCount} cells, {attendanceImportPreview.conflictCount}{' '}
-                  conflicts
+                  Last save: {new Date(attendanceSavedAt).toLocaleString('id-ID')}
                 </span>
               ) : null}
-            </Card>
+              {attendanceImportPreview ? (
+                <span className="text-muted-foreground">
+                  Preview: {attendanceImportPreview.matchedCount} matched ·{' '}
+                  {attendanceImportPreview.cellCount} cells ·{' '}
+                  {attendanceImportPreview.conflictCount} conflicts
+                </span>
+              ) : null}
+            </div>
           ) : null}
-          <Card className="surface-module-card space-y-3 rounded-[1rem] border-0 p-3 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
               <div>
-                <p className="text-foreground font-semibold">
-                  <History className="mr-2 inline size-4" />
+                <p className="font-display text-foreground text-sm font-semibold">
+                  <History className="mr-1.5 inline size-4" />
                   Import History
                 </p>
-                <p className="text-muted-foreground">
-                  Rollback hapus batch import tertentu; Delete Excel Import hapus semua Excel bulan
-                  ini.
+                <p className="text-muted-foreground text-xs">
+                  Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan ini.
                 </p>
               </div>
               <Button
@@ -3318,7 +3385,7 @@ export function SchedulingTimesheetWorkspace({
                 Refresh
               </Button>
             </div>
-            <div className="space-y-2">
+            <div className="divide-border/30 divide-y">
               {attendanceImportHistory.slice(0, 5).map((item) => (
                 <div
                   key={item.id}
@@ -3350,21 +3417,21 @@ export function SchedulingTimesheetWorkspace({
                 </div>
               ))}
               {!attendanceImportHistory.length ? (
-                <div className="text-muted-foreground rounded-lg border px-3 py-2">
+                <div className="text-muted-foreground px-4 py-6 text-center text-sm">
                   Belum ada import history.
                 </div>
               ) : null}
             </div>
           </Card>
           {attendanceConflicts.length ? (
-            <Card className="surface-module-card rounded-[1rem] border-0 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
                 <div>
-                  <p className="font-semibold text-orange-800">
-                    {attendanceConflicts.length} attendance conflicts
+                  <p className="font-semibold text-amber-900">
+                    {attendanceConflicts.length} Attendance Conflict
                   </p>
-                  <p className="text-muted-foreground text-sm">
-                    Present attendance on OFF/FB/Sakit/Libur schedule cells.
+                  <p className="text-xs text-amber-700">
+                    Hadir di hari OFF/FB/Sakit/Libur — perlu resolusi.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -3373,7 +3440,7 @@ export function SchedulingTimesheetWorkspace({
                     variant="outline"
                     onClick={() => setShowConflictsOnly((value) => !value)}
                   >
-                    {showConflictsOnly ? 'Show all' : 'Show conflicts only'}
+                    {showConflictsOnly ? 'Tampilkan semua' : 'Hanya konflik'}
                   </Button>
                   <Button
                     size="sm"
@@ -3381,14 +3448,14 @@ export function SchedulingTimesheetWorkspace({
                     disabled={isFinalized}
                     onClick={clearAllAttendanceConflicts}
                   >
-                    Clear attendance for all conflicts
+                    Clear semua attendance
                   </Button>
                   <Button
                     size="sm"
                     disabled={isFinalized}
                     onClick={markAllConflictSchedulesWorking}
                   >
-                    Use attendance / mark schedule working
+                    Pakai attendance (mark working)
                   </Button>
                 </div>
               </div>
@@ -3443,11 +3510,15 @@ export function SchedulingTimesheetWorkspace({
           />
           <div className="grid gap-3 md:grid-cols-5">
             {[
-              ['Masuk', attendanceStats.present, 'bg-emerald-100 text-emerald-950'],
-              ['-', attendanceStats.empty, 'bg-red-100 text-red-950'],
-              ['Sakit', attendanceStats.sick, 'bg-amber-100 text-amber-950'],
-              ['Izin', attendanceStats.leave, 'bg-sky-100 text-sky-950'],
-              ['Alpha', attendanceStats.absent, 'bg-rose-100 text-rose-950'],
+              [
+                'Masuk',
+                attendanceStats.present,
+                'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200',
+              ],
+              ['-', attendanceStats.empty, 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'],
+              ['Sakit', attendanceStats.sick, 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'],
+              ['Izin', attendanceStats.leave, 'bg-sky-50 text-sky-800 ring-1 ring-sky-200'],
+              ['Alpha', attendanceStats.absent, 'bg-rose-50 text-rose-800 ring-1 ring-rose-200'],
             ].map(([label, value, className]) => (
               <Card key={String(label)} className={`rounded-[1rem] border-0 p-4 ${className}`}>
                 <p className="text-xs font-semibold tracking-[0.14em] uppercase opacity-75">
@@ -3554,35 +3625,46 @@ export function SchedulingTimesheetWorkspace({
               </table>
             </div>
           </Card>
-          <Card className="surface-module-card rounded-[1rem] border-0 p-4">
-            <p className="text-foreground font-semibold">Input manual cepat</p>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Klik cell untuk edit jam/status. Double-click untuk cycle: Masuk → Sakit → Izin →
-              Alpha → -. Excel mendukung kolom `Nama`, `D1..D31`, `Masuk 1`, `Pulang 1`.
-            </p>
-          </Card>
+          <div className="bg-surface-container-low text-muted-foreground rounded-[0.8rem] px-4 py-3 text-xs">
+            <span className="text-foreground font-semibold">Input manual cepat:</span> Klik cell
+            untuk edit jam/status. Double-click untuk cycle: Masuk → Sakit → Izin → Alpha → -. Excel
+            mendukung kolom{' '}
+            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">Nama</code>,{' '}
+            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+              D1..D31
+            </code>
+            ,{' '}
+            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+              Masuk 1
+            </code>
+            ,{' '}
+            <code className="bg-surface-container-lowest rounded px-1 py-0.5 font-mono">
+              Pulang 1
+            </code>
+            .
+          </div>
         </section>
       ) : null}
 
       {mode === 'schedule' ? (
         <section className="space-y-3">
-          <Card className="surface-module-card rounded-[1rem] border-0 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
-                <p className="text-foreground font-semibold">Schedule Tetap</p>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  Generated dari tab Schedule. Klik cell untuk edit, lalu save di sini sebagai final
-                  tetap.
+                <p className="font-display text-foreground text-base font-semibold">
+                  Schedule Tetap
                 </p>
-                {scheduleSavedAt ? (
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Terakhir save: {scheduleSavedAt}
-                  </p>
-                ) : null}
+                <p className="text-muted-foreground text-xs">
+                  Baseline final. Edit cell lalu save di sini.
+                  {scheduleSavedAt ? (
+                    <span className="text-muted-foreground ml-2">Terakhir: {scheduleSavedAt}</span>
+                  ) : null}
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <TabExportActions tabTitle="Schedule Tetap" tableRows={permanentRows} />
                 <Button
+                  size="sm"
                   disabled={permanentRows.length === 0 || isSavingSchedule || isFinalized}
                   onClick={savePermanentSchedule}
                 >
@@ -3602,31 +3684,35 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'field-break' ? (
         <section className="space-y-4">
-          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-            <div>
-              <p className="text-foreground font-semibold">Schedule Field Break</p>
-              <p className="text-muted-foreground text-sm">
-                Isi manual tanggal field break per karyawan, lalu simpan ke database.
-              </p>
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <p className="font-display text-foreground text-base font-semibold">
+                  Schedule Field Break
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Isi tanggal on-site dan field break per karyawan, lalu simpan ke database.
+                </p>
+              </div>
+              <TabExportActions
+                tabTitle="Schedule Field Break"
+                columns={['Nama', 'Section', 'Roster', 'On Site', 'Day', 'FB', 'Updated']}
+                exportRows={fieldBreakRows.map((row) => [
+                  row.employee.name,
+                  row.sectionLabel,
+                  rosterSectionLabel(row.rosterSection),
+                  formatShortDate(row.onSiteDate),
+                  row.dayCount ?? '',
+                  formatShortDate(row.fieldBreakDate),
+                  row.savedAt ? new Date(row.savedAt).toLocaleString('id-ID') : 'Belum tersimpan',
+                ])}
+              />
             </div>
-            <TabExportActions
-              tabTitle="Schedule Field Break"
-              columns={['Nama', 'Section', 'Roster', 'On Site', 'Day', 'FB', 'Updated']}
-              exportRows={fieldBreakRows.map((row) => [
-                row.employee.name,
-                row.sectionLabel,
-                rosterSectionLabel(row.rosterSection),
-                formatShortDate(row.onSiteDate),
-                row.dayCount ?? '',
-                formatShortDate(row.fieldBreakDate),
-                row.savedAt ? new Date(row.savedAt).toLocaleString('id-ID') : 'Belum tersimpan',
-              ])}
-            />
-          </Card>
-          <Card className="surface-module-card rounded-[1.2rem] border-0 p-4">
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
-              <div className="space-y-2">
-                <Label>Site Field Break</Label>
+            <div className="flex flex-wrap items-end gap-3 p-4">
+              <div className="min-w-[200px] flex-1 space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Site Field Break
+                </Label>
                 <NativeSelect
                   value={fieldBreakSiteId}
                   onValueChange={setFieldBreakSiteId}
@@ -3635,32 +3721,31 @@ export function SchedulingTimesheetWorkspace({
                 />
               </div>
               <Button
-                className="h-10"
                 disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
                 onClick={syncFieldBreakPlansToDatabase}
               >
-                {isSavingFieldBreak ? 'Menyimpan...' : 'Simpan DB'}
+                {isSavingFieldBreak ? 'Menyimpan...' : 'Simpan ke Database'}
               </Button>
             </div>
           </Card>
-          <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0">
             <div className="overflow-auto">
               <table className="w-full min-w-[920px] text-sm">
                 <thead>
-                  <tr className="bg-surface-container-low text-muted-foreground text-left text-xs tracking-[0.12em] uppercase">
-                    <th className="px-4 py-3">Nama</th>
-                    <th className="px-4 py-3">Section</th>
-                    <th className="px-4 py-3">Roster</th>
-                    <th className="px-4 py-3">Mulai</th>
-                    <th className="px-4 py-3">Akhir</th>
-                    <th className="px-4 py-3">Day</th>
+                  <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
+                    <th className="px-4 py-3 font-medium">Nama</th>
+                    <th className="px-4 py-3 font-medium">Section</th>
+                    <th className="px-4 py-3 font-medium">Roster</th>
+                    <th className="px-4 py-3 font-medium">Mulai On-Site</th>
+                    <th className="px-4 py-3 font-medium">Mulai FB</th>
+                    <th className="px-4 py-3 font-medium">Hari</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fieldBreakRows.map((row) => (
                     <tr
                       key={row.employee.id}
-                      className="hover:bg-muted/35 border-b border-slate-100"
+                      className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
                     >
                       <td className="px-4 py-3 font-medium">{row.employee.name}</td>
                       <td className="px-4 py-3">{row.sectionLabel}</td>
@@ -3714,25 +3799,40 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'payroll' ? (
         <section className="space-y-4">
-          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-            <div>
-              <p className="text-foreground font-semibold">Export MSA + Meals</p>
-              <p className="text-muted-foreground text-sm">Export khusus tab allowance.</p>
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <p className="font-display text-foreground text-base font-semibold">
+                  Rekap MSA + Meals
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Allowance per karyawan berdasarkan hari kerja dan field break.
+                </p>
+              </div>
+              <TabExportActions
+                tabTitle="MSA Meals"
+                columns={[
+                  'Employee',
+                  'Jabatan',
+                  'Staff',
+                  'Hari MSA',
+                  'FB',
+                  'MSA',
+                  'Meals',
+                  'Total',
+                ]}
+                exportRows={rows.map((row) => [
+                  row.employee.name,
+                  row.employee.role,
+                  row.staff ? 'Staff' : 'Non Staff',
+                  row.msaDays,
+                  row.fieldBreakDays,
+                  money(row.msa),
+                  money(row.meals),
+                  money(row.msa + row.meals),
+                ])}
+              />
             </div>
-            <TabExportActions
-              tabTitle="MSA Meals"
-              columns={['Employee', 'Jabatan', 'Staff', 'Hari MSA', 'FB', 'MSA', 'Meals', 'Total']}
-              exportRows={rows.map((row) => [
-                row.employee.name,
-                row.employee.role,
-                row.staff ? 'Staff' : 'Non Staff',
-                row.msaDays,
-                row.fieldBreakDays,
-                money(row.msa),
-                money(row.meals),
-                money(row.msa + row.meals),
-              ])}
-            />
           </Card>
           <SummaryTable
             columns={['Employee', 'Jabatan', 'Staff', 'Hari MSA', 'FB', 'MSA', 'Meals', 'Total']}
@@ -3752,33 +3852,36 @@ export function SchedulingTimesheetWorkspace({
 
       {mode === 'payroll' ? (
         <section className="space-y-4">
-          <Card className="surface-module-card flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border-0 p-3">
-            <div>
-              <p className="text-foreground font-semibold">Export Overtime</p>
-              <p className="text-muted-foreground text-sm">
-                Overtime otomatis dari Attendance Real: jam pulang - jam masuk, lalu dibandingkan
-                jam dasar schedule.
-              </p>
+          <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
+            <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <p className="font-display text-foreground text-base font-semibold">
+                  Rekap Overtime
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Dihitung dari Attendance Real: jam pulang − jam masuk vs jam dasar schedule.
+                </p>
+              </div>
+              <TabExportActions
+                tabTitle="Overtime"
+                columns={[
+                  'Employee',
+                  'Jabatan',
+                  'Jam Attendance Real',
+                  'Jam Dasar',
+                  'Overtime',
+                  'Roster',
+                ]}
+                exportRows={attendanceOvertimeRows.map((row) => [
+                  row.employee.name,
+                  row.employee.role,
+                  row.attendanceTotalHours,
+                  row.attendanceBaseHours,
+                  row.attendanceOvertime,
+                  roster,
+                ])}
+              />
             </div>
-            <TabExportActions
-              tabTitle="Overtime"
-              columns={[
-                'Employee',
-                'Jabatan',
-                'Jam Attendance Real',
-                'Jam Dasar',
-                'Overtime',
-                'Roster',
-              ]}
-              exportRows={attendanceOvertimeRows.map((row) => [
-                row.employee.name,
-                row.employee.role,
-                row.attendanceTotalHours,
-                row.attendanceBaseHours,
-                row.attendanceOvertime,
-                roster,
-              ])}
-            />
           </Card>
           <SummaryTable
             columns={[
@@ -3801,9 +3904,13 @@ export function SchedulingTimesheetWorkspace({
           <div className="grid gap-3 lg:grid-cols-3">
             {overtimeRules.map((rule) => (
               <Card key={rule.roster} className="surface-module-card rounded-[1rem] border-0 p-4">
-                <p className="font-semibold">{rule.roster}</p>
-                <p className="text-muted-foreground mt-2 text-sm">Hari kerja: {rule.work}</p>
-                <p className="text-muted-foreground text-sm">Hari libur: {rule.off}</p>
+                <p className="font-display text-foreground text-sm font-semibold">{rule.roster}</p>
+                <p className="text-muted-foreground mt-2 text-xs">
+                  <span className="text-foreground font-medium">Hari kerja:</span> {rule.work}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  <span className="text-foreground font-medium">Hari libur:</span> {rule.off}
+                </p>
               </Card>
             ))}
           </div>
@@ -4155,13 +4262,13 @@ function SummaryTable({
   rows: Array<Array<string | number>>
 }) {
   return (
-    <Card className="surface-module-card overflow-hidden rounded-[1.2rem] border-0 p-0">
+    <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0">
       <div className="overflow-auto">
         <table className="w-full min-w-[760px] text-sm">
           <thead>
-            <tr className="bg-surface-container-low text-muted-foreground text-left text-xs tracking-[0.12em] uppercase">
+            <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
               {columns.map((column) => (
-                <th key={column} className="px-4 py-3 font-semibold">
+                <th key={column} className="px-4 py-2.5 font-medium">
                   {column}
                 </th>
               ))}
@@ -4169,14 +4276,30 @@ function SummaryTable({
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={index} className="hover:bg-muted/35 border-b border-slate-100">
+              <tr
+                key={index}
+                className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
+              >
                 {row.map((cell, cellIndex) => (
-                  <td key={cellIndex} className="px-4 py-3">
+                  <td
+                    key={cellIndex}
+                    className={`px-4 py-3 ${cellIndex === 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
+                  >
                     {cell}
                   </td>
                 ))}
               </tr>
             ))}
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={columns.length}
+                  className="text-muted-foreground px-4 py-8 text-center text-sm"
+                >
+                  Belum ada data.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

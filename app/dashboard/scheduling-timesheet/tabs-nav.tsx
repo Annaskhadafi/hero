@@ -1,0 +1,94 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import {
+  CalendarDays,
+  ClipboardList,
+  Coffee,
+  FileSpreadsheet,
+  LayoutDashboard,
+  Users,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+const tabs = [
+  {
+    label: 'Overview',
+    href: '/dashboard/scheduling-timesheet',
+    icon: LayoutDashboard,
+    hint: 'Status per site & periode',
+  },
+  {
+    label: 'Setup',
+    href: '/dashboard/scheduling-timesheet/setup',
+    icon: Users,
+    hint: 'Profil & konfigurasi site',
+  },
+  {
+    label: 'Schedule',
+    href: '/dashboard/scheduling-timesheet/schedule',
+    icon: CalendarDays,
+    hint: 'Roster draft & tetap',
+  },
+  {
+    label: 'Attendance',
+    href: '/dashboard/scheduling-timesheet/attendance',
+    icon: ClipboardList,
+    hint: 'Kehadiran real',
+  },
+  {
+    label: 'Field Break',
+    href: '/dashboard/scheduling-timesheet/field-break',
+    icon: Coffee,
+    hint: 'Rotasi FB',
+  },
+  {
+    label: 'MSA + OT',
+    href: '/dashboard/scheduling-timesheet/payroll',
+    icon: FileSpreadsheet,
+    hint: 'Rekap MSA & overtime',
+  },
+]
+
+export function SchedulingTabs() {
+  const pathname = usePathname()
+
+  const isActive = (href: string) => {
+    if (href === '/dashboard/scheduling-timesheet') {
+      return pathname === href
+    }
+    return pathname?.startsWith(href)
+  }
+
+  return (
+    <nav className="mt-4 flex flex-wrap gap-1.5">
+      {tabs.map((tab) => {
+        const active = isActive(tab.href)
+        const Icon = tab.icon
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className={cn(
+              'group inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all',
+              active
+                ? 'bg-foreground text-background shadow-sm'
+                : 'bg-surface-container-lowest text-muted-foreground hover:text-foreground hover:bg-surface-bright shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]'
+            )}
+            title={tab.hint}
+          >
+            <Icon
+              className={cn(
+                'size-4',
+                active ? '' : 'text-muted-foreground group-hover:text-foreground'
+              )}
+              aria-hidden="true"
+            />
+            <span>{tab.label}</span>
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
