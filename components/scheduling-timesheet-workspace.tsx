@@ -134,6 +134,8 @@ type SiteSchedulingConfig = {
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
+  lokasiKhususRate: number
+  lokasiKhususEnabled: boolean
 }
 
 type SavedFieldBreakPlan = {
@@ -270,6 +272,8 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   msaType: 'staff-nonstaff',
   mealsType: 'field-break',
   overtimeType: 'five-hour',
+  lokasiKhususRate: 35000,
+  lokasiKhususEnabled: false,
 }
 
 const defaultAllowanceVariables: AllowanceVariable[] = [
@@ -787,9 +791,9 @@ export function SchedulingTimesheetWorkspace({
     day: number
   } | null>(null)
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false)
-  const [attendanceView, setAttendanceView] = useState<'attendance' | 'msa' | 'meals' | 'ovt'>(
-    'attendance'
-  )
+  const [attendanceView, setAttendanceView] = useState<
+    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
+  >('attendance')
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -967,6 +971,10 @@ export function SchedulingTimesheetWorkspace({
           msaType: savedConfig.msaType as SiteMsaType,
           mealsType: savedConfig.mealsType as SiteMealsType,
           overtimeType: savedConfig.overtimeType as SiteOvertimeType,
+          lokasiKhususRate:
+            ((savedConfig as Record<string, unknown>).lokasiKhususRate as number) ?? 35000,
+          lokasiKhususEnabled:
+            ((savedConfig as Record<string, unknown>).lokasiKhususEnabled as boolean) ?? false,
         }
       : defaultSiteConfig
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
@@ -2778,6 +2786,103 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  async function generateEmployeeOvertimePdf(employee: EmployeeOption) {
+    try {
+      const { generateOvertimeRecordPdf, buildAttendanceDayData } =
+        await import('@/lib/timesheet/generate-attendance-pdf')
+      const dayData = buildAttendanceDayData({
+        period,
+        dayCount,
+        getCell: (day) => getAttendanceCell(employee.id, day),
+        getScheduleCode: (day) => {
+          const row = rows.find((r) => r.employee.id === employee.id)
+          return row ? (row.schedule[day - 1] as string) : 'IN'
+        },
+        holidays,
+      })
+      const pdf = await generateOvertimeRecordPdf({
+        period,
+        employeeName: employee.name,
+        employeeSn: employee.employeeSn || '',
+        department: employee.department || '',
+        section: employee.section || '',
+        siteName: site?.name || '',
+        days: dayData,
+      })
+      const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `OT_Record_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`PDF Overtime Record ${employee.name} berhasil di-generate.`)
+    } catch (error) {
+      console.error('[PDF OT Error]', error)
+      toast.error('Generate PDF Overtime gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function generateEmployeeAllowancePdf(employee: EmployeeOption) {
+    try {
+      const { generateSiteAllowancePdf, buildAttendanceDayData } =
+        await import('@/lib/timesheet/generate-attendance-pdf')
+      const staff = /manager|supervisor|lead|staff|admin/i.test(employee.role)
+      const dayData = buildAttendanceDayData({
+        period,
+        dayCount,
+        getCell: (day) => getAttendanceCell(employee.id, day),
+        getScheduleCode: (day) => {
+          const row = rows.find((r) => r.employee.id === employee.id)
+          return row ? (row.schedule[day - 1] as string) : 'IN'
+        },
+        holidays,
+      })
+      const msaRate =
+        siteConfig.msaType === 'none'
+          ? 0
+          : siteConfig.msaType === 'same-all'
+            ? rate.msaNonStaff
+            : staff
+              ? rate.msaStaff
+              : rate.msaNonStaff
+      const mealsRate =
+        siteConfig.mealsType === 'none' ? 0 : staff ? rate.mealsStaff : rate.mealsNonStaff
+      const pdf = await generateSiteAllowancePdf({
+        period,
+        employeeName: employee.name,
+        employeeSn: employee.employeeSn || '',
+        department: employee.department || '',
+        section: employee.section || '',
+        siteName: site?.name || '',
+        days: dayData,
+        lokasiKhususRate: siteConfig.lokasiKhususRate,
+        lokasiKhususEnabled: siteConfig.lokasiKhususEnabled,
+        msaRate,
+        mealsRate,
+      })
+      const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Site_Allowance_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`PDF Site Allowance ${employee.name} berhasil di-generate.`)
+    } catch (error) {
+      console.error('[PDF Allowance Error]', error)
+      toast.error('Generate PDF Allowance gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   function downloadAttendanceTemplate() {
     const templateRows = visibleEmployees.map((employee) => {
       const row: Record<string, string | number> = {
@@ -3128,6 +3233,42 @@ export function SchedulingTimesheetWorkspace({
                   ]}
                 />
               </div>
+            </div>
+            {/* Tunjangan Lokasi Khusus */}
+            <div className="border-border/30 flex flex-wrap items-end gap-4 border-t px-4 py-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="lokasi-khusus-toggle"
+                  checked={siteConfig.lokasiKhususEnabled}
+                  onChange={(e) => updateSiteConfig('lokasiKhususEnabled', e.target.checked)}
+                  className="border-border size-4 rounded"
+                />
+                <Label
+                  htmlFor="lokasi-khusus-toggle"
+                  className="text-foreground cursor-pointer text-sm font-semibold"
+                >
+                  Tunjangan Lokasi Khusus
+                </Label>
+                <span className="text-muted-foreground text-[10px]">
+                  (Site ini dapat tunjangan pertambangan/remote)
+                </span>
+              </div>
+              {siteConfig.lokasiKhususEnabled ? (
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
+                    Rate / hari
+                  </Label>
+                  <Input
+                    type="number"
+                    value={siteConfig.lokasiKhususRate}
+                    onChange={(e) =>
+                      updateSiteConfig('lokasiKhususRate', Number(e.target.value) || 0)
+                    }
+                    className="h-9 w-[140px]"
+                  />
+                </div>
+              ) : null}
             </div>
           </Card>
         </section>
@@ -3786,6 +3927,7 @@ export function SchedulingTimesheetWorkspace({
             {(
               [
                 { key: 'attendance', label: 'Attendance' },
+                { key: 'lokasi', label: 'Lokasi Khusus' },
                 { key: 'msa', label: 'MSA' },
                 { key: 'meals', label: 'Meals' },
                 { key: 'ovt', label: 'Overtime' },
@@ -3839,6 +3981,7 @@ export function SchedulingTimesheetWorkspace({
               <div className="border-border/40 bg-surface-container-low border-b px-4 py-2.5">
                 <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
                   {attendanceView === 'msa' && 'MSA SUMMARY'}
+                  {attendanceView === 'lokasi' && 'TUNJANGAN LOKASI KHUSUS'}
                   {attendanceView === 'meals' && 'MEALS SUMMARY'}
                   {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period}
                 </p>
@@ -3916,12 +4059,32 @@ export function SchedulingTimesheetWorkspace({
                               </td>
                             </tr>
                             {sectionRows.map((row) => (
-                              <tr key={row.employee.id} className="border-b border-slate-100">
+                              <tr key={row.employee.id} className="group border-b border-slate-100">
                                 <td className="text-foreground sticky left-0 z-20 min-w-[220px] bg-white px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
-                                  {row.employee.name}
-                                  <p className="text-muted-foreground text-[10px] font-normal">
-                                    {row.employee.section || row.employee.role}
-                                  </p>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <div>
+                                      {row.employee.name}
+                                      <p className="text-muted-foreground text-[10px] font-normal">
+                                        {row.employee.section || row.employee.role}
+                                      </p>
+                                    </div>
+                                    <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+                                      <button
+                                        className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                        title="Generate Overtime Record PDF"
+                                        onClick={() => generateEmployeeOvertimePdf(row.employee)}
+                                      >
+                                        OT
+                                      </button>
+                                      <button
+                                        className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                        title="Generate Site Allowance PDF"
+                                        onClick={() => generateEmployeeAllowancePdf(row.employee)}
+                                      >
+                                        MSA
+                                      </button>
+                                    </div>
+                                  </div>
                                 </td>
                                 {days.map((day) => {
                                   const cell = getAttendanceCell(row.employee.id, day)
@@ -3966,6 +4129,18 @@ export function SchedulingTimesheetWorkspace({
                                           msaRate > 0
                                             ? 'bg-white text-foreground'
                                             : 'bg-slate-50 text-muted-foreground'
+                                      }
+                                    } else if (attendanceView === 'lokasi') {
+                                      // Tunjangan Lokasi Khusus — semua hari dapat (termasuk OFF/libur) jika enabled
+                                      if (!siteConfig.lokasiKhususEnabled) {
+                                        cellValue = '-'
+                                        cellBg = 'bg-slate-50 text-muted-foreground'
+                                      } else if (isOff && scheduleCode !== 'OFF') {
+                                        cellValue = scheduleCode
+                                        cellBg = 'bg-rose-50 text-rose-700'
+                                      } else {
+                                        cellValue = siteConfig.lokasiKhususRate
+                                        cellBg = 'bg-white text-foreground'
                                       }
                                     } else if (attendanceView === 'meals') {
                                       if (isOff || isHolidayDay || cell.status !== 'present') {
@@ -4110,6 +4285,15 @@ export function SchedulingTimesheetWorkspace({
                                           code === 'Libur' ||
                                           code === 'Sakit'
                                         const hol = holidaysByDay.get(day)
+
+                                        if (attendanceView === 'lokasi') {
+                                          // Lokasi khusus: semua hari dapat (termasuk OFF/libur)
+                                          if (siteConfig.lokasiKhususEnabled) {
+                                            total += siteConfig.lokasiKhususRate
+                                          }
+                                          continue
+                                        }
+
                                         if (isOff2 || hol || cell.status !== 'present') continue
                                         if (attendanceView === 'msa') {
                                           total +=
