@@ -19,7 +19,7 @@ async function getCurrentActorEmail(): Promise<string | undefined> {
 }
 
 import { randomUUID } from 'crypto'
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { hashPassword } from 'better-auth/crypto'
@@ -31,6 +31,7 @@ import {
   attendanceRecords,
   dailyReports,
   employees,
+  hrEmployees,
   hseIncidents,
   hseObservations,
   masterDepartments,
@@ -2379,6 +2380,328 @@ async function upsertCredentialAccount({
     createdAt: now,
   })
 }
+
+// ─── Bulk Provisioning Types & Helpers ───────────────────────────────────────
+
+export interface BulkProvisionResult {
+  success: boolean
+  total: number
+  created: number
+  skipped: number
+  failed: number
+  failures: Array<{ employeeId: string; error: string }>
+  interrupted: boolean
+}
+
+export function determinePassword(employee: {
+  emailPasswordMigration: string | null
+  employeeId: string
+}): string {
+  const migration = employee.emailPasswordMigration?.trim()
+  if (migration && migration.length > 0) return migration
+  return `Chitra#${employee.employeeId}`
+}
+
+export function isValidEmailFormat(email: string): boolean {
+  const parts = email.split('@')
+  if (parts.length !== 2) return false
+  const [local, domain] = parts
+  return local.length > 0 && domain.length > 0 && domain.includes('.')
+}
+
+export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionResult> {
+  // 1. Verify admin session
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) {
+    return {
+      success: false,
+      total: 0,
+      created: 0,
+      skipped: 0,
+      failed: 0,
+      failures: [],
+      interrupted: false,
+    }
+  }
+
+  // 2. Query eligible employees: email not null, not empty (trimmed), authUserId is null
+  const eligibleEmployees = await db
+    .select({
+      id: hrEmployees.id,
+      employeeId: hrEmployees.employeeId,
+      fullName: hrEmployees.fullName,
+      email: hrEmployees.email,
+      emailPasswordMigration: hrEmployees.emailPasswordMigration,
+      authUserId: hrEmployees.authUserId,
+    })
+    .from(hrEmployees)
+    .where(
+      and(
+        isNotNull(hrEmployees.email),
+        ne(sql`TRIM(${hrEmployees.email})`, ''),
+        isNull(hrEmployees.authUserId)
+      )
+    )
+    .orderBy(asc(hrEmployees.id))
+    .limit(500)
+
+  // 3. Return early if no eligible employees found
+  if (eligibleEmployees.length === 0) {
+    return {
+      success: true,
+      total: 0,
+      created: 0,
+      skipped: 0,
+      failed: 0,
+      failures: [],
+      interrupted: false,
+    }
+  }
+
+  // 4. Sequential processing loop with error isolation and circuit breaker
+  let created = 0
+  let skipped = 0
+  let failed = 0
+  const failures: Array<{ employeeId: string; error: string }> = []
+  let interrupted = false
+  let consecutiveFailures = 0
+
+  for (const emp of eligibleEmployees) {
+    // Circuit breaker: halt after 10 consecutive failures
+    if (consecutiveFailures >= 10) {
+      interrupted = true
+      break
+    }
+
+    try {
+      // Validate email format
+      const email = emp.email!.trim()
+      if (!isValidEmailFormat(email)) {
+        failed++
+        consecutiveFailures++
+        failures.push({
+          employeeId: emp.employeeId,
+          error: 'Invalid email format',
+        })
+        continue
+      }
+
+      // Determine password
+      const plainPassword = determinePassword({
+        emailPasswordMigration: emp.emailPasswordMigration,
+        employeeId: emp.employeeId,
+      })
+
+      // Hash password
+      let hashedPassword: string
+      try {
+        hashedPassword = await hashPassword(plainPassword)
+      } catch (hashErr) {
+        failed++
+        consecutiveFailures++
+        failures.push({
+          employeeId: emp.employeeId,
+          error: `Password hashing failed: ${hashErr instanceof Error ? hashErr.message : String(hashErr)}`,
+        })
+        continue
+      }
+
+      // Create or find auth user
+      const authUserId = randomUUID()
+      const now = new Date()
+      const normalizedEmail = normalizeAuthEmail(email)
+
+      let finalAuthUserId: string
+      let wasExistingUser = false
+
+      // Try to find existing auth user by email
+      const [existingAuthUser] = await db
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.email, normalizedEmail))
+        .limit(1)
+
+      if (existingAuthUser) {
+        finalAuthUserId = existingAuthUser.id
+        wasExistingUser = true
+      } else {
+        // Create new auth user
+        try {
+          await db.insert(user).values({
+            id: authUserId,
+            name: emp.fullName ?? normalizedEmail,
+            email: normalizedEmail,
+            emailVerified: true,
+            createdAt: now,
+            updatedAt: now,
+          })
+          finalAuthUserId = authUserId
+        } catch (insertErr: any) {
+          // Handle unique constraint violation — retrieve existing user
+          if (
+            insertErr?.code === '23505' ||
+            insertErr?.message?.includes('unique') ||
+            insertErr?.message?.includes('duplicate')
+          ) {
+            const [conflictUser] = await db
+              .select({ id: user.id })
+              .from(user)
+              .where(eq(user.email, normalizedEmail))
+              .limit(1)
+
+            if (conflictUser) {
+              finalAuthUserId = conflictUser.id
+              wasExistingUser = true
+            } else {
+              failed++
+              consecutiveFailures++
+              failures.push({
+                employeeId: emp.employeeId,
+                error: `Auth user creation failed: unique constraint but user not found`,
+              })
+              continue
+            }
+          } else {
+            // Check for connection errors
+            if (isConnectionError(insertErr)) {
+              interrupted = true
+              failed++
+              failures.push({
+                employeeId: emp.employeeId,
+                error: `Database connection error: ${insertErr.message}`,
+              })
+              break
+            }
+            failed++
+            consecutiveFailures++
+            failures.push({
+              employeeId: emp.employeeId,
+              error: `Auth user creation failed: ${insertErr instanceof Error ? insertErr.message : String(insertErr)}`,
+            })
+            continue
+          }
+        }
+      }
+
+      // Upsert credential account
+      try {
+        await upsertCredentialAccount({
+          authUserId: finalAuthUserId,
+          email: normalizedEmail,
+          password: plainPassword,
+          now: new Date(),
+        })
+      } catch (credErr: any) {
+        if (isConnectionError(credErr)) {
+          interrupted = true
+          failed++
+          failures.push({
+            employeeId: emp.employeeId,
+            error: `Database connection error: ${credErr.message}`,
+          })
+          break
+        }
+        failed++
+        consecutiveFailures++
+        failures.push({
+          employeeId: emp.employeeId,
+          error: `Credential account creation failed: ${credErr instanceof Error ? credErr.message : String(credErr)}`,
+        })
+        continue
+      }
+
+      // Update employee authUserId
+      try {
+        await db
+          .update(hrEmployees)
+          .set({ authUserId: finalAuthUserId })
+          .where(eq(hrEmployees.id, emp.id))
+      } catch (linkErr: any) {
+        if (isConnectionError(linkErr)) {
+          interrupted = true
+          failed++
+          failures.push({
+            employeeId: emp.employeeId,
+            error: `Database connection error: ${linkErr.message}`,
+          })
+          break
+        }
+        // Record failure but do NOT rollback auth records (per design)
+        failed++
+        consecutiveFailures++
+        failures.push({
+          employeeId: emp.employeeId,
+          error: `Employee link update failed: ${linkErr instanceof Error ? linkErr.message : String(linkErr)}`,
+        })
+        continue
+      }
+
+      // Success — increment appropriate counter and reset circuit breaker
+      if (wasExistingUser) {
+        skipped++
+      } else {
+        created++
+      }
+      consecutiveFailures = 0
+    } catch (unexpectedErr: any) {
+      // Catch-all for unexpected errors
+      if (isConnectionError(unexpectedErr)) {
+        interrupted = true
+        failed++
+        failures.push({
+          employeeId: emp.employeeId,
+          error: `Database connection error: ${unexpectedErr.message}`,
+        })
+        break
+      }
+      failed++
+      consecutiveFailures++
+      failures.push({
+        employeeId: emp.employeeId,
+        error: `Unexpected error: ${unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr)}`,
+      })
+    }
+  }
+
+  // 5. Audit log: record admin trigger with summary
+  await logAuditEvent({
+    actorEmail: session.user.email,
+    action: 'user.bulk_auth_provisioned',
+    entityType: 'auth_accounts',
+    entityLabel: 'bulk-provision',
+    description: `Bulk provisioned auth accounts: ${created} created, ${skipped} skipped, ${failed} failed.`,
+  })
+
+  return {
+    success: !interrupted,
+    total: created + skipped + failed,
+    created,
+    skipped,
+    failed,
+    failures,
+    interrupted,
+  }
+}
+
+/** Check if an error is a database connection error */
+function isConnectionError(err: any): boolean {
+  if (!err) return false
+  const msg = (err.message || '').toLowerCase()
+  const code = err.code || ''
+  return (
+    msg.includes('econnrefused') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    (msg.includes('connection') && msg.includes('terminat')) ||
+    code === 'ECONNREFUSED' ||
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === '57P01' || // admin shutdown
+    code === '57P03' // cannot connect now
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function ensureAuthUserForEmployee(employee: {
   id: number
