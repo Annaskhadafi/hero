@@ -401,6 +401,21 @@ function normalizeLocation(value: string) {
     .trim()
 }
 
+// Detect staff/non-staff from "Peran" field in User Management
+// "Non Staff ..." = non-staff, "Staff ..." = staff
+// Default: non-staff (mayoritas karyawan lapangan)
+function isStaffRole(role?: string | null): boolean {
+  const r = (role ?? '').toLowerCase().trim()
+  // Explicit "non staff" or "non-staff" = non-staff
+  if (r.includes('non staff') || r.includes('non-staff') || r.includes('nonstaff')) return false
+  // Explicit "staff" without "non" = staff
+  if (r.includes('staff')) return true
+  // Manager/supervisor/admin = staff
+  if (/manager|supervisor|admin|koordinator|coord/i.test(r)) return true
+  // Default: non-staff
+  return false
+}
+
 function normalizeRosterSection(value?: string | null) {
   const normalized = normalizeLocation(value ?? '')
   if (normalized.includes('repair') || normalized.includes('retread')) return 'Repair Retread'
@@ -830,6 +845,7 @@ export function SchedulingTimesheetWorkspace({
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false)
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false)
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
+  const [conflictsDismissed, setConflictsDismissed] = useState(false)
 
   useEffect(() => {
     setSwapTargetEmployeeId('')
@@ -846,7 +862,14 @@ export function SchedulingTimesheetWorkspace({
   const rate =
     allowanceVariables.find(
       (item) => normalizeLocation(item.project) === normalizeLocation(site?.name ?? '')
-    ) ?? defaultAllowanceVariables[0]
+    ) ??
+    allowanceVariables.find(
+      (item) =>
+        normalizeLocation(site?.name ?? '').includes(normalizeLocation(item.project)) ||
+        normalizeLocation(item.project).includes(normalizeLocation(site?.name ?? ''))
+    ) ??
+    allowanceVariables[0] ??
+    defaultAllowanceVariables[0]
   const savedPlan = savedPlans.find(
     (plan) => String(plan.siteId) === siteId && plan.period === period
   )
@@ -972,9 +995,11 @@ export function SchedulingTimesheetWorkspace({
           mealsType: savedConfig.mealsType as SiteMealsType,
           overtimeType: savedConfig.overtimeType as SiteOvertimeType,
           lokasiKhususRate:
-            ((savedConfig as Record<string, unknown>).lokasiKhususRate as number) ?? 35000,
+            (((savedConfig as Record<string, unknown>).fieldBreakConfig as Record<string, unknown>)
+              ?.lokasiKhususRate as number) ?? 35000,
           lokasiKhususEnabled:
-            ((savedConfig as Record<string, unknown>).lokasiKhususEnabled as boolean) ?? false,
+            (((savedConfig as Record<string, unknown>).fieldBreakConfig as Record<string, unknown>)
+              ?.lokasiKhususEnabled as boolean) ?? false,
         }
       : defaultSiteConfig
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
@@ -1096,7 +1121,7 @@ export function SchedulingTimesheetWorkspace({
     ).length
     const fieldBreakDays = schedule.filter((code) => code === 'FB').length
     const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
-    const staff = /manager|supervisor|lead|staff|admin/i.test(employee.role)
+    const staff = isStaffRole(employee.role)
     const msa =
       siteConfig.msaType === 'none'
         ? 0
@@ -1643,10 +1668,11 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
 
+    const { lokasiKhususEnabled, lokasiKhususRate, ...dbConfig } = siteConfig
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
-      ...siteConfig,
-      fieldBreakConfig: null,
+      ...dbConfig,
+      fieldBreakConfig: { lokasiKhususEnabled, lokasiKhususRate },
       allowanceVariables,
       overtimeVariables,
     })
@@ -1655,6 +1681,7 @@ export function SchedulingTimesheetWorkspace({
     setOverrides({})
     setPermanentOverrides({})
     setSelectedCell(null)
+    toast.success('Setting site tersimpan.')
   }
 
   function updateSiteConfig<Key extends keyof SiteSchedulingConfig>(
@@ -2482,6 +2509,24 @@ export function SchedulingTimesheetWorkspace({
       // Apply ke cell UI langsung agar user lihat hasilnya
       setManualAttendance((current) => ({ ...current, ...cellUpdates }))
       setIsAttendanceDirty(true)
+
+      // Auto-resolve conflicts: mark schedule as working for days with attendance present
+      const workingCode: ScheduleCode = siteConfig.scheduleType === 'shift' ? 'DS' : 'IN'
+      setOverrides((currentOverrides) => {
+        const next = { ...currentOverrides }
+        for (const [key, cell] of Object.entries(cellUpdates)) {
+          if (cell.status === 'present') {
+            const [empId, day] = key.split('-').map(Number)
+            const row = rows.find((r) => r.employee.id === empId)
+            const code = row?.schedule[day - 1]
+            if (code === 'OFF' || code === 'Libur' || code === 'FB' || code === 'Sakit') {
+              next[key] = workingCode
+            }
+          }
+        }
+        return next
+      })
+
       setLastImportSuccess({
         filename: file.name,
         matched: matchedCount,
@@ -2728,6 +2773,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Clear conflicts')) return
     for (const conflict of attendanceConflicts)
       clearAttendanceConflict(conflict.employeeId, conflict.day)
+    setConflictsDismissed(true)
   }
 
   function markAllConflictSchedulesWorking() {
@@ -2739,6 +2785,8 @@ export function SchedulingTimesheetWorkspace({
         next[attendanceKey(conflict.employeeId, conflict.day)] = workingCode
       return next
     })
+    setConflictsDismissed(true)
+    toast.success(`${attendanceConflicts.length} conflicts resolved.`)
   }
   const conflictKeySet = new Set(
     attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day))
@@ -2808,6 +2856,7 @@ export function SchedulingTimesheetWorkspace({
         section: employee.section || '',
         siteName: site?.name || '',
         days: dayData,
+        isNonStaff: !isStaffRole(employee.role),
       })
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -2831,7 +2880,7 @@ export function SchedulingTimesheetWorkspace({
     try {
       const { generateSiteAllowancePdf, buildAttendanceDayData } =
         await import('@/lib/timesheet/generate-attendance-pdf')
-      const staff = /manager|supervisor|lead|staff|admin/i.test(employee.role)
+      const staff = isStaffRole(employee.role)
       const dayData = buildAttendanceDayData({
         period,
         dayCount,
@@ -2927,6 +2976,41 @@ export function SchedulingTimesheetWorkspace({
     },
     { present: 0, empty: 0, sick: 0, leave: 0, absent: 0 } as Record<AttendanceCellStatus, number>
   )
+
+  // Detect Field Break: 14+ consecutive days without attendance = FB period (no MSA/Meals)
+  const fieldBreakDaysByEmployee = useMemo(() => {
+    const FB_THRESHOLD = 14
+    const result = new Map<number, Set<number>>()
+    for (const row of rows) {
+      const empId = row.employee.id
+      const fbDays = new Set<number>()
+      // Find consecutive gaps without attendance
+      let gapStart = -1
+      let gapLength = 0
+      for (let d = 1; d <= dayCount; d++) {
+        const cell = getAttendanceCell(empId, d)
+        const hasAttendance = cell.status === 'present' || cell.clockIn || cell.clockOut
+        if (!hasAttendance) {
+          if (gapStart === -1) gapStart = d
+          gapLength++
+        } else {
+          // End of gap — if >= 14 days, mark as FB
+          if (gapLength >= FB_THRESHOLD) {
+            for (let g = gapStart; g < gapStart + gapLength; g++) fbDays.add(g)
+          }
+          gapStart = -1
+          gapLength = 0
+        }
+      }
+      // Check trailing gap
+      if (gapLength >= FB_THRESHOLD && gapStart > 0) {
+        for (let g = gapStart; g <= dayCount; g++) fbDays.add(g)
+      }
+      if (fbDays.size > 0) result.set(empId, fbDays)
+    }
+    return result
+  }, [rows, dayCount, getAttendanceCell])
+
   const selectedAttendanceEmployee = selectedAttendanceCell
     ? visibleEmployees.find((employee) => employee.id === selectedAttendanceCell.employeeId)
     : null
@@ -3837,7 +3921,7 @@ export function SchedulingTimesheetWorkspace({
               ) : null}
             </div>
           </Card>
-          {attendanceConflicts.length ? (
+          {attendanceConflicts.length && !conflictsDismissed ? (
             <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
                 <div>
@@ -3980,10 +4064,13 @@ export function SchedulingTimesheetWorkspace({
             {attendanceView !== 'attendance' ? (
               <div className="border-border/40 bg-surface-container-low border-b px-4 py-2.5">
                 <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                  {attendanceView === 'msa' && 'MSA SUMMARY'}
-                  {attendanceView === 'lokasi' && 'TUNJANGAN LOKASI KHUSUS'}
-                  {attendanceView === 'meals' && 'MEALS SUMMARY'}
-                  {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period}
+                  {attendanceView === 'msa' &&
+                    `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                  {attendanceView === 'lokasi' &&
+                    `TUNJANGAN LOKASI KHUSUS — ${siteConfig.lokasiKhususEnabled ? `Rp ${siteConfig.lokasiKhususRate.toLocaleString('id-ID')}/hari` : 'Tidak aktif'}`}
+                  {attendanceView === 'meals' &&
+                    `MEALS SUMMARY — Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')} (${siteConfig.mealsType})`}
+                  {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
                 </p>
               </div>
             ) : null}
@@ -4097,25 +4184,23 @@ export function SchedulingTimesheetWorkspace({
                                     scheduleCode === 'FB' ||
                                     scheduleCode === 'Libur' ||
                                     scheduleCode === 'Sakit'
-                                  const staff = /manager|supervisor|lead|staff|admin/i.test(
-                                    row.employee.role
-                                  )
+                                  const staff = isStaffRole(row.employee.role)
 
                                   // MSA/Meals/OVT view
                                   if (attendanceView !== 'attendance') {
                                     let cellValue: string | number = ''
                                     let cellBg = ''
+                                    // Check if this day is in a Field Break period (14+ days no attendance)
+                                    const isFieldBreakDay =
+                                      fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ??
+                                      false
 
                                     if (attendanceView === 'msa') {
-                                      if (isOff || isHolidayDay || cell.status !== 'present') {
-                                        cellValue =
-                                          scheduleCode === 'FB' ? 'FB' : isOff ? scheduleCode : ''
-                                        cellBg = isOff
-                                          ? 'bg-rose-50 text-rose-700'
-                                          : isHolidayDay
-                                            ? 'bg-amber-50 text-amber-700'
-                                            : ''
+                                      if (isFieldBreakDay && cell.status !== 'present') {
+                                        cellValue = 'FB'
+                                        cellBg = 'bg-purple-50 text-purple-700'
                                       } else {
+                                        // MSA: semua hari dapat (termasuk OFF/Libur), kecuali Field Break
                                         const msaRate =
                                           siteConfig.msaType === 'none'
                                             ? 0
@@ -4125,8 +4210,9 @@ export function SchedulingTimesheetWorkspace({
                                                 ? rate.msaStaff
                                                 : rate.msaNonStaff
                                         cellValue = msaRate
-                                        cellBg =
-                                          msaRate > 0
+                                        cellBg = isHolidayDay
+                                          ? 'bg-amber-50 text-foreground'
+                                          : msaRate > 0
                                             ? 'bg-white text-foreground'
                                             : 'bg-slate-50 text-muted-foreground'
                                       }
@@ -4143,36 +4229,30 @@ export function SchedulingTimesheetWorkspace({
                                         cellBg = 'bg-white text-foreground'
                                       }
                                     } else if (attendanceView === 'meals') {
-                                      if (isOff || isHolidayDay || cell.status !== 'present') {
-                                        cellValue =
-                                          scheduleCode === 'FB' ? 'FB' : isOff ? scheduleCode : ''
-                                        cellBg = isOff
-                                          ? 'bg-rose-50 text-rose-700'
-                                          : isHolidayDay
-                                            ? 'bg-amber-50 text-amber-700'
-                                            : ''
+                                      if (isFieldBreakDay && cell.status !== 'present') {
+                                        cellValue = 'FB'
+                                        cellBg = 'bg-purple-50 text-purple-700'
                                       } else {
-                                        const isFbDay = scheduleCode === 'FB'
+                                        // Meals: semua hari dapat (termasuk OFF/Libur), kecuali Field Break
                                         const mealsRate =
                                           siteConfig.mealsType === 'none'
                                             ? 0
-                                            : siteConfig.mealsType === 'field-break'
-                                              ? isFbDay
-                                                ? staff
-                                                  ? rate.mealsStaff
-                                                  : rate.mealsNonStaff
-                                                : 0
-                                              : staff
-                                                ? rate.mealsStaff
-                                                : rate.mealsNonStaff
+                                            : staff
+                                              ? rate.mealsStaff
+                                              : rate.mealsNonStaff
                                         cellValue = mealsRate
-                                        cellBg =
-                                          mealsRate > 0
+                                        cellBg = isHolidayDay
+                                          ? 'bg-amber-50 text-foreground'
+                                          : mealsRate > 0
                                             ? 'bg-white text-foreground'
                                             : 'bg-slate-50 text-muted-foreground'
                                       }
                                     } else if (attendanceView === 'ovt') {
-                                      if (isOff || cell.status !== 'present') {
+                                      // Overtime hanya untuk Non Staff
+                                      if (staff) {
+                                        cellValue = '-'
+                                        cellBg = 'bg-slate-50 text-muted-foreground'
+                                      } else if (isOff || cell.status !== 'present') {
                                         cellValue = isOff ? scheduleCode : ''
                                         cellBg = isOff
                                           ? 'bg-rose-50 text-rose-700'
@@ -4272,9 +4352,7 @@ export function SchedulingTimesheetWorkspace({
                                 {/* Total column for MSA/Meals/OVT views */}
                                 {attendanceView !== 'attendance'
                                   ? (() => {
-                                      const staff = /manager|supervisor|lead|staff|admin/i.test(
-                                        row.employee.role
-                                      )
+                                      const staff = isStaffRole(row.employee.role)
                                       let total = 0
                                       for (const day of days) {
                                         const cell = getAttendanceCell(row.employee.id, day)
@@ -4294,7 +4372,21 @@ export function SchedulingTimesheetWorkspace({
                                           continue
                                         }
 
-                                        if (isOff2 || hol || cell.status !== 'present') continue
+                                        // Skip Field Break days for MSA/Meals
+                                        const isFbPeriod =
+                                          fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ??
+                                          false
+                                        if (
+                                          isFbPeriod &&
+                                          (attendanceView === 'msa' || attendanceView === 'meals')
+                                        )
+                                          continue
+                                        // OVT: only count present days
+                                        if (
+                                          attendanceView === 'ovt' &&
+                                          (isOff2 || hol || cell.status !== 'present')
+                                        )
+                                          continue
                                         if (attendanceView === 'msa') {
                                           total +=
                                             siteConfig.msaType === 'none'
@@ -4305,31 +4397,27 @@ export function SchedulingTimesheetWorkspace({
                                                   ? rate.msaStaff
                                                   : rate.msaNonStaff
                                         } else if (attendanceView === 'meals') {
-                                          const isFb = code === 'FB'
                                           total +=
                                             siteConfig.mealsType === 'none'
                                               ? 0
-                                              : siteConfig.mealsType === 'field-break'
-                                                ? isFb
-                                                  ? staff
-                                                    ? rate.mealsStaff
-                                                    : rate.mealsNonStaff
-                                                  : 0
-                                                : staff
-                                                  ? rate.mealsStaff
-                                                  : rate.mealsNonStaff
+                                              : staff
+                                                ? rate.mealsStaff
+                                                : rate.mealsNonStaff
                                         } else {
-                                          const ci = cell.clockIn
-                                            ? Number(cell.clockIn.split(':')[0]) * 60 +
-                                              Number(cell.clockIn.split(':')[1])
-                                            : null
-                                          const co = cell.clockOut
-                                            ? Number(cell.clockOut.split(':')[0]) * 60 +
-                                              Number(cell.clockOut.split(':')[1])
-                                            : null
-                                          if (ci != null && co != null) {
-                                            const w = (co >= ci ? co - ci : co + 1440 - ci) / 60
-                                            total += Math.max(0, w - 5)
+                                          // OVT only for non-staff
+                                          if (!staff) {
+                                            const ci = cell.clockIn
+                                              ? Number(cell.clockIn.split(':')[0]) * 60 +
+                                                Number(cell.clockIn.split(':')[1])
+                                              : null
+                                            const co = cell.clockOut
+                                              ? Number(cell.clockOut.split(':')[0]) * 60 +
+                                                Number(cell.clockOut.split(':')[1])
+                                              : null
+                                            if (ci != null && co != null) {
+                                              const w = (co >= ci ? co - ci : co + 1440 - ci) / 60
+                                              total += Math.max(0, w - 5)
+                                            }
                                           }
                                         }
                                       }

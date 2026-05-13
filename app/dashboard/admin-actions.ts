@@ -1315,8 +1315,6 @@ const saveSchedulingConfigSchema = z.object({
   msaType: z.string().max(60),
   mealsType: z.string().max(60),
   overtimeType: z.string().max(60),
-  lokasiKhususEnabled: z.boolean().default(false),
-  lokasiKhususRate: z.number().int().min(0).default(35000),
   fieldBreakConfig: z.unknown().optional().nullable(),
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),

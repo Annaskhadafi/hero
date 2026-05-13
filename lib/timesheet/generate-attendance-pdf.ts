@@ -19,6 +19,7 @@ type OvertimeRecordInput = {
   section: string
   siteName: string
   days: AttendanceDayData[]
+  isNonStaff: boolean
 }
 
 type SiteAllowanceInput = {
@@ -284,7 +285,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const isOff =
       day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
-    const ot = calcOvertimeHours(day.clockIn, day.clockOut)
+    const ot = input.isNonStaff ? calcOvertimeHours(day.clockIn, day.clockOut) : 0
     totalOT += ot
 
     const bgColor = day.isHoliday
@@ -588,6 +589,28 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   })
   y -= hH
 
+  // Detect Field Break: 14+ consecutive days without attendance
+  const FB_THRESHOLD = 14
+  const fieldBreakDays = new Set<number>()
+  let gapStart = -1
+  let gapLen = 0
+  for (const d of input.days) {
+    const hasAttendance = d.status === 'present' || d.clockIn || d.clockOut
+    if (!hasAttendance) {
+      if (gapStart === -1) gapStart = d.day
+      gapLen++
+    } else {
+      if (gapLen >= FB_THRESHOLD) {
+        for (let g = gapStart; g < gapStart + gapLen; g++) fieldBreakDays.add(g)
+      }
+      gapStart = -1
+      gapLen = 0
+    }
+  }
+  if (gapLen >= FB_THRESHOLD && gapStart > 0) {
+    for (let g = gapStart; g <= input.days.length; g++) fieldBreakDays.add(g)
+  }
+
   // Rows
   let totalLokasi = 0
   let totalMsa = 0
@@ -596,6 +619,7 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   for (const day of input.days) {
     y -= rowH
     if (y < 100) break
+    const isFieldBreakDay = fieldBreakDays.has(day.day)
 
     const isOff =
       day.scheduleCode === 'OFF' || day.scheduleCode === 'Libur' || day.scheduleCode === 'Sakit'
@@ -639,8 +663,8 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
     }
 
-    // MSA — hari kerja present
-    if (!isOff && !day.isHoliday && (day.status === 'present' || day.clockIn)) {
+    // MSA — semua hari dapat kecuali Field Break
+    if (!isFieldBreakDay) {
       drawCell(page, colX[3], y, cols[3], rowH, {
         text: `Rp     ${formatMoney(input.msaRate)}`,
         font,
@@ -650,11 +674,17 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       })
       totalMsa += input.msaRate
     } else {
-      drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
+      drawCell(page, colX[3], y, cols[3], rowH, {
+        text: 'FB',
+        font,
+        fontSize: 7,
+        align: 'center',
+        bgColor: rgb(0.95, 0.9, 1),
+      })
     }
 
-    // Meals — hari kerja present
-    if (!isOff && !day.isHoliday && (day.status === 'present' || day.clockIn)) {
+    // Meals — semua hari dapat kecuali Field Break
+    if (!isFieldBreakDay) {
       drawCell(page, colX[4], y, cols[4], rowH, {
         text: `Rp     ${formatMoney(input.mealsRate)}`,
         font,
@@ -664,7 +694,13 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
       })
       totalMeals += input.mealsRate
     } else {
-      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
+      drawCell(page, colX[4], y, cols[4], rowH, {
+        text: 'FB',
+        font,
+        fontSize: 7,
+        align: 'center',
+        bgColor: rgb(0.95, 0.9, 1),
+      })
     }
 
     // Remarks
