@@ -43,8 +43,8 @@ export function FaceCapture({
   const animationFrameRef = useRef<number | null>(null)
   const faceapiRef = useRef<typeof import('face-api.js') | null>(null)
 
-  const [captureState, setCaptureState] = useState<CaptureState>('loading-models')
-  const [statusMessage, setStatusMessage] = useState('Memuat model pengenalan wajah...')
+  const [captureState, setCaptureState] = useState<CaptureState>('requesting-camera')
+  const [statusMessage, setStatusMessage] = useState('Mengaktifkan kamera...')
   const [multipleFacesWarning, setMultipleFacesWarning] = useState(false)
 
   // Fallback tracking refs
@@ -266,14 +266,18 @@ export function FaceCapture({
   // ─── Model loading effect ──────────────────────────────────────────────────
 
   useEffect(() => {
+    // Start camera immediately (don't wait for model)
+    startCamera()
+  }, [startCamera])
+
+  useEffect(() => {
     if (isLoaded) {
-      // Load faceapi reference for detection loop
+      // Load faceapi reference for detection loop (camera already running)
       import('face-api.js').then((faceapi) => {
         faceapiRef.current = faceapi
-        startCamera()
       })
     }
-  }, [isLoaded, startCamera])
+  }, [isLoaded])
 
   // ─── Model error handling ──────────────────────────────────────────────────
 
@@ -312,19 +316,10 @@ export function FaceCapture({
 
   return (
     <div className="relative flex flex-col items-center gap-4">
-      {/* Model loading state */}
-      {(captureState === 'loading-models' || isLoading) && (
-        <div className="flex w-full max-w-[320px] flex-col items-center gap-4 py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-3 border-slate-200 border-t-blue-600" />
-          <p className="text-sm font-medium text-slate-600">Memuat model pengenalan wajah...</p>
-          {/* Progress bar */}
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-blue-600 transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="text-xs text-slate-400">{progress}%</p>
+      {/* Model loading indicator (shown as small overlay, not blocking) */}
+      {isLoading && captureState !== 'error' && (
+        <div className="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-sm">
+          Model loading... {progress}%
         </div>
       )}
 
@@ -360,8 +355,8 @@ export function FaceCapture({
         </div>
       )}
 
-      {/* Camera view */}
-      {captureState !== 'loading-models' && captureState !== 'error' && !isLoading && (
+      {/* Camera view — always show when not in error state */}
+      {captureState !== 'error' && (
         <>
           <div className="relative aspect-[3/4] w-full max-w-[320px] overflow-hidden rounded-2xl bg-black">
             <video
