@@ -233,7 +233,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const [now, setNow] = useState<Date | null>(null)
   const [geo, setGeo] = useState<GeoState>(initialGeo)
   const [cameraReady, setCameraReady] = useState(false)
-  const [videoReady, setVideoReady] = useState(false)
   const [cameraError, setCameraError] = useState('')
   const [cameraPermissionOpen, setCameraPermissionOpen] = useState(false)
   const [capturedFile, setCapturedFile] = useState<File | null>(null)
@@ -349,6 +348,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   }, [])
 
   function handleFaceVerificationFailure(message: string) {
+    setCapturedFile(null)
     setFaceRecAttempts((current) => {
       const nextAttempts = current + 1
       if (nextAttempts >= MAX_FACE_REC_ATTEMPTS) {
@@ -356,18 +356,20 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         setFaceRecMessage('Verifikasi server gagal 2x. Pakai capture foto agar absensi tetap jalan.')
       } else {
         setFaceRecMode('detecting')
-        setFaceRecMessage(`${message} (${nextAttempts}/2). Tekan Verify Wajah untuk coba lagi.`)
+        setFaceRecMessage(`${message} (${nextAttempts}/2). Foto gagal dibuang. Kamera siap ulang.`)
       }
       return nextAttempts
     })
   }
 
   async function runFaceRecognition() {
-    if (!videoRef.current || !videoReady || videoRef.current.readyState < 2) {
-      setVideoReady(false)
-      setFaceRecMessage('Kamera belum siap. Membuka ulang preview...')
+    if (capturedFile || capturePreview) {
+      setCapturedFile(null)
+    }
+
+    if (!videoRef.current || videoRef.current.readyState < 2) {
+      setFaceRecMessage('Kamera belum siap. Coba lagi atau upload selfie.')
       setFaceRecMode('detecting')
-      void startCamera()
       return
     }
 
@@ -443,7 +445,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
     try {
       setCameraReady(false)
-      setVideoReady(false)
       setCameraError('')
       setCameraPermissionOpen(false)
       streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -473,7 +474,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         ])
       }
       setCameraReady(true)
-      setVideoReady(Boolean(videoRef.current && videoRef.current.readyState >= 2))
       setCameraError('')
       setCameraPermissionOpen(false)
 
@@ -490,7 +490,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
       setCameraReady(false)
-      setVideoReady(false)
       setCameraError(message)
       setCameraPermissionOpen(false)
       setFaceRecMode('fallback')
@@ -505,7 +504,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       if (cancelled) {
         streamRef.current?.getTracks().forEach((track) => track.stop())
         streamRef.current = null
-        setVideoReady(false)
       }
     })
 
@@ -513,7 +511,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       cancelled = true
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
-      setVideoReady(false)
       if (faceRecLoopRef.current) cancelAnimationFrame(faceRecLoopRef.current)
     }
   }, [])
@@ -723,9 +720,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         ) : (
           <video
             ref={videoRef}
-            onCanPlay={() => setVideoReady(true)}
-            onLoadedData={() => setVideoReady(true)}
-            onWaiting={() => setVideoReady(false)}
             className={cn(
               'absolute inset-0 h-full w-full scale-x-[-1] object-cover opacity-75',
               !cameraReady && 'hidden'
@@ -798,9 +792,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             </>
           ) : faceRecMode === 'detecting' ? (
             <>
-              <ScanFace className={cn('size-3.5', videoReady ? 'animate-pulse' : 'opacity-70')} />
+              <ScanFace className="size-3.5 animate-pulse" />
               <span className="w-28 text-center text-[9px] leading-3 font-black">
-                {faceRecMessage || (videoReady ? 'Mendeteksi wajah...' : 'Menunggu kamera siap...')}
+                {faceRecMessage || 'Mendeteksi wajah...'}
               </span>
             </>
           ) : faceRecMode === 'verifying' ? (
@@ -900,11 +894,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           <button
             type="button"
             onClick={runFaceRecognition}
-            disabled={!videoReady}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-65"
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98]"
           >
             <ScanFace className="size-4" />
-            {videoReady ? 'Verify Wajah' : 'Menunggu Kamera'}
+            Verify Wajah
           </button>
         </section>
       )}
@@ -914,6 +907,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           <button
             type="button"
             onClick={() => {
+              setCapturedFile(null)
               setFaceRecAttempts(0)
               setFaceRecMode('detecting')
               setFaceRecMessage('Kamera siap. Model Face Recognition diproses di server.')

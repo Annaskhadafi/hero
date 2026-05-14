@@ -1,11 +1,11 @@
 # Graph Report - HERO  (2026-05-14)
 
 ## Corpus Check
-- 441 files · ~731,606 words
+- 441 files · ~731,571 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1838 nodes · 2545 edges · 64 communities detected
+- 1838 nodes · 2544 edges · 64 communities detected
 - Extraction: 83% EXTRACTED · 17% INFERRED · 0% AMBIGUOUS · INFERRED: 439 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -166,7 +166,7 @@ Cohesion: 0.13
 Nodes (13): errorResponse(), POST(), savePhoto(), cosineSimilarity(), validateEmbedding(), extractServerFaceEmbedding(), getFaceApi(), errorResponse() (+5 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.15
+Cohesion: 0.14
 Nodes (10): captureFrame(), fileToPayload(), getEventLabel(), getReverseGeocodeLabel(), handleCaptureClick(), handleFaceVerificationFailure(), handleSubmit(), resolveLocationName() (+2 more)
 
 ### Community 17 - "Community 17"
