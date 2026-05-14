@@ -2674,8 +2674,9 @@ export async function getOperationalCrudOptions() {
 
 export async function getSchedulingTimesheetOptions() {
   await ensureSchedulingTimesheetTables()
-  const users = await getSecurityUsersData()
   const [
+    employeeRows,
+    siteRows,
     savedPlans,
     fieldBreakPlans,
     attendanceRows,
@@ -2684,6 +2685,34 @@ export async function getSchedulingTimesheetOptions() {
     schedulingStatuses,
     importPreviews,
   ] = await Promise.all([
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        role: employees.role,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        section: employees.section,
+        siteId: employees.siteId,
+        siteName: sites.name,
+      })
+      .from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
+      .catch(() => []),
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+        customerName: sites.customerName,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name))
+      .catch(() => []),
     db
       .select()
       .from(timesheetSchedulingPlans)
@@ -2713,35 +2742,20 @@ export async function getSchedulingTimesheetOptions() {
       .from(timesheetAttendanceImportPreviews)
       .catch(() => []),
   ])
-  const activeUsers = users.filter((user) => user.isActive)
-  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>()
-
-  for (const user of activeUsers) {
-    const siteName = user.siteName || 'Belum diisi'
-    if (!siteByKey.has(siteName)) {
-      siteByKey.set(siteName, {
-        id: user.siteId ?? -siteByKey.size - 1,
-        name: siteName,
-        customerName: siteName,
-      })
-    }
-  }
 
   return {
-    employees: activeUsers.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      employeeSn: user.employeeSn,
-      role: user.jobTitle || user.role,
-      department: user.department,
-      section: user.section,
-      siteId: user.siteId ?? null,
-      locationName: user.siteName,
+    employees: employeeRows.map((employee) => ({
+      id: employee.id,
+      name: employee.name,
+      email: employee.email,
+      employeeSn: employee.employeeSn,
+      role: employee.jobTitle || employee.role,
+      department: employee.department,
+      section: employee.section,
+      siteId: employee.siteId,
+      locationName: employee.siteName ?? 'Belum diisi',
     })),
-    sites: Array.from(siteByKey.values()).sort((left, right) =>
-      left.name.localeCompare(right.name, 'id-ID')
-    ),
+    sites: siteRows,
     savedPlans: savedPlans.map((plan) => ({
       siteId: plan.siteId,
       period: plan.period,
@@ -2843,36 +2857,50 @@ export async function getSchedulingTimesheetOptions() {
 
 async function getSchedulingTimesheetBaseOptions() {
   await ensureSchedulingTimesheetTables()
-  const users = await getSecurityUsersData()
-  const activeUsers = users.filter((user) => user.isActive)
-  const siteByKey = new Map<string, { id: number; name: string; customerName: string }>()
-
-  for (const user of activeUsers) {
-    const siteName = user.siteName || 'Belum diisi'
-    if (!siteByKey.has(siteName)) {
-      siteByKey.set(siteName, {
-        id: user.siteId ?? -siteByKey.size - 1,
-        name: siteName,
-        customerName: siteName,
+  const [employeeRows, siteRows] = await Promise.all([
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        role: employees.role,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        section: employees.section,
+        siteId: employees.siteId,
+        siteName: sites.name,
       })
-    }
-  }
+      .from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
+      .catch(() => []),
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+        customerName: sites.customerName,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name))
+      .catch(() => []),
+  ])
 
   return {
-    employees: activeUsers.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      employeeSn: user.employeeSn,
-      role: user.jobTitle || user.role,
-      department: user.department,
-      section: user.section,
-      siteId: user.siteId ?? null,
-      locationName: user.siteName,
+    employees: employeeRows.map((employee) => ({
+      id: employee.id,
+      name: employee.name,
+      email: employee.email,
+      employeeSn: employee.employeeSn,
+      role: employee.jobTitle || employee.role,
+      department: employee.department,
+      section: employee.section,
+      siteId: employee.siteId,
+      locationName: employee.siteName ?? 'Belum diisi',
     })),
-    sites: Array.from(siteByKey.values()).sort((left, right) =>
-      left.name.localeCompare(right.name, 'id-ID')
-    ),
+    sites: siteRows,
   }
 }
 

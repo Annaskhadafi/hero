@@ -172,6 +172,7 @@ async function getCurrentEmployee() {
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
+      faceRegisteredAt: employees.faceRegisteredAt,
     })
 
   return createdEmployee
