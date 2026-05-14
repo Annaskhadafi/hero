@@ -2393,7 +2393,7 @@ export interface BulkProvisionResult {
   interrupted: boolean
 }
 
-export function determinePassword(employee: {
+function determinePassword(employee: {
   emailPasswordMigration: string | null
   employeeId: string
 }): string {
@@ -2402,7 +2402,7 @@ export function determinePassword(employee: {
   return `Chitra#${employee.employeeId}`
 }
 
-export function isValidEmailFormat(email: string): boolean {
+function isValidEmailFormat(email: string): boolean {
   const parts = email.split('@')
   if (parts.length !== 2) return false
   const [local, domain] = parts
@@ -5539,4 +5539,119 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       message: error instanceof Error ? error.message : 'Failed to perform bulk action',
     }
   }
+}
+
+// ─── Face Registration Management ────────────────────────────────────────────
+
+export async function getFaceRegistrationStatusAction() {
+  const allEmployees = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      faceRegisteredAt: employees.faceRegisteredAt,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, true))
+    .orderBy(asc(employees.name))
+
+  const registered = allEmployees.filter((e) => e.faceRegisteredAt !== null)
+  const unregistered = allEmployees.filter((e) => e.faceRegisteredAt === null)
+
+  return {
+    employees: allEmployees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      email: e.email,
+      isRegistered: e.faceRegisteredAt !== null,
+      registeredAt: e.faceRegisteredAt?.toISOString() ?? null,
+    })),
+    stats: {
+      registered: registered.length,
+      unregistered: unregistered.length,
+      total: allEmployees.length,
+    },
+  }
+}
+
+export async function deleteFaceEmbeddingAction(employeeId: number) {
+  await db
+    .update(employees)
+    .set({
+      faceEmbedding: null,
+      faceRegisteredAt: null,
+    })
+    .where(eq(employees.id, employeeId))
+
+  revalidatePath('/dashboard')
+  return { ok: true }
+}
+
+// ─── Photo Fallback Review ───────────────────────────────────────────────────
+
+const reviewFallbackSchema = z.object({
+  recordId: z.number().int().positive(),
+  action: z.enum(['approve', 'reject']),
+  reason: z.string().max(500).optional(),
+})
+
+export async function getPhotoFallbackRecordsAction(filter?: 'pending' | 'approved' | 'rejected') {
+  let statusFilter = 'needs-review'
+  if (filter === 'approved') statusFilter = 'verified'
+  if (filter === 'rejected') statusFilter = 'rejected'
+
+  const records = await db
+    .select({
+      id: attendanceRecords.id,
+      employeeId: attendanceRecords.employeeId,
+      employeeName: employees.name,
+      eventType: attendanceRecords.eventType,
+      eventTime: attendanceRecords.eventTime,
+      siteId: attendanceRecords.siteId,
+      photoUrl: attendanceRecords.photoUrl,
+      status: attendanceRecords.status,
+      locationNote: attendanceRecords.locationNote,
+    })
+    .from(attendanceRecords)
+    .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
+    .where(
+      and(
+        eq(attendanceRecords.locationNote, 'photo-fallback'),
+        filter
+          ? eq(attendanceRecords.status, statusFilter)
+          : eq(attendanceRecords.status, 'needs-review')
+      )
+    )
+    .orderBy(desc(attendanceRecords.eventTime))
+
+  return records.map((r) => ({
+    id: r.id,
+    employeeId: r.employeeId,
+    employeeName: r.employeeName ?? 'Unknown',
+    eventType: r.eventType,
+    eventTime: r.eventTime.toISOString(),
+    siteId: r.siteId,
+    photoUrl: r.photoUrl,
+    status: r.status,
+  }))
+}
+
+export async function reviewFallbackRecordAction(input: z.infer<typeof reviewFallbackSchema>) {
+  const payload = reviewFallbackSchema.parse(input)
+
+  const newStatus = payload.action === 'approve' ? 'verified' : 'rejected'
+
+  await db
+    .update(attendanceRecords)
+    .set({
+      status: newStatus,
+      locationNote:
+        payload.action === 'reject' && payload.reason
+          ? `photo-fallback:rejected:${payload.reason}`
+          : 'photo-fallback',
+    })
+    .where(eq(attendanceRecords.id, payload.recordId))
+
+  revalidatePath('/dashboard')
+  return { ok: true, newStatus }
 }

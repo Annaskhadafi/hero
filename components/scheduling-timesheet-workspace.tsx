@@ -65,6 +65,8 @@ import {
 } from '@/lib/timesheet-scheduling'
 import { AttendanceRealBulkToolbar } from '@/components/timesheet/attendance-real-tab'
 import { AttendanceImportPreviewDialog } from '@/components/timesheet/attendance-import-preview-dialog'
+import { AttendanceSummaryBar } from '@/components/timesheet/attendance-summary-bar'
+import { AttendanceSourceIndicator } from '@/components/timesheet/attendance-source-indicator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import {
@@ -2977,6 +2979,43 @@ export function SchedulingTimesheetWorkspace({
     { present: 0, empty: 0, sick: 0, leave: 0, absent: 0 } as Record<AttendanceCellStatus, number>
   )
 
+  // Source summary stats for AttendanceSummaryBar (Req 7.1, 7.2, 7.5)
+  const attendanceSourceStats = useMemo(() => {
+    let faceDays = 0
+    let excelDays = 0
+    let manualDays = 0
+    for (const row of rows) {
+      for (const day of days) {
+        const cell = getAttendanceCell(row.employee.id, day)
+        if (cell.status === 'empty') continue
+        if (cell.source === 'attendance') faceDays++
+        else if (cell.source === 'excel') excelDays++
+        else manualDays++
+      }
+    }
+    const totalFilledDays = faceDays + excelDays + manualDays
+    const facePercentage =
+      totalFilledDays > 0 ? Math.round((faceDays / totalFilledDays) * 1000) / 10 : 0
+    return { faceDays, excelDays, manualDays, totalFilledDays, facePercentage }
+  }, [rows, days, manualAttendance, attendanceByCell, period, siteId])
+
+  // Set of employee IDs with zero face attendance records (Req 7.3)
+  const employeesWithZeroFace = useMemo(() => {
+    const zeroFaceSet = new Set<number>()
+    for (const row of rows) {
+      let hasFace = false
+      for (const day of days) {
+        const cell = getAttendanceCell(row.employee.id, day)
+        if (cell.source === 'attendance' && cell.status !== 'empty') {
+          hasFace = true
+          break
+        }
+      }
+      if (!hasFace) zeroFaceSet.add(row.employee.id)
+    }
+    return zeroFaceSet
+  }, [rows, days, manualAttendance, attendanceByCell, period, siteId])
+
   // Detect Field Break: 14+ consecutive days without attendance = FB period (no MSA/Meals)
   const fieldBreakDaysByEmployee = useMemo(() => {
     const FB_THRESHOLD = 14
@@ -4050,6 +4089,14 @@ export function SchedulingTimesheetWorkspace({
               </Card>
             ))}
           </div>
+          {/* Face Attendance Source Summary Bar (Req 7.1, 7.2, 7.5) */}
+          <AttendanceSummaryBar
+            faceDays={attendanceSourceStats.faceDays}
+            excelDays={attendanceSourceStats.excelDays}
+            manualDays={attendanceSourceStats.manualDays}
+            totalFilledDays={attendanceSourceStats.totalFilledDays}
+            facePercentage={attendanceSourceStats.facePercentage}
+          />
           <Card className="surface-module-card relative overflow-hidden rounded-[1.2rem] border-0 p-0">
             {isImportingExcel ? (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-sm">
@@ -4146,8 +4193,13 @@ export function SchedulingTimesheetWorkspace({
                               </td>
                             </tr>
                             {sectionRows.map((row) => (
-                              <tr key={row.employee.id} className="group border-b border-slate-100">
-                                <td className="text-foreground sticky left-0 z-20 min-w-[220px] bg-white px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
+                              <tr
+                                key={row.employee.id}
+                                className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50/40' : ''}`}
+                              >
+                                <td
+                                  className={`text-foreground sticky left-0 z-20 min-w-[220px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50/40' : 'bg-white'}`}
+                                >
                                   <div className="flex items-center justify-between gap-1">
                                     <div>
                                       {row.employee.name}
@@ -4343,6 +4395,18 @@ export function SchedulingTimesheetWorkspace({
                                         {cell.clockIn || cell.clockOut ? (
                                           <span className="mt-1 block font-mono text-[10px]">
                                             {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}
+                                          </span>
+                                        ) : null}
+                                        {cell.status !== 'empty' && cell.source ? (
+                                          <span className="absolute right-1 bottom-1">
+                                            <AttendanceSourceIndicator
+                                              source={cell.source}
+                                              timestamp={
+                                                cell.clockIn
+                                                  ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
+                                                  : undefined
+                                              }
+                                            />
                                           </span>
                                         ) : null}
                                       </button>
