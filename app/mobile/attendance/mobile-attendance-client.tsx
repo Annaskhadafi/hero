@@ -251,10 +251,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   >('loading')
   const [faceRecMessage, setFaceRecMessage] = useState('')
   const [faceRecAttempts, setFaceRecAttempts] = useState(0)
+  const [faceModelLoadAttempts, setFaceModelLoadAttempts] = useState(0)
   const faceapiRef = useRef<any>(null)
   const faceRecLoopRef = useRef<number | null>(null)
   const faceRecStartRef = useRef<number>(Date.now())
-  const MAX_FACE_REC_ATTEMPTS = 3
+  const faceModelFailureCountedRef = useRef(false)
+  const MAX_FACE_REC_ATTEMPTS = 2
+  const MAX_FACE_MODEL_LOAD_ATTEMPTS = 2
+  const FACE_MODEL_LOAD_TIMEOUT = 12000
   const NO_FACE_TIMEOUT = 15000
   const faceModelPromiseRef = useRef<Promise<any> | null>(null)
 
@@ -279,20 +283,67 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     return () => window.clearInterval(timer)
   }, [])
 
+  function failToCapture(message: string) {
+    faceModelPromiseRef.current = null
+    setFaceRecMode('fallback')
+    setFaceRecMessage(message)
+  }
+
+  function handleFaceModelLoadFailure() {
+    const alreadyCounted = faceModelFailureCountedRef.current
+    if (!alreadyCounted) {
+      faceModelFailureCountedRef.current = true
+    }
+
+    setFaceModelLoadAttempts((current) => {
+      const nextAttempts = alreadyCounted ? current : current + 1
+      failToCapture(
+        nextAttempts >= MAX_FACE_MODEL_LOAD_ATTEMPTS
+          ? 'Model wajah lambat/gagal 2x. Pakai capture foto agar absensi tetap jalan.'
+          : 'Model wajah gagal dimuat. Coba muat ulang Face Recognition atau pakai capture foto.'
+      )
+      return nextAttempts
+    })
+  }
+
+  function timeoutAfter<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+    return new Promise<T>((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs)
+      promise.then(resolve, reject).finally(() => window.clearTimeout(timer))
+    })
+  }
+
   async function loadFaceModels() {
     if (faceapiRef.current) return faceapiRef.current
 
     if (!faceModelPromiseRef.current) {
+      faceModelFailureCountedRef.current = false
       setFaceRecMode('loading')
-      setFaceRecMessage('Memuat model Face Recognition...')
+      setFaceRecMessage('Memuat model Face Recognition (maks 12 detik)...')
       faceModelPromiseRef.current = import('face-api.js').then(async (faceapi) => {
-        await Promise.all([
+        setFaceRecMessage('Memuat detector wajah...')
+        await timeoutAfter(
           faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
+          FACE_MODEL_LOAD_TIMEOUT,
+          'Face detector'
+        )
+        setFaceRecMessage('Memuat landmark wajah...')
+        await timeoutAfter(
           faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+          FACE_MODEL_LOAD_TIMEOUT,
+          'Face landmarks'
+        )
+        setFaceRecMessage('Memuat pengenal wajah...')
+        await timeoutAfter(
           faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-        ])
+          FACE_MODEL_LOAD_TIMEOUT,
+          'Face recognition'
+        )
         faceapiRef.current = faceapi
         return faceapi
+      }).catch((error) => {
+        faceModelPromiseRef.current = null
+        throw error
       })
     }
 
@@ -308,9 +359,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
       })
       .catch(() => {
-        faceModelPromiseRef.current = null
-        setFaceRecMode('fallback')
-        setFaceRecMessage('Model wajah gagal dimuat. Coba muat ulang Face Recognition.')
+        handleFaceModelLoadFailure()
       })
   }, [data.employee?.faceRegisteredAt])
 
@@ -498,9 +547,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           setFaceRecMode('detecting')
           setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
         } catch {
-          faceModelPromiseRef.current = null
-          setFaceRecMode('fallback')
-          setFaceRecMessage('Model wajah gagal dimuat. Coba muat ulang Face Recognition.')
+          handleFaceModelLoadFailure()
         }
       }
     } catch (error) {
@@ -586,6 +633,17 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Photo capture failed.')
     }
+  }
+
+  async function retryFaceRecognition() {
+    if (faceModelLoadAttempts >= MAX_FACE_MODEL_LOAD_ATTEMPTS) {
+      failToCapture('Model wajah sudah gagal 2x. Pakai capture foto agar absensi tetap jalan.')
+      return
+    }
+
+    faceModelPromiseRef.current = null
+    faceModelFailureCountedRef.current = false
+    await startCamera()
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -883,15 +941,41 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       )}
 
       {faceRecMode === 'fallback' && !requiresFaceRegistration && !isCameraBlocked && (
-        <section>
+        <section className="grid gap-2">
+          {faceModelLoadAttempts < MAX_FACE_MODEL_LOAD_ATTEMPTS ? (
+            <button
+              type="button"
+              onClick={() => void retryFaceRecognition()}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#e6f6ff] px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
+            >
+              <ScanFace className="size-4" />
+              Coba Face Lagi ({faceModelLoadAttempts}/{MAX_FACE_MODEL_LOAD_ATTEMPTS})
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => void startCamera()}
+            onClick={() => void handleCaptureClick()}
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98]"
           >
-            <ScanFace className="size-4" />
-            Muat Ulang Face Recognition
+            <Camera className="size-4" />
+            Capture Foto
           </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-white px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
+          >
+            <Camera className="size-4" />
+            Upload Selfie
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="user"
+            className="hidden"
+            onChange={handleFileChange}
+          />
         </section>
       )}
 
