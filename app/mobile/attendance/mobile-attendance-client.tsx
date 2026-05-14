@@ -247,8 +247,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
   // Face recognition state
   const [faceRecMode, setFaceRecMode] = useState<
-    'detecting' | 'fallback' | 'success' | 'verifying'
-  >('detecting')
+    'loading' | 'detecting' | 'fallback' | 'success' | 'verifying'
+  >('loading')
   const [faceRecMessage, setFaceRecMessage] = useState('')
   const [faceRecAttempts, setFaceRecAttempts] = useState(0)
   const faceapiRef = useRef<any>(null)
@@ -256,6 +256,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const faceRecStartRef = useRef<number>(Date.now())
   const MAX_FACE_REC_ATTEMPTS = 3
   const NO_FACE_TIMEOUT = 15000
+  const faceModelPromiseRef = useRef<Promise<any> | null>(null)
 
   const latestLog = attendanceLogs[0]
   const nextType = latestLog?.eventType === 'checked-in' ? 'checked-out' : 'checked-in'
@@ -277,6 +278,41 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
     return () => window.clearInterval(timer)
   }, [])
+
+  async function loadFaceModels() {
+    if (faceapiRef.current) return faceapiRef.current
+
+    if (!faceModelPromiseRef.current) {
+      setFaceRecMode('loading')
+      setFaceRecMessage('Memuat model Face Recognition...')
+      faceModelPromiseRef.current = import('face-api.js').then(async (faceapi) => {
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+        ])
+        faceapiRef.current = faceapi
+        return faceapi
+      })
+    }
+
+    return faceModelPromiseRef.current
+  }
+
+  useEffect(() => {
+    if (!data.employee?.faceRegisteredAt) return
+
+    void loadFaceModels()
+      .then(() => {
+        setFaceRecMode('detecting')
+        setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
+      })
+      .catch(() => {
+        faceModelPromiseRef.current = null
+        setFaceRecMode('fallback')
+        setFaceRecMessage('Model wajah gagal dimuat. Coba muat ulang Face Recognition.')
+      })
+  }, [data.employee?.faceRegisteredAt])
 
   useEffect(() => {
     setAttendanceLogs(data.logs)
@@ -343,8 +379,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
   async function runFaceRecognition() {
     if (!faceapiRef.current || !videoRef.current || videoRef.current.readyState < 2) {
-      setFaceRecMessage('Model atau kamera belum siap.')
-      setFaceRecMode('fallback')
+      setFaceRecMessage('Model atau kamera belum siap. Tunggu sebentar lalu coba lagi.')
+      setFaceRecMode('loading')
       return
     }
 
@@ -458,17 +494,13 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         setFaceRecMessage('Wajah belum terdaftar di database production. Registrasi wajah dulu untuk mengaktifkan Face Recognition.')
       } else {
         try {
-          const faceapi = await import('face-api.js')
-          await faceapi.nets.ssdMobilenetv1.loadFromUri('/models')
-          await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
-          await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-          faceapiRef.current = faceapi
+          await loadFaceModels()
           setFaceRecMode('detecting')
           setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
         } catch {
-          // If face-api fails to load, fallback to manual capture
+          faceModelPromiseRef.current = null
           setFaceRecMode('fallback')
-          setFaceRecMessage('Model wajah gagal dimuat. Gunakan capture manual.')
+          setFaceRecMessage('Model wajah gagal dimuat. Coba muat ulang Face Recognition.')
         }
       }
     } catch (error) {
@@ -740,7 +772,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         <div className="absolute right-7 bottom-10 size-9 border-r-2 border-b-2 border-[#004b87]" />
 
         <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl">
-          {faceRecMode === 'detecting' ? (
+          {faceRecMode === 'loading' ? (
+            <>
+              <div className="size-3.5 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
+              <span className="w-28 text-center text-[9px] leading-3 font-black">
+                {faceRecMessage || 'Memuat model wajah...'}
+              </span>
+            </>
+          ) : faceRecMode === 'detecting' ? (
             <>
               <ScanFace className="size-3.5 animate-pulse" />
               <span className="w-28 text-center text-[9px] leading-3 font-black">
@@ -803,6 +842,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           )}
         >
           <div className="flex items-center gap-2">
+            {faceRecMode === 'loading' && (
+              <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
+            )}
             {faceRecMode === 'detecting' && <ScanFace className="size-4 animate-pulse" />}
             {faceRecMode === 'verifying' && (
               <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
@@ -811,6 +853,19 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             {faceRecMessage}
           </div>
         </div>
+      )}
+
+      {faceRecMode === 'loading' && !requiresFaceRegistration && (
+        <section>
+          <button
+            type="button"
+            disabled
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#dcecf7] px-4 text-xs font-black text-[#003461] uppercase opacity-80"
+          >
+            <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
+            Memuat Face Recognition
+          </button>
+        </section>
       )}
 
       {/* Face verify button - shown when model is ready */}
