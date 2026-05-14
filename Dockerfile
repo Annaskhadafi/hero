@@ -46,6 +46,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/drizzle /app/migration/drizzle
 COPY --from=builder --chown=nextjs:nodejs /app/db /app/migration/db
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/run-docker-migrations.mjs /app/migration/scripts/run-docker-migrations.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/database-url.mjs /app/migration/scripts/database-url.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/lib/database-url.ts /app/migration/lib/database-url.ts
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts /app/migration/drizzle.config.ts
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json /app/migration/tsconfig.json
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules /app/migration/node_modules
