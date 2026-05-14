@@ -1,5 +1,5 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { db } from "@/db";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { db } from '@/db'
 import {
   activities,
   activityLibraries,
@@ -27,35 +27,35 @@ import {
   pointEvents,
   sites,
   streakRecords,
-} from "@/db/schema/hero";
-import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
+} from '@/db/schema/hero'
+import { ensureHeroGovernanceSeedData } from '@/lib/hero-admin'
 
-let dailyActivitySeedPromise: Promise<void> | null = null;
+let dailyActivitySeedPromise: Promise<void> | null = null
 
 const DAILY_ACTIVITY_REVALIDATE_PATHS = [
-  "/dashboard/activity-hub/my-day",
-  "/dashboard/activity-hub/team-board",
-  "/dashboard/overtime-requests",
-  "/dashboard/activity-hub/library",
-  "/dashboard/activity-hub/routes",
-  "/dashboard/activity-hub/blueprint",
-  "/dashboard/activity-hub/configuration",
-  "/dashboard/approval",
-  "/dashboard/leaderboard",
-  "/mobile",
-  "/mobile/dashboard",
-  "/mobile/activity",
-  "/mobile/activity/input",
-  "/mobile/overtime",
-  "/mobile/gamification",
-] as const;
+  '/dashboard/activity-hub/my-day',
+  '/dashboard/activity-hub/team-board',
+  '/dashboard/overtime-requests',
+  '/dashboard/activity-hub/library',
+  '/dashboard/activity-hub/routes',
+  '/dashboard/activity-hub/blueprint',
+  '/dashboard/activity-hub/configuration',
+  '/dashboard/approval',
+  '/dashboard/leaderboard',
+  '/mobile',
+  '/mobile/dashboard',
+  '/mobile/activity',
+  '/mobile/activity/input',
+  '/mobile/overtime',
+  '/mobile/gamification',
+] as const
 
 const DEFAULT_LIBRARY_SEEDS = [
   {
-    activityCode: "TS-001",
-    activityName: "Tyre inspection dan pressure check",
-    category: "Technical",
-    departmentName: "Central Service",
+    activityCode: 'TS-001',
+    activityName: 'Tyre inspection dan pressure check',
+    category: 'Technical',
+    departmentName: 'Central Service',
     basePoints: 10,
     complexityLevel: 2,
     requiresPhoto: true,
@@ -72,10 +72,10 @@ const DEFAULT_LIBRARY_SEEDS = [
     slaHours: 12,
   },
   {
-    activityCode: "TS-002",
-    activityName: "Tyre change unit hauling",
-    category: "Technical",
-    departmentName: "Central Service",
+    activityCode: 'TS-002',
+    activityName: 'Tyre change unit hauling',
+    category: 'Technical',
+    departmentName: 'Central Service',
     basePoints: 18,
     complexityLevel: 4,
     requiresPhoto: true,
@@ -92,10 +92,10 @@ const DEFAULT_LIBRARY_SEEDS = [
     slaHours: 8,
   },
   {
-    activityCode: "HSE-001",
-    activityName: "Safety toolbox meeting",
-    category: "HSE",
-    departmentName: "HSE",
+    activityCode: 'HSE-001',
+    activityName: 'Safety toolbox meeting',
+    category: 'HSE',
+    departmentName: 'HSE',
     basePoints: 8,
     complexityLevel: 1,
     requiresPhoto: false,
@@ -112,10 +112,10 @@ const DEFAULT_LIBRARY_SEEDS = [
     slaHours: 24,
   },
   {
-    activityCode: "ADM-001",
-    activityName: "Daily administration dan reporting",
-    category: "Administrative",
-    departmentName: "HC",
+    activityCode: 'ADM-001',
+    activityName: 'Daily administration dan reporting',
+    category: 'Administrative',
+    departmentName: 'HC',
     basePoints: 6,
     complexityLevel: 1,
     requiresPhoto: false,
@@ -132,10 +132,10 @@ const DEFAULT_LIBRARY_SEEDS = [
     slaHours: 24,
   },
   {
-    activityCode: "WLN-001",
-    activityName: "Stretching dan wellness check",
-    category: "Wellness",
-    departmentName: "HC",
+    activityCode: 'WLN-001',
+    activityName: 'Stretching dan wellness check',
+    category: 'Wellness',
+    departmentName: 'HC',
     basePoints: 4,
     complexityLevel: 1,
     requiresPhoto: false,
@@ -152,10 +152,10 @@ const DEFAULT_LIBRARY_SEEDS = [
     slaHours: 24,
   },
   {
-    activityCode: "STD-001",
-    activityName: "Standby on call site support",
-    category: "Standby",
-    departmentName: "Central Service",
+    activityCode: 'STD-001',
+    activityName: 'Standby on call site support',
+    category: 'Standby',
+    departmentName: 'Central Service',
     basePoints: 5,
     complexityLevel: 1,
     requiresPhoto: false,
@@ -171,263 +171,271 @@ const DEFAULT_LIBRARY_SEEDS = [
     autoApproveIfGpsValid: false,
     slaHours: 24,
   },
-] as const;
+] as const
 
 const DEFAULT_CONFIG_SEEDS = [
   {
-    configKey: "daily_cap_points",
-    configLabel: "Batas poin harian",
-    configValue: "100",
-    valueType: "number",
-    description: "Batas akumulasi poin reward harian per karyawan.",
+    configKey: 'daily_cap_points',
+    configLabel: 'Batas poin harian',
+    configValue: '100',
+    valueType: 'number',
+    description: 'Batas akumulasi poin reward harian per karyawan.',
     isEditableBySectionHead: false,
   },
   {
-    configKey: "gps_radius_meters",
-    configLabel: "Radius GPS site",
-    configValue: "500",
-    valueType: "number",
-    description: "Radius validasi GPS untuk auto-approval dan verifikasi lokasi.",
+    configKey: 'gps_radius_meters',
+    configLabel: 'Radius GPS site',
+    configValue: '500',
+    valueType: 'number',
+    description: 'Radius validasi GPS untuk auto-approval dan verifikasi lokasi.',
     isEditableBySectionHead: false,
   },
   {
-    configKey: "auto_approve_enabled",
-    configLabel: "Auto approval aktif",
-    configValue: "true",
-    valueType: "boolean",
-    description: "Mengizinkan auto-approval untuk aktivitas yang memenuhi syarat.",
+    configKey: 'auto_approve_enabled',
+    configLabel: 'Auto approval aktif',
+    configValue: 'true',
+    valueType: 'boolean',
+    description: 'Mengizinkan auto-approval untuk aktivitas yang memenuhi syarat.',
     isEditableBySectionHead: true,
   },
   {
-    configKey: "penalty_pen_01",
-    configLabel: "PEN-01 No Daily Report",
-    configValue: "-15",
-    valueType: "number",
-    description: "Penalty default bila karyawan tidak mengirim laporan harian.",
+    configKey: 'penalty_pen_01',
+    configLabel: 'PEN-01 No Daily Report',
+    configValue: '-15',
+    valueType: 'number',
+    description: 'Penalty default bila karyawan tidak mengirim laporan harian.',
     isEditableBySectionHead: false,
   },
   {
-    configKey: "penalty_pen_02",
-    configLabel: "PEN-02 Terlambat Input Minor",
-    configValue: "-2",
-    valueType: "number",
-    description: "Penalty aktivitas yang disubmit pukul 17.01 - 20.00.",
+    configKey: 'penalty_pen_02',
+    configLabel: 'PEN-02 Terlambat Input Minor',
+    configValue: '-2',
+    valueType: 'number',
+    description: 'Penalty aktivitas yang disubmit pukul 17.01 - 20.00.',
     isEditableBySectionHead: false,
   },
   {
-    configKey: "penalty_pen_03",
-    configLabel: "PEN-03 Terlambat Input Major",
-    configValue: "-5",
-    valueType: "number",
-    description: "Penalty aktivitas yang disubmit pukul 20.01 - 23.59.",
+    configKey: 'penalty_pen_03',
+    configLabel: 'PEN-03 Terlambat Input Major',
+    configValue: '-5',
+    valueType: 'number',
+    description: 'Penalty aktivitas yang disubmit pukul 20.01 - 23.59.',
     isEditableBySectionHead: false,
   },
   {
-    configKey: "penalty_pen_09",
-    configLabel: "PEN-09 Aktivitas Ditolak Foreman",
-    configValue: "-5",
-    valueType: "number",
-    description: "Penalty default untuk aktivitas yang ditolak saat approval.",
+    configKey: 'penalty_pen_09',
+    configLabel: 'PEN-09 Aktivitas Ditolak Foreman',
+    configValue: '-5',
+    valueType: 'number',
+    description: 'Penalty default untuk aktivitas yang ditolak saat approval.',
     isEditableBySectionHead: false,
   },
   {
-    configKey: "custom_activity_daily_limit",
-    configLabel: "Batas custom activity per hari",
-    configValue: "3",
-    valueType: "number",
-    description: "Jumlah maksimum custom activity yang dapat diajukan per karyawan per hari.",
+    configKey: 'custom_activity_daily_limit',
+    configLabel: 'Batas custom activity per hari',
+    configValue: '3',
+    valueType: 'number',
+    description: 'Jumlah maksimum custom activity yang dapat diajukan per karyawan per hari.',
     isEditableBySectionHead: false,
   },
-] as const;
+] as const
 
 function startOfDay(reference = new Date()) {
-  return new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
+  return new Date(reference.getFullYear(), reference.getMonth(), reference.getDate())
 }
 
 function endOfDay(reference = new Date()) {
-  return new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 23, 59, 59, 999);
+  return new Date(
+    reference.getFullYear(),
+    reference.getMonth(),
+    reference.getDate(),
+    23,
+    59,
+    59,
+    999
+  )
 }
 
 function getShiftLabel(reference = new Date()) {
-  const hour = reference.getHours();
-  if (hour < 15) return "Shift Pagi";
-  if (hour < 23) return "Shift Sore";
-  return "Shift Malam";
+  const hour = reference.getHours()
+  if (hour < 15) return 'Shift Pagi'
+  if (hour < 23) return 'Shift Sore'
+  return 'Shift Malam'
 }
 
 function minutesBetween(start: Date, end: Date) {
-  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
 }
 
 function formatDurationLabel(totalMinutes: number) {
   if (totalMinutes < 60) {
-    return `${totalMinutes} menit`;
+    return `${totalMinutes} menit`
   }
 
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes > 0 ? `${hours}j ${minutes}m` : `${hours} jam`;
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}j ${minutes}m` : `${hours} jam`
 }
 
 function normalizeStatusLabel(value: string) {
-  return value.replaceAll("_", " ");
+  return value.replaceAll('_', ' ')
 }
 
 function normalizeRouteShiftToken(value?: string | null) {
-  return value?.trim().toUpperCase().replace(/\s+/g, " ") ?? "";
+  return value?.trim().toUpperCase().replace(/\s+/g, ' ') ?? ''
 }
 
 function getShiftAliases(reference = new Date()) {
-  const hour = reference.getHours();
+  const hour = reference.getHours()
 
   if (hour < 15) {
-    return new Set(["ALL", "DAY", "SHIFT PAGI", "PAGI", "MORNING"]);
+    return new Set(['ALL', 'DAY', 'SHIFT PAGI', 'PAGI', 'MORNING'])
   }
 
   if (hour < 23) {
-    return new Set(["ALL", "SHIFT SORE", "SORE", "SWING", "AFTERNOON"]);
+    return new Set(['ALL', 'SHIFT SORE', 'SORE', 'SWING', 'AFTERNOON'])
   }
 
-  return new Set(["ALL", "NIGHT", "SHIFT MALAM", "MALAM"]);
+  return new Set(['ALL', 'NIGHT', 'SHIFT MALAM', 'MALAM'])
 }
 
 function getRouteTemplateScore(
   template: {
-    siteId: number | null;
-    departmentId: number | null;
-    sectionId: number | null;
-    positionId: number | null;
-    shiftCode: string;
+    siteId: number | null
+    departmentId: number | null
+    sectionId: number | null
+    positionId: number | null
+    shiftCode: string
   },
   employee: typeof employees.$inferSelect,
-  shiftAliases: Set<string>,
+  shiftAliases: Set<string>
 ) {
   if (template.siteId != null && template.siteId !== employee.siteId) {
-    return -1;
+    return -1
   }
 
   if (template.departmentId != null && template.departmentId !== employee.departmentId) {
-    return -1;
+    return -1
   }
 
   if (template.sectionId != null && template.sectionId !== employee.sectionId) {
-    return -1;
+    return -1
   }
 
   if (template.positionId != null && template.positionId !== employee.positionId) {
-    return -1;
+    return -1
   }
 
-  let score = 0;
-  score += template.siteId != null ? 32 : 4;
-  score += template.departmentId != null ? 16 : 2;
-  score += template.sectionId != null ? 8 : 1;
-  score += template.positionId != null ? 4 : 0;
+  let score = 0
+  score += template.siteId != null ? 32 : 4
+  score += template.departmentId != null ? 16 : 2
+  score += template.sectionId != null ? 8 : 1
+  score += template.positionId != null ? 4 : 0
 
-  const normalizedShift = normalizeRouteShiftToken(template.shiftCode);
-  if (normalizedShift && normalizedShift !== "ALL") {
+  const normalizedShift = normalizeRouteShiftToken(template.shiftCode)
+  if (normalizedShift && normalizedShift !== 'ALL') {
     if (!shiftAliases.has(normalizedShift)) {
-      return -1;
+      return -1
     }
 
-    score += 6;
+    score += 6
   } else {
-    score += 1;
+    score += 1
   }
 
-  return score;
+  return score
 }
 
 type MatchedRouteChecklist = {
-  id: number;
-  routeCode: string;
-  routeName: string;
-  shiftCode: string;
-  versionLabel: string;
-  description: string | null;
-  mobileEnabled: boolean;
-  approvalRequired: boolean;
-  siteName: string | null;
-  departmentName: string | null;
-  sectionName: string | null;
-  positionName: string | null;
+  id: number
+  routeCode: string
+  routeName: string
+  shiftCode: string
+  versionLabel: string
+  description: string | null
+  mobileEnabled: boolean
+  approvalRequired: boolean
+  siteName: string | null
+  departmentName: string | null
+  sectionName: string | null
+  positionName: string | null
   activeSpl: {
-    id: number;
-    splNumber: string;
-    title: string;
-    status: string;
-    workDate: Date;
-    plannedStartAt: Date | null;
-    plannedEndAt: Date | null;
-    requestNotes: string;
-    executionNotes: string;
-    lineCount: number;
-    plannedPointsTotal: number;
+    id: number
+    splNumber: string
+    title: string
+    status: string
+    workDate: Date
+    plannedStartAt: Date | null
+    plannedEndAt: Date | null
+    requestNotes: string
+    executionNotes: string
+    lineCount: number
+    plannedPointsTotal: number
     items: Array<{
-      id: number;
-      assignedEmployeeId: number | null;
-      routeTemplateId: number | null;
-      routeItemId: number | null;
-      libraryActivityId: number | null;
-      requiresPhoto: boolean;
-      lineLabel: string;
-      lineDescription: string;
-      targetUnit: string;
-      estimatedMinutes: number;
-      plannedPoints: number;
-      sortOrder: number;
-      isCustomLine: boolean;
-    }>;
-  } | null;
-  sessionId: number | null;
-  sessionStatus: string | null;
-  checkedCount: number;
-  groupCount: number;
-  itemCount: number;
+      id: number
+      assignedEmployeeId: number | null
+      routeTemplateId: number | null
+      routeItemId: number | null
+      libraryActivityId: number | null
+      requiresPhoto: boolean
+      lineLabel: string
+      lineDescription: string
+      targetUnit: string
+      estimatedMinutes: number
+      plannedPoints: number
+      sortOrder: number
+      isCustomLine: boolean
+    }>
+  } | null
+  sessionId: number | null
+  sessionStatus: string | null
+  checkedCount: number
+  groupCount: number
+  itemCount: number
   groups: Array<{
-    id: number;
-    groupKey: string;
-    groupName: string;
-    description: string | null;
-    sortOrder: number;
-    isRequired: boolean;
+    id: number
+    groupKey: string
+    groupName: string
+    description: string | null
+    sortOrder: number
+    isRequired: boolean
     items: Array<{
-      id: number;
-      sessionItemId: number | null;
-      itemCode: string | null;
-      itemLabel: string;
-      itemDescription: string | null;
-      pointOverride: number | null;
-      sortOrder: number;
-      requiresUnit: boolean;
-      requiresTime: boolean;
-      requiresRemark: boolean;
-      requiresPhoto: boolean;
-      requiresChecklistEvidence: boolean;
-      isOptional: boolean;
-      allowCustomUnit: boolean;
-      libraryActivityId: number | null;
-      libraryCode: string | null;
-      libraryName: string | null;
-      libraryPoints: number | null;
-      isChecked: boolean;
-      unitNumber: string;
-      remark: string;
-      startedAt: Date | null;
-      endedAt: Date | null;
-      checkedAt: Date | null;
-      actualPoints: number;
-      snapshotPayload: string;
-    }>;
-  }>;
-};
+      id: number
+      sessionItemId: number | null
+      itemCode: string | null
+      itemLabel: string
+      itemDescription: string | null
+      pointOverride: number | null
+      sortOrder: number
+      requiresUnit: boolean
+      requiresTime: boolean
+      requiresRemark: boolean
+      requiresPhoto: boolean
+      requiresChecklistEvidence: boolean
+      isOptional: boolean
+      allowCustomUnit: boolean
+      libraryActivityId: number | null
+      libraryCode: string | null
+      libraryName: string | null
+      libraryPoints: number | null
+      isChecked: boolean
+      unitNumber: string
+      remark: string
+      startedAt: Date | null
+      endedAt: Date | null
+      checkedAt: Date | null
+      actualPoints: number
+      snapshotPayload: string
+    }>
+  }>
+}
 
 async function getActiveOvertimeCommandLetterForEmployee(
   employee: typeof employees.$inferSelect,
-  referenceDate = new Date(),
+  referenceDate = new Date()
 ) {
-  const dayStart = startOfDay(referenceDate);
-  const dayEnd = endOfDay(referenceDate);
+  const dayStart = startOfDay(referenceDate)
+  const dayEnd = endOfDay(referenceDate)
 
   const splRows = await db
     .select({
@@ -451,19 +459,23 @@ async function getActiveOvertimeCommandLetterForEmployee(
         gte(overtimeCommandLetters.workDate, dayStart),
         lte(overtimeCommandLetters.workDate, dayEnd),
         or(
-          eq(overtimeCommandLetters.status, "draft"),
-          eq(overtimeCommandLetters.status, "submitted"),
-          eq(overtimeCommandLetters.status, "approved"),
-        ),
-      ),
+          eq(overtimeCommandLetters.status, 'draft'),
+          eq(overtimeCommandLetters.status, 'submitted'),
+          eq(overtimeCommandLetters.status, 'approved')
+        )
+      )
     )
-    .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.updatedAt), desc(overtimeCommandLetters.id));
+    .orderBy(
+      desc(overtimeCommandLetters.workDate),
+      desc(overtimeCommandLetters.updatedAt),
+      desc(overtimeCommandLetters.id)
+    )
 
   if (splRows.length === 0) {
-    return null;
+    return null
   }
 
-  const splIds = splRows.map((row) => row.id);
+  const splIds = splRows.map((row) => row.id)
   const itemRows = await db
     .select({
       id: overtimeCommandLetterItems.id,
@@ -482,58 +494,61 @@ async function getActiveOvertimeCommandLetterForEmployee(
       isCustomLine: overtimeCommandLetterItems.isCustomLine,
     })
     .from(overtimeCommandLetterItems)
-    .leftJoin(activityLibraries, eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id))
+    .leftJoin(
+      activityLibraries,
+      eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id)
+    )
     .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
     .orderBy(
       asc(overtimeCommandLetterItems.overtimeCommandLetterId),
       asc(overtimeCommandLetterItems.sortOrder),
-      asc(overtimeCommandLetterItems.id),
-    );
+      asc(overtimeCommandLetterItems.id)
+    )
 
-  const itemsBySplId = new Map<number, typeof itemRows>();
+  const itemsBySplId = new Map<number, typeof itemRows>()
   for (const item of itemRows) {
-    const list = itemsBySplId.get(item.overtimeCommandLetterId) ?? [];
-    list.push(item);
-    itemsBySplId.set(item.overtimeCommandLetterId, list);
+    const list = itemsBySplId.get(item.overtimeCommandLetterId) ?? []
+    list.push(item)
+    itemsBySplId.set(item.overtimeCommandLetterId, list)
   }
 
   const selectedDocument =
     splRows
       .map((row) => {
-        const items = itemsBySplId.get(row.id) ?? [];
-        const hasExplicitAssignments = items.some((item) => item.assignedEmployeeId != null);
+        const items = itemsBySplId.get(row.id) ?? []
+        const hasExplicitAssignments = items.some((item) => item.assignedEmployeeId != null)
         const matchesLegacyScope =
           (row.sectionId == null || row.sectionId === employee.sectionId) &&
-          (row.positionId == null || row.positionId === employee.positionId);
+          (row.positionId == null || row.positionId === employee.positionId)
         const relevantItems = hasExplicitAssignments
           ? items.filter((item) => item.assignedEmployeeId === employee.id)
           : matchesLegacyScope
             ? items
-            : [];
+            : []
         const score =
           (relevantItems.length > 0 ? 20 : 0) +
           (hasExplicitAssignments ? 12 : 0) +
-          (row.status === "approved" ? 4 : row.status === "submitted" ? 3 : 1) +
+          (row.status === 'approved' ? 4 : row.status === 'submitted' ? 3 : 1) +
           (row.sectionId != null ? 2 : 0) +
-          (row.positionId != null ? 1 : 0);
+          (row.positionId != null ? 1 : 0)
 
         return {
           ...row,
           items: relevantItems,
           score,
-        };
+        }
       })
       .filter((row) => row.items.length > 0)
       .sort((left, right) => {
         if (right.score !== left.score) {
-          return right.score - left.score;
+          return right.score - left.score
         }
 
-        return right.updatedAt.getTime() - left.updatedAt.getTime();
-      })[0] ?? null;
+        return right.updatedAt.getTime() - left.updatedAt.getTime()
+      })[0] ?? null
 
   if (!selectedDocument) {
-    return null;
+    return null
   }
 
   return {
@@ -547,22 +562,25 @@ async function getActiveOvertimeCommandLetterForEmployee(
     requestNotes: selectedDocument.requestNotes,
     executionNotes: selectedDocument.executionNotes,
     lineCount: selectedDocument.items.length,
-    plannedPointsTotal: selectedDocument.items.reduce((total, item) => total + item.plannedPoints, 0),
+    plannedPointsTotal: selectedDocument.items.reduce(
+      (total, item) => total + item.plannedPoints,
+      0
+    ),
     items: selectedDocument.items,
-  };
+  }
 }
 
 async function getStandaloneOvertimeChecklistForEmployee(
   employee: typeof employees.$inferSelect,
-  referenceDate = new Date(),
+  referenceDate = new Date()
 ) {
-  const activeSpl = await getActiveOvertimeCommandLetterForEmployee(employee, referenceDate);
+  const activeSpl = await getActiveOvertimeCommandLetterForEmployee(employee, referenceDate)
   if (!activeSpl) {
-    return null;
+    return null
   }
 
-  const dayStart = startOfDay(referenceDate);
-  const dayEnd = endOfDay(referenceDate);
+  const dayStart = startOfDay(referenceDate)
+  const dayEnd = endOfDay(referenceDate)
   const [existingSession] = await db
     .select({
       id: dailyActivitySessions.id,
@@ -574,11 +592,11 @@ async function getStandaloneOvertimeChecklistForEmployee(
         eq(dailyActivitySessions.employeeId, employee.id),
         eq(dailyActivitySessions.overtimeCommandLetterId, activeSpl.id),
         gte(dailyActivitySessions.workDate, dayStart),
-        lte(dailyActivitySessions.workDate, dayEnd),
-      ),
+        lte(dailyActivitySessions.workDate, dayEnd)
+      )
     )
     .orderBy(desc(dailyActivitySessions.updatedAt))
-    .limit(1);
+    .limit(1)
 
   const sessionItemRows =
     existingSession == null
@@ -597,9 +615,9 @@ async function getStandaloneOvertimeChecklistForEmployee(
           })
           .from(dailyActivitySessionItems)
           .where(eq(dailyActivitySessionItems.sessionId, existingSession.id))
-          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id));
+          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
 
-  const unusedSessionItems = [...sessionItemRows];
+  const unusedSessionItems = [...sessionItemRows]
   const items = activeSpl.items.map((item) => {
     const matchedIndex = unusedSessionItems.findIndex(
       (sessionItem) =>
@@ -610,22 +628,22 @@ async function getStandaloneOvertimeChecklistForEmployee(
           sessionItem.routeItemId === item.routeItemId) ||
         (sessionItem.libraryActivityId != null &&
           item.libraryActivityId != null &&
-          sessionItem.libraryActivityId === item.libraryActivityId),
-    );
-    const matched = matchedIndex >= 0 ? unusedSessionItems.splice(matchedIndex, 1)[0] : null;
+          sessionItem.libraryActivityId === item.libraryActivityId)
+    )
+    const matched = matchedIndex >= 0 ? unusedSessionItems.splice(matchedIndex, 1)[0] : null
 
     return {
       ...item,
       isChecked: matched?.isChecked ?? false,
-      unitNumber: matched?.unitNumber ?? item.targetUnit ?? "",
-      remark: matched?.remark ?? "",
+      unitNumber: matched?.unitNumber ?? item.targetUnit ?? '',
+      remark: matched?.remark ?? '',
       startedAt: matched?.startedAt ?? null,
       endedAt: matched?.endedAt ?? null,
       actualPoints: matched?.actualPoints ?? item.plannedPoints,
-    };
-  });
+    }
+  })
 
-  const checkedCount = items.filter((item) => item.isChecked).length;
+  const checkedCount = items.filter((item) => item.isChecked).length
 
   return {
     ...activeSpl,
@@ -634,12 +652,12 @@ async function getStandaloneOvertimeChecklistForEmployee(
     checkedCount,
     progressPercent: items.length > 0 ? Math.round((checkedCount / items.length) * 100) : 0,
     items,
-  };
+  }
 }
 
 async function getMatchedRouteChecklistForEmployee(
   employee: typeof employees.$inferSelect,
-  referenceDate = new Date(),
+  referenceDate = new Date()
 ): Promise<MatchedRouteChecklist | null> {
   const routeTemplateRows = await db
     .select({
@@ -668,9 +686,9 @@ async function getMatchedRouteChecklistForEmployee(
     .leftJoin(masterSections, eq(activityRouteTemplates.sectionId, masterSections.id))
     .leftJoin(masterPositions, eq(activityRouteTemplates.positionId, masterPositions.id))
     .where(eq(activityRouteTemplates.isActive, true))
-    .orderBy(desc(activityRouteTemplates.mobileEnabled), desc(activityRouteTemplates.createdAt));
+    .orderBy(desc(activityRouteTemplates.mobileEnabled), desc(activityRouteTemplates.createdAt))
 
-  const shiftAliases = getShiftAliases(referenceDate);
+  const shiftAliases = getShiftAliases(referenceDate)
   const matchedRouteTemplate =
     routeTemplateRows
       .map((template) => ({
@@ -680,18 +698,18 @@ async function getMatchedRouteChecklistForEmployee(
       .filter((template) => template.score >= 0)
       .sort((left, right) => {
         if (right.score !== left.score) {
-          return right.score - left.score;
+          return right.score - left.score
         }
 
-        return right.createdAt.getTime() - left.createdAt.getTime();
-      })[0] ?? null;
+        return right.createdAt.getTime() - left.createdAt.getTime()
+      })[0] ?? null
 
   if (!matchedRouteTemplate) {
-    return null;
+    return null
   }
 
-  const dayStart = startOfDay(referenceDate);
-  const dayEnd = endOfDay(referenceDate);
+  const dayStart = startOfDay(referenceDate)
+  const dayEnd = endOfDay(referenceDate)
 
   const [groupRows, itemRows, existingSession, activeSpl] = await Promise.all([
     db
@@ -743,14 +761,14 @@ async function getMatchedRouteChecklistForEmployee(
           eq(dailyActivitySessions.employeeId, employee.id),
           eq(dailyActivitySessions.routeTemplateId, matchedRouteTemplate.id),
           gte(dailyActivitySessions.workDate, dayStart),
-          lte(dailyActivitySessions.workDate, dayEnd),
-        ),
+          lte(dailyActivitySessions.workDate, dayEnd)
+        )
       )
       .orderBy(desc(dailyActivitySessions.updatedAt))
       .limit(1)
       .then((rows) => rows[0] ?? null),
     getActiveOvertimeCommandLetterForEmployee(employee, referenceDate),
-  ]);
+  ])
 
   const sessionItemRows =
     existingSession == null
@@ -770,41 +788,38 @@ async function getMatchedRouteChecklistForEmployee(
           })
           .from(dailyActivitySessionItems)
           .where(eq(dailyActivitySessionItems.sessionId, existingSession.id))
-          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id));
+          .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
 
-  const sessionItemsByRouteItemId = new Map<
-    number,
-    (typeof sessionItemRows)[number]
-  >();
+  const sessionItemsByRouteItemId = new Map<number, (typeof sessionItemRows)[number]>()
   for (const item of sessionItemRows) {
     if (item.routeItemId != null) {
-      sessionItemsByRouteItemId.set(item.routeItemId, item);
+      sessionItemsByRouteItemId.set(item.routeItemId, item)
     }
   }
 
-  const itemsByGroupId = new Map<number, MatchedRouteChecklist["groups"][number]["items"]>();
+  const itemsByGroupId = new Map<number, MatchedRouteChecklist['groups'][number]['items']>()
   for (const item of itemRows) {
-    const sessionState = sessionItemsByRouteItemId.get(item.id);
-    const list = itemsByGroupId.get(item.routeGroupId) ?? [];
+    const sessionState = sessionItemsByRouteItemId.get(item.id)
+    const list = itemsByGroupId.get(item.routeGroupId) ?? []
     list.push({
       ...item,
       sessionItemId: sessionState?.id ?? null,
       isChecked: sessionState?.isChecked ?? false,
-      unitNumber: sessionState?.unitNumber ?? "",
-      remark: sessionState?.remark ?? "",
+      unitNumber: sessionState?.unitNumber ?? '',
+      remark: sessionState?.remark ?? '',
       startedAt: sessionState?.startedAt ?? null,
       endedAt: sessionState?.endedAt ?? null,
       checkedAt: sessionState?.checkedAt ?? null,
       actualPoints: sessionState?.actualPoints ?? item.pointOverride ?? item.libraryPoints ?? 0,
-      snapshotPayload: sessionState?.snapshotPayload ?? "",
-    });
-    itemsByGroupId.set(item.routeGroupId, list);
+      snapshotPayload: sessionState?.snapshotPayload ?? '',
+    })
+    itemsByGroupId.set(item.routeGroupId, list)
   }
 
   const groups = groupRows.map((group) => ({
     ...group,
     items: itemsByGroupId.get(group.id) ?? [],
-  }));
+  }))
 
   return {
     id: matchedRouteTemplate.id,
@@ -826,41 +841,41 @@ async function getMatchedRouteChecklistForEmployee(
     groupCount: groups.length,
     itemCount: itemRows.length,
     groups,
-  };
+  }
 }
 
 function getCalendarDayKey(reference: Date) {
-  const year = reference.getFullYear();
-  const month = `${reference.getMonth() + 1}`.padStart(2, "0");
-  const day = `${reference.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const year = reference.getFullYear()
+  const month = `${reference.getMonth() + 1}`.padStart(2, '0')
+  const day = `${reference.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function isCurrentNodeAssignment(
   assignment: {
-    effectiveFrom: Date;
-    effectiveTo: Date | null;
-    isActive: boolean;
+    effectiveFrom: Date
+    effectiveTo: Date | null
+    isActive: boolean
   },
-  reference = new Date(),
+  reference = new Date()
 ) {
   if (!assignment.isActive) {
-    return false;
+    return false
   }
 
   if (assignment.effectiveFrom > reference) {
-    return false;
+    return false
   }
 
   if (assignment.effectiveTo && assignment.effectiveTo < reference) {
-    return false;
+    return false
   }
 
-  return true;
+  return true
 }
 
 async function getCurrentEmployeeByEmail(email?: string | null) {
-  const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedEmail = email?.trim().toLowerCase()
 
   if (normalizedEmail) {
     const [matchedEmployee] = await db
@@ -898,14 +913,16 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
         emailVerificationToken: employees.emailVerificationToken,
         emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
         emailVerified: employees.emailVerified,
+        faceEmbedding: employees.faceEmbedding,
+        faceRegisteredAt: employees.faceRegisteredAt,
         createdAt: employees.createdAt,
       })
       .from(employees)
       .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
-      .limit(1);
+      .limit(1)
 
     if (matchedEmployee) {
-      return matchedEmployee;
+      return matchedEmployee
     }
   }
 
@@ -938,20 +955,22 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
       totalPoints: employees.totalPoints,
       fitStatus: employees.fitStatus,
       isActive: employees.isActive,
-        invitationToken: employees.invitationToken,
-        invitationExpiresAt: employees.invitationExpiresAt,
-        invitationAcceptedAt: employees.invitationAcceptedAt,
-        emailVerificationToken: employees.emailVerificationToken,
-        emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
+      invitationToken: employees.invitationToken,
+      invitationExpiresAt: employees.invitationExpiresAt,
+      invitationAcceptedAt: employees.invitationAcceptedAt,
+      emailVerificationToken: employees.emailVerificationToken,
+      emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
       emailVerified: employees.emailVerified,
+      faceEmbedding: employees.faceEmbedding,
+      faceRegisteredAt: employees.faceRegisteredAt,
       createdAt: employees.createdAt,
     })
     .from(employees)
     .where(eq(employees.isActive, true))
     .orderBy(asc(employees.id))
-    .limit(1);
+    .limit(1)
 
-  return fallbackEmployee ?? null;
+  return fallbackEmployee ?? null
 }
 
 async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inferSelect) {
@@ -984,28 +1003,25 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
       totalPoints: employees.totalPoints,
       fitStatus: employees.fitStatus,
       isActive: employees.isActive,
-        invitationToken: employees.invitationToken,
-        invitationExpiresAt: employees.invitationExpiresAt,
-        invitationAcceptedAt: employees.invitationAcceptedAt,
-        emailVerificationToken: employees.emailVerificationToken,
-        emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
+      invitationToken: employees.invitationToken,
+      invitationExpiresAt: employees.invitationExpiresAt,
+      invitationAcceptedAt: employees.invitationAcceptedAt,
+      emailVerificationToken: employees.emailVerificationToken,
+      emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
       emailVerified: employees.emailVerified,
+      faceEmbedding: employees.faceEmbedding,
+      faceRegisteredAt: employees.faceRegisteredAt,
       createdAt: employees.createdAt,
     })
     .from(employees)
-    .where(
-      and(
-        eq(employees.directManagerId, currentEmployee.id),
-        eq(employees.isActive, true),
-      ),
-    )
-    .orderBy(asc(employees.name));
+    .where(and(eq(employees.directManagerId, currentEmployee.id), eq(employees.isActive, true)))
+    .orderBy(asc(employees.name))
 
-  const managedById = new Map(directReports.map((employee) => [employee.id, employee]));
-  const managerNodeIds = new Set<number>();
+  const managedById = new Map(directReports.map((employee) => [employee.id, employee]))
+  const managerNodeIds = new Set<number>()
 
   if (currentEmployee.orgNodeId != null) {
-    managerNodeIds.add(currentEmployee.orgNodeId);
+    managerNodeIds.add(currentEmployee.orgNodeId)
   }
 
   const [ownedNodes, assignedNodes] = await Promise.all([
@@ -1015,10 +1031,7 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
       })
       .from(orgChartNodes)
       .where(
-        and(
-          eq(orgChartNodes.employeeId, currentEmployee.id),
-          eq(orgChartNodes.isActive, true),
-        ),
+        and(eq(orgChartNodes.employeeId, currentEmployee.id), eq(orgChartNodes.isActive, true))
       ),
     db
       .select({
@@ -1029,20 +1042,22 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
       })
       .from(orgNodeAssignments)
       .where(eq(orgNodeAssignments.employeeId, currentEmployee.id)),
-  ]);
+  ])
 
   for (const node of ownedNodes) {
-    managerNodeIds.add(node.id);
+    managerNodeIds.add(node.id)
   }
 
   for (const assignment of assignedNodes) {
     if (isCurrentNodeAssignment(assignment)) {
-      managerNodeIds.add(assignment.nodeId);
+      managerNodeIds.add(assignment.nodeId)
     }
   }
 
   if (managerNodeIds.size === 0) {
-    return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name));
+    return Array.from(managedById.values()).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    )
   }
 
   const nodeRows = await db
@@ -1053,60 +1068,55 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
       employeeId: orgChartNodes.employeeId,
     })
     .from(orgChartNodes)
-    .where(eq(orgChartNodes.isActive, true));
+    .where(eq(orgChartNodes.isActive, true))
 
   const managerStructureIds = new Set(
-    nodeRows
-      .filter((node) => managerNodeIds.has(node.id))
-      .map((node) => node.structureId),
-  );
-  const scopedNodes = nodeRows.filter((node) => managerStructureIds.has(node.structureId));
-  const childrenByParent = new Map<number, number[]>();
+    nodeRows.filter((node) => managerNodeIds.has(node.id)).map((node) => node.structureId)
+  )
+  const scopedNodes = nodeRows.filter((node) => managerStructureIds.has(node.structureId))
+  const childrenByParent = new Map<number, number[]>()
 
   for (const node of scopedNodes) {
     if (node.parentNodeId == null) {
-      continue;
+      continue
     }
 
-    const children = childrenByParent.get(node.parentNodeId) ?? [];
-    children.push(node.id);
-    childrenByParent.set(node.parentNodeId, children);
+    const children = childrenByParent.get(node.parentNodeId) ?? []
+    children.push(node.id)
+    childrenByParent.set(node.parentNodeId, children)
   }
 
-  const descendantNodeIds = new Set<number>();
-  const queue = Array.from(managerNodeIds);
+  const descendantNodeIds = new Set<number>()
+  const queue = Array.from(managerNodeIds)
 
   while (queue.length > 0) {
-    const currentNodeId = queue.shift();
+    const currentNodeId = queue.shift()
     if (currentNodeId == null) {
-      continue;
+      continue
     }
 
     for (const childNodeId of childrenByParent.get(currentNodeId) ?? []) {
       if (managerNodeIds.has(childNodeId) || descendantNodeIds.has(childNodeId)) {
-        continue;
+        continue
       }
 
-      descendantNodeIds.add(childNodeId);
-      queue.push(childNodeId);
+      descendantNodeIds.add(childNodeId)
+      queue.push(childNodeId)
     }
   }
 
   if (descendantNodeIds.size === 0) {
-    return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name));
+    return Array.from(managedById.values()).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    )
   }
 
-  const descendantNodeIdList = Array.from(descendantNodeIds);
+  const descendantNodeIdList = Array.from(descendantNodeIds)
   const [nodeBoundEmployees, nodeAssignments] = await Promise.all([
     db
       .select()
       .from(employees)
-      .where(
-        and(
-          eq(employees.isActive, true),
-          inArray(employees.orgNodeId, descendantNodeIdList),
-        ),
-      ),
+      .where(and(eq(employees.isActive, true), inArray(employees.orgNodeId, descendantNodeIdList))),
     db
       .select({
         employeeId: orgNodeAssignments.employeeId,
@@ -1116,7 +1126,7 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
       })
       .from(orgNodeAssignments)
       .where(inArray(orgNodeAssignments.nodeId, descendantNodeIdList)),
-  ]);
+  ])
 
   const descendantEmployeeIds = Array.from(
     new Set(
@@ -1125,31 +1135,26 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
           (node) =>
             descendantNodeIds.has(node.id) &&
             node.employeeId != null &&
-            node.employeeId !== currentEmployee.id,
+            node.employeeId !== currentEmployee.id
         )
-        .map((node) => node.employeeId as number),
-    ),
-  );
+        .map((node) => node.employeeId as number)
+    )
+  )
 
   if (descendantEmployeeIds.length > 0) {
     const descendantEmployees = await db
       .select()
       .from(employees)
-      .where(
-        and(
-          eq(employees.isActive, true),
-          inArray(employees.id, descendantEmployeeIds),
-        ),
-      );
+      .where(and(eq(employees.isActive, true), inArray(employees.id, descendantEmployeeIds)))
 
     for (const employee of descendantEmployees) {
-      managedById.set(employee.id, employee);
+      managedById.set(employee.id, employee)
     }
   }
 
   for (const employee of nodeBoundEmployees) {
     if (employee.id !== currentEmployee.id) {
-      managedById.set(employee.id, employee);
+      managedById.set(employee.id, employee)
     }
   }
 
@@ -1157,50 +1162,39 @@ async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inf
     new Set(
       nodeAssignments
         .filter(
-          (assignment) =>
-            assignment.employeeId != null &&
-            isCurrentNodeAssignment(assignment),
+          (assignment) => assignment.employeeId != null && isCurrentNodeAssignment(assignment)
         )
-        .map((assignment) => assignment.employeeId as number),
-    ),
-  );
+        .map((assignment) => assignment.employeeId as number)
+    )
+  )
 
   if (assignedEmployeeIds.length > 0) {
     const assignedEmployees = await db
       .select()
       .from(employees)
-      .where(
-        and(
-          eq(employees.isActive, true),
-          inArray(employees.id, assignedEmployeeIds),
-        ),
-      );
+      .where(and(eq(employees.isActive, true), inArray(employees.id, assignedEmployeeIds)))
 
     for (const employee of assignedEmployees) {
       if (employee.id !== currentEmployee.id) {
-        managedById.set(employee.id, employee);
+        managedById.set(employee.id, employee)
       }
     }
   }
 
-  return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name));
+  return Array.from(managedById.values()).sort((left, right) => left.name.localeCompare(right.name))
 }
 
 export async function getManagedEmployeeIdsForLead(leadEmployeeId: number) {
-  await ensureDailyActivitySeedData();
+  await ensureDailyActivitySeedData()
 
-  const [lead] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.id, leadEmployeeId))
-    .limit(1);
+  const [lead] = await db.select().from(employees).where(eq(employees.id, leadEmployeeId)).limit(1)
 
   if (!lead) {
-    return [];
+    return []
   }
 
-  const team = await getManagedEmployeesForLead(lead);
-  return team.map((employee) => employee.id);
+  const team = await getManagedEmployeesForLead(lead)
+  return team.map((employee) => employee.id)
 }
 
 async function ensureDailyActivityTables() {
@@ -1232,11 +1226,11 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_activity_libraries add column if not exists site_id integer references hero_sites(id) on delete set null;
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_job_assignments (
@@ -1259,7 +1253,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_activity_photos (
@@ -1269,7 +1263,7 @@ async function ensureDailyActivityTables() {
       caption text not null default '',
       uploaded_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_penalty_events (
@@ -1287,7 +1281,7 @@ async function ensureDailyActivityTables() {
       resolved_at timestamp,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_point_disputes (
@@ -1302,7 +1296,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       resolved_at timestamp
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_streak_records (
@@ -1315,7 +1309,7 @@ async function ensureDailyActivityTables() {
       streak_bonus_active boolean not null default false,
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_activity_modifiers (
@@ -1330,7 +1324,7 @@ async function ensureDailyActivityTables() {
       created_by_employee_id integer references hero_employees(id) on delete set null,
       created_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_daily_activity_configs (
@@ -1347,7 +1341,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_activity_route_templates (
@@ -1370,7 +1364,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_activity_route_groups (
@@ -1384,7 +1378,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_activity_route_items (
@@ -1406,7 +1400,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_activity_section_point_overrides (
@@ -1424,7 +1418,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_overtime_command_letters (
@@ -1447,7 +1441,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_overtime_command_letter_items (
@@ -1466,7 +1460,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_daily_activity_sessions (
@@ -1491,7 +1485,7 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     create table if not exists hero_daily_activity_session_items (
@@ -1516,115 +1510,125 @@ async function ensureDailyActivityTables() {
       created_at timestamp not null default now(),
       updated_at timestamp not null default now()
     );
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_activities add column if not exists library_activity_id integer;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists assignment_id integer;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists source_mode text not null default 'self_input';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists custom_activity_name text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists custom_activity_description text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists submission_time timestamp;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists submission_category text not null default 'on_time';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists equipment_no text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists material_used text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists gps_lat text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists gps_lng text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists gps_valid boolean not null default false;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists photo_count integer not null default 0;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_activities add column if not exists penalty_deducted integer not null default 0;
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_approvals add column if not exists points_override integer;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_approvals add column if not exists rejection_reason text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_approvals add column if not exists points_override_reason text not null default '';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_approvals add column if not exists created_at timestamp not null default now();
-  `);
+  `)
 
   await db.execute(sql`
     alter table hero_point_events add column if not exists transaction_type text not null default 'reward';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_point_events add column if not exists source_type text not null default 'activity';
-  `);
+  `)
   await db.execute(sql`
     alter table hero_point_events add column if not exists source_id integer;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_point_events add column if not exists balance_after integer;
-  `);
+  `)
   await db.execute(sql`
     alter table hero_point_events add column if not exists metadata text not null default '';
-  `);
+  `)
 }
 
 async function seedDailyActivityReferenceData() {
-  const [employeeRows, departmentRows, sectionRows, positionRows, siteRows, libraryCount, routeTemplateCount, configCount, streakCount, modifierCount] =
-    await Promise.all([
-      db.select().from(employees).where(eq(employees.isActive, true)).orderBy(asc(employees.id)),
-      db.select().from(masterDepartments).orderBy(asc(masterDepartments.id)),
-      db.select().from(masterSections).orderBy(asc(masterSections.id)),
-      db.select().from(masterPositions).orderBy(asc(masterPositions.id)),
-      db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.id)),
-      db.select({ count: sql<number>`count(*)::int` }).from(activityLibraries),
-      db.select({ count: sql<number>`count(*)::int` }).from(activityRouteTemplates),
-      db.select({ count: sql<number>`count(*)::int` }).from(dailyActivityConfigs),
-      db.select({ count: sql<number>`count(*)::int` }).from(streakRecords),
-      db.select({ count: sql<number>`count(*)::int` }).from(activityModifiers),
-    ]);
+  const [
+    employeeRows,
+    departmentRows,
+    sectionRows,
+    positionRows,
+    siteRows,
+    libraryCount,
+    routeTemplateCount,
+    configCount,
+    streakCount,
+    modifierCount,
+  ] = await Promise.all([
+    db.select().from(employees).where(eq(employees.isActive, true)).orderBy(asc(employees.id)),
+    db.select().from(masterDepartments).orderBy(asc(masterDepartments.id)),
+    db.select().from(masterSections).orderBy(asc(masterSections.id)),
+    db.select().from(masterPositions).orderBy(asc(masterPositions.id)),
+    db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.id)),
+    db.select({ count: sql<number>`count(*)::int` }).from(activityLibraries),
+    db.select({ count: sql<number>`count(*)::int` }).from(activityRouteTemplates),
+    db.select({ count: sql<number>`count(*)::int` }).from(dailyActivityConfigs),
+    db.select({ count: sql<number>`count(*)::int` }).from(streakRecords),
+    db.select({ count: sql<number>`count(*)::int` }).from(activityModifiers),
+  ])
 
   const creatorEmployee =
-    employeeRows.find((employee) => employee.accessRole.toLowerCase().includes("admin")) ??
+    employeeRows.find((employee) => employee.accessRole.toLowerCase().includes('admin')) ??
     employeeRows[0] ??
-    null;
+    null
   const departmentByName = new Map(
-    departmentRows.map((department) => [department.name.trim().toLowerCase(), department]),
-  );
-  const defaultSite = siteRows[0] ?? null;
+    departmentRows.map((department) => [department.name.trim().toLowerCase(), department])
+  )
+  const defaultSite = siteRows[0] ?? null
   const defaultSection =
-    sectionRows.find((section) => section.name.toLowerCase().includes("tire")) ??
-    sectionRows.find((section) => section.name.toLowerCase().includes("service")) ??
+    sectionRows.find((section) => section.name.toLowerCase().includes('tire')) ??
+    sectionRows.find((section) => section.name.toLowerCase().includes('service')) ??
     sectionRows[0] ??
-    null;
+    null
   const defaultPosition =
-    positionRows.find((position) => position.name.toLowerCase().includes("tire")) ??
-    positionRows.find((position) => position.name.toLowerCase().includes("technician")) ??
-    positionRows.find((position) => position.name.toLowerCase().includes("staff")) ??
+    positionRows.find((position) => position.name.toLowerCase().includes('tire')) ??
+    positionRows.find((position) => position.name.toLowerCase().includes('technician')) ??
+    positionRows.find((position) => position.name.toLowerCase().includes('staff')) ??
     positionRows[0] ??
-    null;
+    null
 
   if ((libraryCount[0]?.count ?? 0) === 0 && creatorEmployee) {
     await db.insert(activityLibraries).values(
@@ -1653,8 +1657,8 @@ async function seedDailyActivityReferenceData() {
         createdByEmployeeId: creatorEmployee.id,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })),
-    );
+      }))
+    )
   }
 
   if ((configCount[0]?.count ?? 0) === 0) {
@@ -1671,8 +1675,8 @@ async function seedDailyActivityReferenceData() {
         updatedByEmployeeId: creatorEmployee?.id ?? null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })),
-    );
+      }))
+    )
   }
 
   if ((streakCount[0]?.count ?? 0) === 0 && employeeRows.length > 0) {
@@ -1685,16 +1689,16 @@ async function seedDailyActivityReferenceData() {
         lastActivityDate: new Date(),
         streakBonusActive: index < 3,
         updatedAt: new Date(),
-      })),
-    );
+      }))
+    )
   }
 
   if ((modifierCount[0]?.count ?? 0) === 0 && creatorEmployee && defaultSite) {
     await db.insert(activityModifiers).values([
       {
         siteId: defaultSite.id,
-        eventName: "Site Competition Week",
-        description: "Multiplier reward untuk mendorong pelaporan disiplin selama kompetisi site.",
+        eventName: 'Site Competition Week',
+        description: 'Multiplier reward untuk mendorong pelaporan disiplin selama kompetisi site.',
         multiplier: 150,
         startDate: startOfDay(new Date()),
         endDate: endOfDay(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)),
@@ -1702,7 +1706,7 @@ async function seedDailyActivityReferenceData() {
         createdByEmployeeId: creatorEmployee.id,
         createdAt: new Date(),
       },
-    ]);
+    ])
   }
 
   if ((routeTemplateCount[0]?.count ?? 0) === 0 && creatorEmployee) {
@@ -1721,7 +1725,7 @@ async function seedDailyActivityReferenceData() {
         .from(activityLibraries)
         .where(eq(activityLibraries.isActive, true))
         .orderBy(asc(activityLibraries.activityCode)),
-    ]);
+    ])
 
     const [createdTemplate] = await db
       .insert(activityRouteTemplates)
@@ -1730,13 +1734,13 @@ async function seedDailyActivityReferenceData() {
         departmentId: defaultSection?.departmentId ?? defaultPosition?.departmentId ?? null,
         sectionId: defaultSection?.id ?? defaultPosition?.sectionId ?? null,
         positionId: defaultPosition?.id ?? null,
-        routeCode: "ROUTE-TS-001",
-        routeName: "Default Tire Service Daily Route",
-        shiftCode: "ALL",
-        description: "Route awal untuk demonstrasi nested checklist pekerjaan harian.",
+        routeCode: 'ROUTE-TS-001',
+        routeName: 'Default Tire Service Daily Route',
+        shiftCode: 'ALL',
+        description: 'Route awal untuk demonstrasi nested checklist pekerjaan harian.',
         mobileEnabled: true,
         approvalRequired: false,
-        versionLabel: "v1",
+        versionLabel: 'v1',
         effectiveFrom: new Date(),
         effectiveTo: null,
         isActive: true,
@@ -1744,16 +1748,16 @@ async function seedDailyActivityReferenceData() {
         createdAt: new Date(),
         updatedAt: new Date(),
       })
-      .returning({ id: activityRouteTemplates.id });
+      .returning({ id: activityRouteTemplates.id })
 
     const [safetyGroup, inspectionGroup, executionGroup] = await db
       .insert(activityRouteGroups)
       .values([
         {
           routeTemplateId: createdTemplate.id,
-          groupKey: "safety-talk",
-          groupName: "Safety Talk",
-          description: "Kickoff, toolbox meeting, dan kesiapan kerja.",
+          groupKey: 'safety-talk',
+          groupName: 'Safety Talk',
+          description: 'Kickoff, toolbox meeting, dan kesiapan kerja.',
           sortOrder: 1,
           isRequired: true,
           createdAt: new Date(),
@@ -1761,9 +1765,9 @@ async function seedDailyActivityReferenceData() {
         },
         {
           routeTemplateId: createdTemplate.id,
-          groupKey: "inspection",
-          groupName: "Inspection",
-          description: "Pemeriksaan awal unit dan tekanan ban.",
+          groupKey: 'inspection',
+          groupName: 'Inspection',
+          description: 'Pemeriksaan awal unit dan tekanan ban.',
           sortOrder: 2,
           isRequired: true,
           createdAt: new Date(),
@@ -1771,27 +1775,29 @@ async function seedDailyActivityReferenceData() {
         },
         {
           routeTemplateId: createdTemplate.id,
-          groupKey: "execution",
-          groupName: "Execution",
-          description: "Perbaikan, mounting, dan clean up.",
+          groupKey: 'execution',
+          groupName: 'Execution',
+          description: 'Perbaikan, mounting, dan clean up.',
           sortOrder: 3,
           isRequired: true,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
       ])
-      .returning({ id: activityRouteGroups.id, groupKey: activityRouteGroups.groupKey });
+      .returning({ id: activityRouteGroups.id, groupKey: activityRouteGroups.groupKey })
 
-    const groupByKey = new Map([safetyGroup, inspectionGroup, executionGroup].map((group) => [group.groupKey, group]));
-    const libraryByCode = new Map(libraryRows.map((item) => [item.activityCode, item]));
+    const groupByKey = new Map(
+      [safetyGroup, inspectionGroup, executionGroup].map((group) => [group.groupKey, group])
+    )
+    const libraryByCode = new Map(libraryRows.map((item) => [item.activityCode, item]))
 
     await db.insert(activityRouteItems).values([
       {
-        routeGroupId: groupByKey.get("safety-talk")!.id,
-        libraryActivityId: libraryByCode.get("HSE-001")?.id ?? null,
-        itemCode: "RT-001",
-        itemLabel: "Toolbox meeting dan safety briefing",
-        itemDescription: "Pembukaan shift sebelum pekerjaan teknikal dimulai.",
+        routeGroupId: groupByKey.get('safety-talk')!.id,
+        libraryActivityId: libraryByCode.get('HSE-001')?.id ?? null,
+        itemCode: 'RT-001',
+        itemLabel: 'Toolbox meeting dan safety briefing',
+        itemDescription: 'Pembukaan shift sebelum pekerjaan teknikal dimulai.',
         pointOverride: 8,
         requiresUnit: false,
         requiresTime: true,
@@ -1805,11 +1811,11 @@ async function seedDailyActivityReferenceData() {
         updatedAt: new Date(),
       },
       {
-        routeGroupId: groupByKey.get("inspection")!.id,
-        libraryActivityId: libraryByCode.get("TS-001")?.id ?? null,
-        itemCode: "RT-002",
-        itemLabel: "Tyre inspection dan pressure check",
-        itemDescription: "Centang bila inspeksi dan pressure check dilakukan pada unit terkait.",
+        routeGroupId: groupByKey.get('inspection')!.id,
+        libraryActivityId: libraryByCode.get('TS-001')?.id ?? null,
+        itemCode: 'RT-002',
+        itemLabel: 'Tyre inspection dan pressure check',
+        itemDescription: 'Centang bila inspeksi dan pressure check dilakukan pada unit terkait.',
         pointOverride: 10,
         requiresUnit: true,
         requiresTime: true,
@@ -1823,11 +1829,11 @@ async function seedDailyActivityReferenceData() {
         updatedAt: new Date(),
       },
       {
-        routeGroupId: groupByKey.get("execution")!.id,
-        libraryActivityId: libraryByCode.get("TS-002")?.id ?? null,
-        itemCode: "RT-003",
-        itemLabel: "Tyre change / repair execution",
-        itemDescription: "Dipakai untuk pekerjaan penggantian atau repair tyre pada unit.",
+        routeGroupId: groupByKey.get('execution')!.id,
+        libraryActivityId: libraryByCode.get('TS-002')?.id ?? null,
+        itemCode: 'RT-003',
+        itemLabel: 'Tyre change / repair execution',
+        itemDescription: 'Dipakai untuk pekerjaan penggantian atau repair tyre pada unit.',
         pointOverride: 18,
         requiresUnit: true,
         requiresTime: true,
@@ -1841,11 +1847,11 @@ async function seedDailyActivityReferenceData() {
         updatedAt: new Date(),
       },
       {
-        routeGroupId: groupByKey.get("execution")!.id,
+        routeGroupId: groupByKey.get('execution')!.id,
         libraryActivityId: null,
-        itemCode: "RT-004",
-        itemLabel: "Housekeeping dan clean up area kerja",
-        itemDescription: "Item custom default untuk penutupan pekerjaan harian.",
+        itemCode: 'RT-004',
+        itemLabel: 'Housekeeping dan clean up area kerja',
+        itemDescription: 'Item custom default untuk penutupan pekerjaan harian.',
         pointOverride: 4,
         requiresUnit: false,
         requiresTime: true,
@@ -1858,7 +1864,7 @@ async function seedDailyActivityReferenceData() {
         createdAt: new Date(),
         updatedAt: new Date(),
       },
-    ]);
+    ])
   }
 
   const [assignmentCount, todayActivityCount] = await Promise.all([
@@ -1866,23 +1872,19 @@ async function seedDailyActivityReferenceData() {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(activities)
-      .where(
-        and(
-          gte(activities.startTime, startOfDay()),
-          lte(activities.startTime, endOfDay()),
-        ),
-      ),
-  ]);
+      .where(and(gte(activities.startTime, startOfDay()), lte(activities.startTime, endOfDay()))),
+  ])
 
   if ((assignmentCount[0]?.count ?? 0) === 0 && employeeRows.length > 1 && defaultSite) {
-    const libraryRows = await db.select().from(activityLibraries).orderBy(asc(activityLibraries.id));
+    const libraryRows = await db.select().from(activityLibraries).orderBy(asc(activityLibraries.id))
     const manager =
-      employeeRows.find((employee) =>
-        employee.role.toLowerCase().includes("foreman") ||
-        employee.role.toLowerCase().includes("leader") ||
-        employee.accessRole.toLowerCase().includes("admin"),
-      ) ?? employeeRows[0];
-    const assignees = employeeRows.filter((employee) => employee.id !== manager.id).slice(0, 4);
+      employeeRows.find(
+        (employee) =>
+          employee.role.toLowerCase().includes('foreman') ||
+          employee.role.toLowerCase().includes('leader') ||
+          employee.accessRole.toLowerCase().includes('admin')
+      ) ?? employeeRows[0]
+    const assignees = employeeRows.filter((employee) => employee.id !== manager.id).slice(0, 4)
 
     if (libraryRows.length > 0 && assignees.length > 0) {
       await db.insert(jobAssignments).values(
@@ -1891,24 +1893,24 @@ async function seedDailyActivityReferenceData() {
           assignedToEmployeeId: employee.id,
           siteId: employee.siteId,
           libraryActivityId: libraryRows[index % libraryRows.length]?.id ?? null,
-          customJobName: "",
-          priority: index === 0 ? "Emergency" : index % 2 === 0 ? "High" : "Normal",
+          customJobName: '',
+          priority: index === 0 ? 'Emergency' : index % 2 === 0 ? 'High' : 'Normal',
           estimatedDuration: index === 0 ? 150 : 90,
           notes:
             index === 0
-              ? "Pastikan dokumentasi foto lengkap dan update status sebelum makan siang."
-              : "Jalankan sesuai urutan pekerjaan dan submit bukti lapangan.",
-          assignmentType: "individual",
+              ? 'Pastikan dokumentasi foto lengkap dan update status sebelum makan siang.'
+              : 'Jalankan sesuai urutan pekerjaan dan submit bukti lapangan.',
+          assignmentType: 'individual',
           assignedDate: startOfDay(new Date()),
           deadline: new Date(Date.now() + (index + 6) * 60 * 60 * 1000),
-          status: index === 0 ? "IN_PROGRESS" : "NOT_STARTED",
+          status: index === 0 ? 'IN_PROGRESS' : 'NOT_STARTED',
           isMandatory: index < 2,
           isRecurring: false,
-          recurrenceRule: "",
+          recurrenceRule: '',
           createdAt: new Date(),
           updatedAt: new Date(),
-        })),
-      );
+        }))
+      )
     }
   }
 
@@ -1916,27 +1918,28 @@ async function seedDailyActivityReferenceData() {
     const [libraryRows, assignmentRows] = await Promise.all([
       db.select().from(activityLibraries).orderBy(asc(activityLibraries.id)),
       db.select().from(jobAssignments).orderBy(asc(jobAssignments.id)),
-    ]);
-    const activeAssignments = assignmentRows.slice(0, 2);
+    ])
+    const activeAssignments = assignmentRows.slice(0, 2)
 
     for (const [index, assignment] of activeAssignments.entries()) {
-      const library = libraryRows.find((row) => row.id === assignment.libraryActivityId) ?? libraryRows[index];
+      const library =
+        libraryRows.find((row) => row.id === assignment.libraryActivityId) ?? libraryRows[index]
       if (!library) {
-        continue;
+        continue
       }
 
-      const employee = employeeRows.find((row) => row.id === assignment.assignedToEmployeeId);
-      const approver = employeeRows.find((row) => row.id === assignment.assignedByEmployeeId);
+      const employee = employeeRows.find((row) => row.id === assignment.assignedToEmployeeId)
+      const approver = employeeRows.find((row) => row.id === assignment.assignedByEmployeeId)
       if (!employee) {
-        continue;
+        continue
       }
 
-      const startTime = new Date(Date.now() - (index + 4) * 60 * 60 * 1000);
-      const endTime = new Date(startTime.getTime() + (75 + index * 20) * 60 * 1000);
-      const status = index === 0 ? "Pending L1" : "Approved";
-      const submissionTime = new Date(endTime.getTime() + 20 * 60 * 1000);
-      const points = library.basePoints + (index === 1 ? 5 : 0);
-      const penalty = index === 0 ? 2 : 0;
+      const startTime = new Date(Date.now() - (index + 4) * 60 * 60 * 1000)
+      const endTime = new Date(startTime.getTime() + (75 + index * 20) * 60 * 1000)
+      const status = index === 0 ? 'Pending L1' : 'Approved'
+      const submissionTime = new Date(endTime.getTime() + 20 * 60 * 1000)
+      const points = library.basePoints + (index === 1 ? 5 : 0)
+      const penalty = index === 0 ? 2 : 0
 
       const [createdActivity] = await db
         .insert(activities)
@@ -1949,79 +1952,80 @@ async function seedDailyActivityReferenceData() {
           unitNumber: `UNIT-${index + 11}`,
           libraryActivityId: library.id,
           assignmentId: assignment.id,
-          sourceMode: "assigned",
-          customActivityName: "",
-          customActivityDescription: "",
+          sourceMode: 'assigned',
+          customActivityName: '',
+          customActivityDescription: '',
           startTime,
           endTime,
           status,
           priority: assignment.priority,
           submissionTime,
-          submissionCategory: index === 0 ? "late_minor" : "on_time",
+          submissionCategory: index === 0 ? 'late_minor' : 'on_time',
           equipmentNo: `EQ-${index + 501}`,
-          materialUsed: index === 0 ? "Valve cap, torque wrench" : "",
-          gpsLat: "-0.9123",
-          gpsLng: "119.8761",
+          materialUsed: index === 0 ? 'Valve cap, torque wrench' : '',
+          gpsLat: '-0.9123',
+          gpsLng: '119.8761',
           gpsValid: true,
           photoCount: index === 0 ? 2 : 1,
           remarks:
             index === 0
-              ? "Unit selesai diperiksa, menunggu approval foreman karena prioritas emergency."
-              : "Aktivitas rutin selesai sebelum target dan sudah diverifikasi supervisor.",
+              ? 'Unit selesai diperiksa, menunggu approval foreman karena prioritas emergency.'
+              : 'Aktivitas rutin selesai sebelum target dan sudah diverifikasi supervisor.',
           pointsAwarded: points,
           penaltyDeducted: penalty,
           createdAt: startTime,
         })
-        .returning({ id: activities.id });
+        .returning({ id: activities.id })
 
       await db.insert(activityPhotos).values([
         {
           activityId: createdActivity.id,
-          fileUrl: "https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1200&q=80",
-          caption: "Dokumentasi lapangan 1",
+          fileUrl:
+            'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1200&q=80',
+          caption: 'Dokumentasi lapangan 1',
           uploadedAt: submissionTime,
         },
-      ]);
+      ])
 
-      if (status === "Approved") {
-        const currentBalance = employee.totalPoints + points - penalty;
+      if (status === 'Approved') {
+        const currentBalance = employee.totalPoints + points - penalty
         await db.insert(pointEvents).values({
           employeeId: employee.id,
-          transactionType: "reward",
-          sourceType: "activity",
+          transactionType: 'reward',
+          sourceType: 'activity',
           sourceId: createdActivity.id,
-          category: "Daily Activity",
+          category: 'Daily Activity',
           label: `${library.activityName} • Approved`,
           points: points - penalty,
           balanceAfter: currentBalance,
           metadata: JSON.stringify({
             assignmentId: assignment.id,
-            submissionCategory: "on_time",
+            submissionCategory: 'on_time',
             autoApproved: false,
           }),
           createdAt: submissionTime,
-        });
+        })
 
         await db
           .update(employees)
           .set({
             totalPoints: employee.totalPoints + points - penalty,
           })
-          .where(eq(employees.id, employee.id));
+          .where(eq(employees.id, employee.id))
       } else if (approver) {
         await db.insert(approvals).values({
           activityId: createdActivity.id,
           level: 1,
           approverName: approver.name,
           approverEmployeeId: approver.id,
-          status: "pending",
+          status: 'pending',
           submittedAt: submissionTime,
           overtimeMinutes: 0,
-          resolutionSource: "daily_activity",
-          routeSnapshot: "",
-          decisionNote: "",
+          resolutionSource: 'daily_activity',
+          routeSnapshot: '',
+          decisionNote: '',
           createdAt: submissionTime,
-        });
+        })
       }
 
       if (penalty > 0) {
@@ -2029,15 +2033,15 @@ async function seedDailyActivityReferenceData() {
           employeeId: employee.id,
           siteId: employee.siteId,
           activityId: createdActivity.id,
-          penaltyCode: "PEN-02",
-          penaltyType: "late_minor",
+          penaltyCode: 'PEN-02',
+          penaltyType: 'late_minor',
           referenceDate: submissionTime,
           pointsDeducted: penalty,
-          description: "Submit aktivitas masuk window late minor.",
+          description: 'Submit aktivitas masuk window late minor.',
           isDisputed: false,
-          disputeStatus: "none",
+          disputeStatus: 'none',
           createdAt: submissionTime,
-        });
+        })
       }
     }
   }
@@ -2045,60 +2049,60 @@ async function seedDailyActivityReferenceData() {
   const [penaltyCount, disputeCount] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(penaltyEvents),
     db.select({ count: sql<number>`count(*)::int` }).from(pointDisputes),
-  ]);
+  ])
 
   if ((penaltyCount[0]?.count ?? 0) > 0 && (disputeCount[0]?.count ?? 0) === 0) {
     const [latestPenalty] = await db
       .select()
       .from(penaltyEvents)
       .orderBy(desc(penaltyEvents.createdAt))
-      .limit(1);
+      .limit(1)
 
     if (latestPenalty) {
       await db.insert(pointDisputes).values({
         penaltyEventId: latestPenalty.id,
         employeeId: latestPenalty.employeeId,
-        reason: "Aktivitas sebenarnya selesai lebih cepat, sinyal site membuat submit tertunda.",
+        reason: 'Aktivitas sebenarnya selesai lebih cepat, sinyal site membuat submit tertunda.',
         evidenceUrls: JSON.stringify([
-          "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1200&q=80",
+          'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1200&q=80',
         ]),
-        status: "pending",
+        status: 'pending',
         resolvedByEmployeeId: null,
-        resolutionNotes: "",
+        resolutionNotes: '',
         createdAt: new Date(),
         resolvedAt: null,
-      });
+      })
 
       await db
         .update(penaltyEvents)
         .set({
           isDisputed: true,
-          disputeStatus: "pending",
+          disputeStatus: 'pending',
         })
-        .where(eq(penaltyEvents.id, latestPenalty.id));
+        .where(eq(penaltyEvents.id, latestPenalty.id))
     }
   }
 }
 
 export async function ensureDailyActivitySeedData() {
   if (dailyActivitySeedPromise) {
-    return dailyActivitySeedPromise;
+    return dailyActivitySeedPromise
   }
 
   dailyActivitySeedPromise = (async () => {
-    await ensureHeroGovernanceSeedData();
-    await ensureDailyActivityTables();
-    await seedDailyActivityReferenceData();
+    await ensureHeroGovernanceSeedData()
+    await ensureDailyActivityTables()
+    await seedDailyActivityReferenceData()
   })().catch((error) => {
-    dailyActivitySeedPromise = null;
-    throw error;
-  });
+    dailyActivitySeedPromise = null
+    throw error
+  })
 
-  return dailyActivitySeedPromise;
+  return dailyActivitySeedPromise
 }
 
 export async function getDailyActivityConfigMap() {
-  await ensureDailyActivitySeedData();
+  await ensureDailyActivitySeedData()
 
   const rows = await db
     .select({
@@ -2106,43 +2110,33 @@ export async function getDailyActivityConfigMap() {
       configValue: dailyActivityConfigs.configValue,
     })
     .from(dailyActivityConfigs)
-    .where(eq(dailyActivityConfigs.isActive, true));
+    .where(eq(dailyActivityConfigs.isActive, true))
 
-  return new Map(
-    rows.map((row) => [row.configKey, Number.parseInt(row.configValue, 10) || 0]),
-  );
+  return new Map(rows.map((row) => [row.configKey, Number.parseInt(row.configValue, 10) || 0]))
 }
 
 type DailyActivityReadOptions = {
-  ensureSeed?: boolean;
-};
+  ensureSeed?: boolean
+}
 
 export async function getDailyActivityEmployeeData(
   email?: string | null,
-  options: DailyActivityReadOptions = {},
+  options: DailyActivityReadOptions = {}
 ) {
   if (options.ensureSeed !== false) {
-    await ensureDailyActivitySeedData();
+    await ensureDailyActivitySeedData()
   }
 
-  const employee = await getCurrentEmployeeByEmail(email);
+  const employee = await getCurrentEmployeeByEmail(email)
   if (!employee) {
-    return null;
+    return null
   }
 
-  const [site] = await db.select().from(sites).where(eq(sites.id, employee.siteId)).limit(1);
-  const dayStart = startOfDay();
-  const dayEnd = endOfDay();
+  const [site] = await db.select().from(sites).where(eq(sites.id, employee.siteId)).limit(1)
+  const dayStart = startOfDay()
+  const dayEnd = endOfDay()
 
-  const [
-    assignmentRows,
-    activityRows,
-    pointRows,
-    penaltyRows,
-    streak,
-    libraryRows,
-    modifierRows,
-  ] =
+  const [assignmentRows, activityRows, pointRows, penaltyRows, streak, libraryRows, modifierRows] =
     await Promise.all([
       db
         .select({
@@ -2173,8 +2167,8 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(jobAssignments.assignedToEmployeeId, employee.id),
             gte(jobAssignments.assignedDate, dayStart),
-            lte(jobAssignments.assignedDate, dayEnd),
-          ),
+            lte(jobAssignments.assignedDate, dayEnd)
+          )
         )
         .orderBy(asc(jobAssignments.deadline), desc(jobAssignments.id)),
       db
@@ -2207,8 +2201,8 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(activities.employeeId, employee.id),
             gte(activities.startTime, dayStart),
-            lte(activities.startTime, dayEnd),
-          ),
+            lte(activities.startTime, dayEnd)
+          )
         )
         .orderBy(desc(activities.startTime), desc(activities.id)),
       db
@@ -2272,19 +2266,16 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(activityLibraries.isActive, true),
             eq(activityLibraries.isSelfInput, true),
-            or(
-              eq(activityLibraries.siteId, employee.siteId),
-              isNull(activityLibraries.siteId),
-            ),
+            or(eq(activityLibraries.siteId, employee.siteId), isNull(activityLibraries.siteId)),
             or(
               eq(activityLibraries.departmentId, employee.departmentId ?? -1),
-              isNull(activityLibraries.departmentId),
+              isNull(activityLibraries.departmentId)
             ),
             or(
               eq(activityLibraries.sectionId, employee.sectionId ?? -1),
-              isNull(activityLibraries.sectionId),
-            ),
-          ),
+              isNull(activityLibraries.sectionId)
+            )
+          )
         )
         .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName)),
       db
@@ -2294,26 +2285,26 @@ export async function getDailyActivityEmployeeData(
           and(
             eq(activityModifiers.isActive, true),
             lte(activityModifiers.startDate, new Date()),
-            or(isNull(activityModifiers.endDate), gte(activityModifiers.endDate, new Date())),
-          ),
+            or(isNull(activityModifiers.endDate), gte(activityModifiers.endDate, new Date()))
+          )
         )
         .orderBy(desc(activityModifiers.multiplier), asc(activityModifiers.eventName)),
-    ]);
-  const routeChecklist = await getMatchedRouteChecklistForEmployee(employee, new Date());
+    ])
+  const routeChecklist = await getMatchedRouteChecklistForEmployee(employee, new Date())
   const standaloneOvertimeChecklist =
     routeChecklist == null
       ? await getStandaloneOvertimeChecklistForEmployee(employee, new Date())
-      : null;
+      : null
 
   const approvedOrSubmitted = activityRows.filter((row) =>
-    ["approved", "pending l1", "pending approval", "submitted"].includes(row.status.toLowerCase()),
-  ).length;
+    ['approved', 'pending l1', 'pending approval', 'submitted'].includes(row.status.toLowerCase())
+  ).length
   const pointsToday = pointRows
     .filter((row) => row.createdAt >= dayStart && row.createdAt <= dayEnd)
-    .reduce((total, row) => total + row.points, 0);
+    .reduce((total, row) => total + row.points, 0)
   const penaltyToday = penaltyRows
     .filter((row) => row.createdAt >= dayStart && row.createdAt <= dayEnd)
-    .reduce((total, row) => total + row.pointsDeducted, 0);
+    .reduce((total, row) => total + row.pointsDeducted, 0)
 
   return {
     employee,
@@ -2326,9 +2317,9 @@ export async function getDailyActivityEmployeeData(
       penaltyToday,
       currentLevel: employee.levelName,
       streakDays: streak?.currentStreakDays ?? 0,
-      syncAt: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
+      syncAt: new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
       }),
       activeModifier:
         modifierRows[0] != null
@@ -2354,24 +2345,33 @@ export async function getDailyActivityEmployeeData(
     routeChecklist,
     standaloneOvertimeChecklist,
     revalidatePaths: DAILY_ACTIVITY_REVALIDATE_PATHS,
-  };
+  }
 }
 
 export async function getDailyActivityTeamBoardData(email?: string | null) {
-  await ensureDailyActivitySeedData();
+  await ensureDailyActivitySeedData()
 
-  const currentEmployee = await getCurrentEmployeeByEmail(email);
+  const currentEmployee = await getCurrentEmployeeByEmail(email)
   if (!currentEmployee) {
-    return null;
+    return null
   }
 
-  const team = await getManagedEmployeesForLead(currentEmployee);
+  const team = await getManagedEmployeesForLead(currentEmployee)
 
-  const teamIds = Array.from(new Set(team.map((member) => member.id)));
-  const dayStart = startOfDay();
-  const dayEnd = endOfDay();
+  const teamIds = Array.from(new Set(team.map((member) => member.id)))
+  const dayStart = startOfDay()
+  const dayEnd = endOfDay()
 
-  const [assignmentRows, activityRows, pendingApprovalsRows, disputeRows, splRows, splLineRows, routeTemplateRows, libraryRows] = await Promise.all([
+  const [
+    assignmentRows,
+    activityRows,
+    pendingApprovalsRows,
+    disputeRows,
+    splRows,
+    splLineRows,
+    routeTemplateRows,
+    libraryRows,
+  ] = await Promise.all([
     teamIds.length === 0
       ? []
       : db
@@ -2391,8 +2391,8 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
             and(
               inArray(jobAssignments.assignedToEmployeeId, teamIds),
               gte(jobAssignments.assignedDate, dayStart),
-              lte(jobAssignments.assignedDate, dayEnd),
-            ),
+              lte(jobAssignments.assignedDate, dayEnd)
+            )
           ),
     teamIds.length === 0
       ? []
@@ -2419,8 +2419,8 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
             and(
               inArray(activities.employeeId, teamIds),
               gte(activities.startTime, dayStart),
-              lte(activities.startTime, dayEnd),
-            ),
+              lte(activities.startTime, dayEnd)
+            )
           ),
     teamIds.length === 0
       ? []
@@ -2440,12 +2440,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
           .from(approvals)
           .innerJoin(activities, eq(approvals.activityId, activities.id))
           .innerJoin(employees, eq(activities.employeeId, employees.id))
-          .where(
-            and(
-              inArray(activities.employeeId, teamIds),
-              eq(approvals.status, "pending"),
-            ),
-          )
+          .where(and(inArray(activities.employeeId, teamIds), eq(approvals.status, 'pending')))
           .orderBy(desc(approvals.submittedAt), desc(approvals.id)),
     teamIds.length === 0
       ? []
@@ -2509,12 +2504,18 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       })
       .from(overtimeCommandLetterItems)
       .leftJoin(employees, eq(overtimeCommandLetterItems.assignedEmployeeId, employees.id))
-      .leftJoin(activityRouteTemplates, eq(overtimeCommandLetterItems.routeTemplateId, activityRouteTemplates.id))
-      .leftJoin(activityLibraries, eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id))
+      .leftJoin(
+        activityRouteTemplates,
+        eq(overtimeCommandLetterItems.routeTemplateId, activityRouteTemplates.id)
+      )
+      .leftJoin(
+        activityLibraries,
+        eq(overtimeCommandLetterItems.libraryActivityId, activityLibraries.id)
+      )
       .orderBy(
         asc(overtimeCommandLetterItems.overtimeCommandLetterId),
         asc(overtimeCommandLetterItems.sortOrder),
-        asc(overtimeCommandLetterItems.id),
+        asc(overtimeCommandLetterItems.id)
       ),
     db
       .select({
@@ -2532,8 +2533,11 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       .where(
         and(
           eq(activityRouteTemplates.isActive, true),
-          or(eq(activityRouteTemplates.siteId, currentEmployee.siteId), isNull(activityRouteTemplates.siteId)),
-        ),
+          or(
+            eq(activityRouteTemplates.siteId, currentEmployee.siteId),
+            isNull(activityRouteTemplates.siteId)
+          )
+        )
       )
       .orderBy(asc(activityRouteTemplates.routeName)),
     db
@@ -2557,19 +2561,28 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         and(
           eq(activityLibraries.isActive, true),
           eq(activityLibraries.isSelfInput, true),
-          or(eq(activityLibraries.siteId, currentEmployee.siteId), isNull(activityLibraries.siteId)),
+          or(
+            eq(activityLibraries.siteId, currentEmployee.siteId),
+            isNull(activityLibraries.siteId)
+          ),
           currentEmployee.departmentId != null
-            ? or(eq(activityLibraries.departmentId, currentEmployee.departmentId), isNull(activityLibraries.departmentId))
+            ? or(
+                eq(activityLibraries.departmentId, currentEmployee.departmentId),
+                isNull(activityLibraries.departmentId)
+              )
             : undefined,
           currentEmployee.sectionId != null
-            ? or(eq(activityLibraries.sectionId, currentEmployee.sectionId), isNull(activityLibraries.sectionId))
-            : undefined,
-        ),
+            ? or(
+                eq(activityLibraries.sectionId, currentEmployee.sectionId),
+                isNull(activityLibraries.sectionId)
+              )
+            : undefined
+        )
       )
       .orderBy(asc(activityLibraries.activityCode)),
-  ]);
+  ])
 
-  const splIds = splRows.map((row) => row.id);
+  const splIds = splRows.map((row) => row.id)
   const [splSessionRows, splSessionItemRows] =
     splIds.length === 0
       ? [[], []]
@@ -2590,8 +2603,8 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
             .where(
               and(
                 sql`${dailyActivitySessions.overtimeCommandLetterId} is not null`,
-                inArray(dailyActivitySessions.overtimeCommandLetterId, splIds),
-              ),
+                inArray(dailyActivitySessions.overtimeCommandLetterId, splIds)
+              )
             ),
           db
             .select({
@@ -2604,74 +2617,82 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
               updatedAt: dailyActivitySessionItems.updatedAt,
             })
             .from(dailyActivitySessionItems)
-            .innerJoin(dailyActivitySessions, eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id))
+            .innerJoin(
+              dailyActivitySessions,
+              eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id)
+            )
             .where(
               and(
                 sql`${dailyActivitySessions.overtimeCommandLetterId} is not null`,
-                inArray(dailyActivitySessions.overtimeCommandLetterId, splIds),
-              ),
+                inArray(dailyActivitySessions.overtimeCommandLetterId, splIds)
+              )
             ),
-        ]);
+        ])
 
-  const splLinesByHeaderId = new Map<number, typeof splLineRows>();
+  const splLinesByHeaderId = new Map<number, typeof splLineRows>()
   for (const line of splLineRows) {
-    const list = splLinesByHeaderId.get(line.overtimeCommandLetterId) ?? [];
-    list.push(line);
-    splLinesByHeaderId.set(line.overtimeCommandLetterId, list);
+    const list = splLinesByHeaderId.get(line.overtimeCommandLetterId) ?? []
+    list.push(line)
+    splLinesByHeaderId.set(line.overtimeCommandLetterId, list)
   }
 
-  const splSessionsByHeaderId = new Map<number, typeof splSessionRows>();
+  const splSessionsByHeaderId = new Map<number, typeof splSessionRows>()
   for (const session of splSessionRows) {
     if (session.overtimeCommandLetterId == null) {
-      continue;
+      continue
     }
 
-    const list = splSessionsByHeaderId.get(session.overtimeCommandLetterId) ?? [];
-    list.push(session);
-    splSessionsByHeaderId.set(session.overtimeCommandLetterId, list);
+    const list = splSessionsByHeaderId.get(session.overtimeCommandLetterId) ?? []
+    list.push(session)
+    splSessionsByHeaderId.set(session.overtimeCommandLetterId, list)
   }
 
-  const splSessionItemsByHeaderId = new Map<number, typeof splSessionItemRows>();
+  const splSessionItemsByHeaderId = new Map<number, typeof splSessionItemRows>()
   for (const sessionItem of splSessionItemRows) {
     if (sessionItem.overtimeCommandLetterId == null) {
-      continue;
+      continue
     }
 
-    const list = splSessionItemsByHeaderId.get(sessionItem.overtimeCommandLetterId) ?? [];
-    list.push(sessionItem);
-    splSessionItemsByHeaderId.set(sessionItem.overtimeCommandLetterId, list);
+    const list = splSessionItemsByHeaderId.get(sessionItem.overtimeCommandLetterId) ?? []
+    list.push(sessionItem)
+    splSessionItemsByHeaderId.set(sessionItem.overtimeCommandLetterId, list)
   }
 
   const splDocuments = splRows.map((row) => {
-    const items = splLinesByHeaderId.get(row.id) ?? [];
-    const sessions = splSessionsByHeaderId.get(row.id) ?? [];
-    const sessionItems = splSessionItemsByHeaderId.get(row.id) ?? [];
+    const items = splLinesByHeaderId.get(row.id) ?? []
+    const sessions = splSessionsByHeaderId.get(row.id) ?? []
+    const sessionItems = splSessionItemsByHeaderId.get(row.id) ?? []
     const checkedLineIds = new Set(
       sessionItems
         .filter((item) => item.isChecked && item.overtimeCommandLetterItemId != null)
-        .map((item) => item.overtimeCommandLetterItemId!),
-    );
-    const checkedSessionIds = new Set(sessionItems.filter((item) => item.isChecked).map((item) => item.sessionId));
+        .map((item) => item.overtimeCommandLetterItemId!)
+    )
+    const checkedSessionIds = new Set(
+      sessionItems.filter((item) => item.isChecked).map((item) => item.sessionId)
+    )
     const workerEntries: Array<readonly [number, string]> = [
       ...items
         .filter((item) => item.assignedEmployeeId != null && item.assignedEmployeeName)
         .map((item) => [item.assignedEmployeeId!, item.assignedEmployeeName!] as const),
       ...sessions.map((session) => [session.employeeId, session.employeeName] as const),
-    ];
-    const workers = Array.from(
-      new Map<number, string>(workerEntries).entries(),
-    ).map(([employeeId, employeeName]) => ({
-      employeeId,
-      employeeName,
-    }));
+    ]
+    const workers = Array.from(new Map<number, string>(workerEntries).entries()).map(
+      ([employeeId, employeeName]) => ({
+        employeeId,
+        employeeName,
+      })
+    )
     const latestUpdateAtMs = Math.max(
       0,
-      ...sessions.map((session) => session.approvedAt ?? session.submittedAt ?? session.updatedAt).map((value) => value.getTime()),
+      ...sessions
+        .map((session) => session.approvedAt ?? session.submittedAt ?? session.updatedAt)
+        .map((value) => value.getTime()),
       ...sessionItems
         .map((item) => item.checkedAt ?? item.updatedAt)
-        .map((value) => value.getTime()),
-    );
-    const progressPercent = items.length > 0 ? Math.round((checkedLineIds.size / items.length) * 100) : 0;
+        .map((value) => value.getTime())
+    )
+    const progressPercent =
+      items.length > 0 ? Math.round((checkedLineIds.size / items.length) * 100) : 0
 
     return {
       ...row,
@@ -2686,41 +2707,41 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       checkedSessionCount: checkedSessionIds.size,
       actualPointsTotal: sessionItems.reduce(
         (total, item) => total + (item.isChecked ? item.actualPoints : 0),
-        0,
+        0
       ),
       progressPercent,
       latestUpdateAt: latestUpdateAtMs > 0 ? new Date(latestUpdateAtMs) : null,
       lineCount: items.length,
       plannedPointsTotal: items.reduce((total, item) => total + item.plannedPoints, 0),
       estimatedMinutesTotal: items.reduce((total, item) => total + item.estimatedMinutes, 0),
-    };
-  });
+    }
+  })
 
   const memberCards = team.map((member) => {
-    const memberAssignments = assignmentRows.filter((row) => row.assignedToEmployeeId === member.id);
-    const latestActivity = activityRows
-      .filter((row) => row.employeeId === member.id)
-      .sort((left, right) => right.startTime.getTime() - left.startTime.getTime())[0] ?? null;
+    const memberAssignments = assignmentRows.filter((row) => row.assignedToEmployeeId === member.id)
+    const latestActivity =
+      activityRows
+        .filter((row) => row.employeeId === member.id)
+        .sort((left, right) => right.startTime.getTime() - left.startTime.getTime())[0] ?? null
     const completedCount = activityRows.filter(
       (row) =>
         row.employeeId === member.id &&
-        ["approved", "pending l1", "submitted"].includes(row.status.toLowerCase()),
-    ).length;
+        ['approved', 'pending l1', 'submitted'].includes(row.status.toLowerCase())
+    ).length
     const progress =
       memberAssignments.length > 0
         ? Math.round((completedCount / memberAssignments.length) * 100)
         : latestActivity
           ? 100
-          : 0;
+          : 0
 
-    const status =
-      latestActivity?.status?.toLowerCase().includes("pending")
-        ? "Needs Review"
-        : memberAssignments.some((row) => row.status === "IN_PROGRESS")
-          ? "Working"
-          : completedCount > 0
-            ? "On Site"
-            : "Traveling";
+    const status = latestActivity?.status?.toLowerCase().includes('pending')
+      ? 'Needs Review'
+      : memberAssignments.some((row) => row.status === 'IN_PROGRESS')
+        ? 'Working'
+        : completedCount > 0
+          ? 'On Site'
+          : 'Traveling'
 
     return {
       id: member.id,
@@ -2730,75 +2751,74 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         latestActivity?.title ??
         memberAssignments[0]?.activityName ??
         memberAssignments[0]?.customJobName ??
-        "Belum ada aktivitas hari ini",
+        'Belum ada aktivitas hari ini',
       status,
       progress,
       lastUpdate:
-        latestActivity?.submissionTime?.toLocaleTimeString("id-ID", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }) ?? "Belum update",
+        latestActivity?.submissionTime?.toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }) ?? 'Belum update',
       mandatoryCount: memberAssignments.filter((row) => row.isMandatory).length,
-    };
-  });
+    }
+  })
 
   const overdueAssignments = assignmentRows.filter(
-    (row) => row.deadline != null && row.deadline.getTime() < Date.now() && row.status !== "APPROVED",
-  ).length;
+    (row) =>
+      row.deadline != null && row.deadline.getTime() < Date.now() && row.status !== 'APPROVED'
+  ).length
 
   const activityGroups = team.map((member) => {
     const memberActivities = activityRows
       .filter((row) => row.employeeId === member.id)
-      .sort((left, right) => right.startTime.getTime() - left.startTime.getTime());
+      .sort((left, right) => right.startTime.getTime() - left.startTime.getTime())
     const dayMap = new Map<
       string,
       {
-        key: string;
-        label: string;
-        activityCount: number;
-        pointsNet: number;
+        key: string
+        label: string
+        activityCount: number
+        pointsNet: number
         items: Array<{
-          id: number;
-          activityCode: string;
-          title: string;
-          status: string;
-          statusLabel: string;
-          priority: string;
-          sourceMode: string;
-          unitNumber: string;
-          startTime: Date;
-          endTime: Date;
-          submissionTime: Date | null;
-          photoCount: number;
-          remarks: string;
-          pointsAwarded: number;
-          penaltyDeducted: number;
-          pointsNet: number;
-          durationLabel: string;
-        }>;
+          id: number
+          activityCode: string
+          title: string
+          status: string
+          statusLabel: string
+          priority: string
+          sourceMode: string
+          unitNumber: string
+          startTime: Date
+          endTime: Date
+          submissionTime: Date | null
+          photoCount: number
+          remarks: string
+          pointsAwarded: number
+          penaltyDeducted: number
+          pointsNet: number
+          durationLabel: string
+        }>
       }
-    >();
+    >()
 
     for (const activity of memberActivities) {
-      const dayKey = getCalendarDayKey(activity.startTime);
-      const existingDay =
-        dayMap.get(dayKey) ??
-        {
-          key: dayKey,
-          label: activity.startTime.toLocaleDateString("id-ID", {
-            weekday: "long",
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          }),
-          activityCount: 0,
-          pointsNet: 0,
-          items: [],
-        };
-      const pointsNet = activity.pointsAwarded - activity.penaltyDeducted;
+      const dayKey = getCalendarDayKey(activity.startTime)
+      const existingDay = dayMap.get(dayKey) ?? {
+        key: dayKey,
+        label: activity.startTime.toLocaleDateString('id-ID', {
+          weekday: 'long',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        }),
+        activityCount: 0,
+        pointsNet: 0,
+        items: [],
+      }
+      const pointsNet = activity.pointsAwarded - activity.penaltyDeducted
 
-      existingDay.activityCount += 1;
-      existingDay.pointsNet += pointsNet;
+      existingDay.activityCount += 1
+      existingDay.pointsNet += pointsNet
       existingDay.items.push({
         id: activity.id,
         activityCode: activity.activityCode,
@@ -2817,8 +2837,8 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         penaltyDeducted: activity.penaltyDeducted,
         pointsNet,
         durationLabel: formatDurationLabel(minutesBetween(activity.startTime, activity.endTime)),
-      });
-      dayMap.set(dayKey, existingDay);
+      })
+      dayMap.set(dayKey, existingDay)
     }
 
     return {
@@ -2828,23 +2848,29 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
       totalActivities: memberActivities.length,
       totalPointsNet: memberActivities.reduce(
         (total, activity) => total + activity.pointsAwarded - activity.penaltyDeducted,
-        0,
+        0
       ),
       days: Array.from(dayMap.values()).sort((left, right) => right.key.localeCompare(left.key)),
-    };
-  });
+    }
+  })
 
   return {
     lead: currentEmployee,
     hasSubordinates: team.length > 0,
     summary: {
       activeWorkers: team.length,
-      checkedIn: activityRows.length > 0 ? new Set(activityRows.map((row) => row.employeeId)).size : 0,
+      checkedIn:
+        activityRows.length > 0 ? new Set(activityRows.map((row) => row.employeeId)).size : 0,
       pendingApproval: pendingApprovalsRows.length,
-      emergencyJobs: assignmentRows.filter((row) => row.priority.toLowerCase() === "emergency").length,
-      overtimeCandidates: activityRows.filter((row) => minutesBetween(row.startTime, row.endTime) >= 8 * 60).length,
+      emergencyJobs: assignmentRows.filter((row) => row.priority.toLowerCase() === 'emergency')
+        .length,
+      overtimeCandidates: activityRows.filter(
+        (row) => minutesBetween(row.startTime, row.endTime) >= 8 * 60
+      ).length,
       overdueAssignments,
-      splOpen: splDocuments.filter((row) => !["closed", "cancelled"].includes(row.status.toLowerCase())).length,
+      splOpen: splDocuments.filter(
+        (row) => !['closed', 'cancelled'].includes(row.status.toLowerCase())
+      ).length,
     },
     members: memberCards,
     splDocuments,
@@ -2855,23 +2881,23 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     pendingApprovals: pendingApprovalsRows.map((row) => ({
       ...row,
       risk:
-        row.priority.toLowerCase() === "emergency"
-          ? "Emergency"
+        row.priority.toLowerCase() === 'emergency'
+          ? 'Emergency'
           : row.level >= 2
-            ? "Escalation"
-            : "Routine",
+            ? 'Escalation'
+            : 'Routine',
     })),
     disputes: disputeRows,
     activityGroups,
     assignmentOptions: libraryRows,
     team,
-  };
+  }
 }
 
 export async function getDailyActivityLibraryData(email?: string | null) {
-  await ensureDailyActivitySeedData();
+  await ensureDailyActivitySeedData()
 
-  const currentEmployee = await getCurrentEmployeeByEmail(email);
+  const currentEmployee = await getCurrentEmployeeByEmail(email)
   const [rows, departmentsRows, sectionsRows, siteRows, creators] = await Promise.all([
     db
       .select({
@@ -2908,7 +2934,11 @@ export async function getDailyActivityLibraryData(email?: string | null) {
       .leftJoin(masterDepartments, eq(activityLibraries.departmentId, masterDepartments.id))
       .leftJoin(masterSections, eq(activityLibraries.sectionId, masterSections.id))
       .leftJoin(employees, eq(activityLibraries.createdByEmployeeId, employees.id))
-      .orderBy(desc(activityLibraries.isActive), asc(activityLibraries.category), asc(activityLibraries.activityName)),
+      .orderBy(
+        desc(activityLibraries.isActive),
+        asc(activityLibraries.category),
+        asc(activityLibraries.activityName)
+      ),
     db.select().from(masterDepartments).orderBy(asc(masterDepartments.name)),
     db.select().from(masterSections).orderBy(asc(masterSections.name)),
     db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
@@ -2922,12 +2952,12 @@ export async function getDailyActivityLibraryData(email?: string | null) {
       .from(employees)
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
-  ]);
+  ])
 
   const categoryCount = rows.reduce<Record<string, number>>((accumulator, row) => {
-    accumulator[row.category] = (accumulator[row.category] ?? 0) + 1;
-    return accumulator;
-  }, {});
+    accumulator[row.category] = (accumulator[row.category] ?? 0) + 1
+    return accumulator
+  }, {})
 
   return {
     currentEmployee,
@@ -2945,13 +2975,13 @@ export async function getDailyActivityLibraryData(email?: string | null) {
     sections: sectionsRows,
     sites: siteRows,
     creators,
-  };
+  }
 }
 
 export async function getDailyActivityRouteBuilderData(email?: string | null) {
-  await ensureDailyActivitySeedData();
+  await ensureDailyActivitySeedData()
 
-  const currentEmployee = await getCurrentEmployeeByEmail(email);
+  const currentEmployee = await getCurrentEmployeeByEmail(email)
   const [
     templateRows,
     groupRows,
@@ -3003,7 +3033,11 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
         isRequired: activityRouteGroups.isRequired,
       })
       .from(activityRouteGroups)
-      .orderBy(asc(activityRouteGroups.routeTemplateId), asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+      .orderBy(
+        asc(activityRouteGroups.routeTemplateId),
+        asc(activityRouteGroups.sortOrder),
+        asc(activityRouteGroups.id)
+      ),
     db
       .select({
         id: activityRouteItems.id,
@@ -3027,7 +3061,11 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
       })
       .from(activityRouteItems)
       .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
-      .orderBy(asc(activityRouteItems.routeGroupId), asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
+      .orderBy(
+        asc(activityRouteItems.routeGroupId),
+        asc(activityRouteItems.sortOrder),
+        asc(activityRouteItems.id)
+      ),
     db
       .select({
         id: activitySectionPointOverrides.id,
@@ -3049,10 +3087,16 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
       })
       .from(activitySectionPointOverrides)
       .leftJoin(sites, eq(activitySectionPointOverrides.siteId, sites.id))
-      .leftJoin(masterDepartments, eq(activitySectionPointOverrides.departmentId, masterDepartments.id))
+      .leftJoin(
+        masterDepartments,
+        eq(activitySectionPointOverrides.departmentId, masterDepartments.id)
+      )
       .leftJoin(masterSections, eq(activitySectionPointOverrides.sectionId, masterSections.id))
       .leftJoin(masterPositions, eq(activitySectionPointOverrides.positionId, masterPositions.id))
-      .leftJoin(activityLibraries, eq(activitySectionPointOverrides.libraryActivityId, activityLibraries.id))
+      .leftJoin(
+        activityLibraries,
+        eq(activitySectionPointOverrides.libraryActivityId, activityLibraries.id)
+      )
       .orderBy(desc(activitySectionPointOverrides.isActive), asc(activityLibraries.activityName)),
     db.select().from(masterDepartments).orderBy(asc(masterDepartments.name)),
     db.select().from(masterSections).orderBy(asc(masterSections.name)),
@@ -3072,36 +3116,36 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
       .from(activityLibraries)
       .where(eq(activityLibraries.isActive, true))
       .orderBy(asc(activityLibraries.activityCode)),
-  ]);
+  ])
 
-  const itemsByGroupId = new Map<number, typeof itemRows>();
+  const itemsByGroupId = new Map<number, typeof itemRows>()
   for (const item of itemRows) {
-    const list = itemsByGroupId.get(item.routeGroupId) ?? [];
-    list.push(item);
-    itemsByGroupId.set(item.routeGroupId, list);
+    const list = itemsByGroupId.get(item.routeGroupId) ?? []
+    list.push(item)
+    itemsByGroupId.set(item.routeGroupId, list)
   }
 
   const groupsByTemplateId = new Map<
     number,
     Array<
-      typeof groupRows[number] & {
-        items: typeof itemRows;
+      (typeof groupRows)[number] & {
+        items: typeof itemRows
       }
     >
-  >();
+  >()
   for (const group of groupRows) {
-    const list = groupsByTemplateId.get(group.routeTemplateId) ?? [];
+    const list = groupsByTemplateId.get(group.routeTemplateId) ?? []
     list.push({
       ...group,
       items: itemsByGroupId.get(group.id) ?? [],
-    });
-    groupsByTemplateId.set(group.routeTemplateId, list);
+    })
+    groupsByTemplateId.set(group.routeTemplateId, list)
   }
 
   const templates = templateRows.map((template) => ({
     ...template,
     groups: groupsByTemplateId.get(template.id) ?? [],
-  }));
+  }))
 
   return {
     currentEmployee,
@@ -3119,92 +3163,93 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
     positions: positionsRows,
     sites: siteRows,
     library: libraryRows,
-  };
+  }
 }
 
 export async function getDailyActivityConfigurationData(email?: string | null) {
-  await ensureDailyActivitySeedData();
+  await ensureDailyActivitySeedData()
 
-  const currentEmployee = await getCurrentEmployeeByEmail(email);
-  const [configRows, modifierRows, penaltyRows, disputeRows, siteRows, employeeRows] = await Promise.all([
-    db
-      .select({
-        id: dailyActivityConfigs.id,
-        siteId: dailyActivityConfigs.siteId,
-        configKey: dailyActivityConfigs.configKey,
-        configLabel: dailyActivityConfigs.configLabel,
-        configValue: dailyActivityConfigs.configValue,
-        valueType: dailyActivityConfigs.valueType,
-        description: dailyActivityConfigs.description,
-        isEditableBySectionHead: dailyActivityConfigs.isEditableBySectionHead,
-        isActive: dailyActivityConfigs.isActive,
-        updatedAt: dailyActivityConfigs.updatedAt,
-        siteName: sites.name,
-        updatedByName: employees.name,
-      })
-      .from(dailyActivityConfigs)
-      .leftJoin(sites, eq(dailyActivityConfigs.siteId, sites.id))
-      .leftJoin(employees, eq(dailyActivityConfigs.updatedByEmployeeId, employees.id))
-      .orderBy(asc(dailyActivityConfigs.configKey)),
-    db
-      .select({
-        id: activityModifiers.id,
-        siteId: activityModifiers.siteId,
-        eventName: activityModifiers.eventName,
-        description: activityModifiers.description,
-        multiplier: activityModifiers.multiplier,
-        startDate: activityModifiers.startDate,
-        endDate: activityModifiers.endDate,
-        isActive: activityModifiers.isActive,
-        siteName: sites.name,
-        creatorName: employees.name,
-      })
-      .from(activityModifiers)
-      .leftJoin(sites, eq(activityModifiers.siteId, sites.id))
-      .leftJoin(employees, eq(activityModifiers.createdByEmployeeId, employees.id))
-      .orderBy(desc(activityModifiers.isActive), asc(activityModifiers.eventName)),
-    db
-      .select({
-        id: penaltyEvents.id,
-        penaltyCode: penaltyEvents.penaltyCode,
-        penaltyType: penaltyEvents.penaltyType,
-        pointsDeducted: penaltyEvents.pointsDeducted,
-        description: penaltyEvents.description,
-        disputeStatus: penaltyEvents.disputeStatus,
-        employeeName: employees.name,
-        createdAt: penaltyEvents.createdAt,
-      })
-      .from(penaltyEvents)
-      .innerJoin(employees, eq(penaltyEvents.employeeId, employees.id))
-      .orderBy(desc(penaltyEvents.createdAt))
-      .limit(10),
-    db
-      .select({
-        id: pointDisputes.id,
-        employeeName: employees.name,
-        status: pointDisputes.status,
-        reason: pointDisputes.reason,
-        resolutionNotes: pointDisputes.resolutionNotes,
-        createdAt: pointDisputes.createdAt,
-        resolvedAt: pointDisputes.resolvedAt,
-        penaltyCode: penaltyEvents.penaltyCode,
-      })
-      .from(pointDisputes)
-      .innerJoin(employees, eq(pointDisputes.employeeId, employees.id))
-      .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
-      .orderBy(desc(pointDisputes.createdAt))
-      .limit(10),
-    db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
-    db
-      .select({
-        id: employees.id,
-        name: employees.name,
-        role: employees.role,
-      })
-      .from(employees)
-      .where(eq(employees.isActive, true))
-      .orderBy(asc(employees.name)),
-  ]);
+  const currentEmployee = await getCurrentEmployeeByEmail(email)
+  const [configRows, modifierRows, penaltyRows, disputeRows, siteRows, employeeRows] =
+    await Promise.all([
+      db
+        .select({
+          id: dailyActivityConfigs.id,
+          siteId: dailyActivityConfigs.siteId,
+          configKey: dailyActivityConfigs.configKey,
+          configLabel: dailyActivityConfigs.configLabel,
+          configValue: dailyActivityConfigs.configValue,
+          valueType: dailyActivityConfigs.valueType,
+          description: dailyActivityConfigs.description,
+          isEditableBySectionHead: dailyActivityConfigs.isEditableBySectionHead,
+          isActive: dailyActivityConfigs.isActive,
+          updatedAt: dailyActivityConfigs.updatedAt,
+          siteName: sites.name,
+          updatedByName: employees.name,
+        })
+        .from(dailyActivityConfigs)
+        .leftJoin(sites, eq(dailyActivityConfigs.siteId, sites.id))
+        .leftJoin(employees, eq(dailyActivityConfigs.updatedByEmployeeId, employees.id))
+        .orderBy(asc(dailyActivityConfigs.configKey)),
+      db
+        .select({
+          id: activityModifiers.id,
+          siteId: activityModifiers.siteId,
+          eventName: activityModifiers.eventName,
+          description: activityModifiers.description,
+          multiplier: activityModifiers.multiplier,
+          startDate: activityModifiers.startDate,
+          endDate: activityModifiers.endDate,
+          isActive: activityModifiers.isActive,
+          siteName: sites.name,
+          creatorName: employees.name,
+        })
+        .from(activityModifiers)
+        .leftJoin(sites, eq(activityModifiers.siteId, sites.id))
+        .leftJoin(employees, eq(activityModifiers.createdByEmployeeId, employees.id))
+        .orderBy(desc(activityModifiers.isActive), asc(activityModifiers.eventName)),
+      db
+        .select({
+          id: penaltyEvents.id,
+          penaltyCode: penaltyEvents.penaltyCode,
+          penaltyType: penaltyEvents.penaltyType,
+          pointsDeducted: penaltyEvents.pointsDeducted,
+          description: penaltyEvents.description,
+          disputeStatus: penaltyEvents.disputeStatus,
+          employeeName: employees.name,
+          createdAt: penaltyEvents.createdAt,
+        })
+        .from(penaltyEvents)
+        .innerJoin(employees, eq(penaltyEvents.employeeId, employees.id))
+        .orderBy(desc(penaltyEvents.createdAt))
+        .limit(10),
+      db
+        .select({
+          id: pointDisputes.id,
+          employeeName: employees.name,
+          status: pointDisputes.status,
+          reason: pointDisputes.reason,
+          resolutionNotes: pointDisputes.resolutionNotes,
+          createdAt: pointDisputes.createdAt,
+          resolvedAt: pointDisputes.resolvedAt,
+          penaltyCode: penaltyEvents.penaltyCode,
+        })
+        .from(pointDisputes)
+        .innerJoin(employees, eq(pointDisputes.employeeId, employees.id))
+        .innerJoin(penaltyEvents, eq(pointDisputes.penaltyEventId, penaltyEvents.id))
+        .orderBy(desc(pointDisputes.createdAt))
+        .limit(10),
+      db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
+      db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          role: employees.role,
+        })
+        .from(employees)
+        .where(eq(employees.isActive, true))
+        .orderBy(asc(employees.name)),
+    ])
 
   return {
     currentEmployee,
@@ -3212,7 +3257,7 @@ export async function getDailyActivityConfigurationData(email?: string | null) {
       settings: configRows.length,
       activeModifiers: modifierRows.filter((row) => row.isActive).length,
       penaltyEvents: penaltyRows.length,
-      pendingDisputes: disputeRows.filter((row) => row.status === "pending").length,
+      pendingDisputes: disputeRows.filter((row) => row.status === 'pending').length,
     },
     settings: configRows,
     modifiers: modifierRows,
@@ -3220,7 +3265,7 @@ export async function getDailyActivityConfigurationData(email?: string | null) {
     disputes: disputeRows,
     sites: siteRows,
     employees: employeeRows,
-  };
+  }
 }
 
-export { DAILY_ACTIVITY_REVALIDATE_PATHS };
+export { DAILY_ACTIVITY_REVALIDATE_PATHS }

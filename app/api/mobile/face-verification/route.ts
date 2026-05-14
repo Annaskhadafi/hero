@@ -1,0 +1,262 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/db'
+import { attendanceRecords, employees } from '@/db/schema/hero'
+import { eq } from 'drizzle-orm'
+import { cosineSimilarity } from '@/lib/face-recognition/cosine-similarity'
+import { validateEmbedding } from '@/lib/face-recognition/embedding-validator'
+import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
+import { authenticateMobileRequest } from '@/lib/mobile-auth'
+
+// --- Constants ---
+const SIMILARITY_THRESHOLD = 0.7
+const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out']
+
+// --- Error response helper ---
+function errorResponse(status: number, code: string, message: string, field?: string) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code, message, ...(field ? { field } : {}) },
+    },
+    { status }
+  )
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // 1. Parse JSON body
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Request body must be valid JSON.')
+    }
+
+    if (!body || typeof body !== 'object') {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Request body must be a JSON object.')
+    }
+
+    const { employeeId, embedding, siteId, eventType, latitude, longitude, clientRequestId } =
+      body as Record<string, unknown>
+
+    // 2. Required fields validation
+    if (employeeId === undefined || employeeId === null) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
+    }
+    if (embedding === undefined || embedding === null) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'embedding is required.', 'embedding')
+    }
+    if (siteId === undefined || siteId === null) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'siteId is required.', 'siteId')
+    }
+    if (!eventType) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'eventType is required.', 'eventType')
+    }
+    if (latitude === undefined || latitude === null) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'latitude is required.', 'latitude')
+    }
+    if (longitude === undefined || longitude === null) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'longitude is required.', 'longitude')
+    }
+    if (!clientRequestId) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'clientRequestId is required.',
+        'clientRequestId'
+      )
+    }
+
+    // 3. Type & range validation
+    const empId = Number(employeeId)
+    if (!Number.isFinite(empId) || empId <= 0 || !Number.isInteger(empId)) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'employeeId must be a positive integer.',
+        'employeeId'
+      )
+    }
+
+    // 4. Authentication (after parsing employeeId for ownership validation)
+    const authResult = await authenticateMobileRequest(request, empId)
+    if (!authResult.authenticated) {
+      return errorResponse(authResult.status, authResult.code, authResult.message)
+    }
+
+    const sId = Number(siteId)
+    if (!Number.isFinite(sId) || sId <= 0 || !Number.isInteger(sId)) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'siteId must be a positive integer.', 'siteId')
+    }
+
+    if (typeof eventType !== 'string' || !ALLOWED_EVENT_TYPES.includes(eventType)) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        `eventType must be one of: ${ALLOWED_EVENT_TYPES.join(', ')}.`,
+        'eventType'
+      )
+    }
+
+    const lat = Number(latitude)
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'latitude must be a number between -90 and 90.',
+        'latitude'
+      )
+    }
+
+    const lng = Number(longitude)
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'longitude must be a number between -180 and 180.',
+        'longitude'
+      )
+    }
+
+    if (typeof clientRequestId !== 'string' || clientRequestId.trim() === '') {
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'clientRequestId must be a non-empty string.',
+        'clientRequestId'
+      )
+    }
+
+    // 5. Validate embedding
+    const embeddingValidation = validateEmbedding(embedding)
+    if (!embeddingValidation.valid) {
+      return errorResponse(
+        400,
+        'INVALID_EMBEDDING',
+        embeddingValidation.error || 'Invalid embedding.'
+      )
+    }
+
+    const liveEmbedding = embedding as number[]
+
+    // 6. Idempotency check — return existing record if clientRequestId already exists
+    const existingRecords = await db
+      .select()
+      .from(attendanceRecords)
+      .where(eq(attendanceRecords.clientRequestId, clientRequestId.trim()))
+      .limit(1)
+
+    if (existingRecords.length > 0) {
+      const existing = existingRecords[0]
+      return NextResponse.json(
+        {
+          verified: true,
+          similarityScore: existing.confidenceScore ? parseFloat(existing.confidenceScore) : null,
+          attendanceRecord: {
+            id: existing.id,
+            eventType: existing.eventType,
+            eventTime: existing.eventTime.toISOString(),
+          },
+        },
+        { status: 200 }
+      )
+    }
+
+    // 7. Retrieve employee and stored embedding
+    const employeeResults = await db
+      .select({
+        id: employees.id,
+        isActive: employees.isActive,
+        faceEmbedding: employees.faceEmbedding,
+      })
+      .from(employees)
+      .where(eq(employees.id, empId))
+      .limit(1)
+
+    if (employeeResults.length === 0) {
+      return errorResponse(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found.', 'employeeId')
+    }
+
+    const employee = employeeResults[0]
+
+    if (!employee.isActive) {
+      return errorResponse(
+        404,
+        'EMPLOYEE_NOT_FOUND',
+        'Employee not found or is inactive.',
+        'employeeId'
+      )
+    }
+
+    if (!employee.faceEmbedding) {
+      return errorResponse(
+        404,
+        'NO_FACE_REGISTRATION',
+        'Employee has no registered face embedding. Please register first.'
+      )
+    }
+
+    // 8. Compute cosine similarity
+    const storedEmbedding = employee.faceEmbedding as number[]
+    const similarity = cosineSimilarity(liveEmbedding, storedEmbedding)
+
+    // 8.5 Replay detection: exact 1.0 means stored embedding was replayed
+    if (similarity === 1.0) {
+      return errorResponse(
+        422,
+        'REPLAY_DETECTED',
+        'Exact embedding match detected. Live capture required.'
+      )
+    }
+
+    // 9. Threshold check
+    if (similarity <= SIMILARITY_THRESHOLD) {
+      return NextResponse.json({ verified: false, similarityScore: similarity }, { status: 200 })
+    }
+
+    // 10. Verified — create attendance record
+    const eventTime = new Date()
+    const gpsFlag = lat === 0 && lng === 0 ? '[gps-unavailable] ' : ''
+
+    const [insertedRecord] = await db
+      .insert(attendanceRecords)
+      .values({
+        employeeId: empId,
+        siteId: sId,
+        eventType: eventType,
+        eventTime,
+        status: 'verified',
+        locationNote: `${gpsFlag}face-recognition`,
+        confidenceScore: similarity.toFixed(3),
+        deviceType: 'mobile',
+        clientRequestId: clientRequestId.trim(),
+        latitude: lat.toString(),
+        longitude: lng.toString(),
+      })
+      .returning()
+
+    // 11. Sync to timesheet — if it fails, log error but still return success
+    try {
+      await syncFaceAttendanceToTimesheet(empId, sId, eventTime)
+    } catch (syncError) {
+      console.error('[face-verification] Timesheet sync failed:', syncError)
+    }
+
+    // 12. Return success response
+    return NextResponse.json(
+      {
+        verified: true,
+        similarityScore: similarity,
+        attendanceRecord: {
+          id: insertedRecord.id,
+          eventType: insertedRecord.eventType,
+          eventTime: insertedRecord.eventTime.toISOString(),
+        },
+      },
+      { status: 200 }
+    )
+  } catch (error) {
+    console.error('[face-verification] Internal error:', error)
+    return errorResponse(500, 'INTERNAL_ERROR', 'An unexpected error occurred.')
+  }
+}
