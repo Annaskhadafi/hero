@@ -260,6 +260,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const latestLog = attendanceLogs[0]
   const nextType = latestLog?.eventType === 'checked-in' ? 'checked-out' : 'checked-in'
   const actionLabel = nextType === 'checked-in' ? 'Confirm Check-In' : 'Confirm Check-Out'
+  const requiresFaceRegistration = !data.employee?.faceRegisteredAt
   const selectedShiftOption =
     data.shiftOptions.find((shift) => shift.value === selectedShift) ?? data.shiftOptions[0]
   const siteName = data.employee?.siteName || data.employee?.workLocation || 'Site belum tersedia'
@@ -453,7 +454,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       // Start face recognition if employee has face registered
       if (!data.employee?.faceRegisteredAt) {
         setFaceRecMode('fallback')
-        setFaceRecMessage('Wajah belum terdaftar. Gunakan capture manual atau registrasi wajah.')
+        setFaceRecMessage('Wajah belum terdaftar di database production. Registrasi wajah dulu untuk mengaktifkan Face Recognition.')
       } else {
         try {
           const faceapi = await import('face-api.js')
@@ -824,7 +825,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       )}
 
       {/* Capture buttons - shown in fallback mode or when face rec is not active */}
-      {faceRecMode === 'fallback' && (
+      {faceRecMode === 'fallback' && !requiresFaceRegistration && (
         <section className="grid grid-cols-[1fr_auto] gap-3">
           <button
             type="button"
@@ -854,13 +855,13 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       )}
 
       {/* Face registration link */}
-      {!data.employee?.faceRegisteredAt && (
+      {requiresFaceRegistration && (
         <Link
           href={`/mobile/attendance/face/register?employeeId=${data.employee?.id}&siteId=${data.employee?.siteId || 1}`}
-          className="flex items-center justify-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-xs font-bold text-blue-700"
+          className="flex items-center justify-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs font-black text-amber-800 shadow-[inset_0_0_0_1px_rgba(146,64,14,0.12)]"
         >
           <ScanFace className="size-4" />
-          Registrasi Wajah (Wajib untuk absensi otomatis)
+          Registrasi Wajah Dulu (Wajib untuk Face Recognition)
         </Link>
       )}
 
