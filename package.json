@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:turbopack": "next dev --turbopack",
-    "build": "next build --webpack",
+    "build": "node scripts/download-face-models.mjs && next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
