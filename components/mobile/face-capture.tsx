@@ -58,6 +58,8 @@ export function FaceCapture({
   // Hooks
   const { isLoaded, isLoading, error: modelError, progress, retry: retryModels } = useFaceModels()
   const blinkDetector = useBlinkDetector()
+  const cameraRetryRef = useRef(0)
+  const MAX_CAMERA_RETRIES = 3
 
   // ─── Camera setup ──────────────────────────────────────────────────────────
 
@@ -72,6 +74,7 @@ export function FaceCapture({
       })
 
       streamRef.current = stream
+      cameraRetryRef.current = 0
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream
@@ -87,6 +90,16 @@ export function FaceCapture({
         noFaceStartRef.current = Date.now()
       }
     } catch (err) {
+      // Auto-retry: camera might be locked by previous page
+      if (cameraRetryRef.current < MAX_CAMERA_RETRIES) {
+        cameraRetryRef.current += 1
+        setStatusMessage(
+          `Menunggu kamera tersedia... (${cameraRetryRef.current}/${MAX_CAMERA_RETRIES})`
+        )
+        await new Promise((r) => setTimeout(r, 1500))
+        return startCamera()
+      }
+
       let message = 'Gagal mengakses kamera.'
       if (err instanceof Error) {
         if (err.name === 'NotAllowedError') {
