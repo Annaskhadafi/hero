@@ -16896,8 +16896,8 @@
       "source_file": "app\\mobile\\attendance\\face\\page.tsx",
       "source_location": "L14",
       "weight": 1.0,
-      "_src": "face_page_faceattendancepage",
-      "_tgt": "actions_attendance_getattendancepagedata",
+      "_src": "actions_attendance_getattendancepagedata",
+      "_tgt": "face_page_faceattendancepage",
       "source": "actions_attendance_getattendancepagedata",
       "target": "face_page_faceattendancepage"
     },

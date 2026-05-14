@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
       ...config.resolve.fallback,
       canvas: false,
       encoding: false,
+      fs: false,
     }
     return config
   },
