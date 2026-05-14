@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# face-api.js model binary files (download via scripts/download-face-models.sh)
+public/models/*-shard*
+public/models/*.bin

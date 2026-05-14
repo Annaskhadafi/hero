@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { attendanceRecords } from '@/db/schema/hero'
 import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { and, eq, gte, lt } from 'drizzle-orm'
+import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 
 export interface SyncResult {
   employeeId: number
@@ -78,6 +79,13 @@ export async function syncFaceAttendanceToTimesheet(
   siteId: number,
   eventDate: Date
 ): Promise<SyncResult | null> {
+  // Ensure timesheet tables exist
+  await ensureSchedulingTimesheetTables()
+
+  console.log(
+    `[face-sync] Syncing attendance: employee=${employeeId}, site=${siteId}, date=${eventDate.toISOString()}`
+  )
+
   // Compute date range: start of day to start of next day
   const startOfDay = new Date(eventDate)
   startOfDay.setHours(0, 0, 0, 0)
@@ -206,6 +214,10 @@ export async function syncFaceAttendanceToTimesheet(
         updatedAt: new Date(),
       },
     })
+
+  console.log(
+    `[face-sync] ✓ Upserted: site=${siteId}, period=${period}, emp=${employeeId}, day=${day}, in=${clockIn}, out=${clockOut}`
+  )
 
   return {
     employeeId,

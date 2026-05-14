@@ -1,0 +1,140 @@
+
+> hero@0.1.0 build
+> next build --webpack
+
+Γû▓ Next.js 16.2.4 (webpack)
+- Environments: .env.local, .env
+
+  Creating an optimized production build ...
+ΓÜá Compiled with warnings in 85s
+
+./node_modules/face-api.js/build/es6/env/createFileSystem.js
+Module not found: Can't resolve 'fs' in 'D:\[01] PROJECT\HERO\node_modules\face-api.js\build\es6\env'
+
+Import trace for requested module:
+./node_modules/face-api.js/build/es6/env/createFileSystem.js
+./node_modules/face-api.js/build/es6/env/index.js
+./node_modules/face-api.js/build/es6/index.js
+./components/mobile/face-capture.tsx
+./app/mobile/attendance/face/page.tsx
+
+  Running TypeScript ...
+  Finished TypeScript in 48s ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/33) ...
+  Generating static pages using 15 workers (8/33) 
+  Generating static pages using 15 workers (16/33) 
+  Generating static pages using 15 workers (24/33) 
+Γ£ô Generating static pages using 15 workers (33/33) in 3.0s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ ╞Æ /api/activity-sessions/[sessionId]/pdf
+Γö£ ╞Æ /api/auth/[...all]
+Γö£ ╞Æ /api/central-service/employees
+Γö£ ╞Æ /api/central-service/employees/[id]
+Γö£ ╞Æ /api/central-service/employees/import
+Γö£ ╞Æ /api/central-service/employees/import-from-user-mgmt
+Γö£ ╞Æ /api/central-service/employees/sync
+Γö£ ╞Æ /api/health
+Γö£ ╞Æ /api/indonesia-regions
+Γö£ ╞Æ /api/mobile/face-attendance
+Γö£ ╞Æ /api/mobile/face-registration
+Γö£ ╞Æ /api/mobile/face-verification
+Γö£ ╞Æ /api/mobile/gamification
+Γö£ ╞Æ /api/mobile/notifications
+Γö£ ╞Æ /api/mobile/notifications/preferences
+Γö£ ╞Æ /api/mobile/reports
+Γö£ ╞Æ /api/mobile/reports/[reportId]/pdf
+Γö£ ╞Æ /api/mobile/sync/activity
+Γö£ ╞Æ /api/mobile/sync/attendance
+Γö£ ╞Æ /api/mobile/sync/emergency
+Γö£ ╞Æ /api/mobile/sync/hse
+Γö£ ╞Æ /api/notifications
+Γö£ ╞Æ /api/org-structure/[structureId]/pdf
+Γö£ ╞Æ /api/push/subscription
+Γö£ ╞Æ /api/push/test
+Γö£ ╞Æ /api/timesheet/download/[id]
+Γö£ ╞Æ /api/timesheet/generate
+Γö£ ╞Æ /api/timesheet/review
+Γö£ ╞Æ /api/timesheet/upload
+Γö£ ╞Æ /api/uploads/profile-photo
+Γö£ ╞Æ /dashboard
+Γö£ ╞Æ /dashboard/activity-hub/blueprint
+Γö£ ╞Æ /dashboard/activity-hub/configuration
+Γö£ ╞Æ /dashboard/activity-hub/document/[sessionId]
+Γö£ ╞Æ /dashboard/activity-hub/library
+Γö£ ╞Æ /dashboard/activity-hub/my-day
+Γö£ ╞Æ /dashboard/activity-hub/routes
+Γö£ ╞Æ /dashboard/activity-hub/team-board
+Γö£ ╞Æ /dashboard/analytics
+Γö£ ╞Æ /dashboard/approval
+Γö£ ╞Æ /dashboard/attendance
+Γö£ ╞Æ /dashboard/attendance/records
+Γö£ ╞Æ /dashboard/cargo-manifest
+Γö£ ╞Æ /dashboard/central-service
+Γö£ ╞Æ /dashboard/form-studio
+Γö£ ╞Æ /dashboard/hc
+Γö£ ╞Æ /dashboard/hse
+Γö£ ╞Æ /dashboard/leaderboard
+Γö£ ╞Æ /dashboard/master-data
+Γö£ ╞Æ /dashboard/notifications
+Γö£ ╞Æ /dashboard/overtime-requests
+Γö£ ╞Æ /dashboard/portal-chitra
+Γö£ ╞Æ /dashboard/repair-retread/wip-repair
+Γö£ ╞Æ /dashboard/reports
+Γö£ ╞Æ /dashboard/request-center
+Γö£ ╞Æ /dashboard/scheduling-timesheet
+Γö£ ╞Æ /dashboard/scheduling-timesheet/attendance
+Γö£ ╞Æ /dashboard/scheduling-timesheet/field-break
+Γö£ ╞Æ /dashboard/scheduling-timesheet/payroll
+Γö£ ╞Æ /dashboard/scheduling-timesheet/schedule
+Γö£ ╞Æ /dashboard/scheduling-timesheet/setup
+Γö£ ╞Æ /dashboard/security
+Γö£ ╞Æ /dashboard/security/audit-logs
+Γö£ ╞Æ /dashboard/security/roles
+Γö£ ╞Æ /dashboard/security/users
+Γö£ ╞Æ /dashboard/settings/email
+Γö£ ╞Æ /dashboard/settings/navbar
+Γö£ ╞Æ /dashboard/settings/portal-chitra
+Γö£ ╞Æ /dashboard/timesheet
+Γö£ ╞Æ /dashboard/timesheet/timesheet
+Γö£ ╞Æ /dashboard/training-records
+Γö£ ╞Æ /dashboard/workflow-studio
+Γö£ Γùï /forgot-password
+Γö£ Γùï /icon.png
+Γö£ Γùï /manifest.webmanifest
+Γö£ ╞Æ /mobile
+Γö£ ╞Æ /mobile/activity
+Γö£ ╞Æ /mobile/activity/document/[sessionId]
+Γö£ ╞Æ /mobile/activity/input
+Γö£ ╞Æ /mobile/approval
+Γö£ ╞Æ /mobile/attendance
+Γö£ ╞Æ /mobile/attendance/face
+Γö£ ╞Æ /mobile/attendance/face/register
+Γö£ ╞Æ /mobile/cargo-manifest
+Γö£ ╞Æ /mobile/dashboard
+Γö£ ╞Æ /mobile/executive
+Γö£ ╞Æ /mobile/gamification
+Γö£ ╞Æ /mobile/hse
+Γö£ ╞Æ /mobile/menu
+Γö£ ╞Æ /mobile/notifications
+Γö£ ╞Æ /mobile/overtime
+Γö£ ╞Æ /mobile/profile
+Γö£ ╞Æ /mobile/reports
+Γö£ ╞Æ /mobile/security/roles
+Γö£ ╞Æ /mobile/timesheet
+Γö£ ╞Æ /mobile/training
+Γö£ ╞Æ /mobile/wellness
+Γö£ Γùï /offline
+Γö£ Γùï /reset-password
+Γö£ Γùï /sign-in
+Γöö Γùï /sign-up
+
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+
