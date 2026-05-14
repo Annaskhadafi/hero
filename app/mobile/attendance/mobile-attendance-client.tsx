@@ -438,20 +438,34 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     }
 
     try {
+      setCameraReady(false)
+      setCameraError('')
+      setCameraPermissionOpen(false)
       streamRef.current?.getTracks().forEach((track) => track.stop())
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: 'user',
-          width: { ideal: 720 },
-          height: { ideal: 960 },
-        },
+      const cameraTimeout = new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('Camera start timeout. Tap coba buka kamera lagi.')), 8000)
       })
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 640 },
+          },
+        }),
+        cameraTimeout,
+      ])
 
       streamRef.current = stream
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        await videoRef.current.play()
+        await Promise.race([
+          videoRef.current.play(),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error('Camera preview timeout. Tap coba buka kamera lagi.')), 5000)
+          }),
+        ])
       }
       setCameraReady(true)
       setCameraError('')
@@ -467,11 +481,13 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Camera permission needed.'
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
       setCameraReady(false)
       setCameraError(message)
-      setCameraPermissionOpen(true)
+      setCameraPermissionOpen(false)
       setFaceRecMode('fallback')
-      setFaceRecMessage('Izin kamera ditolak. Aktifkan Camera Allow agar Face Recognition bisa berjalan.')
+      setFaceRecMessage('Kamera belum terbuka. Coba ulang kamera atau upload selfie.')
     }
   }
 
@@ -714,13 +730,22 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
               {cameraError || 'Starting secure camera'}
             </p>
             {cameraError ? (
-              <button
-                type="button"
-                onClick={() => setCameraPermissionOpen(true)}
-                className="rounded-full bg-[#e6f6ff] px-4 py-2 text-[10px] font-black text-[#003461] uppercase"
-              >
-                Atur izin camera
-              </button>
+              <div className="grid w-full max-w-56 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startCamera()}
+                  className="rounded-full bg-[#e6f6ff] px-4 py-2 text-[10px] font-black text-[#003461] uppercase"
+                >
+                  Coba Buka Kamera Lagi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-full bg-white px-4 py-2 text-[10px] font-black text-[#003461] uppercase"
+                >
+                  Upload Selfie
+                </button>
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -792,6 +817,15 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           </div>
         )}
       </section>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="user"
+        className="hidden"
+        onChange={handleFileChange}
+      />
 
       {/* Face recognition status message */}
       {faceRecMessage && faceRecMode !== 'success' && (
@@ -874,14 +908,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             <Camera className="size-4" />
             Upload Selfie
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="user"
-            className="hidden"
-            onChange={handleFileChange}
-          />
         </section>
       )}
 
