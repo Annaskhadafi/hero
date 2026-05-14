@@ -340,12 +340,13 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
   async function runFaceRecognition() {
     if (!faceapiRef.current || !videoRef.current || videoRef.current.readyState < 2) {
-      faceRecLoopRef.current = requestAnimationFrame(runFaceRecognition)
+      setFaceRecMessage('Model atau kamera belum siap.')
+      setFaceRecMode('fallback')
       return
     }
 
-    // Throttle to ~10fps
-    await new Promise((r) => setTimeout(r, 100))
+    setFaceRecMode('verifying')
+    setFaceRecMessage('Mendeteksi & memverifikasi wajah...')
 
     try {
       const detection = await faceapiRef.current
@@ -354,20 +355,20 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         .withFaceDescriptor()
 
       if (!detection) {
-        // No face - check timeout
-        if (Date.now() - faceRecStartRef.current > NO_FACE_TIMEOUT) {
+        const newAttempts = faceRecAttempts + 1
+        setFaceRecAttempts(newAttempts)
+        if (newAttempts >= MAX_FACE_REC_ATTEMPTS) {
           setFaceRecMode('fallback')
-          setFaceRecMessage('Wajah tidak terdeteksi. Gunakan capture manual.')
-          return
+          setFaceRecMessage('Wajah tidak terdeteksi 3x. Gunakan capture manual.')
+        } else {
+          setFaceRecMode('detecting')
+          setFaceRecMessage(`Wajah tidak terdeteksi (${newAttempts}/3). Coba lagi.`)
         }
-        faceRecLoopRef.current = requestAnimationFrame(runFaceRecognition)
         return
       }
 
       // Face detected - verify against stored embedding
       const embedding = Array.from(detection.descriptor)
-      setFaceRecMode('verifying')
-      setFaceRecMessage('Memverifikasi wajah...')
 
       const response = await fetch('/api/mobile/face-verification', {
         method: 'POST',
@@ -388,9 +389,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       if (result.verified) {
         setFaceRecMode('success')
         setFaceRecMessage('✓ Wajah terverifikasi!')
-        // Vibrate on success
         navigator.vibrate?.(200)
-        // Update attendance logs
         if (result.attendanceRecord) {
           setAttendanceLogs((current) => [
             {
@@ -410,18 +409,16 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       // Verification failed
       const newAttempts = faceRecAttempts + 1
       setFaceRecAttempts(newAttempts)
-
       if (newAttempts >= MAX_FACE_REC_ATTEMPTS) {
         setFaceRecMode('fallback')
         setFaceRecMessage('Verifikasi gagal 3x. Gunakan capture manual.')
-        return
+      } else {
+        setFaceRecMode('detecting')
+        setFaceRecMessage(`Verifikasi gagal (${newAttempts}/3). Tekan tombol untuk coba lagi.`)
       }
-
-      setFaceRecMessage(`Verifikasi gagal (${newAttempts}/3). Mencoba lagi...`)
-      faceRecLoopRef.current = requestAnimationFrame(runFaceRecognition)
-    } catch (err) {
-      // On error, continue trying
-      faceRecLoopRef.current = requestAnimationFrame(runFaceRecognition)
+    } catch {
+      setFaceRecMode('fallback')
+      setFaceRecMessage('Error saat verifikasi. Gunakan capture manual.')
     }
   }
 
@@ -463,10 +460,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
           await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
           faceapiRef.current = faceapi
-          faceRecStartRef.current = Date.now()
           setFaceRecMode('detecting')
-          setFaceRecMessage('Mendeteksi wajah...')
-          faceRecLoopRef.current = requestAnimationFrame(runFaceRecognition)
+          setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
         } catch {
           // If face-api fails to load, fallback to manual capture
           setFaceRecMode('fallback')
@@ -811,6 +806,20 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             {faceRecMessage}
           </div>
         </div>
+      )}
+
+      {/* Face verify button - shown when model is ready */}
+      {faceRecMode === 'detecting' && (
+        <section className="space-y-2">
+          <button
+            type="button"
+            onClick={runFaceRecognition}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98]"
+          >
+            <ScanFace className="size-4" />
+            Verify Wajah
+          </button>
+        </section>
       )}
 
       {/* Capture buttons - shown in fallback mode or when face rec is not active */}
