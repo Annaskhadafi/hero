@@ -19,6 +19,11 @@ async function getFaceApi() {
   return faceApiPromise
 }
 
+export async function warmupServerFaceApi() {
+  await getFaceApi()
+  return { warmed: true }
+}
+
 export async function extractServerFaceEmbedding(imageBuffer: Buffer) {
   const faceapi = await getFaceApi()
   const { data, info } = await sharp(imageBuffer)

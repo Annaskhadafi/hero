@@ -281,7 +281,28 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   useEffect(() => {
     if (!data.employee?.faceRegisteredAt) return
     setFaceRecMode('detecting')
-    setFaceRecMessage('Siap. Tekan Verify Wajah, model diproses di server.')
+    setFaceRecMessage('Menyiapkan model di server...')
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 12000)
+
+    void fetch('/api/mobile/face-warmup', {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(() => {
+        setFaceRecMessage('Server face siap. Tekan Verify Wajah.')
+      })
+      .catch(() => {
+        setFaceRecMessage('Server face belum warm. Verify pertama mungkin lebih lama.')
+      })
+      .finally(() => window.clearTimeout(timeout))
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
   }, [data.employee?.faceRegisteredAt])
 
   useEffect(() => {
@@ -353,10 +374,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       const nextAttempts = current + 1
       if (nextAttempts >= MAX_FACE_REC_ATTEMPTS) {
         setFaceRecMode('fallback')
-        setFaceRecMessage('Verifikasi server gagal 2x. Pakai capture foto agar absensi tetap jalan.')
+        setFaceRecMessage('Verifikasi wajah gagal 2x. Lanjutkan dengan capture foto manual.')
       } else {
         setFaceRecMode('detecting')
-        setFaceRecMessage(`${message} (${nextAttempts}/2). Foto gagal dibuang. Kamera siap ulang.`)
+        setFaceRecMessage(`${message} (${nextAttempts}/2). Foto gagal dibuang. Tekan Verify Wajah untuk coba lagi.`)
       }
       return nextAttempts
     })
@@ -365,18 +386,20 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   async function runFaceRecognition() {
     if (capturedFile || capturePreview) {
       setCapturedFile(null)
+      await new Promise((resolve) => window.setTimeout(resolve, 80))
     }
 
     if (!videoRef.current || videoRef.current.readyState < 2) {
-      setFaceRecMessage('Kamera belum siap. Coba lagi atau upload selfie.')
-      setFaceRecMode('detecting')
+      setFaceRecMessage('Kamera belum siap. Membuka kamera ulang...')
+      setFaceRecMode('loading')
+      await reopenCameraForRetry()
       return
     }
 
     setFaceRecMode('verifying')
-    setFaceRecMessage('Capture foto dan verifikasi di server...')
+    setFaceRecMessage('Capture foto dan verifikasi di server. Tunggu proses model...')
     const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 15000)
+    const timeout = window.setTimeout(() => controller.abort(), 30000)
 
     try {
       const file = await captureFrame()
@@ -428,7 +451,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     } catch (error) {
       handleFaceVerificationFailure(
         error instanceof DOMException && error.name === 'AbortError'
-          ? 'Server terlalu lama'
+          ? 'Server masih memproses model terlalu lama'
           : 'Error server face recognition'
       )
     } finally {
@@ -560,11 +583,24 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     return file
   }
 
+  async function reopenCameraForRetry() {
+    setCapturedFile(null)
+    setFaceRecAttempts(0)
+    setFaceRecMode('loading')
+    setFaceRecMessage('Membuka kamera ulang...')
+    await new Promise((resolve) => window.setTimeout(resolve, 80))
+    await startCamera()
+  }
+
   async function handleCaptureClick() {
     setSubmitError('')
     setSubmitMessage('')
 
     try {
+      if (!videoRef.current || videoRef.current.readyState < 2) {
+        await reopenCameraForRetry()
+        await new Promise((resolve) => window.setTimeout(resolve, 250))
+      }
       await captureFrame()
       setSubmitMessage('Face capture ready.')
     } catch (error) {
@@ -904,19 +940,16 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
       {faceRecMode === 'fallback' && !requiresFaceRegistration && !isCameraBlocked && (
         <section className="grid gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setCapturedFile(null)
-              setFaceRecAttempts(0)
-              setFaceRecMode('detecting')
-              setFaceRecMessage('Kamera siap. Model Face Recognition diproses di server.')
-            }}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#e6f6ff] px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
-          >
-            <ScanFace className="size-4" />
-            Coba Face Lagi ({faceRecAttempts}/{MAX_FACE_REC_ATTEMPTS})
-          </button>
+          {faceRecAttempts < MAX_FACE_REC_ATTEMPTS ? (
+            <button
+              type="button"
+              onClick={() => void reopenCameraForRetry()}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#e6f6ff] px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
+            >
+              <ScanFace className="size-4" />
+              Coba Face Lagi ({faceRecAttempts}/{MAX_FACE_REC_ATTEMPTS})
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void handleCaptureClick()}
