@@ -9,9 +9,9 @@ import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-s
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 
 // --- Constants ---
-const SIMILARITY_THRESHOLD = 0.78
-const FACE_DISTANCE_THRESHOLD = 0.68
-const DETECTION_SCORE_THRESHOLD = 0.4
+const SIMILARITY_THRESHOLD = 0.85
+const FACE_DISTANCE_THRESHOLD = 0.55
+const DETECTION_SCORE_THRESHOLD = 0.5
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out']
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']

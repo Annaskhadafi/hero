@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
@@ -108,6 +109,9 @@ export async function POST(request: NextRequest) {
         faceRegisteredAt: registeredAt,
       })
       .where(eq(employees.id, employeeId))
+
+    revalidatePath('/mobile/attendance')
+    revalidatePath('/mobile/attendance/face')
 
     // 7. Return success
     return NextResponse.json(

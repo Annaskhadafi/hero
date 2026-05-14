@@ -1,4 +1,4 @@
-# Graph Report - HERO  (2026-05-14)
+# Graph Report - HERO  (2026-05-15)
 
 ## Corpus Check
 - 445 files · ~732,846 words
