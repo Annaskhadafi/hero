@@ -75,6 +75,7 @@ const DESKTOP_MENU_ORDER = [
   "Portal Chitra",
   "Aktivitas Harian",
   "Central Service",
+  "Repair & Retread Operation",
   "Scheduling Time Sheet",
   "Approval",
   "Data Induk",
@@ -88,6 +89,7 @@ const desktopMenuIconMap = {
   "Portal Chitra": IconDashboard,
   "Aktivitas Harian": IconChecklist,
   "Central Service": IconDatabase,
+  "Repair & Retread Operation": IconSettings,
   "Scheduling Time Sheet": IconClockHour4,
   Approval: IconMail,
   "Data Induk": IconDatabase,
@@ -100,6 +102,7 @@ const desktopMenuIconMap = {
 const sectionLabelMap: Record<string, string> = {
   "Daily Activity": "Aktivitas Harian",
   "Central Service": "Central Service",
+  "Repair & Retread Operation": "Repair & Retread Operation",
   Approval: "Approval",
   "Master Data": "Data Induk",
   "Scheduling Time Sheet": "Scheduling Time Sheet",
@@ -198,6 +201,5 @@ export function AppSidebar({
     </Sidebar>
   )
 }
-
 
 

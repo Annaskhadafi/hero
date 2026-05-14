@@ -657,6 +657,18 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  // Repair & Retread Operation
+  {
+    menuArea: 'main',
+    section: 'Repair & Retread Operation',
+    title: 'WIP Repair',
+    url: '/dashboard/repair-retread/wip-repair',
+    iconName: 'settings',
+    resource: 'wip_repair',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Logistik
   {
     menuArea: 'main',
