@@ -261,6 +261,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const actionLabel = nextType === 'checked-in' ? 'Confirm Check-In' : 'Confirm Check-Out'
   const requiresFaceRegistration = !data.employee?.faceRegisteredAt
   const isCameraBlocked = Boolean(cameraError) || cameraPermissionOpen
+  const isCameraUnavailable = Boolean(cameraError) && !cameraReady && !capturePreview
   const selectedShiftOption =
     data.shiftOptions.find((shift) => shift.value === selectedShift) ?? data.shiftOptions[0]
   const siteName = data.employee?.siteName || data.employee?.workLocation || 'Site belum tersedia'
@@ -724,41 +725,59 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         )}
 
         {!cameraReady && !capturePreview ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center text-[#b9c8d1]">
-            <Camera className="size-11" />
-            <p className="max-w-56 text-xs leading-5 font-black uppercase">
-              {cameraError || 'Starting secure camera'}
-            </p>
+          <div className="absolute inset-0 z-10 flex items-center justify-center px-5 text-center">
             {cameraError ? (
-              <div className="grid w-full max-w-56 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void startCamera()}
-                  className="rounded-full bg-[#e6f6ff] px-4 py-2 text-[10px] font-black text-[#003461] uppercase"
-                >
-                  Coba Buka Kamera Lagi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-full bg-white px-4 py-2 text-[10px] font-black text-[#003461] uppercase"
-                >
-                  Upload Selfie
-                </button>
+              <div className="w-full rounded-[0.85rem] bg-white/95 p-4 text-[#003461] shadow-[0_18px_44px_rgba(8,32,51,0.22)] backdrop-blur-md">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#e6f6ff]">
+                  <Camera className="size-6" />
+                </div>
+                <p className="mt-3 text-sm leading-5 font-black text-[#071e27]">
+                  Kamera belum terbuka
+                </p>
+                <p className="mt-1 text-[11px] leading-5 font-semibold text-[#486275]">
+                  Jika kamera lambat, lanjut pakai upload selfie. Absensi tetap bisa direkam.
+                </p>
+                <div className="mt-4 grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void startCamera()}
+                    className="min-h-12 rounded-[0.65rem] bg-[#e6f6ff] px-4 text-[11px] font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
+                  >
+                    Coba Kamera Lagi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="min-h-12 rounded-[0.65rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-[11px] font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.16)] active:scale-[0.98]"
+                  >
+                    Upload Selfie Sekarang
+                  </button>
+                </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-[#cfe6f2]">
+                <div className="flex size-14 items-center justify-center rounded-full bg-white/10 backdrop-blur-md">
+                  <div className="size-6 animate-spin rounded-full border-2 border-[#cfe6f2] border-t-transparent" />
+                </div>
+                <p className="max-w-56 text-xs leading-5 font-black uppercase">Membuka kamera aman...</p>
+              </div>
+            )}
           </div>
         ) : null}
 
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,transparent_34%,rgba(0,0,0,0.22)_35%,rgba(0,0,0,0.36)_100%)]" />
-        <div className="absolute top-1/2 left-1/2 size-44 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#003f78]/70" />
-        <div className="absolute top-1/2 left-1/2 h-0.5 w-52 -translate-x-1/2 -translate-y-1/2 bg-[#7e3200]/70 shadow-[0_0_12px_rgba(255,182,146,0.55)]" />
-        <div className="absolute top-10 left-7 size-9 border-t-2 border-l-2 border-[#004b87]" />
-        <div className="absolute top-10 right-7 size-9 border-t-2 border-r-2 border-[#004b87]" />
-        <div className="absolute bottom-10 left-7 size-9 border-b-2 border-l-2 border-[#004b87]" />
-        <div className="absolute right-7 bottom-10 size-9 border-r-2 border-b-2 border-[#004b87]" />
+        <div className={cn('absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0,transparent_34%,rgba(0,0,0,0.22)_35%,rgba(0,0,0,0.36)_100%)]', isCameraUnavailable && 'opacity-20')} />
+        {!isCameraUnavailable && (
+          <>
+            <div className="absolute top-1/2 left-1/2 size-44 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-dashed border-[#003f78]/70" />
+            <div className="absolute top-1/2 left-1/2 h-0.5 w-52 -translate-x-1/2 -translate-y-1/2 bg-[#7e3200]/70 shadow-[0_0_12px_rgba(255,182,146,0.55)]" />
+            <div className="absolute top-10 left-7 size-9 border-t-2 border-l-2 border-[#004b87]" />
+            <div className="absolute top-10 right-7 size-9 border-t-2 border-r-2 border-[#004b87]" />
+            <div className="absolute bottom-10 left-7 size-9 border-b-2 border-l-2 border-[#004b87]" />
+            <div className="absolute right-7 bottom-10 size-9 border-r-2 border-b-2 border-[#004b87]" />
+          </>
+        )}
 
-        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl">
+        <div className={cn('absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#cfe6f2]/88 px-3 py-1.5 text-[#003461] shadow-[0_8px_18px_rgba(0,52,97,0.14)] backdrop-blur-xl', isCameraUnavailable && 'hidden')}>
           {faceRecMode === 'loading' ? (
             <>
               <div className="size-3.5 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
@@ -828,7 +847,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       />
 
       {/* Face recognition status message */}
-      {faceRecMessage && faceRecMode !== 'success' && (
+      {faceRecMessage && faceRecMode !== 'success' && !isCameraUnavailable && (
         <div
           className={cn(
             'rounded-[0.65rem] px-4 py-3 text-xs font-bold',
