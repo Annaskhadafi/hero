@@ -125,7 +125,8 @@ function getStatusLabel(value: string) {
   return value
 }
 
-function firstLocationLine(value: string) {
+function firstLocationLine(value: string | null | undefined) {
+  if (!value) return 'Location logged'
   return value.split('|')[0]?.trim() || 'Location logged'
 }
 
