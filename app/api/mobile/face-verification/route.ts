@@ -9,7 +9,9 @@ import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-s
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 
 // --- Constants ---
-const SIMILARITY_THRESHOLD = 0.7
+const SIMILARITY_THRESHOLD = 0.92
+const FACE_DISTANCE_THRESHOLD = 0.45
+const DETECTION_SCORE_THRESHOLD = 0.65
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out']
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -34,6 +36,18 @@ function errorResponse(status: number, code: string, message: string, field?: st
     },
     { status }
   )
+}
+
+function euclideanDistance(a: number[], b: number[]) {
+  if (a.length !== b.length || a.length === 0) return Number.POSITIVE_INFINITY
+
+  let sum = 0
+  for (let index = 0; index < a.length; index++) {
+    const delta = a[index] - b[index]
+    sum += delta * delta
+  }
+
+  return Math.sqrt(sum)
 }
 
 export async function POST(request: NextRequest) {
@@ -172,6 +186,17 @@ export async function POST(request: NextRequest) {
 
       liveEmbedding = extraction.embedding
       detectionScore = extraction.detectionScore
+      if (detectionScore < DETECTION_SCORE_THRESHOLD) {
+        return NextResponse.json(
+          {
+            verified: false,
+            similarityScore: null,
+            detectionScore,
+            error: { code: 'LOW_FACE_DETECTION_SCORE', message: 'Kualitas deteksi wajah terlalu rendah.' },
+          },
+          { status: 200 }
+        )
+      }
     } else {
       const embeddingValidation = validateEmbedding(embedding)
       if (!embeddingValidation.valid) {
@@ -244,9 +269,10 @@ export async function POST(request: NextRequest) {
     // 8. Compute cosine similarity
     const storedEmbedding = employee.faceEmbedding as number[]
     const similarity = cosineSimilarity(liveEmbedding, storedEmbedding)
+    const faceDistance = euclideanDistance(liveEmbedding, storedEmbedding)
 
     // 8.5 Replay detection: exact 1.0 means stored embedding was replayed
-    if (similarity === 1.0) {
+    if (similarity === 1.0 || faceDistance === 0) {
       return errorResponse(
         422,
         'REPLAY_DETECTED',
@@ -255,8 +281,20 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Threshold check
-    if (similarity <= SIMILARITY_THRESHOLD) {
-      return NextResponse.json({ verified: false, similarityScore: similarity }, { status: 200 })
+    if (similarity < SIMILARITY_THRESHOLD || faceDistance > FACE_DISTANCE_THRESHOLD) {
+      return NextResponse.json(
+        {
+          verified: false,
+          similarityScore: similarity,
+          faceDistance,
+          detectionScore,
+          thresholds: {
+            similarity: SIMILARITY_THRESHOLD,
+            faceDistance: FACE_DISTANCE_THRESHOLD,
+          },
+        },
+        { status: 200 }
+      )
     }
 
     // 10. Verified — create attendance record
@@ -292,6 +330,7 @@ export async function POST(request: NextRequest) {
       {
         verified: true,
         similarityScore: similarity,
+        faceDistance,
         detectionScore,
         attendanceRecord: {
           id: insertedRecord.id,
