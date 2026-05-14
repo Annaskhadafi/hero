@@ -1,11 +1,11 @@
 # Graph Report - HERO  (2026-05-14)
 
 ## Corpus Check
-- 441 files · ~731,222 words
+- 441 files · ~731,273 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1836 nodes · 2539 edges · 67 communities detected
+- 1837 nodes · 2541 edges · 68 communities detected
 - Extraction: 83% EXTRACTED · 17% INFERRED · 0% AMBIGUOUS · INFERRED: 438 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -59,24 +59,25 @@
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 64|Community 64]]
 - [[_COMMUNITY_Community 65|Community 65]]
-- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 67|Community 67]]
 - [[_COMMUNITY_Community 70|Community 70]]
-- [[_COMMUNITY_Community 73|Community 73]]
-- [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
 - [[_COMMUNITY_Community 78|Community 78]]
-- [[_COMMUNITY_Community 88|Community 88]]
-- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 80|Community 80]]
 - [[_COMMUNITY_Community 90|Community 90]]
 - [[_COMMUNITY_Community 91|Community 91]]
 - [[_COMMUNITY_Community 92|Community 92]]
 - [[_COMMUNITY_Community 93|Community 93]]
 - [[_COMMUNITY_Community 94|Community 94]]
-- [[_COMMUNITY_Community 99|Community 99]]
-- [[_COMMUNITY_Community 102|Community 102]]
-- [[_COMMUNITY_Community 106|Community 106]]
-- [[_COMMUNITY_Community 124|Community 124]]
-- [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `ensureHeroGovernanceSeedData()` - 50 edges
@@ -95,114 +96,114 @@
   app\dashboard\admin-actions.ts → lib\training-record-import.ts
 - `importTrainingRecordsAction()` --calls--> `getTrainingRecordImportValue()`  [INFERRED]
   app\dashboard\admin-actions.ts → lib\training-record-import.ts
+- `manageApprovalMatrixAction()` --calls--> `handleSave()`  [INFERRED]
+  app\dashboard\master-data\actions.ts → components\approval-matrix-manager.tsx
 - `String()` --calls--> `handleSubmit()`  [INFERRED]
   app\dashboard\timesheet\timesheet\page.tsx → components\cargo-manifest-panels.tsx
 - `String()` --calls--> `employeeSnLabel()`  [INFERRED]
   app\dashboard\timesheet\timesheet\page.tsx → components\scheduling-timesheet-workspace.tsx
-- `String()` --calls--> `serializeFieldBreakPlan()`  [INFERRED]
-  app\dashboard\timesheet\timesheet\page.tsx → lib\hero-admin.ts
 
 ## Communities
 
 ### Community 0 - "Community 0"
 Cohesion: 0.03
-Nodes (109): ActivityRouteDepartmentSectionFields(), applyApprovalDecision(), applyAttendanceImportPreviewAction(), approveApprovalGroupAction(), assertSchedulingPeriodOpen(), bulkProvisionAuthAccountsAction(), bulkUserActionsAction(), cancelDraftSubmissionAction() (+101 more)
+Nodes (97): AnalyticsPage(), SchedulingTimesheetAttendancePage(), AuditLogsPage(), handleSimulate(), runSimulation(), fetchIndonesiaRegionOptions(), handleDelete(), handleSubmit() (+89 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.04
-Nodes (80): assertOvertimeRequestCreationAccess(), buildDailySessionCode(), buildSplNumber(), canManageOvertimeRequestSettings(), endOfDay(), getAuthenticatedEmployeeContext(), getImportCsvText(), getOvertimeRequestLeaderPermission() (+72 more)
+Cohesion: 0.03
+Nodes (110): ActivityRouteDepartmentSectionFields(), applyApprovalDecision(), applyAttendanceImportPreviewAction(), approveApprovalGroupAction(), assertSchedulingPeriodOpen(), bulkProvisionAuthAccountsAction(), bulkUserActionsAction(), cancelDraftSubmissionAction() (+102 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.03
-Nodes (73): AnalyticsPage(), SchedulingTimesheetAttendancePage(), AuditLogsPage(), updateNavbarThemeAction(), EmailSettingsPage(), SchedulingTimesheetFieldBreakPage(), dedupeMenuItemsByPage(), ensureHeroGovernanceSeedData() (+65 more)
+Cohesion: 0.04
+Nodes (80): assertOvertimeRequestCreationAccess(), buildDailySessionCode(), buildSplNumber(), canManageOvertimeRequestSettings(), endOfDay(), getAuthenticatedEmployeeContext(), getImportCsvText(), getOvertimeRequestLeaderPermission() (+72 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.08
 Nodes (37): notifyEmployeeForPointUpdate(), testPwaPushSettingsAction(), getMobileNotifications(), getMobileNotificationSettings(), buildNotificationScope(), buildRecipientFilter(), clearNotifications(), getRecipientNotifications() (+29 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.09
-Nodes (30): buildEmptyMatrix(), handleDelete(), handleNewMatrix(), handleSave(), handleSimulate(), matrixToEditable(), toDateTimeLocalValue(), runSimulation() (+22 more)
-
-### Community 5 - "Community 5"
 Cohesion: 0.08
 Nodes (30): createNotificationDelivery(), dataUrlToFile(), getAuthenticatedEmployee(), normalizeCoordinate(), normalizeSyncText(), resolveEmergencyRecipients(), sendEmergencyAlerts(), submitEmergencyIncidentFromPayload() (+22 more)
 
-### Community 6 - "Community 6"
+### Community 5 - "Community 5"
 Cohesion: 0.07
 Nodes (20): buildSchedule(), dateRangeDays(), dayFromDate(), defaultPositionOnSite(), employeeSnLabel(), isEmploymentPositionLabel(), isLeadershipPosition(), normalizeLocation() (+12 more)
 
-### Community 7 - "Community 7"
+### Community 6 - "Community 6"
 Cohesion: 0.09
 Nodes (29): main(), periodForFile(), buildAttendanceImportPreview(), buildEmployeeMatcher(), buildValidationFlags(), emptyValidationSummary(), minutesFromTime(), normalizeAttendanceImportIdentity() (+21 more)
 
-### Community 8 - "Community 8"
+### Community 7 - "Community 7"
 Cohesion: 0.1
 Nodes (30): ApprovalPage(), MobileApprovalPage(), addApprovalCommentAction(), appendApprovalNoteEntry(), parseApprovalNoteEntries(), buildApprovalComments(), buildApprovalTimeline(), buildWorkflowPreview() (+22 more)
 
-### Community 9 - "Community 9"
-Cohesion: 0.09
-Nodes (29): createFormFieldAction(), createFormSectionAction(), FormStudioPage(), buildRequestNumber(), compareConditionValue(), createFormTemplateField(), createFormTemplateSection(), ensureApprovalBlueprintSeedData() (+21 more)
-
-### Community 10 - "Community 10"
+### Community 8 - "Community 8"
 Cohesion: 0.09
 Nodes (25): buildAttendanceNote(), buildLocationNote(), ensureEmployeeSite(), formatOvertimeLabel(), getAttendancePageData(), getAttendanceQueryWindow(), getCurrentEmployee(), getMobileAttendanceShiftOptions() (+17 more)
 
-### Community 11 - "Community 11"
+### Community 9 - "Community 9"
 Cohesion: 0.07
 Nodes (22): MobileExecutivePage(), MobileGamificationPage(), GET(), MobileHsePage(), endOfMonth(), getMobileEmployeeContext(), getMobileExecutive(), getMobileGamification() (+14 more)
 
-### Community 12 - "Community 12"
+### Community 10 - "Community 10"
 Cohesion: 0.11
 Nodes (26): uploadFile(), formatDurationLabel(), getDailyActivitySessionDocumentData(), buildS3PublicUrl(), decodeObjectKey(), encodeObjectKey(), ensureLeadingProtocol(), getObjectExtension() (+18 more)
 
-### Community 13 - "Community 13"
+### Community 11 - "Community 11"
+Cohesion: 0.09
+Nodes (27): FormStudioPage(), buildRequestNumber(), compareConditionValue(), createFormTemplateField(), createFormTemplateSection(), ensureApprovalBlueprintSeedData(), ensureApprovalBlueprintTables(), ensureDailyActivityTemplateFields() (+19 more)
+
+### Community 12 - "Community 12"
 Cohesion: 0.08
 Nodes (18): createMasterGoods(), createMasterLocation(), createMasterRecipient(), createMasterSite(), deleteMasterGoods(), deleteMasterLocation(), deleteMasterRecipient(), deleteMasterSite() (+10 more)
 
-### Community 14 - "Community 14"
+### Community 13 - "Community 13"
 Cohesion: 0.13
 Nodes (20): getCurrentEmployeeAccessRole(), getCurrentMenuPermission(), getEmployeeAccessRoleByEmail(), getMenuPermissionForRole(), filterPortalAppsForRole(), getPortalChitraAppById(), getPortalChitraBaseData(), getPortalChitraSettingsData() (+12 more)
 
-### Community 15 - "Community 15"
+### Community 14 - "Community 14"
 Cohesion: 0.11
 Nodes (16): errorResponse(), POST(), savePhoto(), cosineSimilarity(), validateEmbedding(), extractServerFaceEmbedding(), getFaceApi(), errorResponse() (+8 more)
 
-### Community 16 - "Community 16"
+### Community 15 - "Community 15"
 Cohesion: 0.11
 Nodes (13): parseActivityLibraryCsv(), importUsersWithDetailedErrors(), detectCsvDelimiter(), getMappedValue(), parseCsv(), parseCsvToRecords(), autoMapTrainingRecordHeaders(), getTrainingRecordImportValue() (+5 more)
+
+### Community 16 - "Community 16"
+Cohesion: 0.14
+Nodes (9): captureFrame(), fileToPayload(), getEventLabel(), getReverseGeocodeLabel(), handleCaptureClick(), handleFaceVerificationFailure(), handleSubmit(), resolveLocationName() (+1 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.19
 Nodes (17): getDatabaseUrl(), getDatabaseUrlErrorMessage(), bootstrapConflictingMigration(), columnExists(), ensureMigrationsTable(), entryAlreadyMaterialized(), getAppliedMigrationTimes(), getExistingColumnConflict() (+9 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.15
-Nodes (8): captureFrame(), fileToPayload(), getEventLabel(), getReverseGeocodeLabel(), handleCaptureClick(), handleSubmit(), resolveLocationName(), runFaceRecognition()
-
-### Community 19 - "Community 19"
 Cohesion: 0.2
 Nodes (14): asText(), disablePush(), enablePush(), formatDate(), formatNotificationBody(), formatNotificationTitle(), getNotificationDisplayKey(), getPushServiceWorkerRegistration() (+6 more)
 
-### Community 20 - "Community 20"
+### Community 19 - "Community 19"
 Cohesion: 0.18
 Nodes (10): buildDefaultSelfInputEntry(), buildSelfInputPayloads(), clearDraft(), fileToPayload(), getDurationMinutes(), handleSubmit(), sendPayload(), shiftDateTimeLocalValue() (+2 more)
 
-### Community 21 - "Community 21"
+### Community 20 - "Community 20"
 Cohesion: 0.18
 Nodes (12): buildExcelHtml(), compareCellValues(), downloadText(), exportRowsToFile(), matchesDataFilter(), normalizeFileName(), normalizeFilterValue(), parseNamedMonthDate() (+4 more)
 
-### Community 22 - "Community 22"
+### Community 21 - "Community 21"
 Cohesion: 0.21
 Nodes (11): extractAreaLabel(), formatCoordinate(), getCoordinateKey(), getCoordinateLabel(), getLocationLines(), getLogCoordinateLabel(), getOperationalDetails(), handleOpenPhoto() (+3 more)
 
-### Community 23 - "Community 23"
+### Community 22 - "Community 22"
 Cohesion: 0.18
 Nodes (8): POST(), detectSiteTransfer(), determineDailyStatus(), formatOTHours(), mergeOTAndSPLRecords(), addSummaryTable(), createSiteSheet(), generateSummaryExcel()
 
-### Community 24 - "Community 24"
+### Community 23 - "Community 23"
 Cohesion: 0.37
 Nodes (13): cancelTask(), completeTask(), fail(), findTaskFile(), findTasksDir(), listTasks(), main(), printHelp() (+5 more)
+
+### Community 24 - "Community 24"
+Cohesion: 0.27
+Nodes (6): buildEmptyMatrix(), handleDelete(), handleNewMatrix(), handleSave(), matrixToEditable(), toDateTimeLocalValue()
 
 ### Community 26 - "Community 26"
 Cohesion: 0.27
@@ -300,75 +301,79 @@ Nodes (2): handleNotificationsUpdated(), loadNotificationCount()
 Cohesion: 0.5
 Nodes (2): CarouselNext(), useCarousel()
 
-### Community 69 - "Community 69"
+### Community 67 - "Community 67"
+Cohesion: 0.4
+Nodes (1): FormMessage()
+
+### Community 70 - "Community 70"
 Cohesion: 0.7
 Nodes (4): clean(), main(), slug(), write_csv()
 
-### Community 70 - "Community 70"
+### Community 71 - "Community 71"
 Cohesion: 0.83
 Nodes (3): buildEndpoint(), GET(), normalizeOptions()
 
-### Community 73 - "Community 73"
+### Community 74 - "Community 74"
 Cohesion: 0.67
 Nodes (2): ActivityTemplateForm(), getDurationLabel()
 
-### Community 76 - "Community 76"
-Cohesion: 0.67
-Nodes (2): createEmptyDraft(), PortalChitraSettingsPanel()
-
-### Community 78 - "Community 78"
-Cohesion: 0.67
-Nodes (2): formatAuditValue(), formatSeverity()
-
-### Community 88 - "Community 88"
-Cohesion: 0.83
-Nodes (3): getDb(), getPool(), getSslConfig()
-
-### Community 89 - "Community 89"
+### Community 75 - "Community 75"
 Cohesion: 0.5
 Nodes (2): ChartAreaInteractive(), useIsMobile()
 
+### Community 78 - "Community 78"
+Cohesion: 0.67
+Nodes (2): createEmptyDraft(), PortalChitraSettingsPanel()
+
+### Community 80 - "Community 80"
+Cohesion: 0.67
+Nodes (2): formatAuditValue(), formatSeverity()
+
 ### Community 90 - "Community 90"
+Cohesion: 0.83
+Nodes (3): getDb(), getPool(), getSslConfig()
+
+### Community 91 - "Community 91"
 Cohesion: 0.83
 Nodes (3): haversineDistanceMeters(), toNumber(), validateSiteBoundary()
 
-### Community 91 - "Community 91"
+### Community 92 - "Community 92"
 Cohesion: 0.67
 Nodes (2): getBooleanEnv(), getFirstEnvValue()
 
-### Community 92 - "Community 92"
+### Community 93 - "Community 93"
 Cohesion: 0.83
 Nodes (3): main(), mapPositionCode(), mapSiteId()
 
-### Community 93 - "Community 93"
+### Community 94 - "Community 94"
 Cohesion: 1.0
 Nodes (2): main(), test()
 
-### Community 94 - "Community 94"
+### Community 95 - "Community 95"
 Cohesion: 1.0
 Nodes (2): handleAuth(), isDatabaseConnectionError()
 
-### Community 99 - "Community 99"
+### Community 100 - "Community 100"
 Cohesion: 1.0
 Nodes (2): formValue(), updateMobileProfileAction()
 
-### Community 102 - "Community 102"
+### Community 103 - "Community 103"
 Cohesion: 1.0
 Nodes (2): AdminStatusBadge(), normalize()
 
-### Community 106 - "Community 106"
+### Community 107 - "Community 107"
 Cohesion: 1.0
 Nodes (2): calculateEAR(), euclideanDistance()
 
-### Community 124 - "Community 124"
+### Community 125 - "Community 125"
 Cohesion: 1.0
 Nodes (2): downloadFile(), main()
 
-### Community 126 - "Community 126"
+### Community 127 - "Community 127"
 Cohesion: 1.0
 Nodes (2): clean(), main()
 
-### Community 127 - "Community 127"
+### Community 128 - "Community 128"
 Cohesion: 1.0
 Nodes (2): clean(), main()
 
@@ -385,41 +390,43 @@ Nodes (2): clean(), main()
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 65`** (5 nodes): `carousel.tsx`, `Carousel()`, `CarouselNext()`, `cn()`, `useCarousel()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 73`** (4 nodes): `ActivityTemplateForm()`, `dedupeOptions()`, `getDurationLabel()`, `activity-template-form.tsx`
+- **Thin community `Community 67`** (5 nodes): `form.tsx`, `cn()`, `FormControl()`, `FormDescription()`, `FormMessage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 76`** (4 nodes): `createDraftFromApp()`, `createEmptyDraft()`, `PortalChitraSettingsPanel()`, `portal-chitra-settings-panel.tsx`
+- **Thin community `Community 74`** (4 nodes): `ActivityTemplateForm()`, `dedupeOptions()`, `getDurationLabel()`, `activity-template-form.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (4 nodes): `formatAuditValue()`, `formatSeverity()`, `SecurityAuditLogTable()`, `security-audit-log-table.tsx`
+- **Thin community `Community 75`** (4 nodes): `ChartAreaInteractive()`, `chart-area-interactive.tsx`, `use-mobile.ts`, `useIsMobile()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 89`** (4 nodes): `ChartAreaInteractive()`, `chart-area-interactive.tsx`, `use-mobile.ts`, `useIsMobile()`
+- **Thin community `Community 78`** (4 nodes): `createDraftFromApp()`, `createEmptyDraft()`, `PortalChitraSettingsPanel()`, `portal-chitra-settings-panel.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (4 nodes): `getBooleanEnv()`, `getFirstEnvValue()`, `getRequiredEnv()`, `server-env.ts`
+- **Thin community `Community 80`** (4 nodes): `formatAuditValue()`, `formatSeverity()`, `SecurityAuditLogTable()`, `security-audit-log-table.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (3 nodes): `main()`, `test()`, `test-db.js`
+- **Thin community `Community 92`** (4 nodes): `getBooleanEnv()`, `getFirstEnvValue()`, `getRequiredEnv()`, `server-env.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (3 nodes): `handleAuth()`, `isDatabaseConnectionError()`, `route.ts`
+- **Thin community `Community 94`** (3 nodes): `main()`, `test()`, `test-db.js`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (3 nodes): `actions.ts`, `formValue()`, `updateMobileProfileAction()`
+- **Thin community `Community 95`** (3 nodes): `handleAuth()`, `isDatabaseConnectionError()`, `route.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 102`** (3 nodes): `AdminStatusBadge()`, `normalize()`, `admin-status-badge.tsx`
+- **Thin community `Community 100`** (3 nodes): `actions.ts`, `formValue()`, `updateMobileProfileAction()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (3 nodes): `face-camera.tsx`, `calculateEAR()`, `euclideanDistance()`
+- **Thin community `Community 103`** (3 nodes): `AdminStatusBadge()`, `normalize()`, `admin-status-badge.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 124`** (3 nodes): `downloadFile()`, `main()`, `download-face-models.mjs`
+- **Thin community `Community 107`** (3 nodes): `face-camera.tsx`, `calculateEAR()`, `euclideanDistance()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 126`** (3 nodes): `clean()`, `main()`, `analyze_data_hero.py`
+- **Thin community `Community 125`** (3 nodes): `downloadFile()`, `main()`, `download-face-models.mjs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 127`** (3 nodes): `clean()`, `main()`, `build_data_hero_summary.py`
+- **Thin community `Community 127`** (3 nodes): `clean()`, `main()`, `analyze_data_hero.py`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 128`** (3 nodes): `clean()`, `main()`, `build_data_hero_summary.py`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `String()` connect `Community 0` to `Community 32`, `Community 1`, `Community 2`, `Community 5`, `Community 6`, `Community 7`, `Community 10`, `Community 43`, `Community 13`, `Community 15`, `Community 18`, `Community 19`, `Community 22`, `Community 23`, `Community 24`, `Community 27`, `Community 28`?**
-  _High betweenness centrality (0.127) - this node is a cross-community bridge._
-- **Why does `ensureHeroGovernanceSeedData()` connect `Community 2` to `Community 0`, `Community 4`, `Community 5`, `Community 14`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
-- **Why does `Boolean()` connect `Community 1` to `Community 3`, `Community 5`, `Community 6`, `Community 12`, `Community 17`?**
+- **Why does `String()` connect `Community 1` to `Community 0`, `Community 32`, `Community 2`, `Community 67`, `Community 4`, `Community 5`, `Community 6`, `Community 8`, `Community 43`, `Community 12`, `Community 14`, `Community 16`, `Community 18`, `Community 21`, `Community 22`, `Community 23`, `Community 27`, `Community 28`?**
+  _High betweenness centrality (0.131) - this node is a cross-community bridge._
+- **Why does `ensureHeroGovernanceSeedData()` connect `Community 0` to `Community 1`, `Community 4`, `Community 13`?**
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
+- **Why does `Boolean()` connect `Community 2` to `Community 3`, `Community 4`, `Community 5`, `Community 10`, `Community 17`?**
   _High betweenness centrality (0.082) - this node is a cross-community bridge._
 - **Are the 37 inferred relationships involving `ensureHeroGovernanceSeedData()` (e.g. with `getAuthenticatedEmployee()` and `importSecurityUsersAction()`) actually correct?**
   _`ensureHeroGovernanceSeedData()` has 37 INFERRED edges - model-reasoned connections that need verification._

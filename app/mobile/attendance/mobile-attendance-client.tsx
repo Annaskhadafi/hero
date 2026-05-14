@@ -346,6 +346,20 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
+  function handleFaceVerificationFailure(message: string) {
+    setFaceRecAttempts((current) => {
+      const nextAttempts = current + 1
+      if (nextAttempts >= MAX_FACE_REC_ATTEMPTS) {
+        setFaceRecMode('fallback')
+        setFaceRecMessage('Verifikasi server gagal 2x. Pakai capture foto agar absensi tetap jalan.')
+      } else {
+        setFaceRecMode('detecting')
+        setFaceRecMessage(`${message} (${nextAttempts}/2). Tekan Verify Wajah untuk coba lagi.`)
+      }
+      return nextAttempts
+    })
+  }
+
   async function runFaceRecognition() {
     if (!videoRef.current || videoRef.current.readyState < 2) {
       setFaceRecMessage('Kamera belum siap. Tunggu sebentar lalu coba lagi.')
@@ -355,6 +369,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
     setFaceRecMode('verifying')
     setFaceRecMessage('Capture foto dan verifikasi di server...')
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 15000)
 
     try {
       const file = await captureFrame()
@@ -372,9 +388,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           longitude: geo.longitude || '0',
           clientRequestId: crypto.randomUUID(),
         }),
+        signal: controller.signal,
       })
 
-      const result = await response.json()
+      const result = await response.json().catch(() => null)
+      if (!response.ok || !result) {
+        handleFaceVerificationFailure('Server face recognition tidak merespons')
+        return
+      }
 
       if (result.verified) {
         setFaceRecMode('success')
@@ -397,18 +418,15 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       }
 
       // Verification failed
-      const newAttempts = faceRecAttempts + 1
-      setFaceRecAttempts(newAttempts)
-      if (newAttempts >= MAX_FACE_REC_ATTEMPTS) {
-        setFaceRecMode('fallback')
-        setFaceRecMessage('Verifikasi server gagal 2x. Pakai capture foto agar absensi tetap jalan.')
-      } else {
-        setFaceRecMode('detecting')
-        setFaceRecMessage(`Verifikasi gagal (${newAttempts}/2). Tekan Verify Wajah untuk coba lagi.`)
-      }
-    } catch {
-      setFaceRecMode('fallback')
-      setFaceRecMessage('Error server face recognition. Pakai capture foto agar absensi tetap jalan.')
+      handleFaceVerificationFailure('Verifikasi gagal')
+    } catch (error) {
+      handleFaceVerificationFailure(
+        error instanceof DOMException && error.name === 'AbortError'
+          ? 'Server terlalu lama'
+          : 'Error server face recognition'
+      )
+    } finally {
+      window.clearTimeout(timeout)
     }
   }
 
@@ -831,6 +849,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           <button
             type="button"
             onClick={() => {
+              setFaceRecAttempts(0)
               setFaceRecMode('detecting')
               setFaceRecMessage('Kamera siap. Model Face Recognition diproses di server.')
             }}
