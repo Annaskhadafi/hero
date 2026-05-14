@@ -2,10 +2,12 @@
 
 import { db } from '@/db'
 import { attendanceRecords, employees, masterAttendanceShifts, sites } from '@/db/schema/hero'
+import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
 import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
+import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { eq, and, gte, lte, desc, sql, asc } from 'drizzle-orm'
@@ -259,6 +261,14 @@ function getAttendanceQueryWindow() {
   }
 }
 
+function periodFromDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.slice(0, 7) : null
+}
+
+function dayNumberFromDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? Number(value.slice(-2)) : null
+}
+
 async function getMobileAttendanceShiftOptions() {
   const shifts = await db
     .select({
@@ -432,6 +442,82 @@ export async function submitAttendance(formData: FormData) {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to submit attendance',
     }
+  }
+}
+
+export async function submitAttendancePermission(formData: FormData) {
+  try {
+    const employee = await getCurrentEmployee()
+    if (!employee) return { success: false, error: 'Unauthorized' }
+
+    const permissionType = getTrimmedFormValue(formData, 'permissionType')
+    const requestDate = getTrimmedFormValue(formData, 'requestDate')
+    const reason = getTrimmedFormValue(formData, 'reason')
+    const period = periodFromDate(requestDate)
+    const day = dayNumberFromDate(requestDate)
+
+    if (!period || !day) return { success: false, error: 'Tanggal izin tidak valid.' }
+    if (!['sick', 'urgent', 'leave'].includes(permissionType)) {
+      return { success: false, error: 'Tipe izin tidak valid.' }
+    }
+
+    const status = permissionType === 'sick' ? 'sick' : 'leave'
+    let photoUrl = ''
+    const file = formData.get('file')
+    if (file instanceof File && file.size > 0) {
+      const uploadResult = await uploadFile(formData)
+      if (!uploadResult.success || !uploadResult.url) {
+        return { success: false, error: uploadResult.error || 'Upload foto izin gagal.' }
+      }
+      photoUrl = uploadResult.url
+    }
+
+    await ensureSchedulingTimesheetTables()
+    const now = new Date()
+    const note = [
+      permissionType === 'sick' ? 'Izin Sakit' : permissionType === 'urgent' ? 'Izin Urgent' : 'Izin',
+      reason,
+      photoUrl ? `Lampiran: ${photoUrl}` : '',
+    ]
+      .filter(Boolean)
+      .join(' | ')
+
+    await db
+      .insert(timesheetAttendanceRealOverrides)
+      .values({
+        siteId: employee.siteId,
+        period,
+        employeeId: employee.id,
+        day,
+        status,
+        clockIn: '',
+        clockOut: '',
+        note,
+        source: 'manual',
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          timesheetAttendanceRealOverrides.siteId,
+          timesheetAttendanceRealOverrides.period,
+          timesheetAttendanceRealOverrides.employeeId,
+          timesheetAttendanceRealOverrides.day,
+        ],
+        set: {
+          status,
+          clockIn: '',
+          clockOut: '',
+          note,
+          source: 'manual',
+          updatedAt: now,
+        },
+      })
+
+    revalidatePath('/mobile/attendance')
+    revalidatePath('/dashboard/scheduling-timesheet/attendance')
+    return { success: true, message: 'Izin tersimpan dan masuk ke Attendance.' }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Izin gagal disimpan.' }
   }
 }
 

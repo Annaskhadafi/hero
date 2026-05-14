@@ -126,6 +126,7 @@ type EmployeeScheduleProfile = {
 type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'Libur' | 'Sakit' | 'Emergency'
 type SiteScheduleType = 'shift' | 'office'
 type SiteRosterType = '5:2' | '6:1' | 'vale'
+type DefaultShiftType = 'day-shift' | 'night-shift'
 type SiteMsaType = 'staff-nonstaff' | 'same-all' | 'none'
 type SiteMealsType = 'field-break' | 'workday' | 'none'
 type SiteOvertimeType = 'five-hour' | 'roster' | 'none'
@@ -136,6 +137,11 @@ type SiteSchedulingConfig = {
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
+  defaultShiftType: DefaultShiftType
+  defaultClockIn: string
+  defaultClockOut: string
+  defaultEarlyOvertimeHours: number
+  defaultOvertimeEnd: string
   lokasiKhususRate: number
   lokasiKhususEnabled: boolean
 }
@@ -274,6 +280,11 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   msaType: 'staff-nonstaff',
   mealsType: 'field-break',
   overtimeType: 'five-hour',
+  defaultShiftType: 'day-shift',
+  defaultClockIn: '07:00',
+  defaultClockOut: '17:00',
+  defaultEarlyOvertimeHours: 1,
+  defaultOvertimeEnd: '19:00',
   lokasiKhususRate: 35000,
   lokasiKhususEnabled: false,
 }
@@ -602,6 +613,7 @@ const EMPTY_SCHEDULING_CONFIGS: Array<{
   msaType?: string
   mealsType?: string
   overtimeType?: string
+  fieldBreakConfig?: unknown
   allowanceVariables?: unknown
   overtimeVariables?: unknown
 }> = []
@@ -736,10 +748,12 @@ export function SchedulingTimesheetWorkspace({
   attendanceOverrides = EMPTY_ATTENDANCE_OVERRIDES,
   schedulingConfigs = EMPTY_SCHEDULING_CONFIGS,
   schedulingStatuses = EMPTY_SCHEDULING_STATUSES,
+  currentEmployeeSiteId = null,
 }: {
   mode?: SchedulingTimesheetMode
   employees: EmployeeOption[]
   sites: SiteOption[]
+  currentEmployeeSiteId?: number | null
   savedPlans?: SavedSchedulingPlan[]
   fieldBreakPlans?: SavedFieldBreakPlan[]
   attendanceRecords?: AttendanceRealRecord[]
@@ -751,6 +765,7 @@ export function SchedulingTimesheetWorkspace({
     msaType?: string
     mealsType?: string
     overtimeType?: string
+    fieldBreakConfig?: unknown
     allowanceVariables?: unknown
     overtimeVariables?: unknown
   }>
@@ -768,7 +783,10 @@ export function SchedulingTimesheetWorkspace({
   importPreviews?: unknown[]
 }) {
   const [period, setPeriod] = useState(currentMonthPeriod)
-  const [siteId, setSiteId] = useState(String(sites[0]?.id ?? 'all'))
+  const userDefaultSiteId = useMemo(() => {
+    return String(currentEmployeeSiteId ?? sites[0]?.id ?? 'all')
+  }, [currentEmployeeSiteId, sites])
+  const [siteId, setSiteId] = useState(userDefaultSiteId)
   const [roster, setRoster] = useState('5:2')
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null)
   const [swapTargetEmployeeId, setSwapTargetEmployeeId] = useState('')
@@ -989,6 +1007,10 @@ export function SchedulingTimesheetWorkspace({
     if (siteId === 'all') return
 
     const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
+    const fieldBreakConfig =
+      ((savedConfig as Record<string, unknown> | undefined)?.fieldBreakConfig as
+        | Record<string, unknown>
+        | undefined) ?? {}
     const config = savedConfig
       ? {
           scheduleType: savedConfig.scheduleType as SiteScheduleType,
@@ -996,12 +1018,15 @@ export function SchedulingTimesheetWorkspace({
           msaType: savedConfig.msaType as SiteMsaType,
           mealsType: savedConfig.mealsType as SiteMealsType,
           overtimeType: savedConfig.overtimeType as SiteOvertimeType,
-          lokasiKhususRate:
-            (((savedConfig as Record<string, unknown>).fieldBreakConfig as Record<string, unknown>)
-              ?.lokasiKhususRate as number) ?? 35000,
-          lokasiKhususEnabled:
-            (((savedConfig as Record<string, unknown>).fieldBreakConfig as Record<string, unknown>)
-              ?.lokasiKhususEnabled as boolean) ?? false,
+          defaultShiftType:
+            (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
+          defaultClockIn: (fieldBreakConfig.defaultClockIn as string | undefined) ?? '07:00',
+          defaultClockOut: (fieldBreakConfig.defaultClockOut as string | undefined) ?? '17:00',
+          defaultEarlyOvertimeHours:
+            Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
+          defaultOvertimeEnd: (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
+          lokasiKhususRate: Number(fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
+          lokasiKhususEnabled: Boolean(fieldBreakConfig.lokasiKhususEnabled ?? false),
         }
       : defaultSiteConfig
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
@@ -1670,11 +1695,28 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
 
-    const { lokasiKhususEnabled, lokasiKhususRate, ...dbConfig } = siteConfig
+    const {
+      lokasiKhususEnabled,
+      lokasiKhususRate,
+      defaultShiftType,
+      defaultClockIn,
+      defaultClockOut,
+      defaultEarlyOvertimeHours,
+      defaultOvertimeEnd,
+      ...dbConfig
+    } = siteConfig
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
       ...dbConfig,
-      fieldBreakConfig: { lokasiKhususEnabled, lokasiKhususRate },
+      fieldBreakConfig: {
+        lokasiKhususEnabled,
+        lokasiKhususRate,
+        defaultShiftType,
+        defaultClockIn,
+        defaultClockOut,
+        defaultEarlyOvertimeHours,
+        defaultOvertimeEnd,
+      },
       allowanceVariables,
       overtimeVariables,
     })
@@ -3354,6 +3396,67 @@ export function SchedulingTimesheetWorkspace({
                     { value: 'roster', label: 'Ikut roster' },
                     { value: 'none', label: 'Tidak dihitung' },
                   ]}
+                />
+              </div>
+            </div>
+            <div className="border-border/30 grid gap-4 border-t px-4 py-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Default Shift
+                </Label>
+                <NativeSelect
+                  value={siteConfig.defaultShiftType}
+                  onValueChange={(value) =>
+                    updateSiteConfig('defaultShiftType', value as DefaultShiftType)
+                  }
+                  options={[
+                    { value: 'day-shift', label: 'Day Shift' },
+                    { value: 'night-shift', label: 'Night Shift' },
+                  ]}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Jam Masuk
+                </Label>
+                <Input
+                  type="time"
+                  value={siteConfig.defaultClockIn}
+                  onChange={(event) => updateSiteConfig('defaultClockIn', event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Jam Pulang
+                </Label>
+                <Input
+                  type="time"
+                  value={siteConfig.defaultClockOut}
+                  onChange={(event) => updateSiteConfig('defaultClockOut', event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Lembur Awal (Jam)
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={siteConfig.defaultEarlyOvertimeHours}
+                  onChange={(event) =>
+                    updateSiteConfig('defaultEarlyOvertimeHours', Number(event.target.value) || 0)
+                  }
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                  Batas Jam Lembur
+                </Label>
+                <Input
+                  type="time"
+                  value={siteConfig.defaultOvertimeEnd}
+                  onChange={(event) => updateSiteConfig('defaultOvertimeEnd', event.target.value)}
                 />
               </div>
             </div>

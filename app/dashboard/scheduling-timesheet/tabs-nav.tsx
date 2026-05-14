@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Coffee,
   FileSpreadsheet,
+  FileText,
   LayoutDashboard,
   Users,
 } from 'lucide-react'
@@ -36,6 +37,12 @@ const tabs = [
     href: '/dashboard/scheduling-timesheet/attendance',
     icon: ClipboardList,
     hint: 'Kehadiran real',
+  },
+  {
+    label: 'Izin',
+    href: '/dashboard/scheduling-timesheet/permission',
+    icon: FileText,
+    hint: 'Sakit, urgent, dan izin manual',
   },
   {
     label: 'Field Break',

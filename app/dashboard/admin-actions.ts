@@ -2332,6 +2332,10 @@ function normalizeAuthEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
+function buildDefaultUserManagementPassword(employeeSn: string | null | undefined) {
+  return `Chitra#${(employeeSn ?? '').trim()}`
+}
+
 async function upsertCredentialAccount({
   authUserId,
   email,
@@ -3368,7 +3372,8 @@ export async function manageSecurityUserAction(
     if (payload.intent === 'create-user') {
       const fullName = payload.fullName?.trim() ?? ''
       const email = normalizeEmail(payload.email ?? '')
-      const password = payload.password ?? ''
+      const employeeSn = payload.employeeSn?.trim() ?? ''
+      const password = payload.password?.trim() || buildDefaultUserManagementPassword(employeeSn)
       const department = payload.department?.trim() || 'General'
       const section = payload.section?.trim() || department
       const jobTitle = payload.jobTitle?.trim() || 'Staff'
@@ -3386,6 +3391,13 @@ export async function manageSecurityUserAction(
         return {
           status: 'error',
           message: 'Full name, email, and role are required.',
+        }
+      }
+
+      if (!employeeSn) {
+        return {
+          status: 'error',
+          message: 'SN is required for default password.',
         }
       }
 
@@ -3465,7 +3477,7 @@ export async function manageSecurityUserAction(
         siteId: defaultSite.id,
         name: fullName,
         email,
-        employeeSn: payload.employeeSn?.trim() || '',
+        employeeSn,
         joinYear: parseJoinYear(payload.joinYear ?? ''),
         birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
         domicile: payload.domicile?.trim() || 'Belum diisi',

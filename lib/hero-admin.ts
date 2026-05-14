@@ -52,6 +52,7 @@ import {
   wellnessRecords,
 } from '@/db/schema/hero'
 import { session, user as authUser } from '@/db/schema/auth'
+import { getServerSession } from '@/lib/auth-session'
 import {
   timesheetAttendanceImportPreviews,
   timesheetAttendanceRealOverrides,
@@ -2674,6 +2675,7 @@ export async function getOperationalCrudOptions() {
 
 export async function getSchedulingTimesheetOptions() {
   await ensureSchedulingTimesheetTables()
+  const authSession = await getServerSession()
   const [
     employeeRows,
     siteRows,
@@ -2743,7 +2745,14 @@ export async function getSchedulingTimesheetOptions() {
       .catch(() => []),
   ])
 
+  const currentEmployee = authSession?.user?.email
+    ? employeeRows.find(
+        (employee) => employee.email?.toLowerCase() === authSession.user.email.toLowerCase()
+      )
+    : null
+
   return {
+    currentEmployeeSiteId: currentEmployee?.siteId ?? null,
     employees: employeeRows.map((employee) => ({
       id: employee.id,
       name: employee.name,

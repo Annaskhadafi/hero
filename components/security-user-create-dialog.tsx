@@ -345,12 +345,11 @@ export function SecurityUserCreateDialog({
                 <Input
                   name="password"
                   type="password"
-                  placeholder="Minimal 8 karakter"
-                  required
+                  placeholder="Kosongkan untuk Chitra#SN"
                 />
               </label>
               <div className="grid content-end text-sm text-muted-foreground">
-                Password ini langsung digunakan untuk akun login pengguna baru.
+                Default login mengikuti format Chitra#SN jika password tidak diisi.
               </div>
             </div>
           </div>

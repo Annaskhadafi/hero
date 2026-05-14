@@ -110,23 +110,19 @@ export async function syncFaceAttendanceToTimesheet(
     return null
   }
 
+  const sortedRecords = [...records].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
+
   // Partition into check-ins and check-outs
   const checkIns = records.filter((r) => !isCheckOutEvent(r.eventType))
   const checkOuts = records.filter((r) => isCheckOutEvent(r.eventType))
 
-  // Compute earliest check-in
-  let clockIn = ''
-  if (checkIns.length > 0) {
-    const earliest = checkIns.reduce((min, r) => (r.eventTime < min.eventTime ? r : min))
-    clockIn = formatTimeHHMM(earliest.eventTime)
-  }
+  // Timesheet attendance uses the first and last real attendance punch in the day.
+  const firstPunch = sortedRecords[0]
+  const lastPunch = sortedRecords[sortedRecords.length - 1]
+  const clockIn = firstPunch ? formatTimeHHMM(firstPunch.eventTime) : ''
 
-  // Compute latest check-out (same day)
-  let clockOut = ''
-  if (checkOuts.length > 0) {
-    const latest = checkOuts.reduce((max, r) => (r.eventTime > max.eventTime ? r : max))
-    clockOut = formatTimeHHMM(latest.eventTime)
-  }
+  // Prefer explicit checkout when present; otherwise use the latest punch as clock-out.
+  let clockOut = lastPunch && lastPunch.id !== firstPunch?.id ? formatTimeHHMM(lastPunch.eventTime) : ''
 
   // Overnight shift handling: if no check-out today, look at next day 00:00-06:00
   if (checkIns.length > 0 && checkOuts.length === 0) {

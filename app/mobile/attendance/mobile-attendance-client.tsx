@@ -392,7 +392,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     if (!videoRef.current || videoRef.current.readyState < 2) {
       setFaceRecMessage('Kamera belum siap. Membuka kamera ulang...')
       setFaceRecMode('loading')
-      await reopenCameraForRetry()
+      await reopenCameraForRetry({ resetAttempts: false })
       return
     }
 
@@ -428,7 +428,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
       if (result.verified) {
         setFaceRecMode('success')
-        setFaceRecMessage('✓ Wajah terverifikasi!')
+        setFaceRecMessage('✓ Wajah cocok. Akun terkonfirmasi.')
         navigator.vibrate?.(200)
         if (result.attendanceRecord) {
           setAttendanceLogs((current) => [
@@ -442,7 +442,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             ...current,
           ])
         }
-        startTransition(() => router.refresh())
         return
       }
 
@@ -583,9 +582,9 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     return file
   }
 
-  async function reopenCameraForRetry() {
+  async function reopenCameraForRetry(options: { resetAttempts?: boolean } = {}) {
     setCapturedFile(null)
-    setFaceRecAttempts(0)
+    if (options.resetAttempts) setFaceRecAttempts(0)
     setFaceRecMode('loading')
     setFaceRecMessage('Membuka kamera ulang...')
     await new Promise((resolve) => window.setTimeout(resolve, 80))
@@ -598,7 +597,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
     try {
       if (!videoRef.current || videoRef.current.readyState < 2) {
-        await reopenCameraForRetry()
+        await reopenCameraForRetry({ resetAttempts: false })
         await new Promise((resolve) => window.setTimeout(resolve, 250))
       }
       await captureFrame()
@@ -864,8 +863,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
               <div className="flex size-12 items-center justify-center rounded-full bg-green-100">
                 <UserCheck className="size-6 text-green-700" />
               </div>
-              <p className="text-sm font-black text-green-800">Wajah Terverifikasi!</p>
-              <p className="text-[10px] font-bold text-green-700">Absensi otomatis berhasil</p>
+              <p className="text-sm font-black text-green-800">Akun Terkonfirmasi</p>
+              <p className="text-center text-[10px] leading-4 font-bold text-green-700">
+                {data.employee?.name || 'Wajah'} cocok. Absensi berhasil direkam.
+              </p>
             </div>
           </div>
         )}
@@ -979,6 +980,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
           Registrasi Wajah Dulu (Wajib untuk Face Recognition)
         </Link>
       )}
+
+      <Link
+        href="/mobile/attendance/permission"
+        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-white px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
+      >
+        <Upload className="size-4" />
+        Izin / Sakit
+      </Link>
 
       <section className="overflow-hidden rounded-[0.75rem] bg-white p-4 shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
         <div className="mb-4 flex items-center justify-between">
@@ -1105,7 +1114,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
       {faceRecMode === 'success' && (
         <div className="rounded-[0.65rem] bg-[#dff2e8] px-4 py-3 text-center text-xs font-bold text-[#0f5132]">
-          ✓ Absensi berhasil direkam via face recognition
+          ✓ Akun {data.employee?.name || 'Anda'} terkonfirmasi. Absensi berhasil direkam via face recognition.
         </div>
       )}
 
