@@ -4,12 +4,26 @@ import { attendanceRecords, employees } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
 import { cosineSimilarity } from '@/lib/face-recognition/cosine-similarity'
 import { validateEmbedding } from '@/lib/face-recognition/embedding-validator'
+import { extractServerFaceEmbedding } from '@/lib/face-recognition/server-face-api'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 
 // --- Constants ---
 const SIMILARITY_THRESHOLD = 0.7
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out']
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+type FaceVerificationPayload = {
+  employeeId?: unknown
+  embedding?: unknown
+  photo?: unknown
+  siteId?: unknown
+  eventType?: unknown
+  latitude?: unknown
+  longitude?: unknown
+  clientRequestId?: unknown
+}
 
 // --- Error response helper ---
 function errorResponse(status: number, code: string, message: string, field?: string) {
@@ -25,9 +39,9 @@ function errorResponse(status: number, code: string, message: string, field?: st
 export async function POST(request: NextRequest) {
   try {
     // 1. Parse JSON body
-    let body: unknown
+    let body: FaceVerificationPayload
     try {
-      body = await request.json()
+      body = (await request.json()) as FaceVerificationPayload
     } catch {
       return errorResponse(400, 'VALIDATION_ERROR', 'Request body must be valid JSON.')
     }
@@ -36,15 +50,15 @@ export async function POST(request: NextRequest) {
       return errorResponse(400, 'VALIDATION_ERROR', 'Request body must be a JSON object.')
     }
 
-    const { employeeId, embedding, siteId, eventType, latitude, longitude, clientRequestId } =
-      body as Record<string, unknown>
+    const { employeeId, embedding, photo, siteId, eventType, latitude, longitude, clientRequestId } =
+      body
 
     // 2. Required fields validation
     if (employeeId === undefined || employeeId === null) {
       return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
     }
-    if (embedding === undefined || embedding === null) {
-      return errorResponse(400, 'VALIDATION_ERROR', 'embedding is required.', 'embedding')
+    if ((embedding === undefined || embedding === null) && (photo === undefined || photo === null)) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'embedding or photo is required.', 'photo')
     }
     if (siteId === undefined || siteId === null) {
       return errorResponse(400, 'VALIDATION_ERROR', 'siteId is required.', 'siteId')
@@ -127,17 +141,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 5. Validate embedding
-    const embeddingValidation = validateEmbedding(embedding)
-    if (!embeddingValidation.valid) {
-      return errorResponse(
-        400,
-        'INVALID_EMBEDDING',
-        embeddingValidation.error || 'Invalid embedding.'
-      )
-    }
+    // 5. Build live embedding. Prefer server-side photo extraction to avoid client model load.
+    let liveEmbedding: number[]
+    let detectionScore: number | null = null
+    if (photo && typeof photo === 'object') {
+      const photoPayload = photo as { dataUrl?: unknown; type?: unknown; size?: unknown }
+      const dataUrl = typeof photoPayload.dataUrl === 'string' ? photoPayload.dataUrl : ''
+      const matches = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/)
+      if (!matches) {
+        return errorResponse(400, 'INVALID_PHOTO', 'Photo payload is invalid.', 'photo')
+      }
 
-    const liveEmbedding = embedding as number[]
+      const [, mimeType, base64] = matches
+      if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+        return errorResponse(400, 'INVALID_PHOTO', 'Photo must be JPEG, PNG, or WEBP.', 'photo')
+      }
+
+      const buffer = Buffer.from(base64, 'base64')
+      if (buffer.length > MAX_PHOTO_SIZE) {
+        return errorResponse(400, 'INVALID_PHOTO', 'Photo must not exceed 5MB.', 'photo')
+      }
+
+      const extraction = await extractServerFaceEmbedding(buffer)
+      if (!extraction) {
+        return NextResponse.json(
+          { verified: false, error: { code: 'NO_FACE_DETECTED', message: 'Wajah tidak terdeteksi.' } },
+          { status: 200 }
+        )
+      }
+
+      liveEmbedding = extraction.embedding
+      detectionScore = extraction.detectionScore
+    } else {
+      const embeddingValidation = validateEmbedding(embedding)
+      if (!embeddingValidation.valid) {
+        return errorResponse(
+          400,
+          'INVALID_EMBEDDING',
+          embeddingValidation.error || 'Invalid embedding.'
+        )
+      }
+      liveEmbedding = embedding as number[]
+    }
 
     // 6. Idempotency check — return existing record if clientRequestId already exists
     const existingRecords = await db
@@ -247,6 +292,7 @@ export async function POST(request: NextRequest) {
       {
         verified: true,
         similarityScore: similarity,
+        detectionScore,
         attendanceRecord: {
           id: insertedRecord.id,
           eventType: insertedRecord.eventType,

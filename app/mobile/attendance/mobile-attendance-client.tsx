@@ -248,19 +248,13 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   // Face recognition state
   const [faceRecMode, setFaceRecMode] = useState<
     'loading' | 'detecting' | 'fallback' | 'success' | 'verifying'
-  >('loading')
+  >('detecting')
   const [faceRecMessage, setFaceRecMessage] = useState('')
   const [faceRecAttempts, setFaceRecAttempts] = useState(0)
-  const [faceModelLoadAttempts, setFaceModelLoadAttempts] = useState(0)
-  const faceapiRef = useRef<any>(null)
   const faceRecLoopRef = useRef<number | null>(null)
   const faceRecStartRef = useRef<number>(Date.now())
-  const faceModelFailureCountedRef = useRef(false)
   const MAX_FACE_REC_ATTEMPTS = 2
-  const MAX_FACE_MODEL_LOAD_ATTEMPTS = 2
-  const FACE_MODEL_LOAD_TIMEOUT = 12000
   const NO_FACE_TIMEOUT = 15000
-  const faceModelPromiseRef = useRef<Promise<any> | null>(null)
 
   const latestLog = attendanceLogs[0]
   const nextType = latestLog?.eventType === 'checked-in' ? 'checked-out' : 'checked-in'
@@ -283,84 +277,10 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     return () => window.clearInterval(timer)
   }, [])
 
-  function failToCapture(message: string) {
-    faceModelPromiseRef.current = null
-    setFaceRecMode('fallback')
-    setFaceRecMessage(message)
-  }
-
-  function handleFaceModelLoadFailure() {
-    const alreadyCounted = faceModelFailureCountedRef.current
-    if (!alreadyCounted) {
-      faceModelFailureCountedRef.current = true
-    }
-
-    setFaceModelLoadAttempts((current) => {
-      const nextAttempts = alreadyCounted ? current : current + 1
-      failToCapture(
-        nextAttempts >= MAX_FACE_MODEL_LOAD_ATTEMPTS
-          ? 'Model wajah lambat/gagal 2x. Pakai capture foto agar absensi tetap jalan.'
-          : 'Model wajah gagal dimuat. Coba muat ulang Face Recognition atau pakai capture foto.'
-      )
-      return nextAttempts
-    })
-  }
-
-  function timeoutAfter<T>(promise: Promise<T>, timeoutMs: number, label: string) {
-    return new Promise<T>((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs)
-      promise.then(resolve, reject).finally(() => window.clearTimeout(timer))
-    })
-  }
-
-  async function loadFaceModels() {
-    if (faceapiRef.current) return faceapiRef.current
-
-    if (!faceModelPromiseRef.current) {
-      faceModelFailureCountedRef.current = false
-      setFaceRecMode('loading')
-      setFaceRecMessage('Memuat model Face Recognition (maks 12 detik)...')
-      faceModelPromiseRef.current = import('face-api.js').then(async (faceapi) => {
-        setFaceRecMessage('Memuat detector wajah...')
-        await timeoutAfter(
-          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
-          FACE_MODEL_LOAD_TIMEOUT,
-          'Face detector'
-        )
-        setFaceRecMessage('Memuat landmark wajah...')
-        await timeoutAfter(
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-          FACE_MODEL_LOAD_TIMEOUT,
-          'Face landmarks'
-        )
-        setFaceRecMessage('Memuat pengenal wajah...')
-        await timeoutAfter(
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-          FACE_MODEL_LOAD_TIMEOUT,
-          'Face recognition'
-        )
-        faceapiRef.current = faceapi
-        return faceapi
-      }).catch((error) => {
-        faceModelPromiseRef.current = null
-        throw error
-      })
-    }
-
-    return faceModelPromiseRef.current
-  }
-
   useEffect(() => {
     if (!data.employee?.faceRegisteredAt) return
-
-    void loadFaceModels()
-      .then(() => {
-        setFaceRecMode('detecting')
-        setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
-      })
-      .catch(() => {
-        handleFaceModelLoadFailure()
-      })
+    setFaceRecMode('detecting')
+    setFaceRecMessage('Siap. Tekan Verify Wajah, model diproses di server.')
   }, [data.employee?.faceRegisteredAt])
 
   useEffect(() => {
@@ -427,43 +347,25 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   }, [])
 
   async function runFaceRecognition() {
-    if (!faceapiRef.current || !videoRef.current || videoRef.current.readyState < 2) {
-      setFaceRecMessage('Model atau kamera belum siap. Tunggu sebentar lalu coba lagi.')
-      setFaceRecMode('loading')
+    if (!videoRef.current || videoRef.current.readyState < 2) {
+      setFaceRecMessage('Kamera belum siap. Tunggu sebentar lalu coba lagi.')
+      setFaceRecMode('detecting')
       return
     }
 
     setFaceRecMode('verifying')
-    setFaceRecMessage('Mendeteksi & memverifikasi wajah...')
+    setFaceRecMessage('Capture foto dan verifikasi di server...')
 
     try {
-      const detection = await faceapiRef.current
-        .detectSingleFace(videoRef.current, new faceapiRef.current.SsdMobilenetv1Options())
-        .withFaceLandmarks()
-        .withFaceDescriptor()
-
-      if (!detection) {
-        const newAttempts = faceRecAttempts + 1
-        setFaceRecAttempts(newAttempts)
-        if (newAttempts >= MAX_FACE_REC_ATTEMPTS) {
-          setFaceRecMode('fallback')
-          setFaceRecMessage('Wajah tidak terdeteksi 3x. Gunakan capture manual.')
-        } else {
-          setFaceRecMode('detecting')
-          setFaceRecMessage(`Wajah tidak terdeteksi (${newAttempts}/3). Coba lagi.`)
-        }
-        return
-      }
-
-      // Face detected - verify against stored embedding
-      const embedding = Array.from(detection.descriptor)
+      const file = await captureFrame()
+      const photo = await fileToPayload(file)
 
       const response = await fetch('/api/mobile/face-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: data.employee?.id,
-          embedding,
+          photo,
           siteId: data.employee?.siteId || 1,
           eventType: nextType,
           latitude: geo.latitude || '0',
@@ -499,14 +401,14 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       setFaceRecAttempts(newAttempts)
       if (newAttempts >= MAX_FACE_REC_ATTEMPTS) {
         setFaceRecMode('fallback')
-        setFaceRecMessage('Verifikasi gagal 3x. Gunakan capture manual.')
+        setFaceRecMessage('Verifikasi server gagal 2x. Pakai capture foto agar absensi tetap jalan.')
       } else {
         setFaceRecMode('detecting')
-        setFaceRecMessage(`Verifikasi gagal (${newAttempts}/3). Tekan tombol untuk coba lagi.`)
+        setFaceRecMessage(`Verifikasi gagal (${newAttempts}/2). Tekan Verify Wajah untuk coba lagi.`)
       }
     } catch {
       setFaceRecMode('fallback')
-      setFaceRecMessage('Error saat verifikasi. Gunakan capture manual.')
+      setFaceRecMessage('Error server face recognition. Pakai capture foto agar absensi tetap jalan.')
     }
   }
 
@@ -542,13 +444,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         setFaceRecMode('fallback')
         setFaceRecMessage('Wajah belum terdaftar di database production. Registrasi wajah dulu untuk mengaktifkan Face Recognition.')
       } else {
-        try {
-          await loadFaceModels()
-          setFaceRecMode('detecting')
-          setFaceRecMessage('Model siap. Tekan tombol untuk verifikasi wajah.')
-        } catch {
-          handleFaceModelLoadFailure()
-        }
+        setFaceRecMode('detecting')
+        setFaceRecMessage('Kamera siap. Model Face Recognition diproses di server.')
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Camera permission needed.'
@@ -633,17 +530,6 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Photo capture failed.')
     }
-  }
-
-  async function retryFaceRecognition() {
-    if (faceModelLoadAttempts >= MAX_FACE_MODEL_LOAD_ATTEMPTS) {
-      failToCapture('Model wajah sudah gagal 2x. Pakai capture foto agar absensi tetap jalan.')
-      return
-    }
-
-    faceModelPromiseRef.current = null
-    faceModelFailureCountedRef.current = false
-    await startCamera()
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -834,7 +720,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             <>
               <div className="size-3.5 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
               <span className="w-28 text-center text-[9px] leading-3 font-black">
-                {faceRecMessage || 'Memuat model wajah...'}
+                {faceRecMessage || 'Menyiapkan kamera...'}
               </span>
             </>
           ) : faceRecMode === 'detecting' ? (
@@ -921,7 +807,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#dcecf7] px-4 text-xs font-black text-[#003461] uppercase opacity-80"
           >
             <div className="size-4 animate-spin rounded-full border-2 border-[#003461] border-t-transparent" />
-            Memuat Face Recognition
+            Menyiapkan Face Recognition
           </button>
         </section>
       )}
@@ -942,16 +828,17 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
 
       {faceRecMode === 'fallback' && !requiresFaceRegistration && !isCameraBlocked && (
         <section className="grid gap-2">
-          {faceModelLoadAttempts < MAX_FACE_MODEL_LOAD_ATTEMPTS ? (
-            <button
-              type="button"
-              onClick={() => void retryFaceRecognition()}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#e6f6ff] px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
-            >
-              <ScanFace className="size-4" />
-              Coba Face Lagi ({faceModelLoadAttempts}/{MAX_FACE_MODEL_LOAD_ATTEMPTS})
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              setFaceRecMode('detecting')
+              setFaceRecMessage('Kamera siap. Model Face Recognition diproses di server.')
+            }}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-[#e6f6ff] px-4 text-xs font-black text-[#003461] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
+          >
+            <ScanFace className="size-4" />
+            Coba Face Lagi ({faceRecAttempts}/{MAX_FACE_REC_ATTEMPTS})
+          </button>
           <button
             type="button"
             onClick={() => void handleCaptureClick()}
