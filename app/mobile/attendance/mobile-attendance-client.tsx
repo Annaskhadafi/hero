@@ -261,6 +261,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
   const nextType = latestLog?.eventType === 'checked-in' ? 'checked-out' : 'checked-in'
   const actionLabel = nextType === 'checked-in' ? 'Confirm Check-In' : 'Confirm Check-Out'
   const requiresFaceRegistration = !data.employee?.faceRegisteredAt
+  const isCameraBlocked = Boolean(cameraError) || cameraPermissionOpen
   const selectedShiftOption =
     data.shiftOptions.find((shift) => shift.value === selectedShift) ?? data.shiftOptions[0]
   const siteName = data.employee?.siteName || data.employee?.workLocation || 'Site belum tersedia'
@@ -475,6 +476,8 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       setCameraReady(false)
       setCameraError(message)
       setCameraPermissionOpen(true)
+      setFaceRecMode('fallback')
+      setFaceRecMessage('Izin kamera ditolak. Aktifkan Camera Allow agar Face Recognition bisa berjalan.')
     }
   }
 
@@ -825,7 +828,7 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
       )}
 
       {/* Capture buttons - shown in fallback mode or when face rec is not active */}
-      {faceRecMode === 'fallback' && !requiresFaceRegistration && (
+      {faceRecMode === 'fallback' && !requiresFaceRegistration && !isCameraBlocked && (
         <section className="grid grid-cols-[1fr_auto] gap-3">
           <button
             type="button"
@@ -1052,20 +1055,13 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid gap-3">
               <button
                 type="button"
                 onClick={() => void startCamera()}
                 className="min-h-12 rounded-[0.65rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-3 text-[11px] font-black text-white uppercase"
               >
                 Coba allow lagi
-              </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="min-h-12 rounded-[0.65rem] bg-[#e6f6ff] px-3 text-[11px] font-black text-[#003461] uppercase"
-              >
-                Upload selfie
               </button>
             </div>
 
