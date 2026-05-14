@@ -12,10 +12,6 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-self.addEventListener("fetch", (event) => {
-  return;
-});
-
 self.addEventListener("push", (event) => {
   let payload = {};
 
