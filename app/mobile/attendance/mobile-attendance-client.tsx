@@ -26,7 +26,7 @@ type AttendanceEmployee = {
   workLocation: string | null
   siteId: number
   siteName?: string | null
-  faceRegisteredAt?: string | null
+  faceRegisteredAt?: Date | string | null
 }
 
 type AttendanceLog = {
