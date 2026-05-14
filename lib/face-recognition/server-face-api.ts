@@ -9,7 +9,7 @@ async function getFaceApi() {
       const faceapi = await import('face-api.js')
 
       const modelPath = path.join(process.cwd(), 'public', 'models')
-      await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath)
+      await faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath)
       await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath)
       await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
       return faceapi
@@ -23,15 +23,19 @@ export async function extractServerFaceEmbedding(imageBuffer: Buffer) {
   const faceapi = await getFaceApi()
   const { data, info } = await sharp(imageBuffer)
     .rotate()
-    .resize({ width: 720, height: 720, fit: 'inside', withoutEnlargement: true })
+    .resize({ width: 416, height: 416, fit: 'inside', withoutEnlargement: true })
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })
 
   const tensor = faceapi.tf.tensor3d(new Uint8Array(data), [info.height, info.width, info.channels])
   try {
+    const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 416,
+      scoreThreshold: 0.45,
+    })
     const detection = await faceapi
-      .detectSingleFace(tensor, new faceapi.SsdMobilenetv1Options())
+      .detectSingleFace(tensor, detectorOptions)
       .withFaceLandmarks()
       .withFaceDescriptor()
 
