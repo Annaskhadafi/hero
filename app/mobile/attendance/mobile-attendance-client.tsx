@@ -827,33 +827,16 @@ export function MobileAttendanceClient({ data }: { data: AttendancePageData }) {
         </section>
       )}
 
-      {/* Capture buttons - shown in fallback mode or when face rec is not active */}
       {faceRecMode === 'fallback' && !requiresFaceRegistration && !isCameraBlocked && (
-        <section className="grid grid-cols-[1fr_auto] gap-3">
+        <section>
           <button
             type="button"
-            onClick={handleCaptureClick}
-            className="flex min-h-12 items-center justify-center gap-2 rounded-[0.7rem] bg-white px-4 text-xs font-black text-[#003461] uppercase shadow-[0_10px_22px_rgba(8,32,51,0.08)] active:scale-[0.98]"
+            onClick={() => void startCamera()}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-[0.7rem] bg-gradient-to-br from-[#003461] to-[#004b87] px-4 text-xs font-black text-white uppercase shadow-[0_10px_22px_rgba(8,32,51,0.12)] active:scale-[0.98]"
           >
-            <Camera className="size-4" />
-            Capture
+            <ScanFace className="size-4" />
+            Muat Ulang Face Recognition
           </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex size-12 items-center justify-center rounded-[0.7rem] bg-[#e6f6ff] text-[#003461] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.06)] active:scale-[0.98]"
-            aria-label="Upload selfie"
-          >
-            <Upload className="size-4" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="user"
-            className="hidden"
-            onChange={handleFileChange}
-          />
         </section>
       )}
 
