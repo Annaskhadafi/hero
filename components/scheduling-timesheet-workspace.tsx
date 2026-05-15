@@ -1126,7 +1126,7 @@ export function SchedulingTimesheetWorkspace({
       )
     })
 
-    return filtered.length > 0 ? filtered : employees
+    return filtered
   }, [employees, isGenerated, mode, siteId, sites])
 
   const rosterSectionByEmployee = new Map(
