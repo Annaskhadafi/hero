@@ -4616,7 +4616,6 @@ export function SchedulingTimesheetWorkspace({
                                       </td>
                                     )
                                   }
-
                                   // Normal attendance view
                                   const isSelected = selectedAttendanceKeys.includes(
                                     attendanceKey(row.employee.id, day)
@@ -4792,7 +4791,6 @@ export function SchedulingTimesheetWorkspace({
                                             }
                                           }
                                         }
-                                      }
                                       return (
                                         <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
                                           {attendanceView === 'ovt'
