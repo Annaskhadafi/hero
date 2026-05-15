@@ -80,6 +80,15 @@ import { cn } from "@/lib/utils";
 
 import { SecurityUserBulkActions } from "@/components/security-user-bulk-actions";
 
+// Extract site name from workLocation
+// Example: "Repair & Retread - Sangatta" -> "Sangatta"
+// Example: "Balikpapan" -> "Balikpapan"
+function extractSiteName(workLocation: string | null | undefined): string {
+  if (!workLocation) return '-'
+  const parts = workLocation.split(' - ')
+  return parts.length > 1 ? parts[parts.length - 1].trim() : workLocation.trim()
+}
+
 const INITIAL_IMPORT_STATE: ImportUsersActionState = {
   status: "idle",
   message: "",
@@ -257,6 +266,7 @@ export function SecurityUserManagement({
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([]);
+  const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [rawCsv, setRawCsv] = useState("");
@@ -281,6 +291,10 @@ export function SecurityUserManagement({
   );
   const statusTypeOptions = useMemo(
     () => getUniqueOptions(users.map((user) => user.employeeStatusType)),
+    [users],
+  );
+  const siteOptions = useMemo(
+    () => getUniqueOptions(users.map((user) => extractSiteName(user.workLocation)).filter((s) => s !== "-")),
     [users],
   );
 
@@ -342,12 +356,16 @@ export function SecurityUserManagement({
       const matchesStatusType =
         selectedStatusTypes.length === 0 ||
         selectedStatusTypes.includes(user.employeeStatusType);
+      const matchesSite =
+        selectedSites.length === 0 ||
+        selectedSites.includes(extractSiteName(user.workLocation));
 
       return (
         matchesKeyword &&
         matchesDepartment &&
         matchesRole &&
-        matchesStatusType
+        matchesStatusType &&
+        matchesSite
       );
     });
   }, [
@@ -355,6 +373,7 @@ export function SecurityUserManagement({
     selectedDepartments,
     selectedRoles,
     selectedStatusTypes,
+    selectedSites,
     users,
   ]);
 
@@ -371,7 +390,8 @@ export function SecurityUserManagement({
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedRoles.length > 0 ||
-    selectedStatusTypes.length > 0;
+    selectedStatusTypes.length > 0 ||
+    selectedSites.length > 0;
   const missingRequiredMappings = USER_IMPORT_FIELDS.filter(
     (field) => field.required && !mapping[field.key],
   );
@@ -381,6 +401,7 @@ export function SecurityUserManagement({
     setSelectedDepartments([]);
     setSelectedRoles([]);
     setSelectedStatusTypes([]);
+    setSelectedSites([]);
   }
 
   function exportVisibleUsers() {
@@ -803,6 +824,13 @@ export function SecurityUserManagement({
                 placeholder="All status types"
                 label="Tipe status"
               />
+              <MultiSelectDropdown
+                options={siteOptions}
+                selected={selectedSites}
+                onChange={setSelectedSites}
+                placeholder="Semua site"
+                label="Site"
+              />
             </>
           }
           actions={
@@ -836,6 +864,7 @@ export function SecurityUserManagement({
                   <TableHead>Sub Section</TableHead>
                   <TableHead>Peran</TableHead>
                   <TableHead>Lokasi Site</TableHead>
+                  <TableHead>Site</TableHead>
                   <TableHead>Tipe Status</TableHead>
                   <TableHead className="w-[120px] text-right">Aksi</TableHead>
                 </TableRow>
@@ -901,6 +930,9 @@ export function SecurityUserManagement({
                       </TableCell>
                       <TableCell className="py-3.5 text-sm text-foreground/85">
                         {user.workLocation || "â€”"}
+                      </TableCell>
+                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                        {extractSiteName(user.workLocation)}
                       </TableCell>
                       <TableCell className="py-3.5">
                         <Badge
@@ -993,8 +1025,6 @@ export function SecurityUserManagement({
     </AdminPageShell>
   );
 }
-
-
 
 
 

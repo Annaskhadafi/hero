@@ -124,7 +124,7 @@ type EmployeeScheduleProfile = {
 }
 
 type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'Libur' | 'Sakit' | 'Emergency'
-type SiteScheduleType = 'shift' | 'office'
+type SiteScheduleType = 'shift' | 'office' | 'hybrid'
 type SiteRosterType = '5:2' | '6:1' | 'vale'
 type DefaultShiftType = 'day-shift' | 'night-shift'
 type SiteMsaType = 'staff-nonstaff' | 'same-all' | 'none'
@@ -143,6 +143,8 @@ type SiteSchedulingConfig = {
   defaultEarlyOvertimeHours: number
   defaultOvertimeEnd: string
   lokasiKhususRate: number
+  lokasiKhususRateStaff: number
+  lokasiKhususRateNonStaff: number
   lokasiKhususEnabled: boolean
 }
 
@@ -286,6 +288,8 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   defaultEarlyOvertimeHours: 1,
   defaultOvertimeEnd: '19:00',
   lokasiKhususRate: 35000,
+  lokasiKhususRateStaff: 35000,
+  lokasiKhususRateNonStaff: 35000,
   lokasiKhususEnabled: false,
 }
 
@@ -489,9 +493,16 @@ function buildSchedule(
   employeeIndex: number,
   day: number,
   scheduleType: SiteScheduleType,
-  period: string
+  period: string,
+  isStaff?: boolean
 ): ScheduleCode {
   if (scheduleType === 'office') return isWeekend(period, day) ? 'OFF' : 'IN'
+  // Hybrid: staff = office schedule, non-staff = shift schedule
+  if (scheduleType === 'hybrid') {
+    if (isStaff) return isWeekend(period, day) ? 'OFF' : 'IN'
+    if ((day + employeeIndex) % 9 === 0) return 'OFF'
+    return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+  }
   if ((day + employeeIndex) % 9 === 0) return 'OFF'
   return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
 }
@@ -533,7 +544,7 @@ function calculateOvertimeFromVariables(
   overtimeVariables: OvertimeVariable[],
   holidays: HolidayLike[]
 ) {
-  return schedule.reduce((sum, code, index) => {
+  const rawTotal = schedule.reduce((sum, code, index) => {
     const totalHours = hoursFromCode(code)
     if (totalHours <= 0) return sum
 
@@ -543,8 +554,12 @@ function calculateOvertimeFromVariables(
         item.roster === rosterType && item.dayType === dayType && item.totalHours === totalHours
     )
 
-    return sum + (variable?.overtimeHours ?? Math.max(0, totalHours - 5))
+    const rawOt = variable?.overtimeHours ?? Math.max(0, totalHours - 5)
+    return sum + rawOt
   }, 0)
+  // Apply overtime rounding rules per-day is handled at display level
+  // Here we return raw total for schedule-based OT
+  return rawTotal
 }
 
 function activeShiftCode(code?: ScheduleCode) {
@@ -600,6 +615,27 @@ function attendanceCellClass(status: AttendanceCellStatus) {
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
   return 'bg-red-100 text-red-950 ring-1 ring-red-200'
+}
+
+// Overtime rounding rules:
+// decimal >= 0.8 -> round up to next whole number
+// decimal >= 0.5 -> round to x.5
+// decimal < 0.5  -> round down to whole number
+function roundOvertimeHours(hours: number): number {
+  if (hours <= 0) return 0
+  const whole = Math.floor(hours)
+  const decimal = hours - whole
+  if (decimal >= 0.8) return whole + 1
+  if (decimal >= 0.5) return whole + 0.5
+  return whole
+}
+
+// Extract site name - same logic as User Management
+// "Repair & Retread - Sangatta" -> "Sangatta", "Balikpapan" -> "Balikpapan"
+function extractSiteNameLocal(loc: string | null | undefined): string {
+  if (!loc) return ''
+  const parts = loc.split(' - ')
+  return parts.length > 1 ? parts[parts.length - 1].trim() : loc.trim()
 }
 
 const EMPTY_SAVED_PLANS: SavedSchedulingPlan[] = []
@@ -906,15 +942,14 @@ export function SchedulingTimesheetWorkspace({
   )
   const site = sites.find((item) => String(item.id) === siteId)
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
-  const siteNameOptions = sites.map((item) => item.name).filter(Boolean)
+  const siteNameOptions = [...new Set(sites.map((item) => extractSiteNameLocal(item.name)).filter(Boolean))]
+  const siteExtractedName = extractSiteNameLocal(site?.name)
   const rate =
     allowanceVariables.find(
-      (item) => normalizeLocation(item.project) === normalizeLocation(site?.name ?? '')
+      (item) => item.project === siteExtractedName
     ) ??
     allowanceVariables.find(
-      (item) =>
-        normalizeLocation(site?.name ?? '').includes(normalizeLocation(item.project)) ||
-        normalizeLocation(item.project).includes(normalizeLocation(site?.name ?? ''))
+      (item) => normalizeLocation(item.project) === normalizeLocation(siteExtractedName)
     ) ??
     allowanceVariables[0] ??
     defaultAllowanceVariables[0]
@@ -1054,6 +1089,8 @@ export function SchedulingTimesheetWorkspace({
             Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
           defaultOvertimeEnd: (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
           lokasiKhususRate: Number(fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
+          lokasiKhususRateStaff: Number(fieldBreakConfig.lokasiKhususRateStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
+          lokasiKhususRateNonStaff: Number(fieldBreakConfig.lokasiKhususRateNonStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
           lokasiKhususEnabled: Boolean(fieldBreakConfig.lokasiKhususEnabled ?? false),
         }
       : defaultSiteConfig
@@ -1105,7 +1142,7 @@ export function SchedulingTimesheetWorkspace({
     setScheduleSavedAt(new Date(savedPlan.updatedAt).toLocaleString('id-ID'))
     setSiteScheduleTypes((current) => ({
       ...current,
-      [siteId]: savedPlan.siteScheduleType === 'shift' ? 'shift' : 'office',
+      [siteId]: (savedPlan.siteScheduleType === 'shift' || savedPlan.siteScheduleType === 'hybrid') ? savedPlan.siteScheduleType as SiteScheduleType : 'office',
     }))
   }, [fieldBreakPlans, period, savedPlan, siteId])
 
@@ -1114,19 +1151,20 @@ export function SchedulingTimesheetWorkspace({
     if (siteId === 'all') return []
 
     const selectedSite = sites.find((item) => String(item.id) === siteId)
-    const siteTerms = [selectedSite?.name, selectedSite?.customerName]
-      .filter(Boolean)
-      .map((value) => normalizeLocation(value ?? ''))
+    if (!selectedSite) return []
+
+    // Extract from selected site name
+    const selectedSiteExtracted = extractSiteNameLocal(selectedSite.name)
 
     const filtered = employees.filter((employee) => {
+      // First priority: exact siteId match
       if (String(employee.siteId) === siteId) return true
-      const employeeLocation = normalizeLocation(employee.locationName ?? '')
-      return siteTerms.some(
-        (term) => term && (employeeLocation.includes(term) || term.includes(employeeLocation))
-      )
+      // Second priority: employee locationName (already extracted) matches extracted site name
+      if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
+      return false
     })
 
-    // If no employees match, show all employees for attendance mode to allow manual assignment
+    // If no employees match, show all employees for attendance mode
     if (filtered.length === 0 && mode === 'attendance') {
       return employees
     }
@@ -1161,7 +1199,7 @@ export function SchedulingTimesheetWorkspace({
       const scheduleType = siteScheduleTypes[siteId] ?? 'office'
       const generatedCode = forceDayShift
         ? 'DS'
-        : buildSchedule(employeeIndex, day, scheduleType, period)
+        : buildSchedule(employeeIndex, day, scheduleType, period, isStaffRole(employee.role))
       const holidayAdjustedCode = applyHolidayPolicy(generatedCode, {
         scheduleType,
         rosterType: siteConfig.rosterType,
@@ -1730,6 +1768,8 @@ export function SchedulingTimesheetWorkspace({
     const {
       lokasiKhususEnabled,
       lokasiKhususRate,
+      lokasiKhususRateStaff,
+      lokasiKhususRateNonStaff,
       defaultShiftType,
       defaultClockIn,
       defaultClockOut,
@@ -1743,6 +1783,8 @@ export function SchedulingTimesheetWorkspace({
       fieldBreakConfig: {
         lokasiKhususEnabled,
         lokasiKhususRate,
+        lokasiKhususRateStaff,
+        lokasiKhususRateNonStaff,
         defaultShiftType,
         defaultClockIn,
         defaultClockOut,
@@ -1791,7 +1833,7 @@ export function SchedulingTimesheetWorkspace({
     setAllowanceVariables((current) => [
       ...current,
       {
-        project: site?.name ?? siteNameOptions[0] ?? 'Project Baru',
+        project: extractSiteNameLocal(site?.name) || siteNameOptions[0] || 'Project Baru',
         msaStaff: 0,
         msaNonStaff: 0,
         mealsStaff: 0,
@@ -2986,6 +3028,8 @@ export function SchedulingTimesheetWorkspace({
         siteName: site?.name || '',
         days: dayData,
         lokasiKhususRate: siteConfig.lokasiKhususRate,
+        lokasiKhususRateStaff: siteConfig.lokasiKhususRateStaff,
+        lokasiKhususRateNonStaff: siteConfig.lokasiKhususRateNonStaff,
         lokasiKhususEnabled: siteConfig.lokasiKhususEnabled,
         msaRate,
         mealsRate,
@@ -3247,7 +3291,7 @@ export function SchedulingTimesheetWorkspace({
               onValueChange={setSiteId}
               options={[
                 { value: 'all', label: 'Pilih site dahulu' },
-                ...sites.map((item) => ({ value: String(item.id), label: item.name })),
+                ...sites.map((item) => ({ value: String(item.id), label: extractSiteNameLocal(item.name) || item.name })),
               ]}
             />
           </div>
@@ -3272,6 +3316,7 @@ export function SchedulingTimesheetWorkspace({
               options={[
                 { value: 'office', label: 'Office / Non Shift' },
                 { value: 'shift', label: 'Shift DS / NS' },
+                { value: 'hybrid', label: 'Hybrid (Staff: Office, Non Staff: Shift)' },
               ]}
             />
           </div>
@@ -3411,6 +3456,7 @@ export function SchedulingTimesheetWorkspace({
                   options={[
                     { value: 'office', label: 'Office / Non Shift' },
                     { value: 'shift', label: 'Shift DS / NS' },
+                    { value: 'hybrid', label: 'Hybrid (Staff: Office, Non Staff: Shift)' },
                   ]}
                 />
               </div>
@@ -3555,19 +3601,34 @@ export function SchedulingTimesheetWorkspace({
                 </span>
               </div>
               {siteConfig.lokasiKhususEnabled ? (
-                <div className="space-y-1">
-                  <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
-                    Rate / hari
-                  </Label>
-                  <Input
-                    type="number"
-                    value={siteConfig.lokasiKhususRate}
-                    onChange={(e) =>
-                      updateSiteConfig('lokasiKhususRate', Number(e.target.value) || 0)
-                    }
-                    className="h-9 w-[140px]"
-                  />
-                </div>
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
+                      Rate Staff / hari
+                    </Label>
+                    <Input
+                      type="number"
+                      value={siteConfig.lokasiKhususRateStaff}
+                      onChange={(e) =>
+                        updateSiteConfig('lokasiKhususRateStaff', Number(e.target.value) || 0)
+                      }
+                      className="h-9 w-[140px]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground text-[10px] font-semibold tracking-[0.14em] uppercase">
+                      Rate Non Staff / hari
+                    </Label>
+                    <Input
+                      type="number"
+                      value={siteConfig.lokasiKhususRateNonStaff}
+                      onChange={(e) =>
+                        updateSiteConfig('lokasiKhususRateNonStaff', Number(e.target.value) || 0)
+                      }
+                      className="h-9 w-[140px]"
+                    />
+                  </div>
+                </>
               ) : null}
             </div>
           </Card>
@@ -4291,7 +4352,7 @@ export function SchedulingTimesheetWorkspace({
                   {attendanceView === 'msa' &&
                     `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
                   {attendanceView === 'lokasi' &&
-                    `TUNJANGAN LOKASI KHUSUS — ${siteConfig.lokasiKhususEnabled ? `Rp ${siteConfig.lokasiKhususRate.toLocaleString('id-ID')}/hari` : 'Tidak aktif'}`}
+                    `TUNJANGAN LOKASI KHUSUS — ${siteConfig.lokasiKhususEnabled ? `Staff: Rp ${siteConfig.lokasiKhususRateStaff.toLocaleString('id-ID')}/hari | Non Staff: Rp ${siteConfig.lokasiKhususRateNonStaff.toLocaleString('id-ID')}/hari` : 'Tidak aktif'}`}
                   {attendanceView === 'meals' &&
                     `MEALS SUMMARY — Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')} (${siteConfig.mealsType})`}
                   {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
@@ -4461,7 +4522,7 @@ export function SchedulingTimesheetWorkspace({
                                         cellValue = scheduleCode
                                         cellBg = 'bg-rose-50 text-rose-700'
                                       } else {
-                                        cellValue = siteConfig.lokasiKhususRate
+                                        cellValue = staff ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
                                         cellBg = 'bg-white text-foreground'
                                       }
                                     } else if (attendanceView === 'meals') {
@@ -4509,10 +4570,7 @@ export function SchedulingTimesheetWorkspace({
                                             (clockOutMin >= clockInMin
                                               ? clockOutMin - clockInMin
                                               : clockOutMin + 1440 - clockInMin) / 60
-                                          const ot = Math.max(
-                                            0,
-                                            Math.round((worked - 5) * 100) / 100
-                                          )
+                                          const ot = roundOvertimeHours(Math.max(0, worked - 5))
                                           cellValue = ot > 0 ? ot : ''
                                           cellBg =
                                             ot > 0 ? 'bg-white text-foreground font-semibold' : ''
@@ -4633,7 +4691,8 @@ export function SchedulingTimesheetWorkspace({
                                         if (attendanceView === 'lokasi') {
                                           // Lokasi khusus: semua hari dapat (termasuk OFF/libur)
                                           if (siteConfig.lokasiKhususEnabled) {
-                                            total += siteConfig.lokasiKhususRate
+                                            const isStaffSummary = isStaffRole(row.employee.role)
+                                            total += isStaffSummary ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
                                           }
                                           continue
                                         }
@@ -4690,7 +4749,7 @@ export function SchedulingTimesheetWorkspace({
                                       return (
                                         <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
                                           {attendanceView === 'ovt'
-                                            ? Math.round(total * 100) / 100
+                                            ? roundOvertimeHours(total)
                                             : `Rp ${total.toLocaleString('id-ID')}`}
                                         </td>
                                       )

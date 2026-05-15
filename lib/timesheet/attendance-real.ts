@@ -42,6 +42,13 @@ export function attendanceHours(cell: AttendanceCell) {
 
 export function calculateAttendanceOvertime(cells: AttendanceCell[], baseHours: number) {
   const totalHours = cells.reduce((sum, cell) => sum + attendanceHours(cell), 0);
-  const overtime = Math.max(0, Math.round((totalHours - baseHours) * 100) / 100);
+  const rawOvertime = Math.max(0, totalHours - baseHours);
+  // Rounding rules:
+  // decimal >= 0.8 -> round up to next whole number
+  // decimal >= 0.5 -> round to x.5
+  // decimal < 0.5  -> round down to whole number
+  const whole = Math.floor(rawOvertime)
+  const decimal = rawOvertime - whole
+  const overtime = decimal >= 0.8 ? whole + 1 : decimal >= 0.5 ? whole + 0.5 : whole
   return { totalHours, baseHours, overtime };
 }

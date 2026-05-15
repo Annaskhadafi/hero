@@ -32,6 +32,7 @@ import {
   dailyReports,
   employees,
   hrEmployees,
+  hrSites,
   hseIncidents,
   hseObservations,
   masterDepartments,
@@ -283,7 +284,7 @@ const schedulingEmployeeProfileSchema = z.object({
 const saveSchedulingTimesheetPlanSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
-  siteScheduleType: z.enum(['office', 'shift']),
+  siteScheduleType: z.enum(['office', 'shift', 'hybrid']),
   draftSchedule: z.array(schedulingPlanRowSchema),
   fixedSchedule: z.array(schedulingPlanRowSchema),
   employeeProfiles: z.array(schedulingEmployeeProfileSchema),
@@ -489,28 +490,36 @@ export async function saveAttendanceRealOverridesAction(
 
   if (!payload.overrides.length) return { ok: true, savedCount: 0 }
 
-  // Ensure site exists in sites table — FK constraint requires valid site_id
-  const [existingSite] = await db
+  // Ensure site exists - check hrSites (new) or legacy sites table
+  const [existingHrSite] = await db
+    .select({ id: hrSites.id })
+    .from(hrSites)
+    .where(eq(hrSites.id, payload.siteId))
+    .limit(1)
+  const [existingLegacySite] = await db
     .select({ id: sites.id })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
-  if (!existingSite) {
-    // Auto-create site with specific ID via raw SQL
+  if (!existingHrSite && !existingLegacySite) {
+    // Auto-create in legacy sites table as fallback
     await db.execute(sql`
       INSERT INTO hero_sites (id, name, location, customer_name, contract_number, is_active, created_at)
-      VALUES (${payload.siteId}, ${'Site ' + payload.siteId}, '', ${'Site ' + payload.siteId}, '', true, NOW())
+      VALUES (${payload.siteId}, ${"Site " + payload.siteId}, "" , ${"Site " + payload.siteId}, "", true, NOW())
       ON CONFLICT (id) DO NOTHING
     `)
   }
 
   // Filter overrides to only include valid employee IDs that exist in DB
   const employeeIds = [...new Set(payload.overrides.map((o) => o.employeeId))]
-  const validEmployees = await db
-    .select({ id: employees.id })
-    .from(employees)
-    .where(inArray(employees.id, employeeIds))
-  const validEmployeeIds = new Set(validEmployees.map((e) => e.id))
+  const [validLegacyEmployees, validHrEmployees] = await Promise.all([
+    db.select({ id: employees.id }).from(employees).where(inArray(employees.id, employeeIds)),
+    db.select({ id: hrEmployees.id }).from(hrEmployees).where(inArray(hrEmployees.id, employeeIds)),
+  ])
+  const validEmployeeIds = new Set([
+    ...validLegacyEmployees.map((e) => e.id),
+    ...validHrEmployees.map((e) => e.id),
+  ])
   const validOverrides = payload.overrides.filter((o) => validEmployeeIds.has(o.employeeId))
 
   if (!validOverrides.length) return { ok: true, savedCount: 0 }
@@ -741,8 +750,8 @@ export async function createAttendanceImportPreviewAction(
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
-  const siteEmployees = await db
-    .select({
+  const [legacyEmployeeRows, hrEmployeeRows] = await Promise.all([
+    db.select({
       id: employees.id,
       name: employees.name,
       employeeSn: employees.employeeSn,
@@ -750,7 +759,24 @@ export async function createAttendanceImportPreviewAction(
       siteName: sites.name,
     })
     .from(employees)
-    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id)),
+    db.select({
+      id: hrEmployees.id,
+      name: hrEmployees.fullName,
+      employeeSn: hrEmployees.employeeId,
+      siteId: hrEmployees.siteId,
+      siteName: hrSites.name,
+    })
+    .from(hrEmployees)
+    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
+    .where(eq(hrEmployees.isActive, true)),
+  ])
+  // Merge, prefer hrEmployees if same id exists
+  const hrEmployeeIdSet = new Set(hrEmployeeRows.map((e) => e.id))
+  const siteEmployees = [
+    ...hrEmployeeRows,
+    ...legacyEmployeeRows.filter((e) => !hrEmployeeIdSet.has(e.id)),
+  ]
   const aliases = await db
     .select({
       employeeId: timesheetAttendanceEmployeeAliases.employeeId,
@@ -759,11 +785,17 @@ export async function createAttendanceImportPreviewAction(
     })
     .from(timesheetAttendanceEmployeeAliases)
     .where(eq(timesheetAttendanceEmployeeAliases.siteId, payload.siteId))
-  const [site] = await db
+  const [hrSiteRow] = await db
+    .select({ name: hrSites.name })
+    .from(hrSites)
+    .where(eq(hrSites.id, payload.siteId))
+    .limit(1)
+  const [legacySiteRow] = await db
     .select({ name: sites.name })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
+  const site = hrSiteRow ?? legacySiteRow
   const detection = payload.detection ?? {
     sheetName: '',
     kind: 'auto',
@@ -1311,7 +1343,7 @@ export async function clearAttendanceRealOverridesAction(
 
 const saveSchedulingConfigSchema = z.object({
   siteId: z.number().int().positive(),
-  scheduleType: z.enum(['office', 'shift']),
+  scheduleType: z.enum(['office', 'shift', 'hybrid']),
   rosterType: z.string().max(40),
   msaType: z.string().max(60),
   mealsType: z.string().max(60),
@@ -1330,12 +1362,18 @@ export async function saveSchedulingConfigAction(
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
-  const [site] = await db
+  // Validate site exists in hrSites (new) or sites (legacy)
+  const [hrSite] = await db
+    .select({ id: hrSites.id })
+    .from(hrSites)
+    .where(eq(hrSites.id, payload.siteId))
+    .limit(1)
+  const [legacySite] = await db
     .select({ id: sites.id })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
-  if (!site) return { ok: false, error: 'Site not found' }
+  if (!hrSite && !legacySite) return { ok: false, error: 'Site not found' }
 
   await db
     .insert(timesheetSchedulingConfigs)
