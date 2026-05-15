@@ -1,4 +1,4 @@
-export type AttendanceCellStatus = "present" | "empty" | "sick" | "leave" | "absent";
+export type AttendanceCellStatus = "present" | "empty" | "sick" | "leave" | "absent" | "off";
 
 export type AttendanceCell = {
   status: AttendanceCellStatus;
@@ -22,6 +22,7 @@ export function attendanceStatusLabel(status: AttendanceCellStatus) {
   if (status === "sick") return "Sakit";
   if (status === "leave") return "Izin";
   if (status === "absent") return "Alpha";
+  if (status === "off") return "OFF";
   return "-";
 }
 

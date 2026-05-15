@@ -614,6 +614,7 @@ function attendanceCellClass(status: AttendanceCellStatus) {
   if (status === 'sick') return 'bg-amber-100 text-amber-950 ring-1 ring-amber-200'
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
+  if (status === 'off') return 'bg-slate-200 text-slate-700 ring-1 ring-slate-300'
   return 'bg-red-100 text-red-950 ring-1 ring-red-200'
 }
 
@@ -2501,7 +2502,7 @@ export function SchedulingTimesheetWorkspace({
   function cycleAttendanceCell(employeeId: number, day: number) {
     if (!guardOpenPeriod('Edit attendance')) return
     const current = getAttendanceCell(employeeId, day)
-    const cycle: AttendanceCellStatus[] = ['present', 'sick', 'leave', 'absent', 'empty']
+    const cycle: AttendanceCellStatus[] = ['present', 'off', 'sick', 'leave', 'absent', 'empty']
     const nextStatus = cycle[(cycle.indexOf(current.status) + 1) % cycle.length]
     updateAttendanceCell(employeeId, day, {
       status: nextStatus,
@@ -4616,7 +4617,9 @@ export function SchedulingTimesheetWorkspace({
                                     const isNationalHoliday = Boolean(isHolidayDay)
                                     const isWorkDay = !isRosterOff
                                     const isAbsent = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
-                                    const isEmptyWorkDay = isWorkDay && !isNationalHoliday && cell.status === 'empty'
+                                    // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
+                                    // 'off' status = manual OFF, treated like roster OFF (not empty workday)
+                                    const isEmptyWorkDay = isWorkDay && !isNationalHoliday && cell.status === 'empty' && cell.status !== 'off'
                                     const noAllowance = isAbsent || isEmptyWorkDay
                                     const absentLabel = cell.status === 'leave' ? 'Izin' : cell.status === 'sick' ? 'Sakit' : cell.status === 'absent' ? 'Alpha' : '-'
 
@@ -4837,7 +4840,7 @@ export function SchedulingTimesheetWorkspace({
                                         const isNationalHoliday2 = Boolean(hol)
                                         const isWorkDay2 = !isRosterOff2
                                         const isAbsent2 = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
-                                        const isEmptyWorkDay2 = isWorkDay2 && !isNationalHoliday2 && cell.status === 'empty'
+                                        const isEmptyWorkDay2 = isWorkDay2 && !isNationalHoliday2 && cell.status === 'empty' && cell.status !== 'off'
                                         const noAllowance2 = isAbsent2 || isEmptyWorkDay2
 
                                         if (attendanceView === 'lokasi') {
@@ -5248,6 +5251,7 @@ export function SchedulingTimesheetWorkspace({
                     }
                     options={[
                       { value: 'present', label: 'Masuk' },
+                      { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
                       { value: 'sick', label: 'Sakit' },
                       { value: 'leave', label: 'Izin' },
                       { value: 'absent', label: 'Alpha' },

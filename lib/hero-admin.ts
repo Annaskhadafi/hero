@@ -2831,7 +2831,7 @@ export async function getSchedulingTimesheetOptions() {
       period: override.period,
       employeeId: override.employeeId,
       day: override.day,
-      status: ['present', 'empty', 'sick', 'leave', 'absent'].includes(override.status)
+      status: ['present', 'empty', 'sick', 'leave', 'absent', 'off'].includes(override.status)
         ? override.status
         : 'empty',
       clockIn: override.clockIn,
@@ -3032,7 +3032,7 @@ function serializeAttendanceOverride(
     period: override.period,
     employeeId: override.employeeId,
     day: override.day,
-    status: ['present', 'empty', 'sick', 'leave', 'absent'].includes(override.status)
+    status: ['present', 'empty', 'sick', 'leave', 'absent', 'off'].includes(override.status)
       ? override.status
       : 'empty',
     clockIn: override.clockIn,

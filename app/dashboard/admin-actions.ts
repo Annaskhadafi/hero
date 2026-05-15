@@ -460,7 +460,7 @@ export async function saveTimesheetFieldBreakPlansAction(
   return { ok: true }
 }
 
-const attendanceRealStatusSchema = z.enum(['present', 'empty', 'sick', 'leave', 'absent'])
+const attendanceRealStatusSchema = z.enum(['present', 'empty', 'sick', 'leave', 'absent', 'off'])
 const saveAttendanceRealOverridesSchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
