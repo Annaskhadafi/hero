@@ -1126,6 +1126,10 @@ export function SchedulingTimesheetWorkspace({
       )
     })
 
+    // If no employees match, show all employees for attendance mode to allow manual assignment
+    if (filtered.length === 0 && mode === 'attendance') {
+      return employees
+    }
     return filtered
   }, [employees, isGenerated, mode, siteId, sites])
 
