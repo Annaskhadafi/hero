@@ -2686,6 +2686,7 @@ export async function getSchedulingTimesheetOptions() {
     schedulingConfigs,
     schedulingStatuses,
     importPreviews,
+    activitiesRows,
   ] = await Promise.all([
     db
       .select({
@@ -2742,6 +2743,18 @@ export async function getSchedulingTimesheetOptions() {
     db
       .select()
       .from(timesheetAttendanceImportPreviews)
+      .catch(() => []),
+    db
+      .select({
+        id: activities.id,
+        employeeId: activities.employeeId,
+        activityCode: activities.activityCode,
+        title: activities.title,
+        startTime: activities.startTime,
+        endTime: activities.endTime,
+        status: activities.status,
+      })
+      .from(activities)
       .catch(() => []),
   ])
 
@@ -2860,6 +2873,15 @@ export async function getSchedulingTimesheetOptions() {
       conflicts: preview.conflicts,
       createdAt: preview.createdAt.toISOString(),
       appliedAt: preview.appliedAt?.toISOString() ?? null,
+    })),
+    activities: activitiesRows.map((activity) => ({
+      id: activity.id,
+      employeeId: activity.employeeId,
+      activityCode: activity.activityCode,
+      title: activity.title,
+      startTime: activity.startTime.toISOString(),
+      endTime: activity.endTime.toISOString(),
+      status: activity.status,
     })),
   }
 }

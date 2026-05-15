@@ -748,6 +748,7 @@ export function SchedulingTimesheetWorkspace({
   attendanceOverrides = EMPTY_ATTENDANCE_OVERRIDES,
   schedulingConfigs = EMPTY_SCHEDULING_CONFIGS,
   schedulingStatuses = EMPTY_SCHEDULING_STATUSES,
+  activities = [],
   currentEmployeeSiteId = null,
 }: {
   mode?: SchedulingTimesheetMode
@@ -781,6 +782,15 @@ export function SchedulingTimesheetWorkspace({
     finalizedAt?: string | null
   }>
   importPreviews?: unknown[]
+  activities?: Array<{
+    id: number
+    employeeId: number
+    activityCode: string
+    title: string
+    startTime: string
+    endTime: string
+    status: string
+  }>
 }) {
   const [period, setPeriod] = useState(currentMonthPeriod)
   const userDefaultSiteId = useMemo(() => {
@@ -846,6 +856,20 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceImportHistory, setAttendanceImportHistory] = useState<
     AttendanceImportHistoryItem[]
   >([])
+
+  const activitiesByEmployeeDay = useMemo(() => {
+    const map = new Map<string, typeof activities>()
+    for (const activity of activities) {
+      const startDate = new Date(activity.startTime)
+      const day = startDate.getDate()
+      const activityPeriod = activity.startTime.slice(0, 7)
+      const key = `${activity.employeeId}-${activityPeriod}-${day}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(activity)
+    }
+    return map
+  }, [activities])
+
   const [showConflictsOnly, setShowConflictsOnly] = useState(false)
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null)
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
@@ -4500,19 +4524,32 @@ export function SchedulingTimesheetWorkspace({
                                             {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}
                                           </span>
                                         ) : null}
-                                        {cell.status !== 'empty' && cell.source ? (
-                                          <span className="absolute right-1 bottom-1">
-                                            <AttendanceSourceIndicator
-                                              source={cell.source}
-                                              timestamp={
-                                                cell.clockIn
-                                                  ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
-                                                  : undefined
-                                              }
-                                            />
-                                          </span>
-                                        ) : null}
-                                      </button>
+                                       {cell.status !== 'empty' && cell.source ? (
+                                         <span className="absolute right-1 bottom-1">
+                                           <AttendanceSourceIndicator
+                                             source={cell.source}
+                                             timestamp={
+                                               cell.clockIn
+                                                 ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
+                                                 : undefined
+                                             }
+                                           />
+                                         </span>
+                                       ) : null}
+                                        {(() => {
+                                          const activityKey = `${row.employee.id}-${period}-${day}`
+                                          const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
+                                          if (dayActivities.length === 0) return null
+                                          return (
+                                            <span
+                                              className="absolute left-1 bottom-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
+                                              title={`${dayActivities.length} aktivitas`}
+                                            >
+                                              {dayActivities.length}
+                                            </span>
+                                          )
+                                        })()}
+                                     </button>
                                     </td>
                                   )
                                 })}
@@ -4984,9 +5021,56 @@ export function SchedulingTimesheetWorkspace({
                       { note: event.target.value }
                     )
                   }
-                  placeholder="Face loc / izin / sakit / manual"
+                 placeholder="Face loc / izin / sakit / manual"
                 />
               </div>
+              {(() => {
+                const activityKey = `${selectedAttendanceCell.employeeId}-${period}-${selectedAttendanceCell.day}`
+                const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
+                if (dayActivities.length === 0) return null
+                return (
+                  <div className="space-y-2">
+                    <Label>Daily Activities ({dayActivities.length})</Label>
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
+                      {dayActivities.map((activity) => (
+                        <div
+                          key={activity.id}
+                          className="rounded-lg bg-slate-50 p-2.5 text-sm"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-slate-900">{activity.title}</p>
+                              <p className="text-xs text-slate-600">{activity.activityCode}</p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                activity.status === 'completed'
+                                  ? 'bg-green-100 text-green-700'
+                                  : activity.status === 'in_progress'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {activity.status}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {new Date(activity.startTime).toLocaleTimeString('id-ID', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}{' '}
+                            -{' '}
+                            {new Date(activity.endTime).toLocaleTimeString('id-ID', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
               <div className="flex justify-end">
                 <Button onClick={() => setSelectedAttendanceCell(null)}>Simpan</Button>
               </div>
