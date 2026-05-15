@@ -120,6 +120,10 @@ export function SecurityUserRowActions({
       if (state.message.toLowerCase().includes("dihapus")) {
         setOpen(false);
       }
+      if (state.message.toLowerCase().includes("role") && state.message.toLowerCase().includes("diubah")) {
+        setOpen(false);
+        alert(state.message + " Halaman akan di-refresh.");
+      }
       startRefreshTransition(() => router.refresh());
     }
   }, [router, state, startRefreshTransition]);

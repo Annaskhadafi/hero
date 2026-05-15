@@ -3724,7 +3724,7 @@ export async function manageSecurityUserAction(
       })
 
       revalidateAdminSurfaces()
-      return { status: 'success', message: 'User role changed successfully.' }
+      return { status: 'success', message: `Role berhasil diubah dari ${employee.accessRole} ke ${role.name}. User harus login ulang.` }
     }
 
     if (payload.intent === 'change-password') {
