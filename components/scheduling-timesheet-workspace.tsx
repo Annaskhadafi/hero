@@ -929,7 +929,22 @@ export function SchedulingTimesheetWorkspace({
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false)
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false)
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
-  const [conflictsDismissed, setConflictsDismissed] = useState(false)
+  const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
+  const [conflictsDismissed, setConflictsDismissedState] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
+  })
+
+  function setConflictsDismissed(value: boolean) {
+    setConflictsDismissedState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        localStorage.setItem(conflictsDismissKey, 'true')
+      } else {
+        localStorage.removeItem(conflictsDismissKey)
+      }
+    }
+  }
 
   useEffect(() => {
     setSwapTargetEmployeeId('')
@@ -1063,6 +1078,10 @@ export function SchedulingTimesheetWorkspace({
     )
     setIsAttendanceDirty(false)
     setSelectedAttendanceKeys([])
+    // Reset conflict dismissed state for new site/period
+    const dismissKey = `conflicts-dismissed:${siteId}:${period}`
+    const isDismissed = typeof window !== 'undefined' && localStorage.getItem(dismissKey) === 'true'
+    setConflictsDismissedState(isDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, period, siteId])
 
@@ -4319,6 +4338,13 @@ export function SchedulingTimesheetWorkspace({
                     onClick={markAllConflictSchedulesWorking}
                   >
                     Pakai attendance (mark working)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setConflictsDismissed(true)}
+                  >
+                    Tutup
                   </Button>
                 </div>
               </div>
