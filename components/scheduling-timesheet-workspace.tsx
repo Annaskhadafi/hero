@@ -856,6 +856,10 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceImportHistory, setAttendanceImportHistory] = useState<
     AttendanceImportHistoryItem[]
   >([])
+  const [selectedActivityCell, setSelectedActivityCell] = useState<{
+    employeeId: number
+    day: number
+  } | null>(null)
 
   const activitiesByEmployeeDay = useMemo(() => {
     const map = new Map<string, typeof activities>()
@@ -4538,15 +4542,20 @@ export function SchedulingTimesheetWorkspace({
                                        ) : null}
                                         {(() => {
                                           const activityKey = `${row.employee.id}-${period}-${day}`
-                                          const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
+                                         const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
                                           if (dayActivities.length === 0) return null
                                           return (
-                                            <span
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setSelectedActivityCell({ employeeId: row.employee.id, day })
+                                              }}
                                               className="absolute left-1 bottom-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
                                               title={`${dayActivities.length} aktivitas`}
                                             >
                                               {dayActivities.length}
-                                            </span>
+                                            </button>
                                           )
                                         })()}
                                      </button>
@@ -5021,56 +5030,9 @@ export function SchedulingTimesheetWorkspace({
                       { note: event.target.value }
                     )
                   }
-                 placeholder="Face loc / izin / sakit / manual"
+                  placeholder="Face loc / izin / sakit / manual"
                 />
               </div>
-              {(() => {
-                const activityKey = `${selectedAttendanceCell.employeeId}-${period}-${selectedAttendanceCell.day}`
-                const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
-                if (dayActivities.length === 0) return null
-                return (
-                  <div className="space-y-2">
-                    <Label>Daily Activities ({dayActivities.length})</Label>
-                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
-                      {dayActivities.map((activity) => (
-                        <div
-                          key={activity.id}
-                          className="rounded-lg bg-slate-50 p-2.5 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-slate-900">{activity.title}</p>
-                              <p className="text-xs text-slate-600">{activity.activityCode}</p>
-                            </div>
-                            <span
-                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                                activity.status === 'completed'
-                                  ? 'bg-green-100 text-green-700'
-                                  : activity.status === 'in_progress'
-                                    ? 'bg-blue-100 text-blue-700'
-                                    : 'bg-slate-100 text-slate-700'
-                              }`}
-                            >
-                              {activity.status}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {new Date(activity.startTime).toLocaleTimeString('id-ID', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}{' '}
-                            -{' '}
-                            {new Date(activity.endTime).toLocaleTimeString('id-ID', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })()}
               <div className="flex justify-end">
                 <Button onClick={() => setSelectedAttendanceCell(null)}>Simpan</Button>
               </div>
@@ -5193,6 +5155,80 @@ export function SchedulingTimesheetWorkspace({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Activity Detail Dialog */}
+      <Dialog
+        open={selectedActivityCell !== null}
+        onOpenChange={(open) => !open && setSelectedActivityCell(null)}
+      >
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>
+              Daily Activities •{' '}
+              {selectedActivityCell
+                ? visibleEmployees.find((e) => e.id === selectedActivityCell.employeeId)?.name
+                : ''}{' '}
+              • Tanggal {selectedActivityCell?.day}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedActivityCell ? (
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto py-2">
+              {(() => {
+                const activityKey = `${selectedActivityCell.employeeId}-${period}-${selectedActivityCell.day}`
+                const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
+                if (dayActivities.length === 0) {
+                  return (
+                    <p className="text-center text-sm text-slate-500">Tidak ada aktivitas.</p>
+                  )
+                }
+                return dayActivities.map((activity) => (
+                  <div
+                    key={activity.id}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-slate-900">{activity.title}</h3>
+                        <p className="mt-0.5 text-xs text-slate-600">{activity.activityCode}</p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold uppercase ${
+                          activity.status === 'completed'
+                            ? 'bg-green-100 text-green-700'
+                            : activity.status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-700'
+                              : activity.status === 'pending'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {activity.status}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center gap-4 text-sm text-slate-600">
+                      <div className="flex items-center gap-1.5">
+                        <Clock3 className="size-4" />
+                        <span>
+                          {new Date(activity.startTime).toLocaleTimeString('id-ID', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          -{' '}
+                          {new Date(activity.endTime).toLocaleTimeString('id-ID', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              })()}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <AttendanceImportPreviewDialog
         open={Boolean(attendanceImportPreview)}
         preview={attendanceImportPreview}
