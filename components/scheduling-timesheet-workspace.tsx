@@ -4492,12 +4492,28 @@ export function SchedulingTimesheetWorkspace({
                                       fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ??
                                       false
 
+                                    // Logika tunjangan:
+                                    // - OFF roster / Libur nasional = dapat (tidak perlu absen)
+                                    // - Hadir (present) = dapat
+                                    // - Izin/Sakit/Alpha = tidak dapat
+                                    // - Hari kerja kosong (bukan libur nasional) = tidak dapat
+                                    // - Field Break period = tidak dapat
+                                    const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
+                                    const isNationalHoliday = Boolean(isHolidayDay)
+                                    const isWorkDay = !isRosterOff
+                                    const isAbsent = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
+                                    const isEmptyWorkDay = isWorkDay && !isNationalHoliday && cell.status === 'empty'
+                                    const noAllowance = isAbsent || isEmptyWorkDay
+                                    const absentLabel = cell.status === 'leave' ? 'Izin' : cell.status === 'sick' ? 'Sakit' : cell.status === 'absent' ? 'Alpha' : '-'
+
                                     if (attendanceView === 'msa') {
                                       if (isFieldBreakDay && cell.status !== 'present') {
                                         cellValue = 'FB'
                                         cellBg = 'bg-purple-50 text-purple-700'
+                                      } else if (noAllowance) {
+                                        cellValue = absentLabel
+                                        cellBg = 'bg-rose-50 text-rose-700'
                                       } else {
-                                        // MSA: semua hari dapat (termasuk OFF/Libur), kecuali Field Break
                                         const msaRate =
                                           siteConfig.msaType === 'none'
                                             ? 0
@@ -4507,30 +4523,40 @@ export function SchedulingTimesheetWorkspace({
                                                 ? rate.msaStaff
                                                 : rate.msaNonStaff
                                         cellValue = msaRate
-                                        cellBg = isHolidayDay
+                                        cellBg = isNationalHoliday
                                           ? 'bg-amber-50 text-foreground'
-                                          : msaRate > 0
-                                            ? 'bg-white text-foreground'
-                                            : 'bg-slate-50 text-muted-foreground'
+                                          : isRosterOff
+                                            ? 'bg-slate-50 text-foreground'
+                                            : msaRate > 0
+                                              ? 'bg-white text-foreground'
+                                              : 'bg-slate-50 text-muted-foreground'
                                       }
                                     } else if (attendanceView === 'lokasi') {
-                                      // Tunjangan Lokasi Khusus — semua hari dapat (termasuk OFF/libur) jika enabled
                                       if (!siteConfig.lokasiKhususEnabled) {
                                         cellValue = '-'
                                         cellBg = 'bg-slate-50 text-muted-foreground'
-                                      } else if (isOff && scheduleCode !== 'OFF') {
-                                        cellValue = scheduleCode
+                                      } else if (isFieldBreakDay && cell.status !== 'present') {
+                                        cellValue = 'FB'
+                                        cellBg = 'bg-purple-50 text-purple-700'
+                                      } else if (noAllowance) {
+                                        cellValue = absentLabel
                                         cellBg = 'bg-rose-50 text-rose-700'
                                       } else {
                                         cellValue = staff ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
-                                        cellBg = 'bg-white text-foreground'
+                                        cellBg = isNationalHoliday
+                                          ? 'bg-amber-50 text-foreground'
+                                          : isRosterOff
+                                            ? 'bg-slate-50 text-foreground'
+                                            : 'bg-white text-foreground'
                                       }
                                     } else if (attendanceView === 'meals') {
                                       if (isFieldBreakDay && cell.status !== 'present') {
                                         cellValue = 'FB'
                                         cellBg = 'bg-purple-50 text-purple-700'
+                                      } else if (noAllowance) {
+                                        cellValue = absentLabel
+                                        cellBg = 'bg-rose-50 text-rose-700'
                                       } else {
-                                        // Meals: semua hari dapat (termasuk OFF/Libur), kecuali Field Break
                                         const mealsRate =
                                           siteConfig.mealsType === 'none'
                                             ? 0
@@ -4538,13 +4564,15 @@ export function SchedulingTimesheetWorkspace({
                                               ? rate.mealsStaff
                                               : rate.mealsNonStaff
                                         cellValue = mealsRate
-                                        cellBg = isHolidayDay
+                                        cellBg = isNationalHoliday
                                           ? 'bg-amber-50 text-foreground'
-                                          : mealsRate > 0
-                                            ? 'bg-white text-foreground'
-                                            : 'bg-slate-50 text-muted-foreground'
+                                          : isRosterOff
+                                            ? 'bg-slate-50 text-foreground'
+                                            : mealsRate > 0
+                                              ? 'bg-white text-foreground'
+                                              : 'bg-slate-50 text-muted-foreground'
                                       }
-                                    } else if (attendanceView === 'ovt') {
+                                    }} else if (attendanceView === 'ovt') {
                                       // Overtime hanya untuk Non Staff
                                       if (staff) {
                                         cellValue = '-'
@@ -4688,11 +4716,25 @@ export function SchedulingTimesheetWorkspace({
                                           code === 'Sakit'
                                         const hol = holidaysByDay.get(day)
 
+                                        // Logika tunjangan summary:
+                                        // - OFF roster / Libur nasional = dapat
+                                        // - Hadir (present) = dapat
+                                        // - Izin/Sakit/Alpha/Empty hari kerja = tidak dapat
+                                        // - Field Break = tidak dapat
+                                        const isRosterOff2 = code === 'OFF' || code === 'Libur'
+                                        const isNationalHoliday2 = Boolean(hol)
+                                        const isWorkDay2 = !isRosterOff2
+                                        const isAbsent2 = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
+                                        const isEmptyWorkDay2 = isWorkDay2 && !isNationalHoliday2 && cell.status === 'empty'
+                                        const noAllowance2 = isAbsent2 || isEmptyWorkDay2
+
                                         if (attendanceView === 'lokasi') {
-                                          // Lokasi khusus: semua hari dapat (termasuk OFF/libur)
                                           if (siteConfig.lokasiKhususEnabled) {
-                                            const isStaffSummary = isStaffRole(row.employee.role)
-                                            total += isStaffSummary ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
+                                            const isFbPeriodLokasi = fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false
+                                            if (!isFbPeriodLokasi && !noAllowance2) {
+                                              const isStaffSummary = isStaffRole(row.employee.role)
+                                              total += isStaffSummary ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
+                                            }
                                           }
                                           continue
                                         }
@@ -4706,6 +4748,11 @@ export function SchedulingTimesheetWorkspace({
                                           (attendanceView === 'msa' || attendanceView === 'meals')
                                         )
                                           continue
+
+                                        // Skip if no allowance (izin/sakit/alpha/empty workday)
+                                        if (noAllowance2 && (attendanceView === 'msa' || attendanceView === 'meals'))
+                                          continue
+
                                         // OVT: only count present days
                                         if (
                                           attendanceView === 'ovt' &&
