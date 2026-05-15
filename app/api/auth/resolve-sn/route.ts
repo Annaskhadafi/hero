@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from ''next/server''
-import { db } from ''@/db''
-import { employees, hrEmployees } from ''@/db/schema/hero''
-import { eq } from ''drizzle-orm''
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/db'
+import { employees, hrEmployees } from '@/db/schema/hero'
+import { eq } from 'drizzle-orm'
 
 export async function POST(req: NextRequest) {
   try {
     const { sn } = await req.json()
-    if (!sn || typeof sn !== ''string'') {
-      return NextResponse.json({ error: ''SN required'' }, { status: 400 })
+    if (!sn || typeof sn !== 'string') {
+      return NextResponse.json({ error: 'SN required' }, { status: 400 })
     }
 
     const normalizedSn = sn.trim().toUpperCase()
@@ -42,9 +42,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ email: legacyEmp.email, name: legacyEmp.name })
     }
 
-    return NextResponse.json({ error: ''Employee not found'' }, { status: 404 })
+    return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
   } catch (error) {
-    console.error(''resolve-sn error:'', error)
-    return NextResponse.json({ error: ''Internal server error'' }, { status: 500 })
+    console.error('resolve-sn error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

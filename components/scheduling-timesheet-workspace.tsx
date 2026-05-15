@@ -4615,7 +4615,6 @@ export function SchedulingTimesheetWorkspace({
                                         {cellValue}
                                       </td>
                                     )
-                                  }
                                   // Normal attendance view
                                   const isSelected = selectedAttendanceKeys.includes(
                                     attendanceKey(row.employee.id, day)
