@@ -4572,7 +4572,7 @@ export function SchedulingTimesheetWorkspace({
                                               ? 'bg-white text-foreground'
                                               : 'bg-slate-50 text-muted-foreground'
                                       }
-                                    }} else if (attendanceView === 'ovt') {
+                                    } else if (attendanceView === 'ovt') {
                                       // Overtime hanya untuk Non Staff
                                       if (staff) {
                                         cellValue = '-'
@@ -4615,6 +4615,7 @@ export function SchedulingTimesheetWorkspace({
                                         {cellValue}
                                       </td>
                                     )
+                                  }
                                   // Normal attendance view
                                   const isSelected = selectedAttendanceKeys.includes(
                                     attendanceKey(row.employee.id, day)
@@ -4683,7 +4684,6 @@ export function SchedulingTimesheetWorkspace({
                                          if (dayActivities.length === 0) return null
                                          return (
                                             <div
-                                             type="button"
                                              onClick={(e) => {
                                                e.stopPropagation()
                                                setSelectedActivityCell({ employeeId: row.employee.id, day })
@@ -4790,6 +4790,7 @@ export function SchedulingTimesheetWorkspace({
                                             }
                                           }
                                         }
+                                      }
                                       return (
                                         <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
                                           {attendanceView === 'ovt'

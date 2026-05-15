@@ -31,6 +31,8 @@ type SiteAllowanceInput = {
   siteName: string
   days: AttendanceDayData[]
   lokasiKhususRate: number
+  lokasiKhususRateStaff: number
+  lokasiKhususRateNonStaff: number
   lokasiKhususEnabled: boolean
   msaRate: number
   mealsRate: number
