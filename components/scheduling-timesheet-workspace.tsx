@@ -1847,10 +1847,32 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function saveAllowanceVariables() {
+    const {
+      lokasiKhususEnabled: lke,
+      lokasiKhususRate: lkr,
+      lokasiKhususRateStaff: lkrs,
+      lokasiKhususRateNonStaff: lkrns,
+      defaultShiftType: dst,
+      defaultClockIn: dci,
+      defaultClockOut: dco,
+      defaultEarlyOvertimeHours: deoh,
+      defaultOvertimeEnd: doe,
+      ...dbCfg
+    } = siteConfig
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
-      ...siteConfig,
-      fieldBreakConfig: null,
+      ...dbCfg,
+      fieldBreakConfig: {
+        lokasiKhususEnabled: lke,
+        lokasiKhususRate: lkr,
+        lokasiKhususRateStaff: lkrs,
+        lokasiKhususRateNonStaff: lkrns,
+        defaultShiftType: dst,
+        defaultClockIn: dci,
+        defaultClockOut: dco,
+        defaultEarlyOvertimeHours: deoh,
+        defaultOvertimeEnd: doe,
+      },
       allowanceVariables,
       overtimeVariables,
     })
@@ -1858,10 +1880,32 @@ export function SchedulingTimesheetWorkspace({
 
   function resetAllowanceVariables() {
     setAllowanceVariables(defaultAllowanceVariables)
+    const {
+      lokasiKhususEnabled: lke2,
+      lokasiKhususRate: lkr2,
+      lokasiKhususRateStaff: lkrs2,
+      lokasiKhususRateNonStaff: lkrns2,
+      defaultShiftType: dst2,
+      defaultClockIn: dci2,
+      defaultClockOut: dco2,
+      defaultEarlyOvertimeHours: deoh2,
+      defaultOvertimeEnd: doe2,
+      ...dbCfg2
+    } = siteConfig
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
-      ...siteConfig,
-      fieldBreakConfig: null,
+      ...dbCfg2,
+      fieldBreakConfig: {
+        lokasiKhususEnabled: lke2,
+        lokasiKhususRate: lkr2,
+        lokasiKhususRateStaff: lkrs2,
+        lokasiKhususRateNonStaff: lkrns2,
+        defaultShiftType: dst2,
+        defaultClockIn: dci2,
+        defaultClockOut: dco2,
+        defaultEarlyOvertimeHours: deoh2,
+        defaultOvertimeEnd: doe2,
+      },
       allowanceVariables: defaultAllowanceVariables,
       overtimeVariables,
     })
@@ -1896,10 +1940,32 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function saveOvertimeVariables() {
+    const {
+      lokasiKhususEnabled: lke3,
+      lokasiKhususRate: lkr3,
+      lokasiKhususRateStaff: lkrs3,
+      lokasiKhususRateNonStaff: lkrns3,
+      defaultShiftType: dst3,
+      defaultClockIn: dci3,
+      defaultClockOut: dco3,
+      defaultEarlyOvertimeHours: deoh3,
+      defaultOvertimeEnd: doe3,
+      ...dbCfg3
+    } = siteConfig
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
-      ...siteConfig,
-      fieldBreakConfig: null,
+      ...dbCfg3,
+      fieldBreakConfig: {
+        lokasiKhususEnabled: lke3,
+        lokasiKhususRate: lkr3,
+        lokasiKhususRateStaff: lkrs3,
+        lokasiKhususRateNonStaff: lkrns3,
+        defaultShiftType: dst3,
+        defaultClockIn: dci3,
+        defaultClockOut: dco3,
+        defaultEarlyOvertimeHours: deoh3,
+        defaultOvertimeEnd: doe3,
+      },
       allowanceVariables,
       overtimeVariables,
     })
@@ -1907,10 +1973,32 @@ export function SchedulingTimesheetWorkspace({
 
   function resetOvertimeVariables() {
     setOvertimeVariables(defaultOvertimeVariables)
+    const {
+      lokasiKhususEnabled: lke4,
+      lokasiKhususRate: lkr4,
+      lokasiKhususRateStaff: lkrs4,
+      lokasiKhususRateNonStaff: lkrns4,
+      defaultShiftType: dst4,
+      defaultClockIn: dci4,
+      defaultClockOut: dco4,
+      defaultEarlyOvertimeHours: deoh4,
+      defaultOvertimeEnd: doe4,
+      ...dbCfg4
+    } = siteConfig
     void saveSchedulingConfigAction({
       siteId: Number(siteId),
-      ...siteConfig,
-      fieldBreakConfig: null,
+      ...dbCfg4,
+      fieldBreakConfig: {
+        lokasiKhususEnabled: lke4,
+        lokasiKhususRate: lkr4,
+        lokasiKhususRateStaff: lkrs4,
+        lokasiKhususRateNonStaff: lkrns4,
+        defaultShiftType: dst4,
+        defaultClockIn: dci4,
+        defaultClockOut: dco4,
+        defaultEarlyOvertimeHours: deoh4,
+        defaultOvertimeEnd: doe4,
+      },
       allowanceVariables,
       overtimeVariables: defaultOvertimeVariables,
     })
