@@ -4593,24 +4593,24 @@ export function SchedulingTimesheetWorkspace({
                                            />
                                          </span>
                                        ) : null}
-                                        {(() => {
-                                          const activityKey = `${row.employee.id}-${period}-${day}`
-                                         const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
-                                          if (dayActivities.length === 0) return null
-                                          return (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                setSelectedActivityCell({ employeeId: row.employee.id, day })
-                                              }}
-                                              className="absolute left-1 bottom-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
-                                              title={`${dayActivities.length} aktivitas`}
-                                            >
-                                              {dayActivities.length}
-                                            </button>
-                                          )
-                                        })()}
+                                       {(() => {
+                                         const activityKey = `${row.employee.id}-${period}-${day}`
+                                        const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
+                                         if (dayActivities.length === 0) return null
+                                         return (
+                                            <div
+                                             type="button"
+                                             onClick={(e) => {
+                                               e.stopPropagation()
+                                               setSelectedActivityCell({ employeeId: row.employee.id, day })
+                                             }}
+                                              className="absolute left-1 bottom-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white cursor-pointer"
+                                             title={`${dayActivities.length} aktivitas`}
+                                           >
+                                             {dayActivities.length}
+                                            </div>
+                                         )
+                                       })()}
                                      </button>
                                     </td>
                                   )
