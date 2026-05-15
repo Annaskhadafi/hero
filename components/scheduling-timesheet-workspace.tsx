@@ -3004,6 +3004,48 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
+  async function generateEmployeeDailyActivityPdf(employee: EmployeeOption) {
+    try {
+      const activityKey = `${employee.id}-${period}`
+      const monthActivities = activities.filter(
+        (activity) => activity.employeeId === employee.id && activity.startTime.startsWith(period)
+      )
+
+      if (monthActivities.length === 0) {
+        toast.error('Tidak ada aktivitas untuk periode ini.')
+        return
+      }
+
+      const { generateDailyActivityPdf } = await import(
+        '@/lib/timesheet/generate-daily-activity-pdf'
+      )
+      const pdf = await generateDailyActivityPdf({
+        period,
+        employeeName: employee.name,
+        employeeSn: employee.employeeSn || '',
+        department: employee.department || '',
+        section: employee.section || '',
+        siteName: site?.name || '',
+        activities: monthActivities,
+      })
+      const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Daily_Activity_${employee.name.replace(/\s+/g, '_')}_${period}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`PDF Daily Activity ${employee.name} berhasil di-generate.`)
+    } catch (error) {
+      console.error('[PDF Daily Activity Error]', error)
+      toast.error('Generate PDF Daily Activity gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   function downloadAttendanceTemplate() {
     const templateRows = visibleEmployees.map((employee) => {
       const row: Record<string, string | number> = {
@@ -4351,7 +4393,14 @@ export function SchedulingTimesheetWorkspace({
                                         title="Generate Site Allowance PDF"
                                         onClick={() => generateEmployeeAllowancePdf(row.employee)}
                                       >
-                                        MSA
+                                      MSA
+                                      </button>
+                                      <button
+                                        className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                                        title="Generate Daily Activity PDF"
+                                        onClick={() => generateEmployeeDailyActivityPdf(row.employee)}
+                                      >
+                                        DA
                                       </button>
                                     </div>
                                   </div>
