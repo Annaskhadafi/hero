@@ -44,6 +44,12 @@ function SignInContent() {
     const [magicLinkLoading, setMagicLinkLoading] = useState(false);
     const [socialLoading, setSocialLoading] = useState<"google" | null>(null);
     const [error, setError] = useState("");
+    const [resolvedEmail, setResolvedEmail] = useState("");
+    const [resolvedName, setResolvedName] = useState("");
+
+    // Check if input looks like email
+    const isEmailInput = email.includes("@");
+    const displayEmail = resolvedEmail || email;
     const [message, setMessage] = useState("");
     const { data: session, isPending } = useSession();
     const router = useRouter();
@@ -69,8 +75,28 @@ function SignInContent() {
 
         try {
             const callbackURL = getClientPostLoginPath();
+
+            // Resolve SN to email if input is not an email
+            let loginEmail = email.trim();
+            if (!loginEmail.includes("@")) {
+                const res = await fetch("/api/auth/resolve-sn", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sn: loginEmail }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.email) {
+                    setError("SN tidak ditemukan. Pastikan SN karyawan benar.");
+                    setIsLoading(false);
+                    return;
+                }
+                loginEmail = data.email;
+                setResolvedEmail(data.email);
+                setResolvedName(data.name || "");
+            }
+
             const result = await signIn.email({
-                email,
+                email: loginEmail,
                 password,
                 rememberMe,
                 callbackURL,
@@ -188,7 +214,7 @@ function SignInContent() {
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="space-y-2">
                                 <Label htmlFor="m-email" className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                                    Email
+                                    Email / SN Karyawan
                                 </Label>
                                 <div className="group relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-4">
@@ -196,14 +222,19 @@ function SignInContent() {
                                     </div>
                                     <Input
                                         id="m-email"
-                                        type="email"
-                                        placeholder="admin@company.com"
+                                        type="text"
+                                        placeholder="Email atau SN (contoh: CP001)"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isDisabled}
                                         className="auth-dark-input h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
+                                    {resolvedName && (
+                                        <p className="mt-1 text-xs text-[#9ac8ec]">
+                                            Ditemukan: {resolvedName}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -342,7 +373,7 @@ function SignInContent() {
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <Label htmlFor="d-email" className="text-xs uppercase tracking-[0.2em] text-slate-300/70">
-                                    Email
+                                    Email / SN Karyawan
                                 </Label>
                                 <div className="group relative">
                                     <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-[#9ac8ec]" />
