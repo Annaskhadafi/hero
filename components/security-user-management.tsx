@@ -1,13 +1,7 @@
-﻿"use client";
+'use client'
 
-import {
-  useActionState,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
-import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   BriefcaseBusiness,
   Check,
@@ -19,21 +13,21 @@ import {
   Upload,
   Users2,
   X,
-} from "lucide-react";
+} from 'lucide-react'
 
 import {
   importSecurityUsersAction,
   type ImportUsersActionState,
-} from "@/app/dashboard/admin-actions";
-import { AdminMetricGrid } from "@/components/admin-metric-grid";
-import { AdminPageShell } from "@/components/admin-page-shell";
-import { SecurityUserCreateDialog } from "@/components/security-user-create-dialog";
-import { SecurityUserRowActions } from "@/components/security-user-row-actions";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+} from '@/app/dashboard/admin-actions'
+import { AdminMetricGrid } from '@/components/admin-metric-grid'
+import { AdminPageShell } from '@/components/admin-page-shell'
+import { SecurityUserCreateDialog } from '@/components/security-user-create-dialog'
+import { SecurityUserRowActions } from '@/components/security-user-row-actions'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Command,
   CommandEmpty,
@@ -41,7 +35,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
+} from '@/components/ui/command'
 import {
   Dialog,
   DialogContent,
@@ -49,17 +43,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  MinimalTableShell,
-  exportRowsToFile,
-} from "@/components/ui/minimal-table-shell";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { MinimalTableShell, exportRowsToFile } from '@/components/ui/minimal-table-shell'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Table,
   TableBody,
@@ -67,18 +54,18 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
-import type { SecurityUserRecord } from "@/lib/hero-admin";
+} from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import type { SecurityUserRecord } from '@/lib/hero-admin'
 import {
   USER_IMPORT_FIELDS,
   autoMapHeaders,
   parseCsvToRecords,
   type UserImportMapping,
-} from "@/lib/security-user-import";
-import { cn } from "@/lib/utils";
+} from '@/lib/security-user-import'
+import { cn } from '@/lib/utils'
 
-import { SecurityUserBulkActions } from "@/components/security-user-bulk-actions";
+import { SecurityUserBulkActions } from '@/components/security-user-bulk-actions'
 
 // Extract site name from workLocation
 // Example: "Repair & Retread - Sangatta" -> "Sangatta"
@@ -90,59 +77,49 @@ function extractSiteName(workLocation: string | null | undefined): string {
 }
 
 const INITIAL_IMPORT_STATE: ImportUsersActionState = {
-  status: "idle",
-  message: "",
-};
+  status: 'idle',
+  message: '',
+}
 
 function getUniqueOptions(values: string[]) {
-  return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean)),
-  ).sort((left, right) => left.localeCompare(right));
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort(
+    (left, right) => left.localeCompare(right)
+  )
 }
 
 function toHeaderPreview(mapping: UserImportMapping) {
   return USER_IMPORT_FIELDS.map(
-    (field) => `${field.label}: ${mapping[field.key] || "belum dipilih"}`
-  ).join("\n");
+    (field) => `${field.label}: ${mapping[field.key] || 'belum dipilih'}`
+  ).join('\n')
 }
 
 function getUserInitials(name: string) {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
+  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2)
 
   if (parts.length === 0) {
-    return "U";
+    return 'U'
   }
 
-  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
+  return parts.map((part) => part[0]?.toUpperCase() ?? '').join('')
 }
 
-function FilterChip({
-  children,
-  onRemove,
-}: {
-  children: React.ReactNode;
-  onRemove: () => void;
-}) {
+function FilterChip({ children, onRemove }: { children: React.ReactNode; onRemove: () => void }) {
   return (
     <Badge
       variant="secondary"
-      className="surface-chip flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium text-foreground"
+      className="surface-chip text-foreground flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium"
     >
       {children}
       <button
         type="button"
         onClick={onRemove}
-        className="grid size-4 place-items-center rounded-full text-muted-foreground transition hover:bg-surface-container-low"
+        className="text-muted-foreground hover:bg-surface-container-low grid size-4 place-items-center rounded-full transition"
         aria-label="Hapus filter"
       >
         <X className="size-3" />
       </button>
     </Badge>
-  );
+  )
 }
 
 function MultiSelectDropdown({
@@ -152,33 +129,33 @@ function MultiSelectDropdown({
   placeholder,
   label,
 }: {
-  options: string[];
-  selected: string[];
-  onChange: (selected: string[]) => void;
-  placeholder: string;
-  label: string;
+  options: string[]
+  selected: string[]
+  onChange: (selected: string[]) => void
+  placeholder: string
+  label: string
 }) {
-  const [open, setOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [open, setOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const filteredOptions = options.filter((option) =>
-    option.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+    option.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   const displayText =
     selected.length === 0
       ? placeholder
       : selected.length === 1
         ? selected[0]
-        : `${selected.length} dipilih`;
+        : `${selected.length} dipilih`
 
   function toggleOption(option: string) {
     if (selected.includes(option)) {
-      onChange(selected.filter((item) => item !== option));
-      return;
+      onChange(selected.filter((item) => item !== option))
+      return
     }
 
-    onChange([...selected, option]);
+    onChange([...selected, option])
   }
 
   return (
@@ -188,7 +165,7 @@ function MultiSelectDropdown({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-9 min-w-[160px] justify-between rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] font-medium text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)] hover:bg-surface-container-lowest"
+          className="bg-surface-container-lowest text-muted-foreground hover:bg-surface-container-lowest h-9 min-w-[160px] justify-between rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
         >
           <span className="truncate">{displayText}</span>
           <Filter className="ml-2 size-3.5 shrink-0 opacity-50" />
@@ -213,20 +190,18 @@ function MultiSelectDropdown({
                 >
                   <Checkbox checked={selected.includes(option)} />
                   <span className="flex-1 truncate text-sm">{option}</span>
-                  {selected.includes(option) ? (
-                    <Check className="size-4 text-primary" />
-                  ) : null}
+                  {selected.includes(option) ? <Check className="text-primary size-4" /> : null}
                 </CommandItem>
               ))}
             </CommandGroup>
           </CommandList>
           {selected.length > 0 ? (
-            <div className="border-t border-border/70 p-2">
+            <div className="border-border/70 border-t p-2">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onChange([])}
-                className="h-8 w-full justify-center text-xs text-muted-foreground"
+                className="text-muted-foreground h-8 w-full justify-center text-xs"
               >
                 Bersihkan pilihan
               </Button>
@@ -235,7 +210,7 @@ function MultiSelectDropdown({
         </Command>
       </PopoverContent>
     </Popover>
-  );
+  )
 }
 
 export function SecurityUserManagement({
@@ -246,87 +221,90 @@ export function SecurityUserManagement({
   positions,
   sites,
 }: {
-  users: SecurityUserRecord[];
-  roleOptions: Array<{ id: number; name: string }>;
-  sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>;
-  departments: Array<{ id: number; code: string; name: string }>;
+  users: SecurityUserRecord[]
+  roleOptions: Array<{ id: number; name: string }>
+  sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>
+  departments: Array<{ id: number; code: string; name: string }>
   positions: Array<{
-    id: number;
-    code: string;
-    name: string;
-    siteLocation: string;
-    level: number;
-    departmentId: number | null;
-  }>;
-  sites: Array<{ id: number; name: string; location: string }>;
+    id: number
+    code: string
+    name: string
+    siteLocation: string
+    level: number
+    departmentId: number | null
+  }>
+  sites: Array<{ id: number; name: string; location: string }>
 }) {
-  const router = useRouter();
-  const [isRefreshing, startRefreshTransition] = useTransition();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
-  const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([]);
-  const [selectedSites, setSelectedSites] = useState<string[]>([]);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [isImportOpen, setIsImportOpen] = useState(false);
-  const [rawCsv, setRawCsv] = useState("");
-  const [mapping, setMapping] = useState<UserImportMapping>({});
+  const router = useRouter()
+  const [isRefreshing, startRefreshTransition] = useTransition()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+  const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([])
+  const [selectedSites, setSelectedSites] = useState<string[]>([])
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [rawCsv, setRawCsv] = useState('')
+  const [mapping, setMapping] = useState<UserImportMapping>({})
   const [actionState, formAction, isPending] = useActionState(
     importSecurityUsersAction,
-    INITIAL_IMPORT_STATE,
-  );
+    INITIAL_IMPORT_STATE
+  )
 
-  const parsedImport = useMemo(() => parseCsvToRecords(rawCsv), [rawCsv]);
+  const parsedImport = useMemo(() => parseCsvToRecords(rawCsv), [rawCsv])
   const managerOptions = useMemo(
     () => users.map((user) => ({ id: user.id, name: user.name })),
-    [users],
-  );
+    [users]
+  )
   const departmentFilterOptions = useMemo(
     () => getUniqueOptions(users.map((user) => user.department)),
-    [users],
-  );
+    [users]
+  )
   const roleNames = useMemo(
     () => getUniqueOptions(roleOptions.map((item) => item.name)),
-    [roleOptions],
-  );
+    [roleOptions]
+  )
   const statusTypeOptions = useMemo(
     () => getUniqueOptions(users.map((user) => user.employeeStatusType)),
-    [users],
-  );
+    [users]
+  )
   const siteOptions = useMemo(
-    () => getUniqueOptions(users.map((user) => extractSiteName(user.workLocation)).filter((s) => s !== "-")),
-    [users],
-  );
+    () =>
+      getUniqueOptions(
+        users.map((user) => extractSiteName(user.workLocation)).filter((s) => s !== '-')
+      ),
+    [users]
+  )
 
   useEffect(() => {
-    const autoMapped = autoMapHeaders(parsedImport.headers);
+    const autoMapped = autoMapHeaders(parsedImport.headers)
 
     setMapping((currentMapping) => {
-      const nextMapping: UserImportMapping = {};
+      const nextMapping: UserImportMapping = {}
 
       for (const field of USER_IMPORT_FIELDS) {
-        const currentHeader = currentMapping[field.key];
+        const currentHeader = currentMapping[field.key]
         nextMapping[field.key] =
           currentHeader && parsedImport.headers.includes(currentHeader)
             ? currentHeader
-            : autoMapped[field.key] ?? "";
+            : (autoMapped[field.key] ?? '')
       }
 
-      return nextMapping;
-    });
-  }, [parsedImport.headers]);
+      return nextMapping
+    })
+  }, [parsedImport.headers])
 
   useEffect(() => {
-    if (actionState.status === "success") {
-      setIsImportOpen(false);
-      setRawCsv("");
-      setMapping({});
-      startRefreshTransition(() => router.refresh());
+    if (actionState.status === 'success') {
+      setIsImportOpen(false)
+      setRawCsv('')
+      setMapping({})
+      startRefreshTransition(() => router.refresh())
     }
-  }, [actionState.status, router, startRefreshTransition]);
+  }, [actionState.status, router, startRefreshTransition])
 
   const filteredUsers = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = searchQuery.trim().toLowerCase()
 
     return users.filter((user) => {
       const haystack = [
@@ -334,7 +312,7 @@ export function SecurityUserManagement({
         user.name,
         user.birthPlaceDate,
         user.domicile,
-        user.directManagerName ?? "",
+        user.directManagerName ?? '',
         user.section,
         user.department,
         user.jobTitle,
@@ -344,77 +322,48 @@ export function SecurityUserManagement({
         user.email,
         user.status,
       ]
-        .join(" ")
-        .toLowerCase();
+        .join(' ')
+        .toLowerCase()
 
-      const matchesKeyword = !query || haystack.includes(query);
+      const matchesKeyword = !query || haystack.includes(query)
       const matchesDepartment =
-        selectedDepartments.length === 0 ||
-        selectedDepartments.includes(user.department);
-      const matchesRole =
-        selectedRoles.length === 0 || selectedRoles.includes(user.accessRole);
+        selectedDepartments.length === 0 || selectedDepartments.includes(user.department)
+      const matchesRole = selectedRoles.length === 0 || selectedRoles.includes(user.accessRole)
       const matchesStatusType =
-        selectedStatusTypes.length === 0 ||
-        selectedStatusTypes.includes(user.employeeStatusType);
+        selectedStatusTypes.length === 0 || selectedStatusTypes.includes(user.employeeStatusType)
       const matchesSite =
-        selectedSites.length === 0 ||
-        selectedSites.includes(extractSiteName(user.workLocation));
+        selectedSites.length === 0 || selectedSites.includes(extractSiteName(user.workLocation))
 
-      return (
-        matchesKeyword &&
-        matchesDepartment &&
-        matchesRole &&
-        matchesStatusType &&
-        matchesSite
-      );
-    });
-  }, [
-    searchQuery,
-    selectedDepartments,
-    selectedRoles,
-    selectedStatusTypes,
-    selectedSites,
-    users,
-  ]);
+      return matchesKeyword && matchesDepartment && matchesRole && matchesStatusType && matchesSite
+    })
+  }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites, users])
 
-  const currentYear = new Date().getFullYear();
-  const activeUsersCount = users.filter((user) => user.status === "active").length;
-  const newHiresCount = users.filter(
-    (user) => user.joinYear === currentYear,
-  ).length;
+  const currentYear = new Date().getFullYear()
+  const activeUsersCount = users.filter((user) => user.status === 'active').length
+  const newHiresCount = users.filter((user) => user.joinYear === currentYear).length
   const visiblePercentage =
-    users.length > 0
-      ? Math.round((filteredUsers.length / users.length) * 100 * 10) / 10
-      : 0;
+    users.length > 0 ? Math.round((filteredUsers.length / users.length) * 100 * 10) / 10 : 0
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedRoles.length > 0 ||
     selectedStatusTypes.length > 0 ||
-    selectedSites.length > 0;
+    selectedSites.length > 0
   const missingRequiredMappings = USER_IMPORT_FIELDS.filter(
-    (field) => field.required && !mapping[field.key],
-  );
+    (field) => field.required && !mapping[field.key]
+  )
 
   function resetFilters() {
-    setSearchQuery("");
-    setSelectedDepartments([]);
-    setSelectedRoles([]);
-    setSelectedStatusTypes([]);
-    setSelectedSites([]);
+    setSearchQuery('')
+    setSelectedDepartments([])
+    setSelectedRoles([])
+    setSelectedStatusTypes([])
+    setSelectedSites([])
   }
 
   function exportVisibleUsers() {
     exportRowsToFile({
-      columns: [
-        "Nama",
-        "SN",
-        "Departemen",
-        "Peran",
-        "Lokasi Site",
-        "Tipe Status",
-        "Join Year",
-      ],
+      columns: ['Nama', 'SN', 'Departemen', 'Peran', 'Lokasi Site', 'Tipe Status', 'Join Year'],
       rows: filteredUsers.map((user) => [
         user.name,
         user.employeeSn,
@@ -424,8 +373,8 @@ export function SecurityUserManagement({
         user.employeeStatusType,
         user.joinYear,
       ]),
-      fileName: "security-users",
-    });
+      fileName: 'security-users',
+    })
   }
 
   return (
@@ -440,7 +389,7 @@ export function SecurityUserManagement({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="h-10 rounded-xl border-0 bg-surface-container-lowest px-4 text-sm font-semibold text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
               >
                 <Upload className="size-4" />
                 Import Pengguna
@@ -456,33 +405,29 @@ export function SecurityUserManagement({
 
               <form action={formAction} className="space-y-5">
                 <input type="hidden" name="rawCsv" value={rawCsv} />
-                <input
-                  type="hidden"
-                  name="mappingJson"
-                  value={JSON.stringify(mapping)}
-                />
+                <input type="hidden" name="mappingJson" value={JSON.stringify(mapping)} />
 
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                   <div className="space-y-4">
                     <div className="surface-muted-card rounded-[1rem] p-4">
                       <div className="space-y-3">
                         <div className="space-y-2">
-                          <p className="text-sm font-semibold text-foreground">
+                          <p className="text-foreground text-sm font-semibold">
                             File daftar pengguna
                           </p>
                           <Input
                             type="file"
                             accept=".csv,text/csv"
                             onChange={async (event) => {
-                              const file = event.target.files?.[0];
-                              if (!file) return;
-                              setRawCsv(await file.text());
+                              const file = event.target.files?.[0]
+                              if (!file) return
+                              setRawCsv(await file.text())
                             }}
                           />
                         </div>
 
                         <div className="space-y-2">
-                          <p className="text-sm font-semibold text-foreground">
+                          <p className="text-foreground text-sm font-semibold">
                             Tempel daftar manual
                           </p>
                           <Textarea
@@ -498,22 +443,23 @@ export function SecurityUserManagement({
                     <div className="surface-module-card rounded-[1rem] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            Pratinjau data
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {parsedImport.records.length} baris,{" "}
-                            {parsedImport.headers.length} kolom terdeteksi.
+                          <p className="text-foreground text-sm font-semibold">Pratinjau data</p>
+                          <p className="text-muted-foreground text-xs">
+                            {parsedImport.records.length} baris, {parsedImport.headers.length} kolom
+                            terdeteksi.
                           </p>
                         </div>
-                        <Badge variant="outline" className="rounded-full border-0 bg-surface-container-low px-3 py-1">
+                        <Badge
+                          variant="outline"
+                          className="bg-surface-container-low rounded-full border-0 px-3 py-1"
+                        >
                           {missingRequiredMappings.length === 0
-                            ? "Siap import"
+                            ? 'Siap import'
                             : `${missingRequiredMappings.length} kolom wajib`}
                         </Badge>
                       </div>
 
-                      <div className="mt-4 overflow-x-auto rounded-[0.95rem] bg-surface-container-low p-2">
+                      <div className="bg-surface-container-low mt-4 overflow-x-auto rounded-[0.95rem] p-2">
                         <Table>
                           <TableHeader>
                             <TableRow className="hover:bg-transparent">
@@ -530,21 +476,18 @@ export function SecurityUserManagement({
                             {parsedImport.records.slice(0, 4).length > 0 ? (
                               parsedImport.records.slice(0, 4).map((record, index) => (
                                 <TableRow
-                                  key={`${index}-${record[parsedImport.headers[0]] ?? "row"}`}
+                                  key={`${index}-${record[parsedImport.headers[0]] ?? 'row'}`}
                                 >
                                   {parsedImport.headers.map((header) => (
-                                    <TableCell
-                                      key={`${index}-${header}`}
-                                      className="text-xs"
-                                    >
-                                      {record[header] || "â€”"}
+                                    <TableCell key={`${index}-${header}`} className="text-xs">
+                                      {record[header] || 'â€”'}
                                     </TableCell>
                                   ))}
                                 </TableRow>
                               ))
                             ) : (
                               <TableRow>
-                                <TableCell className="text-sm text-muted-foreground">
+                                <TableCell className="text-muted-foreground text-sm">
                                   Unggah atau tempel daftar pengguna untuk melihat pratinjau.
                                 </TableCell>
                               </TableRow>
@@ -557,32 +500,28 @@ export function SecurityUserManagement({
 
                   <div className="space-y-4">
                     <div className="surface-module-card rounded-[1rem] p-4">
-                      <p className="text-sm font-semibold text-foreground">
-                        Cocokkan Kolom
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="text-foreground text-sm font-semibold">Cocokkan Kolom</p>
+                      <p className="text-muted-foreground mt-1 text-xs">
                         Semua kolom wajib harus diisi sebelum import dijalankan.
                       </p>
                       <div className="mt-4 grid gap-3">
                         {USER_IMPORT_FIELDS.map((field) => (
                           <div key={field.key} className="grid gap-2">
                             <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium text-foreground">
-                                {field.label}
-                              </p>
+                              <p className="text-foreground text-sm font-medium">{field.label}</p>
                               {field.required ? (
                                 <Badge
                                   variant="secondary"
-                                  className="rounded-full bg-surface-container-low"
+                                  className="bg-surface-container-low rounded-full"
                                 >
                                   Wajib
                                 </Badge>
                               ) : null}
                             </div>
-                            <Command className="rounded-xl border-0 bg-surface-container-lowest shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                            <Command className="bg-surface-container-lowest rounded-xl border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
                               <CommandInput
                                 placeholder="Pilih kolom sumber"
-                                value={mapping[field.key] || ""}
+                                value={mapping[field.key] || ''}
                                 onValueChange={(value) =>
                                   setMapping((current) => ({
                                     ...current,
@@ -591,9 +530,7 @@ export function SecurityUserManagement({
                                 }
                               />
                               <CommandList className="max-h-[120px]">
-                                <CommandEmpty>
-                                  Tidak ada kolom yang cocok
-                                </CommandEmpty>
+                                <CommandEmpty>Tidak ada kolom yang cocok</CommandEmpty>
                                 <CommandGroup>
                                   {parsedImport.headers.map((header) => (
                                     <CommandItem
@@ -617,33 +554,31 @@ export function SecurityUserManagement({
                     </div>
 
                     <div className="surface-muted-card rounded-[1rem] p-4">
-                      <p className="text-sm font-semibold text-foreground">
-                        Ringkasan Kolom
-                      </p>
-                      <p className="mt-2 whitespace-pre-line font-mono text-xs leading-6 text-muted-foreground">
+                      <p className="text-foreground text-sm font-semibold">Ringkasan Kolom</p>
+                      <p className="text-muted-foreground mt-2 font-mono text-xs leading-6 whitespace-pre-line">
                         {toHeaderPreview(mapping)}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {actionState.status !== "idle" ? (
+                {actionState.status !== 'idle' ? (
                   <Alert
                     className={cn(
-                      "border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]",
-                      actionState.status === "error"
-                        ? "bg-red-50 text-red-700"
-                        : "bg-emerald-50 text-emerald-700",
+                      'border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]',
+                      actionState.status === 'error'
+                        ? 'bg-red-50 text-red-700'
+                        : 'bg-emerald-50 text-emerald-700'
                     )}
                   >
                     <AlertDescription>
                       {actionState.message}
-                      {actionState.status === "success" ? (
+                      {actionState.status === 'success' ? (
                         <span>
-                          {" "}
-                          Baru: {actionState.importedCount ?? 0}, diperbarui:{" "}
-                          {actionState.updatedCount ?? 0}, dilewati:{" "}
-                          {actionState.skippedCount ?? 0}.
+                          {' '}
+                          Baru: {actionState.importedCount ?? 0}, diperbarui:{' '}
+                          {actionState.updatedCount ?? 0}, dilewati: {actionState.skippedCount ?? 0}
+                          .
                         </span>
                       ) : null}
                     </AlertDescription>
@@ -651,11 +586,7 @@ export function SecurityUserManagement({
                 ) : null}
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsImportOpen(false)}
-                  >
+                  <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>
                     Tutup
                   </Button>
                   <Button
@@ -667,9 +598,7 @@ export function SecurityUserManagement({
                       missingRequiredMappings.length > 0
                     }
                   >
-                    {isPending
-                      ? "Mengimpor..."
-                      : "Import ke Manajemen Pengguna"}
+                    {isPending ? 'Mengimpor...' : 'Import ke Manajemen Pengguna'}
                   </Button>
                 </div>
               </form>
@@ -678,13 +607,11 @@ export function SecurityUserManagement({
 
           <Button
             variant="outline"
-            className="h-10 rounded-xl border-0 bg-surface-container-lowest px-3 text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+            className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             onClick={() => startRefreshTransition(() => router.refresh())}
             disabled={isRefreshing}
           >
-            <RefreshCw
-              className={cn("size-4", isRefreshing && "animate-spin")}
-            />
+            <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
           </Button>
 
           <SecurityUserCreateDialog
@@ -701,24 +628,24 @@ export function SecurityUserManagement({
       <AdminMetricGrid
         items={[
           {
-            label: "Total User",
+            label: 'Total User',
             value: users.length.toLocaleString(),
-            meta: "Semua akun yang terdaftar di HERO.",
+            meta: 'Semua akun yang terdaftar di HERO.',
           },
           {
-            label: "Active Access",
+            label: 'Active Access',
             value: activeUsersCount.toLocaleString(),
-            meta: "Akun dengan akses aktif dan siap dipakai.",
+            meta: 'Akun dengan akses aktif dan siap dipakai.',
           },
           {
             label: `Bergabung ${currentYear}`,
             value: newHiresCount.toLocaleString(),
-            meta: "Karyawan baru pada tahun berjalan.",
+            meta: 'Karyawan baru pada tahun berjalan.',
           },
           {
-            label: "Cakupan Visible",
+            label: 'Cakupan Visible',
             value: `${visiblePercentage}%`,
-            meta: "Proporsi data yang masih tampil setelah filter diterapkan.",
+            meta: 'Proporsi data yang masih tampil setelah filter diterapkan.',
           },
         ]}
       />
@@ -727,7 +654,7 @@ export function SecurityUserManagement({
         <div className="surface-muted-card rounded-[1rem] p-3">
           <div className="flex flex-wrap items-center gap-2">
             {searchQuery.trim() ? (
-              <FilterChip onRemove={() => setSearchQuery("")}>
+              <FilterChip onRemove={() => setSearchQuery('')}>
                 Cari: {searchQuery.trim()}
               </FilterChip>
             ) : null}
@@ -735,9 +662,7 @@ export function SecurityUserManagement({
               <FilterChip
                 key={department}
                 onRemove={() =>
-                  setSelectedDepartments((current) =>
-                    current.filter((item) => item !== department),
-                  )
+                  setSelectedDepartments((current) => current.filter((item) => item !== department))
                 }
               >
                 Departemen: {department}
@@ -747,9 +672,7 @@ export function SecurityUserManagement({
               <FilterChip
                 key={role}
                 onRemove={() =>
-                  setSelectedRoles((current) =>
-                    current.filter((item) => item !== role),
-                  )
+                  setSelectedRoles((current) => current.filter((item) => item !== role))
                 }
               >
                 Peran: {role}
@@ -759,9 +682,7 @@ export function SecurityUserManagement({
               <FilterChip
                 key={statusType}
                 onRemove={() =>
-                  setSelectedStatusTypes((current) =>
-                    current.filter((item) => item !== statusType),
-                  )
+                  setSelectedStatusTypes((current) => current.filter((item) => item !== statusType))
                 }
               >
                 Status: {statusType}
@@ -771,7 +692,7 @@ export function SecurityUserManagement({
               variant="ghost"
               size="sm"
               onClick={resetFilters}
-              className="h-8 rounded-full px-3 text-xs text-muted-foreground"
+              className="text-muted-foreground h-8 rounded-full px-3 text-xs"
             >
               Reset semua
             </Button>
@@ -780,13 +701,13 @@ export function SecurityUserManagement({
       ) : null}
 
       <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
-              <SecurityUserBulkActions
-        selectedIds={selectedIds}
-        onClearSelection={() => setSelectedIds([])}
-        roleOptions={roleOptions}
-      />
+        <SecurityUserBulkActions
+          selectedIds={selectedIds}
+          onClearSelection={() => setSelectedIds([])}
+          roleOptions={roleOptions}
+        />
 
-      <MinimalTableShell
+        <MinimalTableShell
           title="Direktori Pengguna"
           description="Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
           label="users"
@@ -795,12 +716,12 @@ export function SecurityUserManagement({
           filters={
             <>
               <div className="relative w-full sm:w-[220px] sm:flex-none">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <Input
                   placeholder="Cari pengguna..."
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  className="h-9 rounded-xl border-0 bg-surface-container-lowest pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                  className="bg-surface-container-lowest h-9 rounded-xl border-0 pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
                 />
               </div>
               <MultiSelectDropdown
@@ -838,22 +759,24 @@ export function SecurityUserManagement({
               variant="outline"
               size="sm"
               onClick={exportVisibleUsers}
-              className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             >
               Export Terfilter
             </Button>
           }
           dateFilter={false}
         >
-          <div className="overflow-x-auto rounded-[1rem] bg-surface-container-low p-2">
+          <div className="bg-surface-container-low overflow-x-auto rounded-[1rem] p-2">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-12">
                     <Checkbox
-                      checked={selectedIds.length === filteredUsers.length && filteredUsers.length > 0}
+                      checked={
+                        selectedIds.length === filteredUsers.length && filteredUsers.length > 0
+                      }
                       onCheckedChange={(checked) => {
-                        setSelectedIds(checked ? filteredUsers.map((u: any) => u.id) : []);
+                        setSelectedIds(checked ? filteredUsers.map((u: any) => u.id) : [])
                       }}
                     />
                   </TableHead>
@@ -877,10 +800,11 @@ export function SecurityUserManagement({
                         <Checkbox
                           checked={selectedIds.includes(user.id)}
                           onCheckedChange={(checked) => {
-                            setSelectedIds(checked 
-                              ? [...selectedIds, user.id]
-                              : selectedIds.filter((id: number) => id !== user.id)
-                            );
+                            setSelectedIds(
+                              checked
+                                ? [...selectedIds, user.id]
+                                : selectedIds.filter((id: number) => id !== user.id)
+                            )
                           }}
                         />
                       </TableCell>
@@ -892,52 +816,48 @@ export function SecurityUserManagement({
                               alt={user.name}
                               className="object-cover"
                             />
-                            <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                            <AvatarFallback className="bg-primary/10 text-primary rounded-xl text-sm font-semibold">
                               {getUserInitials(user.name)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-foreground">
-                              {user.name}
-                            </p>
-                            <p className="truncate text-sm text-muted-foreground">
-                              {user.email}
-                            </p>
+                            <p className="text-foreground truncate font-medium">{user.name}</p>
+                            <p className="text-muted-foreground truncate text-sm">{user.email}</p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-3.5">
-                        <span className="font-mono text-sm text-foreground/80">
+                        <span className="text-foreground/80 font-mono text-sm">
                           {user.employeeSn}
                         </span>
                       </TableCell>
                       <TableCell className="py-3.5">
                         <Badge
                           variant="secondary"
-                          className="rounded-full border-0 bg-surface-container-lowest px-3 py-1 text-[11px] text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
+                          className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
                         >
                           {user.department}
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-3.5 text-sm text-foreground/85">
-                        {user.section || "â€”"}
+                      <TableCell className="text-foreground/85 py-3.5 text-sm">
+                        {user.section || 'â€”'}
                       </TableCell>
-                      <TableCell className="py-3.5 text-sm text-foreground/85">
-                        {user.employeeStatusType || "â€”"}
+                      <TableCell className="text-foreground/85 py-3.5 text-sm">
+                        {user.employeeStatusType || 'â€”'}
                       </TableCell>
-                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                      <TableCell className="text-foreground/85 py-3.5 text-sm">
                         {user.accessRole}
                       </TableCell>
-                      <TableCell className="py-3.5 text-sm text-foreground/85">
-                        {user.workLocation || "â€”"}
+                      <TableCell className="text-foreground/85 py-3.5 text-sm">
+                        {user.workLocation || 'â€”'}
                       </TableCell>
-                      <TableCell className="py-3.5 text-sm text-foreground/85">
+                      <TableCell className="text-foreground/85 py-3.5 text-sm">
                         {extractSiteName(user.workLocation)}
                       </TableCell>
                       <TableCell className="py-3.5">
                         <Badge
                           variant="outline"
-                          className="rounded-full border-0 bg-surface-container-lowest px-3 py-1 text-[11px] text-muted-foreground shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
+                          className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
                         >
                           {user.employeeStatusType}
                         </Badge>
@@ -958,8 +878,8 @@ export function SecurityUserManagement({
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
-                      className="py-12 text-center text-sm text-muted-foreground"
+                      colSpan={10}
+                      className="text-muted-foreground py-12 text-center text-sm"
                     >
                       Tidak ada pengguna yang cocok dengan filter saat ini.
                     </TableCell>
@@ -974,14 +894,12 @@ export function SecurityUserManagement({
       <div className="grid gap-3 md:grid-cols-3">
         <div className="surface-muted-card rounded-[1rem] p-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+            <span className="bg-primary/10 text-primary grid size-10 place-items-center rounded-xl">
               <Users2 className="size-4" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">
-                Total scope
-              </p>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-muted-foreground text-xs font-semibold uppercase">Total scope</p>
+              <p className="text-foreground text-sm font-medium">
                 {users.length.toLocaleString()} akun terdaftar
               </p>
             </div>
@@ -989,14 +907,12 @@ export function SecurityUserManagement({
         </div>
         <div className="surface-muted-card rounded-[1rem] p-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-tertiary-container text-on-tertiary-container">
+            <span className="bg-tertiary-container text-on-tertiary-container grid size-10 place-items-center rounded-xl">
               <ShieldCheck className="size-4" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">
-                Access health
-              </p>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-muted-foreground text-xs font-semibold uppercase">Access health</p>
+              <p className="text-foreground text-sm font-medium">
                 {activeUsersCount.toLocaleString()} akses aktif
               </p>
             </div>
@@ -1004,7 +920,7 @@ export function SecurityUserManagement({
         </div>
         <div className="surface-muted-card rounded-[1rem] p-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+            <span className="bg-primary/10 text-primary grid size-10 place-items-center rounded-xl">
               {visiblePercentage >= 100 ? (
                 <BriefcaseBusiness className="size-4" />
               ) : (
@@ -1012,10 +928,8 @@ export function SecurityUserManagement({
               )}
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">
-                Current view
-              </p>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-muted-foreground text-xs font-semibold uppercase">Current view</p>
+              <p className="text-foreground text-sm font-medium">
                 {filteredUsers.length.toLocaleString()} user siap ditindak
               </p>
             </div>
@@ -1023,8 +937,5 @@ export function SecurityUserManagement({
         </div>
       </div>
     </AdminPageShell>
-  );
+  )
 }
-
-
-

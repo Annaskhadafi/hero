@@ -31,7 +31,12 @@ import {
   attendanceRecords,
   dailyReports,
   employees,
+  hrDepartments,
+  hrEmployeeStatuses,
   hrEmployees,
+  hrOrgNodes,
+  hrPositions,
+  hrSections,
   hrSites,
   hseIncidents,
   hseObservations,
@@ -2331,6 +2336,76 @@ async function resolveDefaultOrgNodeId(positionId: number | null) {
   return node?.id ?? null
 }
 
+async function resolveHrEmployeeGovernanceIds(params: {
+  department: string
+  section: string
+  jobTitle: string
+  siteId: number | null
+  statusName?: string
+}) {
+  const [departments, sections, positions, orgNodes, statuses] = await Promise.all([
+    db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments),
+    db
+      .select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId })
+      .from(hrSections),
+    db.select({ id: hrPositions.id, name: hrPositions.rankName }).from(hrPositions),
+    db
+      .select({
+        id: hrOrgNodes.id,
+        departmentId: hrOrgNodes.departmentId,
+        sectionId: hrOrgNodes.sectionId,
+        siteId: hrOrgNodes.siteId,
+      })
+      .from(hrOrgNodes),
+    db
+      .select({ code: hrEmployeeStatuses.code, name: hrEmployeeStatuses.name })
+      .from(hrEmployeeStatuses),
+  ])
+
+  const department =
+    departments.find(
+      (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.department)
+    ) ?? null
+  const section =
+    sections.find(
+      (item) =>
+        normalizeLookupValue(item.name) === normalizeLookupValue(params.section) &&
+        (department?.id == null || item.departmentId === department.id)
+    ) ?? null
+  const position =
+    positions.find(
+      (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle)
+    ) ?? null
+  const orgNode =
+    orgNodes.find(
+      (item) =>
+        (params.siteId == null || item.siteId === params.siteId) &&
+        (section?.id == null || item.sectionId === section.id) &&
+        (department?.id == null || item.departmentId === department.id)
+    ) ?? null
+  const status =
+    statuses.find(
+      (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.statusName)
+    ) ??
+    statuses.find(
+      (item) => normalizeLookupValue(item.code) === normalizeLookupValue(params.statusName)
+    ) ??
+    statuses.find((item) => normalizeLookupValue(item.name).includes('permanen')) ??
+    null
+
+  return {
+    departmentId: department?.id ?? null,
+    sectionId: section?.id ?? null,
+    positionId: position?.id ?? null,
+    orgNodeId: orgNode?.id ?? null,
+    demographicEmployeeStatusCode: status?.code ?? null,
+  }
+}
+
+function parseJoinDateFromYear(value: string | undefined) {
+  return `${parseJoinYear(value ?? '')}-01-01`
+}
+
 function parseRoleId(value: string | undefined) {
   if (!value) {
     return null
@@ -2747,6 +2822,53 @@ function isConnectionError(err: any): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+async function ensureAuthUserForHrEmployee(employee: {
+  id: number
+  authUserId: string | null
+  name: string
+  email: string
+}) {
+  if (employee.authUserId) {
+    await db
+      .update(user)
+      .set({ name: employee.name, email: employee.email, updatedAt: new Date() })
+      .where(eq(user.id, employee.authUserId))
+    return employee.authUserId
+  }
+
+  const [existingUser] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.email, employee.email))
+    .limit(1)
+
+  if (existingUser) {
+    await db
+      .update(user)
+      .set({ name: employee.name, updatedAt: new Date() })
+      .where(eq(user.id, existingUser.id))
+    await db
+      .update(hrEmployees)
+      .set({ authUserId: existingUser.id })
+      .where(eq(hrEmployees.id, employee.id))
+    return existingUser.id
+  }
+
+  const authUserId = randomUUID()
+  const now = new Date()
+
+  await db.insert(user).values({
+    id: authUserId,
+    name: employee.name,
+    email: employee.email,
+    emailVerified: true,
+    createdAt: now,
+    updatedAt: now,
+  })
+  await db.update(hrEmployees).set({ authUserId }).where(eq(hrEmployees.id, employee.id))
+  return authUserId
+}
 
 async function ensureAuthUserForEmployee(employee: {
   id: number
@@ -3189,55 +3311,71 @@ export async function importSecurityUsersAction(
     const { records, headers } = parseCsvToRecords(payload.rawCsv)
 
     if (records.length === 0) {
-      return {
-        status: 'error',
-        message: 'CSV has no data rows to import.',
-      }
+      return { status: 'error', message: 'CSV has no data rows to import.' }
     }
 
-    const [defaultSite] = await db.select().from(sites).limit(1)
+    const [[defaultHrSite], [defaultLegacySite]] = await Promise.all([
+      db.select().from(hrSites).limit(1),
+      db.select().from(sites).limit(1),
+    ])
 
-    if (!defaultSite) {
-      return {
-        status: 'error',
-        message: 'Site default belum tersedia untuk import user.',
-      }
+    if (!defaultHrSite) {
+      return { status: 'error', message: 'Site HR default belum tersedia untuk import user.' }
     }
 
     const existingEmployees = await db
       .select({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+      })
+      .from(hrEmployees)
+    const existingLegacyEmployees = await db
+      .select({
         id: employees.id,
         authUserId: employees.authUserId,
-        name: employees.name,
+        employeeSn: employees.employeeSn,
         email: employees.email,
-        totalPoints: employees.totalPoints,
-        levelName: employees.levelName,
-        fitStatus: employees.fitStatus,
       })
       .from(employees)
     const existingAuthUsers = await db.select({ id: user.id, email: user.email }).from(user)
     const authUserByEmail = new Map(
       existingAuthUsers.map((authUser) => [normalizeEmail(authUser.email), authUser])
     )
-
     const employeeByEmail = new Map(
-      existingEmployees.map((employee) => [normalizeEmail(employee.email), employee])
+      existingEmployees
+        .filter((employee) => employee.email)
+        .map((employee) => [normalizeEmail(employee.email ?? ''), employee])
     )
+    const employeeBySn = new Map(
+      existingEmployees.map((employee) => [normalizeLookupValue(employee.employeeId), employee])
+    )
+    const legacyByEmail = new Map(
+      existingLegacyEmployees.map((employee) => [normalizeEmail(employee.email), employee])
+    )
+    const legacyBySn = new Map(
+      existingLegacyEmployees.map((employee) => [
+        normalizeLookupValue(employee.employeeSn),
+        employee,
+      ])
+    )
+
     let importedCount = 0
     let updatedCount = 0
     let skippedCount = 0
-    const managerAssignments: { employeeId: number; managerLabel: string }[] = []
 
     for (const record of records) {
-      const fullName = getMappedValue(record, headers, mapping, 'fullName')
+      const fullName = getMappedValue(record, headers, mapping, 'fullName').trim()
       const email = normalizeEmail(getMappedValue(record, headers, mapping, 'email'))
+      const employeeSn = getMappedValue(record, headers, mapping, 'employeeSn').trim()
 
-      if (!fullName || !email) {
+      if (!fullName || !email || !employeeSn || !isValidEmailFormat(email)) {
         skippedCount += 1
         continue
       }
 
-      const managerLabel = getMappedValue(record, headers, mapping, 'directManager')
       const department = getMappedValue(record, headers, mapping, 'department') || 'General'
       const section = getMappedValue(record, headers, mapping, 'section') || department
       const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
@@ -3245,111 +3383,91 @@ export async function importSecurityUsersAction(
         getMappedValue(record, headers, mapping, 'status')
       )
       const employeeStatusType =
-        getMappedValue(record, headers, mapping, 'employeeStatusType') || 'Permanen | Staff'
-      const governanceIds = await resolveEmployeeGovernanceIds({
+        getMappedValue(record, headers, mapping, 'employeeStatusType') || normalizedStatus.status
+      const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
+        department,
+        section,
+        jobTitle,
+        siteId: defaultHrSite.id,
+        statusName: employeeStatusType,
+      })
+      const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
         jobTitle,
       })
-      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId)
-      const existing = employeeByEmail.get(email)
-
+      const existing =
+        employeeBySn.get(normalizeLookupValue(employeeSn)) ?? employeeByEmail.get(email)
       const linkedAuthUserId = existing?.authUserId ?? authUserByEmail.get(email)?.id ?? null
-      const values = {
+      const hrValues = {
         authUserId: linkedAuthUserId,
-        siteId: defaultSite.id,
+        employeeId: employeeSn,
+        fullName,
+        email,
+        siteId: defaultHrSite.id,
+        joinDate: parseJoinDateFromYear(getMappedValue(record, headers, mapping, 'joinYear')),
+        birthDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, 'ttl')) || null,
+        departmentId: hrGovernanceIds.departmentId,
+        sectionId: hrGovernanceIds.sectionId,
+        positionId: hrGovernanceIds.positionId,
+        orgNodeId: hrGovernanceIds.orgNodeId,
+        demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
+        accountStatus: normalizedStatus.status,
+        isActive: normalizedStatus.isActive,
+        updatedAt: new Date(),
+      }
+      const legacyValues = {
+        authUserId: linkedAuthUserId,
+        siteId: defaultLegacySite?.id ?? 1,
         name: fullName,
         email,
-        employeeSn: getMappedValue(record, headers, mapping, 'employeeSn'),
+        employeeSn,
         joinYear: parseJoinYear(getMappedValue(record, headers, mapping, 'joinYear')),
         birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, 'ttl')),
         domicile: getMappedValue(record, headers, mapping, 'domicile') || 'Belum diisi',
-        sectionId: governanceIds.sectionId,
+        departmentId: legacyGovernanceIds.departmentId,
+        sectionId: legacyGovernanceIds.sectionId,
+        positionId: legacyGovernanceIds.positionId,
+        orgNodeId: await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId),
         section,
-        departmentId: governanceIds.departmentId,
         department,
-        positionId: governanceIds.positionId,
-        orgNodeId,
         role: jobTitle,
         jobTitle,
-        workLocation: getMappedValue(record, headers, mapping, 'workLocation') || defaultSite.name,
+        workLocation:
+          getMappedValue(record, headers, mapping, 'workLocation') || defaultHrSite.name,
         phoneNumber: getMappedValue(record, headers, mapping, 'phoneNumber'),
         employmentStatus: normalizedStatus.status,
-        employeeStatusType: employeeStatusType,
+        employeeStatusType,
         isActive: normalizedStatus.isActive,
       }
 
       if (existing) {
-        await db.update(employees).set(values).where(eq(employees.id, existing.id))
-
+        await db.update(hrEmployees).set(hrValues).where(eq(hrEmployees.id, existing.id))
         updatedCount += 1
-
-        if (managerLabel) {
-          managerAssignments.push({ employeeId: existing.id, managerLabel })
-        }
-
-        employeeByEmail.set(email, { ...existing, authUserId: linkedAuthUserId })
-        continue
+      } else {
+        const [inserted] = await db
+          .insert(hrEmployees)
+          .values(hrValues)
+          .returning({ id: hrEmployees.id })
+        employeeBySn.set(normalizeLookupValue(employeeSn), {
+          ...hrValues,
+          id: inserted.id,
+          authUserId: linkedAuthUserId,
+        })
+        importedCount += 1
       }
 
-      const [inserted] = await db
-        .insert(employees)
-        .values({
-          ...values,
-          totalPoints: 0,
+      const existingLegacy =
+        legacyBySn.get(normalizeLookupValue(employeeSn)) ?? legacyByEmail.get(email)
+      if (existingLegacy) {
+        await db.update(employees).set(legacyValues).where(eq(employees.id, existingLegacy.id))
+      } else if (defaultLegacySite) {
+        await db.insert(employees).values({
+          ...legacyValues,
           levelName: 'Rookie',
+          totalPoints: 0,
           fitStatus: 'fit',
         })
-        .returning({
-          id: employees.id,
-          name: employees.name,
-          email: employees.email,
-        })
-
-      importedCount += 1
-
-      if (managerLabel) {
-        managerAssignments.push({ employeeId: inserted.id, managerLabel })
-      }
-
-      employeeByEmail.set(email, {
-        ...inserted,
-        authUserId: linkedAuthUserId,
-        totalPoints: 0,
-        levelName: 'Rookie',
-        fitStatus: 'fit',
-      })
-    }
-
-    if (managerAssignments.length > 0) {
-      const refreshedEmployees = await db
-        .select({
-          id: employees.id,
-          name: employees.name,
-          email: employees.email,
-        })
-        .from(employees)
-
-      const managerByEmail = new Map(
-        refreshedEmployees.map((employee) => [normalizeEmail(employee.email), employee])
-      )
-      const managerByName = new Map(
-        refreshedEmployees.map((employee) => [employee.name.trim().toLowerCase(), employee])
-      )
-
-      for (const assignment of managerAssignments) {
-        const manager =
-          managerByEmail.get(normalizeEmail(assignment.managerLabel)) ??
-          managerByName.get(assignment.managerLabel.trim().toLowerCase())
-
-        if (!manager || manager.id === assignment.employeeId) {
-          continue
-        }
-
-        await db
-          .update(employees)
-          .set({ directManagerId: manager.id })
-          .where(eq(employees.id, assignment.employeeId))
       }
     }
 
@@ -3418,88 +3536,77 @@ export async function manageSecurityUserAction(
       const department = payload.department?.trim() || 'General'
       const section = payload.section?.trim() || department
       const jobTitle = payload.jobTitle?.trim() || 'Staff'
-      const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
       const profileImage = normalizeProfileImageValue(payload.profileImage)
-      const governanceIds = await resolveEmployeeGovernanceIds({
+
+      if (!fullName || !email || !payload.accessRole) {
+        return { status: 'error', message: 'Full name, email, and role are required.' }
+      }
+
+      if (!employeeSn) {
+        return { status: 'error', message: 'SN is required for default password.' }
+      }
+
+      if (password.length < 8) {
+        return { status: 'error', message: 'Initial password minimum 8 characters.' }
+      }
+
+      const [
+        [currentDefaultSite],
+        [selectedSite],
+        [currentDefaultLegacySite],
+        [existingHrEmployee],
+        [existingLegacyEmployee],
+        [existingAuthUser],
+        [role],
+      ] = await Promise.all([
+        db.select().from(hrSites).limit(1),
+        payload.siteId
+          ? db.select().from(hrSites).where(eq(hrSites.id, payload.siteId)).limit(1)
+          : Promise.resolve([]),
+        db.select().from(sites).limit(1),
+        db
+          .select({ id: hrEmployees.id })
+          .from(hrEmployees)
+          .where(or(eq(hrEmployees.email, email), eq(hrEmployees.employeeId, employeeSn)))
+          .limit(1),
+        db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(or(eq(employees.email, email), eq(employees.employeeSn, employeeSn)))
+          .limit(1),
+        db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1),
+        db.select().from(securityRoles).where(eq(securityRoles.name, payload.accessRole)).limit(1),
+      ])
+
+      if (existingHrEmployee || existingLegacyEmployee || existingAuthUser) {
+        return { status: 'error', message: 'Email or SN is already used by another user.' }
+      }
+
+      if (!role) {
+        return { status: 'error', message: 'Selected role is invalid.' }
+      }
+
+      const defaultSite = selectedSite ?? currentDefaultSite
+      if (!defaultSite) {
+        return { status: 'error', message: 'Site HR default belum tersedia.' }
+      }
+
+      const authUserId = randomUUID()
+      const now = new Date()
+      const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
+        department,
+        section,
+        jobTitle,
+        siteId: defaultSite.id,
+        statusName: payload.employeeStatusType ?? normalizedStatus.status,
+      })
+      const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
         jobTitle,
       })
-      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId)
-
-      if (!fullName || !email || !payload.accessRole) {
-        return {
-          status: 'error',
-          message: 'Full name, email, and role are required.',
-        }
-      }
-
-      if (!employeeSn) {
-        return {
-          status: 'error',
-          message: 'SN is required for default password.',
-        }
-      }
-
-      if (password.length < 8) {
-        return {
-          status: 'error',
-          message: 'Initial password minimum 8 characters.',
-        }
-      }
-
-      const [[currentDefaultSite], [selectedSite], [existingEmployee], [existingAuthUser], [role]] =
-        await Promise.all([
-          db.select().from(sites).limit(1),
-          payload.siteId
-            ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
-            : Promise.resolve([]),
-          db
-            .select({ id: employees.id })
-            .from(employees)
-            .where(eq(employees.email, email))
-            .limit(1),
-          db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1),
-          db
-            .select()
-            .from(securityRoles)
-            .where(eq(securityRoles.name, payload.accessRole))
-            .limit(1),
-        ])
-
-      if (existingEmployee || existingAuthUser) {
-        return {
-          status: 'error',
-          message: 'Email is already used by another user.',
-        }
-      }
-
-      if (!role) {
-        return {
-          status: 'error',
-          message: 'Selected role is invalid.',
-        }
-      }
-
-      const defaultSite =
-        selectedSite ??
-        currentDefaultSite ??
-        (
-          await db
-            .insert(sites)
-            .values({
-              name: payload.workLocation?.trim() || 'Default Site',
-              location: payload.workLocation?.trim() || 'Default Site',
-              customerName: 'PT Chitra Paratama',
-              contractNumber: 'MANUAL-DEFAULT',
-              isActive: true,
-            })
-            .returning()
-        )[0]
-
-      const authUserId = randomUUID()
-      const now = new Date()
+      const orgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
 
       await db.insert(user).values({
         id: authUserId,
@@ -3513,34 +3620,54 @@ export async function manageSecurityUserAction(
 
       await upsertCredentialAccount({ authUserId, email, password, now })
 
-      await db.insert(employees).values({
+      await db.insert(hrEmployees).values({
         authUserId,
-        siteId: defaultSite.id,
-        name: fullName,
+        employeeId: employeeSn,
+        fullName,
         email,
-        employeeSn,
-        joinYear: parseJoinYear(payload.joinYear ?? ''),
-        birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
-        domicile: payload.domicile?.trim() || 'Belum diisi',
-        directManagerId,
-        departmentId: governanceIds.departmentId,
-        sectionId: governanceIds.sectionId,
-        positionId: governanceIds.positionId,
-        orgNodeId,
-        section,
-        department,
-        role: jobTitle,
-        jobTitle,
-        workLocation: payload.workLocation?.trim() || defaultSite.name,
-        phoneNumber: payload.phoneNumber?.trim() || '',
-        employmentStatus: normalizedStatus.status,
-        employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
-        accessRole: role.name,
-        levelName: 'Rookie',
-        totalPoints: 0,
-        fitStatus: 'fit',
+        siteId: defaultSite.id,
+        joinDate: parseJoinDateFromYear(payload.joinYear),
+        birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
+        departmentId: hrGovernanceIds.departmentId,
+        sectionId: hrGovernanceIds.sectionId,
+        positionId: hrGovernanceIds.positionId,
+        orgNodeId: hrGovernanceIds.orgNodeId,
+        demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
+        accountStatus: normalizedStatus.status,
         isActive: normalizedStatus.isActive,
+        createdAt: now,
+        updatedAt: now,
       })
+
+      if (currentDefaultLegacySite) {
+        await db.insert(employees).values({
+          authUserId,
+          siteId: currentDefaultLegacySite.id,
+          name: fullName,
+          email,
+          employeeSn,
+          joinYear: parseJoinYear(payload.joinYear ?? ''),
+          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+          domicile: payload.domicile?.trim() || 'Belum diisi',
+          departmentId: legacyGovernanceIds.departmentId,
+          sectionId: legacyGovernanceIds.sectionId,
+          positionId: legacyGovernanceIds.positionId,
+          orgNodeId,
+          section,
+          department,
+          role: jobTitle,
+          jobTitle,
+          workLocation: defaultSite.name,
+          phoneNumber: payload.phoneNumber?.trim() || '',
+          employmentStatus: normalizedStatus.status,
+          employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
+          accessRole: role.name,
+          levelName: 'Rookie',
+          totalPoints: 0,
+          fitStatus: 'fit',
+          isActive: normalizedStatus.isActive,
+        })
+      }
 
       revalidateAdminSurfaces()
       return { status: 'success', message: 'New user created successfully.' }
@@ -3552,15 +3679,22 @@ export async function manageSecurityUserAction(
 
     const [employee] = await db
       .select({
-        id: employees.id,
-        authUserId: employees.authUserId,
-        name: employees.name,
-        email: employees.email,
-        siteId: employees.siteId,
-        accessRole: employees.accessRole,
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeSn: hrEmployees.employeeId,
+        name: hrEmployees.fullName,
+        email: hrEmployees.email,
+        siteId: hrEmployees.siteId,
+        accessRole: sql<string>`coalesce(${employees.accessRole}, ${hrPositions.levelName}, 'User')`,
+        legacyEmployeeId: employees.id,
       })
-      .from(employees)
-      .where(eq(employees.id, payload.employeeId))
+      .from(hrEmployees)
+      .leftJoin(
+        employees,
+        or(eq(employees.employeeSn, hrEmployees.employeeId), eq(employees.email, hrEmployees.email))
+      )
+      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+      .where(eq(hrEmployees.id, payload.employeeId))
       .limit(1)
 
     if (!employee) {
@@ -3568,57 +3702,81 @@ export async function manageSecurityUserAction(
     }
 
     if (payload.intent === 'update-profile') {
-      const email = payload.email?.toLowerCase() ?? employee.email
+      const email = normalizeEmail(payload.email ?? employee.email ?? '')
       const department = payload.department || 'General'
       const section = payload.section || department
       const jobTitle = payload.jobTitle || 'Staff'
       const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
-      const joinYear = parseJoinYear(payload.joinYear ?? '')
       const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const profileImage = normalizeProfileImageValue(payload.profileImage)
       const [selectedSite] = payload.siteId
-        ? await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+        ? await db.select().from(hrSites).where(eq(hrSites.id, payload.siteId)).limit(1)
         : []
-      const governanceIds = await resolveEmployeeGovernanceIds({
+      const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
+        department,
+        section,
+        jobTitle,
+        siteId: selectedSite?.id ?? employee.siteId,
+        statusName: payload.employeeStatusType ?? normalizedStatus.status,
+      })
+      const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
         department,
         section,
         jobTitle,
       })
-      const orgNodeId = await resolveDefaultOrgNodeId(governanceIds.positionId)
+      const legacyOrgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
 
       if (directManagerId === employee.id) {
-        return {
-          status: 'error',
-          message: 'Direct supervisor cannot be yourself.',
-        }
+        return { status: 'error', message: 'Direct supervisor cannot be yourself.' }
       }
 
       await db
-        .update(employees)
+        .update(hrEmployees)
         .set({
-          name: payload.fullName || employee.name,
-          employeeSn: payload.employeeSn || '',
-          joinYear,
-          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate || ''),
-          domicile: payload.domicile || 'Belum diisi',
-          directManagerId,
-          departmentId: governanceIds.departmentId,
-          sectionId: governanceIds.sectionId,
-          positionId: governanceIds.positionId,
-          orgNodeId,
+          fullName: payload.fullName || employee.name,
+          employeeId: payload.employeeSn || employee.employeeSn,
+          joinDate: parseJoinDateFromYear(payload.joinYear),
+          birthDate: normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
+          departmentId: hrGovernanceIds.departmentId,
+          sectionId: hrGovernanceIds.sectionId,
+          positionId: hrGovernanceIds.positionId,
+          orgNodeId: hrGovernanceIds.orgNodeId,
           siteId: selectedSite?.id ?? employee.siteId,
-          section,
-          department,
-          role: jobTitle,
-          jobTitle,
-          workLocation: selectedSite?.name || payload.workLocation || '',
-          phoneNumber: payload.phoneNumber || '',
           email,
-          employmentStatus: normalizedStatus.status,
-          employeeStatusType: payload.employeeStatusType ?? 'Permanen | Staff',
+          demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
+          accountStatus: normalizedStatus.status,
           isActive: normalizedStatus.isActive,
+          updatedAt: new Date(),
         })
-        .where(eq(employees.id, employee.id))
+        .where(eq(hrEmployees.id, employee.id))
+
+      if (employee.legacyEmployeeId) {
+        await db
+          .update(employees)
+          .set({
+            name: payload.fullName || employee.name,
+            employeeSn: payload.employeeSn || employee.employeeSn,
+            joinYear: parseJoinYear(payload.joinYear ?? ''),
+            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate || ''),
+            domicile: payload.domicile || 'Belum diisi',
+            directManagerId,
+            departmentId: legacyGovernanceIds.departmentId,
+            sectionId: legacyGovernanceIds.sectionId,
+            positionId: legacyGovernanceIds.positionId,
+            orgNodeId: legacyOrgNodeId,
+            section,
+            department,
+            role: jobTitle,
+            jobTitle,
+            workLocation: selectedSite?.name || payload.workLocation || '',
+            phoneNumber: payload.phoneNumber || '',
+            email,
+            employmentStatus: normalizedStatus.status,
+            employeeStatusType: payload.employeeStatusType ?? 'Permanen | Staff',
+            isActive: normalizedStatus.isActive,
+          })
+          .where(eq(employees.id, employee.legacyEmployeeId))
+      }
 
       if (employee.authUserId) {
         await db
@@ -3630,21 +3788,6 @@ export async function manageSecurityUserAction(
             updatedAt: new Date(),
           })
           .where(eq(user.id, employee.authUserId))
-      } else if (profileImage) {
-        const authUserId = await ensureAuthUserForEmployee({
-          id: employee.id,
-          authUserId: employee.authUserId,
-          name: payload.fullName || employee.name,
-          email,
-        })
-
-        await db
-          .update(user)
-          .set({
-            image: profileImage,
-            updatedAt: new Date(),
-          })
-          .where(eq(user.id, authUserId))
       }
 
       const actorEmail = await getCurrentActorEmail()
@@ -3662,12 +3805,20 @@ export async function manageSecurityUserAction(
 
     if (payload.intent === 'ban-user') {
       await db
-        .update(employees)
+        .update(hrEmployees)
         .set({
           isActive: false,
-          employmentStatus: 'inactive',
+          accountStatus: 'inactive',
+          updatedAt: new Date(),
         })
-        .where(eq(employees.id, employee.id))
+        .where(eq(hrEmployees.id, employee.id))
+
+      if (employee.legacyEmployeeId) {
+        await db
+          .update(employees)
+          .set({ isActive: false, employmentStatus: 'inactive' })
+          .where(eq(employees.id, employee.legacyEmployeeId))
+      }
 
       if (employee.authUserId) {
         await db.delete(session).where(eq(session.userId, employee.authUserId))
@@ -3697,12 +3848,20 @@ export async function manageSecurityUserAction(
 
     if (payload.intent === 'delete-user') {
       await db
-        .update(employees)
+        .update(hrEmployees)
         .set({
           isActive: false,
-          employmentStatus: 'inactive',
+          accountStatus: 'inactive',
+          updatedAt: new Date(),
         })
-        .where(eq(employees.id, employee.id))
+        .where(eq(hrEmployees.id, employee.id))
+
+      if (employee.legacyEmployeeId) {
+        await db
+          .update(employees)
+          .set({ isActive: false, employmentStatus: 'inactive' })
+          .where(eq(employees.id, employee.legacyEmployeeId))
+      }
 
       if (employee.authUserId) {
         await db.delete(session).where(eq(session.userId, employee.authUserId))
@@ -3737,7 +3896,12 @@ export async function manageSecurityUserAction(
         return { status: 'error', message: 'Selected role is invalid.' }
       }
 
-      await db.update(employees).set({ accessRole: role.name }).where(eq(employees.id, employee.id))
+      if (employee.legacyEmployeeId) {
+        await db
+          .update(employees)
+          .set({ accessRole: role.name })
+          .where(eq(employees.id, employee.legacyEmployeeId))
+      }
 
       // Kill session so user must re-login with new role
       if (employee.authUserId) {
@@ -3784,9 +3948,9 @@ export async function manageSecurityUserAction(
       const latestEmployee = {
         ...employee,
         name: payload.fullName || employee.name,
-        email: (payload.email ?? employee.email).toLowerCase(),
+        email: normalizeEmail(payload.email ?? employee.email ?? ''),
       }
-      const authUserId = await ensureAuthUserForEmployee(latestEmployee)
+      const authUserId = await ensureAuthUserForHrEmployee(latestEmployee)
       const now = new Date()
 
       await upsertCredentialAccount({
@@ -5486,21 +5650,49 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
   try {
     const action = formData.get('action') as string
     const employeeIds = JSON.parse(formData.get('employeeIds') as string) as number[]
+    const roleId = Number.parseInt(`${formData.get('roleId') ?? ''}`, 10)
 
     if (!employeeIds || employeeIds.length === 0) {
       return { status: 'error', message: 'No users selected' }
     }
 
     const actorEmail = await getCurrentActorEmail()
+    const selectedHrEmployees = await db
+      .select({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeSn: hrEmployees.employeeId,
+        email: hrEmployees.email,
+      })
+      .from(hrEmployees)
+      .where(inArray(hrEmployees.id, employeeIds))
+    const selectedAuthUserIds = selectedHrEmployees
+      .map((employee) => employee.authUserId)
+      .filter((id): id is string => id !== null)
+    const selectedSnValues = selectedHrEmployees
+      .map((employee) => employee.employeeSn)
+      .filter(Boolean)
+    const selectedEmailValues = selectedHrEmployees
+      .map((employee) => employee.email)
+      .filter((email): email is string => Boolean(email))
 
     if (action === 'activate') {
       await db
-        .update(employees)
-        .set({
-          isActive: true,
-          employmentStatus: 'active',
-        })
-        .where(inArray(employees.id, employeeIds))
+        .update(hrEmployees)
+        .set({ isActive: true, accountStatus: 'active', updatedAt: new Date() })
+        .where(inArray(hrEmployees.id, employeeIds))
+
+      if (selectedSnValues.length || selectedEmailValues.length) {
+        await db
+          .update(employees)
+          .set({ isActive: true, employmentStatus: 'active' })
+          .where(
+            or(
+              inArray(employees.employeeSn, selectedSnValues),
+              inArray(employees.email, selectedEmailValues)
+            )
+          )
+      }
 
       await logAuditEvent({
         actorEmail,
@@ -5512,32 +5704,29 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       })
 
       revalidateAdminSurfaces()
-      return {
-        status: 'success',
-        message: `Successfully activated ${employeeIds.length} users`,
-      }
+      return { status: 'success', message: `Successfully activated ${employeeIds.length} users` }
     }
 
     if (action === 'ban') {
       await db
-        .update(employees)
-        .set({
-          isActive: false,
-          employmentStatus: 'inactive',
-        })
-        .where(inArray(employees.id, employeeIds))
+        .update(hrEmployees)
+        .set({ isActive: false, accountStatus: 'inactive', updatedAt: new Date() })
+        .where(inArray(hrEmployees.id, employeeIds))
 
-      const bannedUsers = await db
-        .select({ authUserId: employees.authUserId })
-        .from(employees)
-        .where(inArray(employees.id, employeeIds))
+      if (selectedSnValues.length || selectedEmailValues.length) {
+        await db
+          .update(employees)
+          .set({ isActive: false, employmentStatus: 'inactive' })
+          .where(
+            or(
+              inArray(employees.employeeSn, selectedSnValues),
+              inArray(employees.email, selectedEmailValues)
+            )
+          )
+      }
 
-      const authUserIds = bannedUsers
-        .map((u) => u.authUserId)
-        .filter((id): id is string => id !== null)
-
-      if (authUserIds.length > 0) {
-        await db.delete(session).where(inArray(session.userId, authUserIds))
+      if (selectedAuthUserIds.length > 0) {
+        await db.delete(session).where(inArray(session.userId, selectedAuthUserIds))
       }
 
       await logAuditEvent({
@@ -5550,27 +5739,66 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       })
 
       revalidateAdminSurfaces()
+      return { status: 'success', message: `Successfully banned ${employeeIds.length} users` }
+    }
+
+    if (action === 'change-role') {
+      if (Number.isNaN(roleId)) return { status: 'error', message: 'Role must be selected' }
+      const [role] = await db
+        .select()
+        .from(securityRoles)
+        .where(eq(securityRoles.id, roleId))
+        .limit(1)
+      if (!role) return { status: 'error', message: 'Selected role is invalid' }
+
+      if (selectedSnValues.length || selectedEmailValues.length) {
+        await db
+          .update(employees)
+          .set({ accessRole: role.name })
+          .where(
+            or(
+              inArray(employees.employeeSn, selectedSnValues),
+              inArray(employees.email, selectedEmailValues)
+            )
+          )
+      }
+
+      if (selectedAuthUserIds.length > 0) {
+        await db.delete(session).where(inArray(session.userId, selectedAuthUserIds))
+      }
+
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.role_changed',
+        entityType: 'user',
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk changed role to ${role.name}: ${employeeIds.join(', ')}`,
+        severity: 'warning',
+      })
+
+      revalidateAdminSurfaces()
       return {
         status: 'success',
-        message: `Successfully banned ${employeeIds.length} users`,
+        message: `Successfully changed ${employeeIds.length} users to ${role.name}`,
       }
     }
 
     if (action === 'delete') {
-      const usersToDelete = await db
-        .select({ authUserId: employees.authUserId })
-        .from(employees)
-        .where(inArray(employees.id, employeeIds))
-
-      const authUserIds = usersToDelete
-        .map((u) => u.authUserId)
-        .filter((id): id is string => id !== null)
-
-      if (authUserIds.length > 0) {
-        await db.delete(user).where(inArray(user.id, authUserIds))
+      if (selectedAuthUserIds.length > 0) {
+        await db.delete(user).where(inArray(user.id, selectedAuthUserIds))
       }
 
-      await db.delete(employees).where(inArray(employees.id, employeeIds))
+      if (selectedSnValues.length || selectedEmailValues.length) {
+        await db
+          .delete(employees)
+          .where(
+            or(
+              inArray(employees.employeeSn, selectedSnValues),
+              inArray(employees.email, selectedEmailValues)
+            )
+          )
+      }
+      await db.delete(hrEmployees).where(inArray(hrEmployees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,
@@ -5582,10 +5810,7 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       })
 
       revalidateAdminSurfaces()
-      return {
-        status: 'success',
-        message: `Successfully deleted ${employeeIds.length} users`,
-      }
+      return { status: 'success', message: `Successfully deleted ${employeeIds.length} users` }
     }
 
     return { status: 'error', message: 'Invalid bulk action' }

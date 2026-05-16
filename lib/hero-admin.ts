@@ -3137,16 +3137,19 @@ export async function getSecurityUsersData() {
       name: hrEmployees.fullName,
       profileImage: authUser.image,
       birthDate: hrEmployees.birthDate,
-      domicile: sql<string>`''`.as('domicile'),
-      directManagerId: sql<number | null>`null`.as('direct_manager_id'),
+      domicile: employees.domicile,
+      directManagerId: employees.directManagerId,
       section: hrSections.name,
       jobTitle: hrPositions.rankName,
       workLocation: hrOrgNodes.name,
-      phoneNumber: sql<string>`''`.as('phone_number'),
+      phoneNumber: employees.phoneNumber,
       email: hrEmployees.email,
       employmentStatus: hrEmployeeStatuses.name,
       employeeStatusType: hrEmployeeStatuses.name,
-      accessRole: sql<string>`coalesce(${hrPositions.levelName}, 'User')`.as('access_role'),
+      accessRole:
+        sql<string>`coalesce(${employees.accessRole}, ${hrPositions.levelName}, 'User')`.as(
+          'access_role'
+        ),
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
       department: hrDepartments.name,
       levelName: hrPositions.levelName,
@@ -3156,6 +3159,10 @@ export async function getSecurityUsersData() {
       totalPoints: sql<number>`0`.as('total_points'),
     })
     .from(hrEmployees)
+    .leftJoin(
+      employees,
+      or(eq(employees.employeeSn, hrEmployees.employeeId), eq(employees.email, hrEmployees.email))
+    )
     .leftJoin(authUser, eq(hrEmployees.authUserId, authUser.id))
     .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
     .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
@@ -3178,7 +3185,7 @@ export async function getSecurityUsersData() {
     name: row.name,
     profileImage: row.profileImage,
     birthPlaceDate: row.birthDate ? new Date(row.birthDate).toISOString().slice(0, 10) : '',
-    domicile: row.domicile,
+    domicile: row.domicile ?? '',
     directManagerId: row.directManagerId,
     directManagerName: row.directManagerId
       ? (employeeNameById.get(row.directManagerId) ?? null)
@@ -3188,7 +3195,7 @@ export async function getSecurityUsersData() {
     jobTitle: row.jobTitle ?? '',
     workLocation: row.workLocation ?? '',
     employeeStatusType: row.employeeStatusType ?? '',
-    phoneNumber: row.phoneNumber,
+    phoneNumber: row.phoneNumber ?? '',
     email: row.email ?? '',
     status: row.isActive ? (row.employmentStatus ?? 'active') : 'inactive',
     role: row.role,
