@@ -505,7 +505,7 @@ export async function saveAttendanceRealOverridesAction(
     // Auto-create in legacy sites table as fallback
     await db.execute(sql`
       INSERT INTO hero_sites (id, name, location, customer_name, contract_number, is_active, created_at)
-      VALUES (${payload.siteId}, ${"Site " + payload.siteId}, "" , ${"Site " + payload.siteId}, "", true, NOW())
+      VALUES (${payload.siteId}, ${'Site ' + payload.siteId}, "" , ${'Site ' + payload.siteId}, "", true, NOW())
       ON CONFLICT (id) DO NOTHING
     `)
   }
@@ -751,25 +751,27 @@ export async function createAttendanceImportPreviewAction(
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
   const [legacyEmployeeRows, hrEmployeeRows] = await Promise.all([
-    db.select({
-      id: employees.id,
-      name: employees.name,
-      employeeSn: employees.employeeSn,
-      siteId: employees.siteId,
-      siteName: sites.name,
-    })
-    .from(employees)
-    .leftJoin(sites, eq(employees.siteId, sites.id)),
-    db.select({
-      id: hrEmployees.id,
-      name: hrEmployees.fullName,
-      employeeSn: hrEmployees.employeeId,
-      siteId: hrEmployees.siteId,
-      siteName: hrSites.name,
-    })
-    .from(hrEmployees)
-    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
-    .where(eq(hrEmployees.isActive, true)),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        siteId: employees.siteId,
+        siteName: sites.name,
+      })
+      .from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id)),
+    db
+      .select({
+        id: hrEmployees.id,
+        name: hrEmployees.fullName,
+        employeeSn: hrEmployees.employeeId,
+        siteId: hrEmployees.siteId,
+        siteName: hrSites.name,
+      })
+      .from(hrEmployees)
+      .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
+      .where(eq(hrEmployees.isActive, true)),
   ])
   // Merge, prefer hrEmployees if same id exists
   const hrEmployeeIdSet = new Set(hrEmployeeRows.map((e) => e.id))
@@ -2371,7 +2373,8 @@ function normalizeAuthEmail(email: string) {
 }
 
 function buildDefaultUserManagementPassword(employeeSn: string | null | undefined) {
-  return `Chitra#${(employeeSn ?? '').trim()}`
+  const normalizedSn = (employeeSn ?? '').trim().replace(/^EMP-/i, '')
+  return `Chitra#${normalizedSn}`
 }
 
 async function upsertCredentialAccount({
@@ -3762,7 +3765,10 @@ export async function manageSecurityUserAction(
       })
 
       revalidateAdminSurfaces()
-      return { status: 'success', message: `Role berhasil diubah dari ${employee.accessRole} ke ${role.name}. User harus login ulang.` }
+      return {
+        status: 'success',
+        message: `Role berhasil diubah dari ${employee.accessRole} ke ${role.name}. User harus login ulang.`,
+      }
     }
 
     if (payload.intent === 'change-password') {
