@@ -174,7 +174,7 @@ export function MasterDataManagement({
   const [activeTab, setActiveTab] = useState("sections");
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-5 p-5">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -186,7 +186,7 @@ export function MasterDataManagement({
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
         <TabsList className="grid h-auto w-full grid-cols-2 bg-surface-container-low p-2 md:grid-cols-3 lg:grid-cols-5">
           <TabsTrigger value="sections" className="flex items-center gap-2">
             <Layers className="size-4" />

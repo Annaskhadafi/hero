@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Upload, CheckCircle, AlertCircle, Edit, Trash2, Eye, Plus, Check, ChevronDown, X, Search, Users, UserCheck, UserX, Building2, RefreshCw, Download } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Edit, Trash2, Eye, Plus, Check, ChevronDown, X, Search, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -312,98 +312,90 @@ export default function CentralServicePage() {
   };
 
   return (
-    <div className="container mx-auto py-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Central Service Employees</h1>
-        <p className="text-muted-foreground">Kelola semua karyawan Central Service</p>
+    <div className="container mx-auto space-y-5 py-5">
+      <div className="admin-daily-card rounded-[1.1rem] px-5 py-4">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Central Service Employees</h1>
+        <p className="text-sm text-muted-foreground">Kelola semua karyawan Central Service</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200/50 shadow-sm">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="surface-module-card border-0 shadow-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between space-y-0">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-blue-600">Total Karyawan</p>
+                <p className="text-sm font-medium text-muted-foreground">Total Karyawan</p>
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-3xl font-bold text-blue-900">{dynamicStats.total}</h2>
-                  <span className="text-xs text-blue-700 font-medium">Karyawan</span>
+                  <h2 className="text-2xl font-bold text-foreground">{dynamicStats.total}</h2>
+                  <span className="text-xs font-medium text-muted-foreground">Karyawan</span>
                 </div>
               </div>
-              <div className="p-3 bg-blue-500/10 rounded-xl">
-                <Users className="size-6 text-blue-600" />
-              </div>
+              <div className="rounded-xl bg-primary/10 p-3 text-primary" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200/50 shadow-sm">
+        <Card className="surface-module-card border-0 shadow-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between space-y-0">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-emerald-600">Active Employees</p>
+                <p className="text-sm font-medium text-muted-foreground">Active Employees</p>
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-3xl font-bold text-emerald-900">{dynamicStats.active}</h2>
-                  <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                  <h2 className="text-2xl font-bold text-foreground">{dynamicStats.active}</h2>
+                  <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
                     <CheckCircle className="size-3" /> Aktif
                   </span>
                 </div>
               </div>
-              <div className="p-3 bg-emerald-500/10 rounded-xl">
-                <UserCheck className="size-6 text-emerald-600" />
-              </div>
+              <div className="rounded-xl bg-primary/10 p-3 text-primary" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/50 shadow-sm">
+        <Card className="surface-module-card border-0 shadow-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between space-y-0">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-amber-600">Not Synced</p>
+                <p className="text-sm font-medium text-muted-foreground">Not Synced</p>
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-3xl font-bold text-amber-900">{dynamicStats.unsynced}</h2>
-                  <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
-                    <RefreshCw className="size-3" /> Butuh Sync
+                  <h2 className="text-2xl font-bold text-foreground">{dynamicStats.unsynced}</h2>
+                  <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    Butuh Sync
                   </span>
                 </div>
               </div>
-              <div className="p-3 bg-amber-500/10 rounded-xl">
-                <UserX className="size-6 text-amber-600" />
-              </div>
+              <div className="rounded-xl bg-primary/10 p-3 text-primary" />
             </div>
             {dynamicStats.total > 0 && (
-              <div className="mt-4 h-1.5 w-full bg-amber-200/50 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500 rounded-full" style={{ width: `${(dynamicStats.synced / dynamicStats.total) * 100}%` }} />
+              <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface-container-low">
+                <div className="h-full rounded-full bg-primary" style={{ width: `${(dynamicStats.synced / dynamicStats.total) * 100}%` }} />
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200/50 shadow-sm">
+        <Card className="surface-module-card border-0 shadow-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between space-y-0">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-purple-600">Top Site</p>
+                <p className="text-sm font-medium text-muted-foreground">Top Site</p>
                 <div className="flex flex-col">
-                  <h2 className="text-xl font-bold text-purple-900 truncate max-w-[120px]" title={String(dynamicStats.topSite[0])}>
+                  <h2 className="max-w-[120px] truncate text-xl font-bold text-foreground" title={String(dynamicStats.topSite[0])}>
                     {dynamicStats.topSite[0]}
                   </h2>
-                  <span className="text-xs text-purple-700 font-medium">
+                  <span className="text-xs font-medium text-muted-foreground">
                     {dynamicStats.topSite[1]} Karyawan
                   </span>
                 </div>
               </div>
-              <div className="p-3 bg-purple-500/10 rounded-xl">
-                <Building2 className="size-6 text-purple-600" />
-              </div>
+              <div className="rounded-xl bg-primary/10 p-3 text-primary" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Table Card */}
-      <Card>
+      <Card className="surface-module-card rounded-[1.1rem] border-0">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -440,12 +432,12 @@ export default function CentralServicePage() {
 
         <CardContent className="space-y-4">
           {/* Filters */}
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-container-low p-2">
             <Input
               placeholder="Cari nama, SN, atau email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="max-w-xs"
+              className="h-9 max-w-[240px] bg-white"
             />
             <MultiSelectFilter
               label="Section"
@@ -460,7 +452,7 @@ export default function CentralServicePage() {
               onChange={setSelectedSites}
             />
             <Select value={syncFilter} onValueChange={setSyncFilter}>
-              <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[160px] bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Employees</SelectItem>
                 <SelectItem value="synced">Synced Only</SelectItem>
@@ -476,7 +468,7 @@ export default function CentralServicePage() {
           </div>
 
           {/* Table */}
-          <div className="border rounded-lg max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-accent relative">
+          <div className="relative max-h-[600px] overflow-y-auto rounded-xl bg-white ring-1 ring-border/60 scrollbar-thin scrollbar-thumb-accent">
             <Table>
               <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                 <TableRow>

@@ -582,9 +582,9 @@ export default function AttendancePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.08),_transparent_35%),linear-gradient(180deg,_#f8fafc_0%,_#eef2ff_100%)] md:p-6">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col overflow-hidden bg-surface-container-lowest md:min-h-0 md:rounded-[2rem] md:shadow-[0_30px_120px_rgba(15,23,42,0.12)]">
-        <div className="flex items-center justify-between bg-surface-container-low px-5 py-4 backdrop-blur-xl md:px-8 md:py-5">
+    <div className="min-h-screen bg-surface md:p-5">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col overflow-hidden bg-surface-container-lowest md:min-h-0 md:rounded-[1.25rem] md:ring-1 md:ring-border/60">
+        <div className="flex items-center justify-between bg-surface-container-low px-5 py-4 md:px-6 md:py-5">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Field Attendance</p>
             <h1 className="mt-1 text-xl font-semibold text-slate-950 md:text-2xl">Mobile Clock In/Out</h1>
@@ -598,24 +598,23 @@ export default function AttendancePage() {
         </div>
 
         <div className="grid flex-1 gap-0 md:items-start md:grid-cols-[minmax(0,1.25fr)_minmax(360px,420px)]">
-          <section className="relative overflow-hidden bg-[linear-gradient(180deg,_#0f172a_0%,_#111827_100%)] px-4 pb-6 pt-4 text-white md:px-8 md:pb-8 md:pt-8">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(56,189,248,0.22),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(14,165,233,0.18),_transparent_32%)]" />
+          <section className="relative overflow-hidden bg-surface-container-low px-4 pb-6 pt-4 text-foreground md:px-6 md:pb-6 md:pt-6">
             <div className="relative flex h-full flex-col">
               <div className="mb-5 flex items-start justify-between gap-4 md:mb-8">
                 <div>
-                  <p className="text-sm font-medium text-slate-300">Realtime camera</p>
-                  <p className="mt-1 max-w-xl text-sm text-slate-400 md:text-base">
+                  <p className="text-sm font-medium text-foreground">Realtime camera</p>
+                  <p className="mt-1 max-w-xl text-sm text-muted-foreground md:text-base">
                     Pastikan wajah terlihat jelas, pencahayaan cukup, dan lokasi GPS sudah terkunci sebelum clock in atau clock out.
                   </p>
                 </div>
-                <div className="hidden rounded-2xl bg-white/10 px-4 py-3 md:block">
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Current time</p>
+                <div className="hidden rounded-2xl bg-white px-4 py-3 ring-1 ring-border/60 md:block">
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Current time</p>
                   <p className="mt-1 text-3xl font-semibold tracking-tight">{timeStr || "--:--"}</p>
-                  <p className="mt-1 text-xs font-medium text-slate-400">{dateStr || "-"}</p>
+                  <p className="mt-1 text-xs font-medium text-muted-foreground">{dateStr || "-"}</p>
                 </div>
               </div>
 
-              <div className="relative flex-1 overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-[0_25px_80px_rgba(0,0,0,0.35)] md:h-[480px] md:flex-none lg:h-[520px]">
+              <div className="relative flex-1 overflow-hidden rounded-[1.25rem] bg-black ring-1 ring-border/60 md:h-[480px] md:flex-none lg:h-[520px]">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -624,10 +623,10 @@ export default function AttendancePage() {
                   onLoadedMetadata={() => setCameraReady(true)}
                   className="h-full min-h-[340px] w-full object-cover md:min-h-0"
                 />
-                <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.12),transparent_24%,transparent_76%,rgba(15,23,42,0.32))]" />
+                <div className="pointer-events-none absolute inset-0 bg-black/5" />
 
                 <div className="absolute left-4 right-4 top-4 flex flex-col gap-3 md:left-6 md:right-6 md:top-6">
-                  <div className="flex items-start gap-3 rounded-2xl bg-white/92 p-3 text-slate-900 shadow-lg backdrop-blur-md md:p-4">
+                  <div className="flex items-start gap-3 rounded-2xl bg-white/95 p-3 text-slate-900 ring-1 ring-border/60 md:p-4">
                     <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl ${gpsLocked ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                       <MapPin className="h-4 w-4" />
                     </div>
@@ -643,18 +642,18 @@ export default function AttendancePage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${cameraReady ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+                    <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${cameraReady ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
                       {cameraReady ? "Camera Ready" : "Waiting Camera"}
                     </div>
-                    <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${gpsLocked ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+                    <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${gpsLocked ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
                       {gpsLocked ? "GPS Ready" : "Waiting GPS"}
                     </div>
                   </div>
                 </div>
 
                 <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between md:bottom-6 md:left-6 md:right-6">
-                  <div className="rounded-2xl bg-white/10 px-3 py-2 backdrop-blur-md">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300">Live Preview</p>
+                  <div className="rounded-2xl bg-white/95 px-3 py-2 text-slate-900 ring-1 ring-border/60">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Live Preview</p>
                     <p className="mt-1 text-sm font-medium text-white">
                       {capturedPhoto ? "Foto terakhir siap dipakai untuk attendance" : "Wajah harus berada di dalam frame"}
                     </p>
@@ -663,7 +662,7 @@ export default function AttendancePage() {
                     type="button"
                     onClick={handleCapturePhoto}
                     disabled={!cameraReady || isCapturing}
-                    className="flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-white/10 p-4 shadow-lg backdrop-blur-md transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-white/90 p-4 text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isCapturing ? <Loader2 className="h-6 w-6 animate-spin text-white" /> : <Camera className="h-6 w-6 text-white" />}
                   </button>
@@ -674,9 +673,9 @@ export default function AttendancePage() {
 
           <aside className="flex flex-col bg-surface-container-lowest px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 md:px-6 md:py-8">
             <div className="mx-auto flex w-full max-w-md flex-1 flex-col md:max-w-none">
-              <div className="rounded-[2rem] bg-surface-container-low p-5 shadow-sm">
+              <div className="rounded-[1.25rem] bg-surface-container-low p-5">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white">
                     <UserRound className="h-6 w-6" />
                   </div>
                   <div className="min-w-0">
@@ -686,7 +685,7 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+              <div className="mt-4 rounded-[1.25rem] bg-surface-container-lowest p-5 ring-1 ring-border/60">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">Current time</p>
                 <div className="mt-2 flex items-end gap-2">
                   <span className="text-5xl font-semibold tracking-tight text-slate-950">{timeStr.split(" ")[0] || "--:--"}</span>
@@ -695,7 +694,7 @@ export default function AttendancePage() {
                 <p className="mt-1 text-sm font-medium text-slate-500">{dateStr || "-"}</p>
               </div>
 
-              <div className="mt-4 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+              <div className="mt-4 rounded-[1.25rem] bg-surface-container-lowest p-5 ring-1 ring-border/60">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold text-slate-950">Konteks Attendance</h2>
@@ -851,7 +850,7 @@ export default function AttendancePage() {
                 <Button
                   onClick={() => handleClock("checked-in")}
                   disabled={!canSubmit}
-                  className="h-16 rounded-[1.4rem] bg-slate-950 text-white shadow-[0_18px_45px_rgba(15,23,42,0.22)] hover:bg-slate-800"
+                  className="h-14 rounded-[1rem] bg-slate-950 text-white hover:bg-slate-800"
                 >
                   {isSubmitting === "checked-in" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                   Clock In
@@ -860,7 +859,7 @@ export default function AttendancePage() {
                   onClick={() => handleClock("checked-out")}
                   disabled={!canSubmit}
                   variant="outline"
-                  className="h-16 rounded-[1.4rem] bg-surface-container-low text-foreground shadow-sm hover:bg-surface-container-highest"
+                  className="h-14 rounded-[1rem] bg-surface-container-low text-foreground hover:bg-surface-container-highest"
                 >
                   {isSubmitting === "checked-out" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                   Clock Out
@@ -868,7 +867,7 @@ export default function AttendancePage() {
               </div>
 
               <div className="mt-4 grid gap-3 md:grid-cols-1">
-                <div className="rounded-[1.75rem] bg-surface-container-low p-4">
+                <div className="rounded-[1.1rem] bg-surface-container-low p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
                       <ShieldCheck className="h-5 w-5" />
@@ -898,7 +897,7 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+              <div className="mt-4 rounded-[1.25rem] bg-surface-container-lowest p-5 ring-1 ring-border/60">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-950">Capture Preview</h3>
@@ -910,7 +909,7 @@ export default function AttendancePage() {
                 </div>
 
                 {capturedPreviewUrl ? (
-                    <div className="mt-4 overflow-hidden rounded-[1.5rem] bg-slate-950">
+                    <div className="mt-4 overflow-hidden rounded-[1.1rem] bg-slate-950">
                     <img
                       src={capturedPreviewUrl}
                       alt="Preview capture attendance"
@@ -918,13 +917,13 @@ export default function AttendancePage() {
                     />
                   </div>
                 ) : (
-                  <div className="mt-4 rounded-[1.5rem] bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground">
+                  <div className="mt-4 rounded-[1.1rem] bg-surface-container-low px-4 py-8 text-center text-sm text-muted-foreground">
                     Belum ada foto yang di-capture. Tekan tombol kamera di preview untuk melihat hasilnya di sini.
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 flex-1 rounded-[2rem] bg-surface-container-lowest p-5 shadow-[0_12px_24px_rgba(0,52,97,0.06)]">
+              <div className="mt-4 flex-1 rounded-[1.25rem] bg-surface-container-lowest p-5 ring-1 ring-border/60">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-950">Log Shift Ini</h3>

@@ -125,7 +125,7 @@ export default async function MyDayPage() {
 
   return (
     <div className="space-y-5">
-      <Card className="rounded-[1.5rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+      <Card className="surface-module-card rounded-[1.1rem] border-0">
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ export default async function MyDayPage() {
               ) : null}
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">Checklist Harian, Aktivitas, dan Feed Poin</CardTitle>
+              <CardTitle className="text-2xl">Checklist Harian, Aktivitas, dan Feed Poin</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
                 Workspace harian untuk cek assignment yang harus dikerjakan, submit aktivitas, lalu pantau status approval,
                 poin, dan penalty tanpa pindah halaman.
@@ -202,7 +202,7 @@ export default async function MyDayPage() {
       </Card>
 
       {data.routeChecklist ? (
-        <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+        <Card className="surface-module-card rounded-[1.1rem] border-0">
           <CardHeader className="gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-2">
@@ -277,7 +277,7 @@ export default async function MyDayPage() {
                   </summary>
                   <div className="mt-3 space-y-2">
                     {group.items.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-white px-4 py-3 shadow-[0_10px_22px_rgba(8,32,51,0.05)]">
+                      <div key={item.id} className="rounded-xl bg-white px-4 py-3 ring-1 ring-border/60">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
@@ -310,7 +310,7 @@ export default async function MyDayPage() {
         </TabsList>
 
         <TabsContent value="jobs" className="space-y-4">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Today's work queue"
@@ -391,7 +391,7 @@ export default async function MyDayPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Library input mandiri"
@@ -452,7 +452,7 @@ export default async function MyDayPage() {
         </TabsContent>
 
         <TabsContent value="activity-log">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Sent activity log"
@@ -552,7 +552,7 @@ export default async function MyDayPage() {
 
         {teamData?.hasSubordinates ? (
           <TabsContent value="team-activity">
-            <Card className="rounded-[1.4rem]">
+            <Card className="surface-module-card rounded-[1.1rem] border-0">
               <CardContent className="space-y-4 pt-6">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
@@ -577,7 +577,7 @@ export default async function MyDayPage() {
         ) : null}
 
         <TabsContent value="points">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Point feed"
@@ -625,7 +625,7 @@ export default async function MyDayPage() {
         </TabsContent>
 
         <TabsContent value="penalties">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Penalty and dispute"

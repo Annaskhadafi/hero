@@ -212,7 +212,7 @@ export default async function TeamBoardPage() {
 
   return (
     <div className="space-y-5">
-      <Card className="rounded-[1.5rem]">
+      <Card className="surface-module-card rounded-[1.1rem] border-0">
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -221,7 +221,7 @@ export default async function TeamBoardPage() {
               <Badge variant="outline">{data.lead.name}</Badge>
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl sm:text-3xl">SPL, Team Monitoring, dan Approval Queue</CardTitle>
+              <CardTitle className="text-2xl">SPL, Team Monitoring, dan Approval Queue</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
                 Halaman lead diringkas jadi command surface untuk Surat Perintah Lembur, monitoring tim, approval
                 queue, dan dispute audit. Penugasan tetap satu pintu, tapi istilah kerja lapangan sekarang diselaraskan
@@ -269,7 +269,7 @@ export default async function TeamBoardPage() {
         </TabsList>
 
         <TabsContent value="spl">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Dokumen SPL"
@@ -377,7 +377,7 @@ export default async function TeamBoardPage() {
         </TabsContent>
 
         <TabsContent value="team">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Field Team Status"
@@ -431,7 +431,7 @@ export default async function TeamBoardPage() {
         </TabsContent>
 
         <TabsContent value="activity-log">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Log Aktivitas Bawahan</h3>
@@ -449,7 +449,7 @@ export default async function TeamBoardPage() {
         </TabsContent>
 
         <TabsContent value="approvals">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Pending Approval Queue"
@@ -519,7 +519,7 @@ export default async function TeamBoardPage() {
         </TabsContent>
 
         <TabsContent value="disputes">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Penalty Disputes"

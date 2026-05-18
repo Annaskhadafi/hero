@@ -1327,7 +1327,7 @@ export function SchedulingTimesheetWorkspace({
     return (
       <Card
         key={`${keyPrefix}-${section}`}
-        className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-0"
+        className="surface-module-card overflow-hidden rounded-[1rem] border-0 p-0"
       >
         <div className="overflow-auto">
           <table className="min-w-max border-collapse text-xs">
@@ -3353,7 +3353,7 @@ export function SchedulingTimesheetWorkspace({
           </span>
         </div>
       ) : null}
-      <Card className="surface-module-card rounded-[1.1rem] border-0 p-4">
+      <Card className="surface-module-card rounded-[1rem] border-0 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <span className="bg-surface-container-low text-primary grid size-9 place-items-center rounded-xl">
@@ -3492,7 +3492,7 @@ export function SchedulingTimesheetWorkspace({
             },
             { label: 'Backup list', value: backupAssignments.length, Icon: Settings2 },
           ].map(({ label, value, Icon }) => (
-            <Card key={label} className="surface-module-card rounded-[1rem] border-0 p-4">
+            <Card key={label} className="surface-muted-card rounded-[1rem] border-0 p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                   {label}
@@ -4619,7 +4619,7 @@ export function SchedulingTimesheetWorkspace({
                                     const isAbsent = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
                                     // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
                                     // 'off' status = manual OFF, treated like roster OFF (not empty workday)
-                                    const isEmptyWorkDay = isWorkDay && !isNationalHoliday && cell.status === 'empty' && cell.status !== 'off'
+                                    const isEmptyWorkDay = isWorkDay && !isNationalHoliday && cell.status === 'empty'
                                     const noAllowance = isAbsent || isEmptyWorkDay
                                     const absentLabel = cell.status === 'leave' ? 'Izin' : cell.status === 'sick' ? 'Sakit' : cell.status === 'absent' ? 'Alpha' : '-'
 
@@ -4840,7 +4840,7 @@ export function SchedulingTimesheetWorkspace({
                                         const isNationalHoliday2 = Boolean(hol)
                                         const isWorkDay2 = !isRosterOff2
                                         const isAbsent2 = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
-                                        const isEmptyWorkDay2 = isWorkDay2 && !isNationalHoliday2 && cell.status === 'empty' && cell.status !== 'off'
+                                        const isEmptyWorkDay2 = isWorkDay2 && !isNationalHoliday2 && cell.status === 'empty'
                                         const noAllowance2 = isAbsent2 || isEmptyWorkDay2
 
                                         if (attendanceView === 'lokasi') {

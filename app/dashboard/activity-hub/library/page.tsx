@@ -19,7 +19,7 @@ import { getDailyActivityLibraryData } from "@/lib/daily-activity";
 
 function SummaryChip({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-[0_12px_28px_rgba(8,32,51,0.06)] ring-1 ring-[rgba(66,71,80,0.08)]">
+    <div className="rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-border/60">
       <span className="text-xs font-black uppercase text-muted-foreground">{label}</span>
       <span className="ml-3 font-display text-xl font-black text-foreground">{value}</span>
     </div>
@@ -156,7 +156,7 @@ export default async function DailyActivityLibraryPage({
         </TabsList>
 
         <TabsContent value="overview">
-          <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardHeader className="gap-3">
               <CardTitle className="flex items-center gap-2 text-2xl">
                 <Settings2 className="size-5 text-primary" />
@@ -280,7 +280,7 @@ export default async function DailyActivityLibraryPage({
         </TabsContent>
 
         <TabsContent value="create">
-          <Card className="rounded-[1.4rem]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layers3 className="size-5 text-primary" />

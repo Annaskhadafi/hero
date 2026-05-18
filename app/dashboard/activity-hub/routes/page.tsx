@@ -38,7 +38,7 @@ const selectClass =
 
 function SummaryChip({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl bg-white px-4 py-3 text-sm shadow-[0_12px_28px_rgba(8,32,51,0.06)] ring-1 ring-[rgba(66,71,80,0.08)]">
+    <div className="rounded-xl bg-white px-4 py-3 text-sm ring-1 ring-border/60">
       <span className="text-xs font-black uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
       <span className="ml-3 font-display text-xl font-black text-foreground">{value}</span>
     </div>
@@ -345,7 +345,7 @@ function GroupBuilder({
   data: RouteBuilderData;
 }) {
   return (
-    <details className="group rounded-[1.1rem] bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+    <details className="group rounded-[1.1rem] bg-white ring-1 ring-border/60">
       <summary className="grid cursor-pointer list-none gap-3 px-4 py-4 md:grid-cols-[minmax(220px,1fr)_130px_130px_130px] md:items-center [&::-webkit-details-marker]:hidden">
         <span>
           <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
@@ -367,7 +367,7 @@ function GroupBuilder({
         <div className="space-y-2">
           {group.items.length > 0 ? (
             group.items.map((item) => (
-              <details key={item.id} className="rounded-xl bg-white p-3 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+              <details key={item.id} className="rounded-xl bg-white p-3 ring-1 ring-border/60">
                 <summary className="grid cursor-pointer list-none gap-3 md:grid-cols-[minmax(220px,1fr)_140px_120px_100px] md:items-center [&::-webkit-details-marker]:hidden">
                   <span>
                     <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">
@@ -410,7 +410,7 @@ function GroupBuilder({
           )}
         </div>
 
-        <details className="rounded-xl bg-white p-4 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+        <details className="rounded-xl bg-white p-4 ring-1 ring-border/60">
           <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
             + Tambah item ke group ini
           </summary>
@@ -424,7 +424,7 @@ function GroupBuilder({
           </div>
         </details>
 
-        <details className="rounded-xl bg-white p-4 shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+        <details className="rounded-xl bg-white p-4 ring-1 ring-border/60">
           <summary className="cursor-pointer list-none text-sm font-semibold text-primary [&::-webkit-details-marker]:hidden">
             Edit / hapus group
           </summary>
@@ -476,7 +476,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
           <div className="space-y-4 bg-surface-container-low px-4 py-4">
             <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
               <div className="space-y-3">
-                <div className="rounded-xl bg-white px-4 py-3 text-sm text-muted-foreground shadow-[0_8px_18px_rgba(8,32,51,0.05)]">
+                <div className="rounded-xl bg-white px-4 py-3 text-sm text-muted-foreground ring-1 ring-border/60">
                   Nested route: open group, then open item to edit points, unit, time, remark, photo, evidence.
                 </div>
                 {template.groups.length > 0 ? (
@@ -491,7 +491,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
               </div>
 
               <div className="space-y-3">
-                <Card className="border-0 bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+                <Card className="border-0 bg-white ring-1 ring-border/60">
                   <CardContent className="space-y-3 p-4">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">
                       Route actions
@@ -503,7 +503,7 @@ function RouteBuilderRow({ template, data }: { template: RouteTemplate; data: Ro
                   </CardContent>
                 </Card>
 
-                <Card className="border-0 bg-white shadow-[0_12px_30px_rgba(8,32,51,0.06)]">
+                <Card className="border-0 bg-white ring-1 ring-border/60">
                   <CardContent className="space-y-3 p-4">
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="rounded-xl bg-surface-container-low px-3 py-2">
@@ -612,7 +612,7 @@ export default async function DailyActivityRoutesPage() {
         </TabsList>
 
         <TabsContent value="routes" className="space-y-4">
-          <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardHeader className="gap-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -668,7 +668,7 @@ export default async function DailyActivityRoutesPage() {
         </TabsContent>
 
         <TabsContent value="overrides" className="space-y-4">
-          <Card className="rounded-[1.4rem] border-0 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+          <Card className="surface-module-card rounded-[1.1rem] border-0">
             <CardHeader className="gap-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

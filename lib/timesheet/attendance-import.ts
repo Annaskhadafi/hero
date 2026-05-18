@@ -6,7 +6,7 @@ export const attendanceImportRawRowSchema = z.object({
   employeeName: z.string().optional().default(""),
   siteName: z.string().optional().default(""),
   day: z.coerce.number().int().min(1).max(31),
-  status: z.enum(["present", "empty", "sick", "leave", "absent"]).default("present"),
+  status: z.enum(["present", "empty", "sick", "leave", "absent", "off"]).default("present"),
   clockIn: z.string().max(8).optional().default(""),
   clockOut: z.string().max(8).optional().default(""),
   note: z.string().max(240).optional().default(""),
