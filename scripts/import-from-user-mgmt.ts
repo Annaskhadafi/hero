@@ -1,4 +1,4 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { employees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
@@ -39,6 +39,7 @@ async function importFromUserManagement() {
         siteId: emp.siteId,
         siteName: emp.workLocation,
         department: emp.department,
+        section: emp.section,
         position: emp.jobTitle,
         employmentStatus: emp.employmentStatus,
         employmentType: "permanent",

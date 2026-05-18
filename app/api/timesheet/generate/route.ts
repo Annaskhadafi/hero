@@ -1,12 +1,35 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
+import { getServerSession } from "@/lib/auth-session";
 import { timesheetDailyRecords, timesheetSiteConfigs, timesheetSummaryOutputs } from "@/db/schema/timesheet";
 import { sites } from "@/db/schema/hero";
 import { generateSummaryExcel, type SummarySiteSheet, type SummaryEmployeeData } from "@/lib/timesheet/generate-summary";
 import { determineDailyStatus, formatOTHours } from "@/lib/timesheet/calculation";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
-import { eq, and } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+
+async function requireTimesheetAccess() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const [employee] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(eq(employees.email, session.user.email.trim().toLowerCase()))
+    .limit(1);
+
+  const allowedRoles = new Set(["Super Admin", "Admin", "HC Admin", "HR Admin", "Site Admin", "Payroll Admin"]);
+  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { session };
+}
 
 /**
  * POST /api/timesheet/generate
@@ -14,8 +37,12 @@ import { eq, and } from "drizzle-orm";
  */
 export async function POST(request: NextRequest) {
   try {
+    const access = await requireTimesheetAccess();
+    if (access.error) return access.error;
+
     const body = await request.json();
-    const { periodMonth, periodYear, userId } = body;
+    const { periodMonth, periodYear } = body;
+    const userId = access.session.user.id;
 
     if (!periodMonth || !periodYear) {
       return NextResponse.json(
@@ -49,7 +76,8 @@ export async function POST(request: NextRequest) {
         .where(
           and(
             eq(timesheetDailyRecords.siteId, site.id),
-            eq(timesheetDailyRecords.dayOfMonth, periodMonth)
+            sql`extract(month from ${timesheetDailyRecords.recordDate}) = ${periodMonth}`,
+            sql`extract(year from ${timesheetDailyRecords.recordDate}) = ${periodYear}`
           )
         );
 

@@ -1,16 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees, centralServiceEmployeeImports } from "@/db/schema/central-service";
+import { employees } from "@/db/schema/hero";
+import { getServerSession } from "@/lib/auth-session";
 import * as XLSX from "xlsx";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { eq } from "drizzle-orm";
 
+async function requireCentralServiceAccess() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const [employee] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(eq(employees.email, session.user.email.trim().toLowerCase()))
+    .limit(1);
+
+  const allowedRoles = new Set(["Super Admin", "Admin", "HC Admin", "HR Admin", "Site Admin"]);
+  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { session };
+}
+
 export async function POST(request: NextRequest) {
   try {
+    const access = await requireCentralServiceAccess();
+    if (access.error) return access.error;
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    const userId = formData.get("userId") as string;
+    const userId = access.session.user.id;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });

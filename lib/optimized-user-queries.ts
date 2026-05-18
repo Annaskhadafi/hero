@@ -1,4 +1,4 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { employees, hrDepartments, hrSections, hrPositions, hrSites } from "@/db/schema/hero";
 import { eq, and, or, like, sql, desc, asc } from "drizzle-orm";
 import { getOffset, calculatePagination, type PaginatedResult } from "@/lib/pagination";
@@ -85,6 +85,18 @@ export async function getSecurityUsersDataPaginated(params: {
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const sortColumns = {
+    name: employees.name,
+    email: employees.email,
+    employeeSn: employees.employeeSn,
+    department: employees.department,
+    section: employees.section,
+    jobTitle: employees.jobTitle,
+    workLocation: employees.workLocation,
+    accessRole: employees.accessRole,
+    employmentStatus: employees.employmentStatus,
+  } as const;
+  const sortColumn = sortColumns[params.sortBy as keyof typeof sortColumns] ?? employees.name;
 
   // Get total count
   const [countResult] = await db
@@ -137,11 +149,7 @@ export async function getSecurityUsersDataPaginated(params: {
       eq(hrSites.id, employees.siteId),
     )
     .where(whereClause)
-    .orderBy(
-      params.sortOrder === "desc"
-        ? desc(sql.raw(params.sortBy ?? "name"))
-        : asc(sql.raw(params.sortBy ?? "name")),
-    )
+    .orderBy(params.sortOrder === "desc" ? desc(sortColumn) : asc(sortColumn))
     .limit(pageSize)
     .offset(offset);
 

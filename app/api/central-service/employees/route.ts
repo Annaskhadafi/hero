@@ -2,7 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { employees as heroEmployees } from "@/db/schema/hero";
-import { and, eq, ilike, or, desc } from "drizzle-orm";
+import { getServerSession } from "@/lib/auth-session";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+
+async function requireCentralServiceAccess() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const [employee] = await db
+    .select({ accessRole: heroEmployees.accessRole })
+    .from(heroEmployees)
+    .where(eq(heroEmployees.email, session.user.email.trim().toLowerCase()))
+    .limit(1);
+
+  const allowedRoles = new Set(["Super Admin", "Admin", "HC Admin", "HR Admin", "Site Admin"]);
+  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { session };
+}
 
 /**
  * GET /api/central-service/employees
@@ -11,6 +33,9 @@ import { and, eq, ilike, or, desc } from "drizzle-orm";
  */
 export async function GET(request: NextRequest) {
   try {
+    const access = await requireCentralServiceAccess();
+    if (access.error) return access.error;
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || "";
@@ -49,27 +74,31 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(centralServiceEmployees.isSyncedToUserManagement, false));
     }
 
-    // Get total count
-    const totalResults = await db
-      .select()
+    const whereClause = and(...conditions);
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(centralServiceEmployees)
-      .where(and(...conditions));
-    
-    const total = totalResults.length;
+      .where(whereClause);
+
+    const [syncedResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(centralServiceEmployees)
+      .where(and(whereClause, eq(centralServiceEmployees.isSyncedToUserManagement, true)));
+
+    const total = countResult?.count ?? 0;
+    const syncedCount = syncedResult?.count ?? 0;
+    const unsyncedCount = total - syncedCount;
 
     // Apply pagination
     const offset = (page - 1) * limit;
     const employees = await db
       .select()
       .from(centralServiceEmployees)
-      .where(and(...conditions))
+      .where(whereClause)
       .orderBy(desc(centralServiceEmployees.createdAt))
       .limit(limit)
       .offset(offset);
-
-    // Count synced vs unsynced
-    const syncedCount = employees.filter((e) => e.isSyncedToUserManagement).length;
-    const unsyncedCount = employees.filter((e) => !e.isSyncedToUserManagement).length;
 
     // Enrich section from User Management (hero_employees) matched by employeeSn.
     // hero_employees may store SN as "EMP-51468" while centralServiceEmployees stores "51468" — try both.
@@ -125,6 +154,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const access = await requireCentralServiceAccess();
+    if (access.error) return access.error;
+
     const body = await request.json();
 
     const [employee] = await db
@@ -138,6 +170,7 @@ export async function POST(request: NextRequest) {
         siteId: body.siteId,
         siteName: body.siteName,
         department: body.department,
+        section: body.section,
         position: body.position,
         employmentStatus: body.employmentStatus || "active",
         employmentType: body.employmentType || "permanent",
