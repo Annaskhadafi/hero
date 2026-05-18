@@ -379,8 +379,9 @@ function SignInContent() {
                                     <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-[#9ac8ec]" />
                                     <Input
                                         id="d-email"
-                                        type="email"
-                                        placeholder="name@company.com"
+                                        type="text"
+                                        inputMode="email"
+                                        placeholder="Email atau SN (contoh: CP001)"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
