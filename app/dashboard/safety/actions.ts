@@ -7,6 +7,8 @@ import { db } from "@/db"
 import {
   safetyCertifications,
   safetyIncidentReports,
+  safetyIncidentSummaryMonthly,
+  safetyIncidentSummaryYearly,
   safetyManHours,
   safetyMonthlyManHours,
   safetyPerformanceMetrics,
@@ -48,11 +50,81 @@ function readId(formData: FormData) {
 
 function success(message: string): MutationState {
   revalidatePath("/dashboard/safety")
+  revalidatePath("/dashboard/safety/data")
   return { ok: true, message }
 }
 
 function failure(error: unknown): MutationState {
   return { ok: false, message: error instanceof Error ? error.message : "Safety data gagal diproses." }
+}
+
+export async function manageSafetyIncidentSummaryYearlyAction(formData: FormData): Promise<MutationState> {
+  try {
+    const intent = readString(formData, "intent")
+    if (intent === "delete") {
+      await db.delete(safetyIncidentSummaryYearly).where(eq(safetyIncidentSummaryYearly.id, readId(formData)))
+      return success("Rekap incident tahunan dihapus.")
+    }
+
+    const values = {
+      year: Number(readNumberString(formData, "year")) || new Date().getFullYear(),
+      fatality: Number(readNumberString(formData, "fatality")),
+      lostDayInjury: Number(readNumberString(formData, "lostDayInjury")),
+      restrictedWorkDayInjury: Number(readNumberString(formData, "restrictedWorkDayInjury")),
+      medicalTreatmentCase: Number(readNumberString(formData, "medicalTreatmentCase")),
+      firstAid: Number(readNumberString(formData, "firstAid")),
+      propertyDamage: Number(readNumberString(formData, "propertyDamage")),
+      nearMissReport: Number(readNumberString(formData, "nearMissReport")),
+      environmental: Number(readNumberString(formData, "environmental")),
+      fatigue: Number(readNumberString(formData, "fatigue")),
+      totalEvents: Number(readNumberString(formData, "totalEvents")),
+      updatedAt: new Date(),
+    }
+
+    if (intent === "update") {
+      await db.update(safetyIncidentSummaryYearly).set(values).where(eq(safetyIncidentSummaryYearly.id, readId(formData)))
+      return success("Rekap incident tahunan diperbarui.")
+    }
+
+    await db.insert(safetyIncidentSummaryYearly).values({ ...values, sourceSheet: "manual" })
+    return success("Rekap incident tahunan ditambahkan.")
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function manageSafetyIncidentSummaryMonthlyAction(formData: FormData): Promise<MutationState> {
+  try {
+    const intent = readString(formData, "intent")
+    if (intent === "delete") {
+      await db.delete(safetyIncidentSummaryMonthly).where(eq(safetyIncidentSummaryMonthly.id, readId(formData)))
+      return success("Rekap incident bulanan dihapus.")
+    }
+
+    const values = {
+      month: requireString(formData, "month", "Bulan"),
+      fatality: Number(readNumberString(formData, "fatality")),
+      lostDayInjury: Number(readNumberString(formData, "lostDayInjury")),
+      restrictedWorkDayInjury: Number(readNumberString(formData, "restrictedWorkDayInjury")),
+      medicalTreatmentCase: Number(readNumberString(formData, "medicalTreatmentCase")),
+      firstAid: Number(readNumberString(formData, "firstAid")),
+      propertyDamage: Number(readNumberString(formData, "propertyDamage")),
+      nearMissReport: Number(readNumberString(formData, "nearMissReport")),
+      environmental: Number(readNumberString(formData, "environmental")),
+      totalEvents: Number(readNumberString(formData, "totalEvents")),
+      updatedAt: new Date(),
+    }
+
+    if (intent === "update") {
+      await db.update(safetyIncidentSummaryMonthly).set(values).where(eq(safetyIncidentSummaryMonthly.id, readId(formData)))
+      return success("Rekap incident bulanan diperbarui.")
+    }
+
+    await db.insert(safetyIncidentSummaryMonthly).values({ ...values, sourceSheet: "manual" })
+    return success("Rekap incident bulanan ditambahkan.")
+  } catch (error) {
+    return failure(error)
+  }
 }
 
 export async function manageSafetyIncidentReportAction(formData: FormData): Promise<MutationState> {

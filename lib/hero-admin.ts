@@ -669,6 +669,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Safety Data Management',
+    url: '/dashboard/safety/data',
+    iconName: 'list-details',
+    resource: 'safety_data_management',
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',
