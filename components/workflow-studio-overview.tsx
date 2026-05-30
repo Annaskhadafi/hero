@@ -147,7 +147,7 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewD
             <TableBody>
               {conditionRows.map((condition) => (
                 <TableRow key={condition.field}>
-                  <TableCell className="font-medium text-[#0f172a]">{condition.field}</TableCell>
+                  <TableCell className="font-medium text-[#0b4f4e]">{condition.field}</TableCell>
                   <TableCell>
                     <AdminStatusBadge value={condition.status} />
                   </TableCell>

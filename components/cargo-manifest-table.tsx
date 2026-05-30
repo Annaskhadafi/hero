@@ -1,11 +1,36 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { ChevronDown, ChevronRight, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { AdminStatusBadge } from "@/components/admin-status-badge";
+import { Fragment, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, PackageCheck } from "lucide-react";
+
 import { CargoManifestRowActions } from "@/components/cargo-manifest-panels";
+import { AdminStatusBadge } from "@/components/admin-status-badge";
+import { Button } from "@/components/ui/button";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { CargoManifestRecord } from "@/app/actions/cargo-manifest";
+
+const columns = [
+  "Detail",
+  "No. Manifest",
+  "Tanggal",
+  "Site",
+  "Section",
+  "Attention",
+  "Transport Via",
+  "Tujuan",
+  "Items",
+  "Status",
+  "Aksi",
+];
 
 type CargoManifestTableProps = {
   manifests: CargoManifestRecord[];
@@ -13,202 +38,174 @@ type CargoManifestTableProps = {
 
 export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [filterSite, setFilterSite] = useState<string>("");
-  const [filterDateFrom, setFilterDateFrom] = useState<string>("");
-  const [filterDateTo, setFilterDateTo] = useState<string>("");
 
-  const filteredManifests = manifests.filter(m => {
-    if (filterSite && m.siteName !== filterSite) return false;
-    if (filterDateFrom && new Date(m.createdAt) < new Date(filterDateFrom)) return false;
-    if (filterDateTo && new Date(m.createdAt) > new Date(filterDateTo + "T23:59:59")) return false;
-    return true;
-  });
-
-  const uniqueSites = Array.from(
-    new Set(manifests.map(m => m.siteName).filter((site): site is string => Boolean(site)))
-  ).sort();
-
-  const handleExportCSV = () => {
-    const headers = ["No. Manifest", "Tanggal", "Site", "Section", "Attention", "Transport Via", "Tujuan", "Items", "Status", "Created At"];
-    const rows = filteredManifests.map(m => [
-      m.manifestNumber,
-      m.date,
-      m.siteName || "-",
-      m.sectionName || "-",
-      m.attention || "-",
-      m.transportVia || "-",
-      m.finalDestination || "-",
-      m.items.length.toString(),
-      m.status,
-      new Date(m.createdAt).toLocaleString("id-ID")
-    ]);
-    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `cargo-manifest-${new Date().toISOString().split("T")[0]}.csv`;
-    link.click();
-  };
+  const siteOptions = useMemo(
+    () => Array.from(new Set(manifests.map((manifest) => manifest.siteName).filter((site): site is string => Boolean(site)))).sort(),
+    [manifests],
+  );
+  const statusOptions = useMemo(
+    () => Array.from(new Set(manifests.map((manifest) => manifest.status).filter(Boolean))).sort(),
+    [manifests],
+  );
+  const totalItems = manifests.reduce((total, manifest) => total + manifest.items.length, 0);
 
   const toggleRow = (id: number) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+    const nextExpanded = new Set(expandedRows);
+    if (nextExpanded.has(id)) {
+      nextExpanded.delete(id);
     } else {
-      newExpanded.add(id);
+      nextExpanded.add(id);
     }
-    setExpandedRows(newExpanded);
+    setExpandedRows(nextExpanded);
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-end justify-between gap-3">
-        <div className="flex gap-3">
-          <div className="grid gap-1.5">
-            <label className="text-xs font-medium">Filter Site</label>
-            <select
-              value={filterSite}
-              onChange={(e) => setFilterSite(e.target.value)}
-              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Semua Site</option>
-              {uniqueSites.map((site, idx) => <option key={`site-${idx}`} value={site}>{site}</option>)}
-            </select>
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-xs font-medium">Dari Tanggal</label>
-            <input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
-              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <label className="text-xs font-medium">Sampai Tanggal</label>
-            <input
-              type="date"
-              value={filterDateTo}
-              onChange={(e) => setFilterDateTo(e.target.value)}
-              className="h-9 rounded-lg border border-input bg-background px-3 text-sm"
-            />
-          </div>
-        </div>
-        <Button onClick={handleExportCSV} variant="outline" size="sm" className="gap-2">
-          <Download className="h-4 w-4" /> Export CSV
-        </Button>
-      </div>
-      <div className="rounded-lg border border-border bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="w-10 px-3 py-3 text-left font-medium"></th>
-              <th className="px-3 py-3 text-left font-medium">No. Manifest</th>
-              <th className="px-3 py-3 text-left font-medium">Tanggal</th>
-              <th className="px-3 py-3 text-left font-medium">Site</th>
-              <th className="px-3 py-3 text-left font-medium">Section</th>
-              <th className="px-3 py-3 text-left font-medium">Attention</th>
-              <th className="px-3 py-3 text-left font-medium">Transport Via</th>
-              <th className="px-3 py-3 text-left font-medium">Tujuan</th>
-              <th className="px-3 py-3 text-left font-medium">Items</th>
-              <th className="px-3 py-3 text-left font-medium">Status</th>
-              <th className="px-3 py-3 text-left font-medium">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredManifests.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-muted-foreground">
-                  Belum ada data manifest
-                </td>
-              </tr>
-            ) : (
-              filteredManifests.map((m) => (
-                <Fragment key={m.id}>
-                  <tr key={m.id} className="border-b border-border hover:bg-muted/20">
-                    <td className="px-3 py-3">
-                      <button
-                        onClick={() => toggleRow(m.id)}
-                        className="rounded p-1 hover:bg-muted"
-                        aria-label="Toggle details"
-                      >
-                        {expandedRows.has(m.id) ? (
-                          <ChevronDown className="h-4 w-4" />
+    <MinimalTableShell
+      label="cargo manifest"
+      fileName="cargo-manifest"
+      searchPlaceholder="Cari manifest, site, tujuan..."
+      filters={
+        <>
+          <TableMultiFilter
+            label="site"
+            filterKey="site"
+            options={siteOptions.map((site) => ({ value: site, label: site }))}
+          />
+          <TableMultiFilter
+            label="status"
+            filterKey="status"
+            options={statusOptions.map((status) => ({ value: status, label: status }))}
+          />
+        </>
+      }
+      scorecards={[
+        {
+          label: "Manifest",
+          value: manifests.length,
+          description: "Total dokumen manifest",
+          icon: <PackageCheck className="size-4 text-primary" />,
+          tone: "info",
+        },
+        {
+          label: "Items",
+          value: totalItems,
+          description: "Total barang tercatat",
+          tone: "default",
+        },
+        {
+          label: "Sites",
+          value: siteOptions.length,
+          description: "Site dengan manifest aktif",
+          tone: "success",
+        },
+        {
+          label: "Status",
+          value: statusOptions.length,
+          description: "Variasi status dokumen",
+          tone: "warning",
+        },
+      ]}
+      columnOptions={columns.map((column, index) => ({ key: column, label: column, required: index <= 1 }))}
+      tableViewportClassName="max-h-[72vh]"
+      dateFilter
+    >
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            {columns.map((column) => (
+              <TableHead key={column}>{column}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {manifests.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                Belum ada data manifest
+              </TableCell>
+            </TableRow>
+          ) : (
+            manifests.map((manifest) => (
+              <Fragment key={manifest.id}>
+                <TableRow
+                  data-date-value={manifest.createdAt.toISOString()}
+                  data-filter-site={manifest.siteName ?? ""}
+                  data-filter-status={manifest.status}
+                >
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="denseIcon"
+                      onClick={() => toggleRow(manifest.id)}
+                      aria-label="Toggle detail barang"
+                    >
+                      {expandedRows.has(manifest.id) ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs font-semibold text-primary">{manifest.manifestNumber}</span>
+                  </TableCell>
+                  <TableCell>{manifest.date}</TableCell>
+                  <TableCell>{manifest.siteName || "-"}</TableCell>
+                  <TableCell>{manifest.sectionName || "-"}</TableCell>
+                  <TableCell>{manifest.attention || "-"}</TableCell>
+                  <TableCell>{manifest.transportVia || "-"}</TableCell>
+                  <TableCell>{manifest.finalDestination || "-"}</TableCell>
+                  <TableCell>
+                    <span className="tabular-nums text-xs text-muted-foreground">{manifest.items.length} item</span>
+                  </TableCell>
+                  <TableCell>
+                    <AdminStatusBadge value={manifest.status} />
+                  </TableCell>
+                  <TableCell>
+                    <CargoManifestRowActions row={manifest} />
+                  </TableCell>
+                </TableRow>
+                {expandedRows.has(manifest.id) ? (
+                  <TableRow data-date-value={manifest.createdAt.toISOString()} data-filter-site={manifest.siteName ?? ""} data-filter-status={manifest.status}>
+                    <TableCell colSpan={columns.length} className="bg-surface-container-low p-4">
+                      <div className="rounded-[1rem] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10)]">
+                        <h4 className="mb-2 text-sm font-semibold">Detail Barang</h4>
+                        {manifest.items.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">Tidak ada item</p>
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                          <div className="overflow-auto rounded-xl border border-border/70">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="hover:bg-transparent">
+                                  <TableHead>No</TableHead>
+                                  <TableHead>Description</TableHead>
+                                  <TableHead>Serial Number</TableHead>
+                                  <TableHead>Qty</TableHead>
+                                  <TableHead>Brand</TableHead>
+                                  <TableHead>Remark</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {manifest.items.map((item, index) => (
+                                  <TableRow key={`${manifest.id}-${item.no}-${index}`}>
+                                    <TableCell>{item.no}</TableCell>
+                                    <TableCell>{item.description}</TableCell>
+                                    <TableCell>{item.serialNumber || "-"}</TableCell>
+                                    <TableCell>{item.qty}</TableCell>
+                                    <TableCell>{item.brand || "-"}</TableCell>
+                                    <TableCell>{item.remark || "-"}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
                         )}
-                      </button>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="font-mono text-xs font-semibold text-primary">
-                        {m.manifestNumber}
-                      </span>
-                    </td>
-                      <td className="px-3 py-3">{m.date}</td>
-                      <td className="px-3 py-3">{m.siteName || "-"}</td>
-                      <td className="px-3 py-3">{m.sectionName || "-"}</td>
-                      <td className="px-3 py-3">{m.attention || "?"}</td>
-                    <td className="px-3 py-3">{m.transportVia || "?"}</td>
-                    <td className="px-3 py-3">{m.finalDestination || "?"}</td>
-                    <td className="px-3 py-3">
-                      <span className="text-xs text-muted-foreground">
-                        {m.items.length} item
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <AdminStatusBadge value={m.status} />
-                    </td>
-                    <td className="px-3 py-3">
-                      <CargoManifestRowActions row={m} />
-                    </td>
-                  </tr>
-                  {expandedRows.has(m.id) && (
-                    <tr key={`${m.id}-details`} className="border-b border-border bg-muted/10">
-                      <td colSpan={11} className="px-3 py-4">
-                        <div className="ml-8">
-                          <h4 className="mb-2 text-sm font-semibold">Detail Barang:</h4>
-                          {m.items.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">Tidak ada item</p>
-                          ) : (
-                            <div className="overflow-x-auto rounded border border-border">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="bg-muted/40">
-                                    <th className="border-b border-border px-2 py-2 text-left font-medium">No</th>
-                                    <th className="border-b border-border px-2 py-2 text-left font-medium">Description</th>
-                                    <th className="border-b border-border px-2 py-2 text-left font-medium">Serial Number</th>
-                                    <th className="border-b border-border px-2 py-2 text-left font-medium">Qty</th>
-                                    <th className="border-b border-border px-2 py-2 text-left font-medium">Brand</th>
-                                    <th className="border-b border-border px-2 py-2 text-left font-medium">Remark</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {m.items.map((item, idx) => (
-                                    <tr key={idx} className="border-b border-border last:border-0">
-                                      <td className="px-2 py-2">{item.no}</td>
-                                      <td className="px-2 py-2">{item.description}</td>
-                                      <td className="px-2 py-2">{item.serialNumber || "?"}</td>
-                                      <td className="px-2 py-2">{item.qty}</td>
-                                      <td className="px-2 py-2">{item.brand || "?"}</td>
-                                      <td className="px-2 py-2">{item.remark || "?"}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </Fragment>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </MinimalTableShell>
   );
 }

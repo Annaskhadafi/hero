@@ -506,7 +506,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
           </form>
         ) : (
           <form onSubmit={submitEmergency} className="mt-4 space-y-4">
-            <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8a5a00]">
+            <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8c5818]">
               Emergency submit akan auto-alert supervisor dan management saat sync berhasil.
             </div>
 
@@ -667,7 +667,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
                   {item.location}
                 </p>
               </div>
-              <span className="rounded-full bg-[#f9eee8] px-3 py-1 text-[10px] font-black uppercase text-[#5a2200]">
+              <span className="rounded-full bg-[#f0dcc5] px-3 py-1 text-[10px] font-black uppercase text-[#8c5818]">
                 {item.severity}
               </span>
             </div>

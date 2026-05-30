@@ -46,12 +46,22 @@ function getPool() {
 
   const connectionString = serverEnv.databaseUrl;
 
-  const pool = new Pool({ 
+  const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
     idleTimeoutMillis: process.env.NODE_ENV === "production" ? 30000 : 10000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 15000,
     max: 10,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
+  });
+
+  // A remote Postgres link can drop idle sockets (NAT/firewall) and an idle
+  // client can emit an async error. Without this listener pg turns it into an
+  // unhandled exception that can poison or crash the pool; logging here lets pg
+  // evict the dead client and hand out a healthy one instead of timing out.
+  pool.on("error", (error) => {
+    console.error("[db] idle client error", error);
   });
 
   if (process.env.NODE_ENV !== "production") {

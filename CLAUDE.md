@@ -1,5 +1,45 @@
 # Claude Code Task Management Guide
 
+## Mandatory HERO Table, List, and Form Standards
+
+When implementing any feature related to a table, list, CRUD page, admin data page, reporting table, or operational dataset, you MUST use or extend the reusable table/form components instead of building one-off UI.
+
+### Required reusable components
+
+- Use `MinimalTableShell` or `AdminTableCard` for table/list pages.
+- Use `TableMultiFilter` for combobox-style multi filters.
+- Use `AdminImportDialog` for Excel/CSV import with field mapping.
+- Use `EnterpriseScorecards` via `scorecards` on `MinimalTableShell`/`AdminTableCard` for dynamic scorecards.
+- Use `EnterpriseActionButtons` for view/edit/delete row actions with icons and RBAC gating.
+- Use `EnterpriseColumnVisibility` when a feature needs user-controlled visible columns.
+- Use `EnterpriseRecordDialog` for view/edit/delete/form popups.
+- Use `EnterpriseFormGrid` inside dialogs for responsive form layout.
+
+### Required table/list behavior
+
+Every feature that uses a table/list MUST provide:
+
+1. A clean, readable table layout with consistent spacing and sticky-friendly headers where appropriate.
+2. Horizontal and vertical scrolling support for wide/long datasets.
+3. Search and filter controls, including combobox/multi-select filters where relevant.
+4. Excel/CSV import with mapping preview for data-entry or admin datasets.
+5. Excel export with clean column labels and filtered row support.
+6. Pagination with page size controls.
+7. Dynamic scorecards summarizing the dataset when metrics are relevant.
+8. Row action icons for view, edit, and delete.
+9. RBAC integration so unauthorized users cannot edit/delete and view access is respected.
+10. Column visibility controls when users may need to choose which columns are shown.
+
+### Required form/dialog behavior
+
+Every create/edit/view form for table-driven features MUST:
+
+1. Open in a popup dialog unless the workflow clearly requires a dedicated page.
+2. Use a polished, responsive layout with `EnterpriseRecordDialog` and `EnterpriseFormGrid`.
+3. Be scrollable on small screens and long forms.
+4. Keep headers, body, and footer visually separated.
+5. Use clear action buttons and RBAC-aware disabled/hidden states.
+
 ## Documentation Available
 
 📚 **Project Documentation**: Check the documentation files in this directory for project-specific setup instructions and guides.

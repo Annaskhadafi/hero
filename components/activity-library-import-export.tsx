@@ -256,7 +256,7 @@ export function ActivityLibraryImportExport({
                   </Alert>
                 ) : null}
 
-                <div className="max-h-[320px] overflow-auto rounded-[1.25rem] bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+                <div className="max-h-[320px] overflow-auto rounded-[1.25rem] border border-border/70 bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-surface-container-low">

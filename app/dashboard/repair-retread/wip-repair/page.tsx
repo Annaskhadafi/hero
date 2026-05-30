@@ -1,240 +1,111 @@
-import { AdminMetricGrid } from "@/components/admin-metric-grid";
-import { AdminPageShell } from "@/components/admin-page-shell";
-import { AdminTableCard } from "@/components/admin-table-card";
-import { AdminStatusBadge } from "@/components/admin-status-badge";
-import { TableFilterPresets } from "@/components/table-filter-presets";
-import { TableMultiFilter } from "@/components/ui/table-multi-filter";
+import { Suspense } from "react"
+import { ClipboardList, Loader2, Wrench } from "lucide-react"
 
-const WIP_REPAIR_ENDPOINT = "https://one.chitraparatama.com/api/wip-repair";
-const WIP_REPAIR_API_KEY = "59de03bd6ab886bf2fce9623e648f478c10b77ff12857a028fa83221310aa00b";
+import { getRepairMasterData } from "@/app/actions/repair-master"
+import { getWipRepairData, getWipRepairWorkOrderDetails, getWipRepairInvoiceMappings, getWipRepairPmoMappings } from "@/app/actions/wip-repair"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { WipRepairTable } from "./_components/wip-repair-table"
 
-const PREFERRED_COLUMNS = [
-  "sn",
-  "serialNumber",
-  "serial_number",
-  "barcode",
-  "woNumber",
-  "wo_number",
-  "workOrder",
-  "customer",
-  "customerName",
-  "size",
-  "pattern",
-  "brand",
-  "status",
-  "process",
-  "currentProcess",
-  "location",
-  "site",
-  "receivedDate",
-  "received_at",
-  "updatedAt",
-  "updated_at",
-];
-
-type WipRepairRow = Record<string, unknown>;
-
-type WipRepairResult = {
-  rows: WipRepairRow[];
-  error?: string;
-  status?: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function normalizeValue(value: string | null | undefined) {
+  return value?.trim() || "-"
 }
 
-function extractRows(payload: unknown): WipRepairRow[] {
-  if (Array.isArray(payload)) {
-    return payload.filter(isRecord);
-  }
 
-  if (!isRecord(payload)) {
-    return [];
-  }
+async function WipRepairContent() {
+  const [data, workOrderDetails, repairMasterData] = await Promise.all([
+    getWipRepairData(),
+    getWipRepairWorkOrderDetails(),
+    getRepairMasterData(),
+  ])
 
-  const candidateKeys = ["data", "rows", "items", "result", "results", "wipRepair", "wip_repair"];
-  for (const key of candidateKeys) {
-    const value = payload[key];
-    if (Array.isArray(value)) {
-      return value.filter(isRecord);
-    }
-  }
+  const woNumbers = Array.from(new Set(data.map((item) => normalizeValue(item.wo)).filter((wo) => wo !== "-")))
 
-  return [payload];
-}
+  const [invoiceMappings, pmoMappings] = await Promise.all([
+    getWipRepairInvoiceMappings(woNumbers),
+    getWipRepairPmoMappings(woNumbers),
+  ])
 
-async function getWipRepairRows(): Promise<WipRepairResult> {
-  try {
-    const response = await fetch(WIP_REPAIR_ENDPOINT, {
-      headers: {
-        "x-api-key": WIP_REPAIR_API_KEY,
-        accept: "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return {
-        rows: [],
-        status: response.status,
-        error: `API WIP Repair gagal: HTTP ${response.status}`,
-      };
-    }
-
-    const payload = (await response.json()) as unknown;
-    return { rows: extractRows(payload) };
-  } catch (error) {
-    return {
-      rows: [],
-      error: error instanceof Error ? error.message : "API WIP Repair gagal dibaca",
-    };
-  }
-}
-
-function humanizeKey(key: string) {
-  return key
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^./, (character) => character.toUpperCase());
-}
-
-function getStringValue(row: WipRepairRow, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key];
-    if (value != null && `${value}`.trim()) {
-      return `${value}`.trim();
-    }
-  }
-
-  return "";
-}
-
-function formatValue(value: unknown) {
-  if (value == null || value === "") {
-    return "-";
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "Ya" : "Tidak";
-  }
-
-  if (typeof value === "number") {
-    return value.toLocaleString("id-ID");
-  }
-
-  if (typeof value === "string") {
-    const normalized = value.trim();
-    const parsedDate = Date.parse(normalized);
-    if (/^\d{4}-\d{2}-\d{2}/.test(normalized) && Number.isFinite(parsedDate)) {
-      return new Intl.DateTimeFormat("id-ID", {
-        dateStyle: "medium",
-        timeStyle: normalized.includes("T") ? "short" : undefined,
-      }).format(new Date(parsedDate));
-    }
-
-    return normalized || "-";
-  }
-
-  return JSON.stringify(value);
-}
-
-function getColumns(rows: WipRepairRow[]) {
-  const keys = new Set(rows.flatMap((row) => Object.keys(row)));
-  const preferred = PREFERRED_COLUMNS.filter((key) => keys.has(key));
-  const remaining = [...keys].filter((key) => !preferred.includes(key)).sort();
-  return [...preferred, ...remaining].slice(0, 12);
-}
-
-function getUniqueOptions(rows: WipRepairRow[], keys: string[]) {
-  return Array.from(new Set(rows.map((row) => getStringValue(row, keys)).filter(Boolean)))
-    .sort((left, right) => left.localeCompare(right, "id"))
-    .slice(0, 40);
-}
-
-export default async function WipRepairPage() {
-  const result = await getWipRepairRows();
-  const rows = result.rows;
-  const columns = getColumns(rows);
-  const statusOptions = getUniqueOptions(rows, ["status", "process", "currentProcess"]);
-  const siteOptions = getUniqueOptions(rows, ["site", "location", "warehouse", "branch"]);
-  const customerOptions = getUniqueOptions(rows, ["customer", "customerName", "customer_name"]);
-  const openCount = rows.filter((row) => {
-    const status = getStringValue(row, ["status", "process", "currentProcess"]).toLowerCase();
-    return status && !["done", "complete", "completed", "closed", "finish", "finished"].includes(status);
-  }).length;
-  const updatedCount = rows.filter((row) => getStringValue(row, ["updatedAt", "updated_at", "modifiedAt", "modified_at"])).length;
+  const progressCount = data.filter((item) => item.status.toLowerCase().includes("progress")).length
+  const siteCount = new Set(data.map((item) => normalizeValue(item.site)).filter((item) => item !== "-")).size
+  const brandCount = new Set(data.map((item) => normalizeValue(item.brand)).filter((item) => item !== "-")).size
 
   return (
-    <AdminPageShell
-      eyebrow="Repair & Retread Operation › WIP Repair"
-      title="WIP Repair"
-      description="Monitoring work-in-progress repair dari integrasi One Chitra. Data dibaca langsung dari API WIP Repair."
-    >
-      <AdminMetricGrid
-        items={[
-          { label: "Total WIP", value: `${rows.length}`, meta: "Data dari One Chitra" },
-          { label: "Masih proses", value: `${openCount}`, meta: "Status belum selesai" },
-          { label: "Status unik", value: `${statusOptions.length}`, meta: "Kategori proses/status" },
-          { label: "Ada update", value: `${updatedCount}`, meta: "Baris dengan tanggal update" },
-        ]}
-      />
+    <div className="flex flex-col gap-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="rounded-2xl border-border/60 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardDescription>Total WO Repair</CardDescription>
+            <CardTitle className="text-3xl font-semibold tabular-nums">{data.length.toLocaleString("id-ID")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Seluruh work order repair yang tersedia dari data link One Chitra.</p>
+          </CardContent>
+        </Card>
 
-      {result.error ? (
-        <div className="surface-module-card rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 text-sm text-muted-foreground shadow-sm">
-          <div className="mb-2 font-display text-base font-semibold text-foreground">API belum mengembalikan data</div>
-          <p>{result.error}</p>
-          <p className="mt-2">Endpoint: {WIP_REPAIR_ENDPOINT}</p>
+        <Card className="rounded-2xl border-border/60 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardDescription>Status Progress</CardDescription>
+            <CardTitle className="text-3xl font-semibold tabular-nums">{progressCount.toLocaleString("id-ID")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Work order yang masih berjalan dan perlu dimonitor.</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-border/60 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardDescription>Cakupan Site / Brand</CardDescription>
+            <CardTitle className="text-3xl font-semibold tabular-nums">
+              {siteCount.toLocaleString("id-ID")} / {brandCount.toLocaleString("id-ID")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Jumlah site dan brand unik yang sedang muncul pada WIP repair.</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <WipRepairTable
+        data={data}
+        workOrderDetails={workOrderDetails}
+        invoiceMappings={invoiceMappings}
+        pmoMappings={pmoMappings}
+        repairMasterItems={repairMasterData.items}
+        repairMasterSites={repairMasterData.sites}
+      />
+    </div>
+  )
+}
+
+export default function WipRepairPage() {
+  return (
+    <div className="flex flex-col gap-6 p-4 md:p-8">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
+          <Wrench className="h-5 w-5" />
         </div>
-      ) : null}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Repair & Retread Operation</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight [text-wrap:balance]">WIP Repair</h1>
+          <p className="max-w-3xl text-sm text-muted-foreground [text-wrap:pretty]">
+            Monitoring work order repair dari One Chitra untuk memantau status pengerjaan, tire serial number, customer, dan lokasi site.
+          </p>
+        </div>
+      </div>
 
-      <AdminTableCard
-        title="WIP Repair"
-        description="Daftar ban/unit repair yang sedang berjalan. Search, filter, sort, dan Excel tersedia di toolbar tabel."
-        columns={columns.length > 0 ? columns.map(humanizeKey) : ["Data"]}
-        dateFilter={columns.some((column) => /date|at/i.test(column)) ? "auto" : false}
-        showImport={false}
-        presets={
-          statusOptions.length > 0 ? (
-            <TableFilterPresets presets={statusOptions.slice(0, 3).map((status) => ({ label: status, filters: { status } }))} />
-          ) : undefined
+      <Suspense
+        fallback={
+          <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Memuat data WIP Repair...</span>
+          </div>
         }
-        filters={
-          <>
-            {statusOptions.length > 0 ? (
-              <TableMultiFilter label="status" filterKey="status" options={statusOptions.map((status) => ({ value: status, label: status }))} />
-            ) : null}
-            {siteOptions.length > 0 ? (
-              <TableMultiFilter label="lokasi" filterKey="site" options={siteOptions.map((site) => ({ value: site, label: site }))} />
-            ) : null}
-            {customerOptions.length > 0 ? (
-              <TableMultiFilter label="customer" filterKey="customer" options={customerOptions.map((customer) => ({ value: customer, label: customer }))} />
-            ) : null}
-          </>
-        }
-        rows={
-          rows.length > 0
-            ? rows.map((row, rowIndex) =>
-                columns.map((column) => {
-                  const value = formatValue(row[column]);
-                  if (/status|process/i.test(column)) {
-                    return <AdminStatusBadge key={`${rowIndex}-${column}`} value={value} />;
-                  }
-
-                  return value;
-                }),
-              )
-            : [[result.error ? "Data tidak tersedia karena API gagal." : "Belum ada data WIP Repair."]]
-        }
-        rowAttributes={rows.map((row) => ({
-          "data-filter-status": getStringValue(row, ["status", "process", "currentProcess"]),
-          "data-filter-site": getStringValue(row, ["site", "location", "warehouse", "branch"]),
-          "data-filter-customer": getStringValue(row, ["customer", "customerName", "customer_name"]),
-          "data-date-value": getStringValue(row, ["updatedAt", "updated_at", "receivedDate", "received_at", "createdAt", "created_at"]),
-        }))}
-      />
-    </AdminPageShell>
-  );
+      >
+        <WipRepairContent />
+      </Suspense>
+    </div>
+  )
 }

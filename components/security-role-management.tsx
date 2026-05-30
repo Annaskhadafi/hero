@@ -43,6 +43,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { EnterpriseScorecards } from "@/components/ui/enterprise-table-kit";
 
 type RoleRow = {
   id: number;
@@ -524,67 +533,67 @@ export function SecurityRoleManagement({
                         </button>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="hidden overflow-x-auto md:block">
-                          <table className="w-full text-sm">
-                            <thead className="bg-surface-container-low">
-                              <tr>
-                                <th className="px-4 py-3 text-left font-medium">Menu</th>
-                                {PERMISSION_FIELDS.map((field) => (
-                                  <th
-                                    key={field.key}
-                                    className="px-4 py-3 text-center font-medium"
-                                  >
-                                    {field.label}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {items.map((menuItem) => {
-                                const currentPermission =
-                                  permissionByMenuId.get(menuItem.id) ?? {
-                                    menuItemId: menuItem.id,
-                                    canView: false,
-                                    canEdit: false,
-                                    canDelete: false,
-                                    canSelectAll: false,
-                                  };
+                        <div className="hidden space-y-3 p-3 md:block">
+                          <EnterpriseScorecards
+                            items={[
+                              { label: "Menu", value: items.length, description: "Menu dalam area ini", tone: "info" },
+                              { label: "Izin aktif", value: activeCount, description: "Total permission aktif", tone: activeCount > 0 ? "success" : "default" },
+                              {
+                                label: "Full access",
+                                value: items.filter((menuItem) => permissionByMenuId.get(menuItem.id)?.canSelectAll).length,
+                                description: "Menu dengan select all",
+                                tone: "warning",
+                              },
+                            ]}
+                            className="xl:grid-cols-3"
+                          />
+                          <div className="overflow-auto rounded-[1rem] border border-border/70 bg-white shadow-sm">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="hover:bg-transparent">
+                                  <TableHead>Menu</TableHead>
+                                  {PERMISSION_FIELDS.map((field) => (
+                                    <TableHead key={field.key} className="text-center">
+                                      {field.label}
+                                    </TableHead>
+                                  ))}
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {items.map((menuItem) => {
+                                  const currentPermission =
+                                    permissionByMenuId.get(menuItem.id) ?? {
+                                      menuItemId: menuItem.id,
+                                      canView: false,
+                                      canEdit: false,
+                                      canDelete: false,
+                                      canSelectAll: false,
+                                    };
 
-                                return (
-                                  <tr
-                                    key={menuItem.id}
-                                    className="bg-surface-container-lowest shadow-[inset_0_-1px_0_var(--outline-ghost)] transition-[background-color] hover:bg-surface-bright"
-                                  >
-                                    <td className="px-4 py-3">
-                                      <div>
-                                        <p className="font-medium">{menuItem.title}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {menuItem.section}
-                                        </p>
-                                      </div>
-                                    </td>
-                                    {PERMISSION_FIELDS.map((field) => (
-                                      <td
-                                        key={`${menuItem.id}-${field.key}`}
-                                        className="px-4 py-3 text-center"
-                                      >
-                                        <Checkbox
-                                          checked={currentPermission[field.key]}
-                                          onCheckedChange={(checked) =>
-                                            updatePermission(
-                                              menuItem.id,
-                                              field.key,
-                                              Boolean(checked),
-                                            )
-                                          }
-                                        />
-                                      </td>
-                                    ))}
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                                  return (
+                                    <TableRow key={menuItem.id}>
+                                      <TableCell>
+                                        <div>
+                                          <p className="font-medium">{menuItem.title}</p>
+                                          <p className="text-xs text-muted-foreground">{menuItem.section}</p>
+                                        </div>
+                                      </TableCell>
+                                      {PERMISSION_FIELDS.map((field) => (
+                                        <TableCell key={`${menuItem.id}-${field.key}`} className="text-center">
+                                          <Checkbox
+                                            checked={currentPermission[field.key]}
+                                            onCheckedChange={(checked) =>
+                                              updatePermission(menuItem.id, field.key, Boolean(checked))
+                                            }
+                                          />
+                                        </TableCell>
+                                      ))}
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
                         </div>
 
                         <div className="space-y-3 p-3 md:hidden">

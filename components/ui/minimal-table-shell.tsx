@@ -14,6 +14,14 @@ import {
   IconSearch,
 } from "@tabler/icons-react"
 
+import {
+  EnterpriseColumnVisibility,
+  EnterpriseScorecards,
+  type EnterpriseColumnOption,
+  type EnterpriseScorecardItem,
+  type TableRbacAccess,
+} from "@/components/ui/enterprise-table-kit"
+
 import { AdminImportDialog } from "@/components/admin/admin-import-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -413,10 +421,14 @@ type MinimalTableShellProps = {
   showImport?: boolean
   primaryAction?: React.ReactNode
   presets?: React.ReactNode
+  scorecards?: EnterpriseScorecardItem[]
+  columnOptions?: EnterpriseColumnOption[]
+  access?: TableRbacAccess
   children: React.ReactNode
   searchEnabled?: boolean
   className?: string
   summaryClassName?: string
+  tableViewportClassName?: string
   dateFilter?: boolean | "auto"
 }
 
@@ -450,10 +462,14 @@ export function MinimalTableShell({
   showImport = true,
   primaryAction,
   presets,
+  scorecards,
+  columnOptions,
+  access,
   children,
   searchEnabled = true,
   className,
   summaryClassName,
+  tableViewportClassName,
   dateFilter = "auto",
 }: MinimalTableShellProps) {
   const shellRef = React.useRef<HTMLDivElement>(null)
@@ -828,7 +844,8 @@ export function MinimalTableShell({
 
           <div className="flex min-w-max items-center gap-2">
             {actions}
-            {showImport ? (
+            {columnOptions?.length ? <EnterpriseColumnVisibility columns={columnOptions} tableRoot={shellRef} /> : null}
+            {showImport && (access?.canEdit ?? true) ? (
               <div aria-label="Import data">
                 {importAction ?? (
                   <AdminImportDialog
@@ -916,7 +933,9 @@ export function MinimalTableShell({
         </div>
       ) : null}
 
-      <div ref={shellRef} className="space-y-3">
+      {scorecards?.length ? <EnterpriseScorecards items={scorecards} /> : null}
+
+      <div ref={shellRef} className={cn("max-h-[70vh] space-y-3 overflow-auto rounded-[1.1rem]", tableViewportClassName)}>
         {children}
         {showNoResults ? (
           <div className="rounded-[1.1rem] border border-border/70 bg-white px-4 py-8 text-center text-sm text-muted-foreground shadow-sm">

@@ -27,7 +27,7 @@ export function AuthShell({
             <div className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
                 <div
                     className={cn(
-                        "w-full max-w-[460px] rounded-lg border-0 bg-[linear-gradient(180deg,rgba(16,39,57,0.9)_0%,rgba(10,28,43,0.96)_100%)] p-8 shadow-[0_28px_90px_rgba(2,8,23,0.58)] ring-1 ring-white/10 backdrop-blur-2xl sm:p-10",
+                        "w-full max-w-[460px] rounded-lg border-0 bg-[linear-gradient(180deg,rgba(15,40,40,0.9)_0%,rgba(10,30,30,0.96)_100%)] p-8 shadow-[0_28px_90px_rgba(8,24,24,0.58)] ring-1 ring-white/10 backdrop-blur-2xl sm:p-10",
                         panelClassName
                     )}
                 >

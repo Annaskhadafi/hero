@@ -276,7 +276,7 @@ export function MobileAppShell({
               href="/mobile/notifications"
               aria-label="Open notifications"
               onClick={() => beginNavigation('/mobile/notifications')}
-              className="relative flex size-10 items-center justify-center rounded-lg text-[#004b87] transition active:scale-[0.96] active:bg-[#e6f2fb]"
+              className="relative flex size-11 items-center justify-center rounded-lg text-[#004b87] transition active:scale-[0.96] active:bg-[#e6f2fb]"
             >
               <Bell className="size-5" />
               {liveNotificationCount > 0 ? (

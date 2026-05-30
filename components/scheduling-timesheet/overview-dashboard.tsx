@@ -17,6 +17,16 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { TableMultiFilter } from '@/components/ui/table-multi-filter'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 type EmployeeOption = {
   id: number
@@ -120,7 +130,6 @@ export function SchedulingOverviewDashboard({
   schedulingStatuses: SchedulingStatusRow[]
 }) {
   const [period, setPeriod] = useState(currentMonthPeriod)
-  const [search, setSearch] = useState('')
 
   const statusBySite = useMemo(() => {
     const map = new Map<number, SchedulingStatusRow>()
@@ -145,14 +154,6 @@ export function SchedulingOverviewDashboard({
     }
     return map
   }, [employees])
-
-  const filteredSites = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return sites
-    return sites.filter(
-      (site) => site.name.toLowerCase().includes(q) || site.customerName.toLowerCase().includes(q)
-    )
-  }, [sites, search])
 
   const kpi = useMemo(() => {
     let scheduleReady = 0
@@ -278,108 +279,123 @@ export function SchedulingOverviewDashboard({
       </Card>
 
       {/* Site status table */}
-      <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
-        <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-          <div>
-            <p className="font-display text-foreground text-base font-semibold">Status per Site</p>
-            <p className="text-muted-foreground text-xs">
-              Pantau progress schedule dan attendance untuk periode {formatPeriod(period)}.
-            </p>
-          </div>
-          <Input
-            placeholder="Cari site..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-9 w-[220px]"
-          />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.14em] uppercase">
-                <th className="px-4 py-3 font-medium">Site</th>
-                <th className="px-4 py-3 font-medium">Karyawan</th>
-                <th className="px-4 py-3 font-medium">Tipe</th>
-                <th className="px-4 py-3 font-medium">Schedule</th>
-                <th className="px-4 py-3 font-medium">Attendance</th>
-                <th className="px-4 py-3 font-medium">Last activity</th>
-                <th className="px-4 py-3 font-medium">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSites.map((site) => {
+      <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0 p-4">
+        <MinimalTableShell
+          title="Status per Site"
+          description={`Pantau progress schedule dan attendance untuk periode ${formatPeriod(period)}.`}
+          label="site status"
+          fileName={`scheduling-status-${period}`}
+          searchPlaceholder="Cari site, customer, schedule..."
+          filters={
+            <>
+              <TableMultiFilter
+                label="schedule"
+                filterKey="schedule"
+                options={["none", "draft", "saved", "applied", "ready", "finalized", "locked"].map((status) => ({
+                  value: status,
+                  label: statusLabel(status),
+                }))}
+              />
+              <TableMultiFilter
+                label="attendance"
+                filterKey="attendance"
+                options={["none", "draft", "saved", "applied", "ready", "finalized", "locked", "review"].map((status) => ({
+                  value: status,
+                  label: statusLabel(status),
+                }))}
+              />
+            </>
+          }
+          scorecards={[
+            { label: "Site", value: kpi.totalSites, description: `${employees.length} karyawan aktif`, icon: <Users className="size-4 text-primary" />, tone: "info" },
+            { label: "Schedule siap", value: `${kpi.scheduleReady}/${kpi.totalSites}`, description: "Tersimpan di Schedule Tetap", icon: <CheckCircle2 className="size-4 text-emerald-700" />, tone: "success" },
+            { label: "Attendance siap", value: `${kpi.attendanceReady}/${kpi.totalSites}`, description: "Sudah di-save periode ini", icon: <ClipboardList className="size-4 text-amber-700" />, tone: kpi.attendanceReady === kpi.totalSites ? "success" : "warning" },
+            { label: "Conflicts", value: kpi.conflicts, description: kpi.finalizedCount > 0 ? `${kpi.finalizedCount} site finalized` : "Perlu review", icon: <AlertCircle className="size-4 text-amber-700" />, tone: kpi.conflicts > 0 ? "warning" : "default" },
+          ]}
+          columnOptions={["Site", "Karyawan", "Tipe", "Schedule", "Attendance", "Last activity", "Aksi"].map((column, index) => ({ key: column, label: column, required: index === 0 }))}
+          tableViewportClassName="max-h-[72vh]"
+          showImport={false}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Site</TableHead>
+                <TableHead>Karyawan</TableHead>
+                <TableHead>Tipe</TableHead>
+                <TableHead>Schedule</TableHead>
+                <TableHead>Attendance</TableHead>
+                <TableHead>Last activity</TableHead>
+                <TableHead>Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sites.map((site) => {
                 const status = statusBySite.get(site.id)
                 const config = configBySite.get(site.id)
                 const empCount = employeeCountBySite.get(site.id) ?? 0
-                const scheduleTone = statusTone(status?.scheduleStatus ?? 'none')
-                const attendanceTone = statusTone(status?.attendanceStatus ?? 'none')
-                const lastActivity =
-                  status?.lastImportedAt || status?.lastSavedAt || status?.finalizedAt
+                const scheduleStatus = status?.scheduleStatus ?? 'none'
+                const attendanceStatus = status?.attendanceStatus ?? 'none'
+                const scheduleTone = statusTone(scheduleStatus)
+                const attendanceTone = statusTone(attendanceStatus)
+                const lastActivity = status?.lastImportedAt || status?.lastSavedAt || status?.finalizedAt
                 return (
-                  <tr
+                  <TableRow
                     key={site.id}
-                    className="border-border/30 hover:bg-surface-container-low/50 border-t transition"
+                    data-date-value={lastActivity ?? ''}
+                    data-filter-schedule={scheduleStatus}
+                    data-filter-attendance={attendanceStatus}
                   >
-                    <td className="px-4 py-3">
-                      <p className="text-foreground font-semibold">{site.name}</p>
-                      {site.customerName !== site.name ? (
-                        <p className="text-muted-foreground text-xs">{site.customerName}</p>
-                      ) : null}
-                    </td>
-                    <td className="text-foreground px-4 py-3">{empCount}</td>
-                    <td className="text-muted-foreground px-4 py-3">
+                    <TableCell>
+                      <p className="font-semibold text-foreground">{site.name}</p>
+                      {site.customerName !== site.name ? <p className="text-xs text-muted-foreground">{site.customerName}</p> : null}
+                    </TableCell>
+                    <TableCell className="tabular-nums text-foreground">{empCount}</TableCell>
+                    <TableCell className="text-muted-foreground">
                       {config?.scheduleType === 'shift' ? 'Shift DS/NS' : 'Office'}
                       <span className="mx-1.5">·</span>
                       {config?.rosterType ?? '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusPill
-                        tone={scheduleTone}
-                        label={statusLabel(status?.scheduleStatus ?? 'none')}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell>
+                      <StatusPill tone={scheduleTone} label={statusLabel(scheduleStatus)} />
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-1.5">
-                        <StatusPill
-                          tone={attendanceTone}
-                          label={statusLabel(status?.attendanceStatus ?? 'none')}
-                        />
+                        <StatusPill tone={attendanceTone} label={statusLabel(attendanceStatus)} />
                         {status?.conflictCount ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200">
                             <AlertCircle className="size-3" /> {status.conflictCount}
                           </span>
                         ) : null}
                       </div>
-                    </td>
-                    <td className="text-muted-foreground px-4 py-3">
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
                       {formatRelative(lastActivity)}
                       {status?.finalizedAt ? (
                         <span className="ml-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-slate-700">
                           <Lock className="size-3" /> Locked
                         </span>
                       ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/dashboard/scheduling-timesheet/schedule`}
-                        className="text-primary inline-flex items-center gap-1 text-xs font-semibold hover:underline"
-                      >
-                        Buka <ArrowRight className="size-3" />
-                      </Link>
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell>
+                      <Button asChild type="button" variant="ghost" size="dense">
+                        <Link href="/dashboard/scheduling-timesheet/schedule">
+                          Buka <ArrowRight className="size-3" />
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 )
               })}
-              {filteredSites.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-muted-foreground px-4 py-8 text-center text-sm">
+              {sites.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     Tidak ada site yang cocok dengan pencarian.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : null}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
       </Card>
     </div>
   )

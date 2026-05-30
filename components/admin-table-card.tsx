@@ -19,6 +19,9 @@ export function AdminTableCard({
   filters,
   actions,
   presets,
+  scorecards,
+  columnOptions,
+  access,
   showImport = true,
   rowAttributes,
 }: {
@@ -30,6 +33,9 @@ export function AdminTableCard({
   filters?: React.ReactNode;
   actions?: React.ReactNode;
   presets?: React.ReactNode;
+  scorecards?: React.ComponentProps<typeof MinimalTableShell>["scorecards"];
+  columnOptions?: React.ComponentProps<typeof MinimalTableShell>["columnOptions"];
+  access?: React.ComponentProps<typeof MinimalTableShell>["access"];
   showImport?: boolean;
   rowAttributes?: Array<Record<string, string | undefined>>;
 }) {
@@ -61,6 +67,9 @@ export function AdminTableCard({
           filters={filters}
           actions={actions}
           presets={presets}
+          scorecards={scorecards}
+          columnOptions={columnOptions ?? columns.map((column, index) => ({ key: column, label: column, required: index === 0 }))}
+          access={access}
           showImport={showImport}
         >
           <Table>

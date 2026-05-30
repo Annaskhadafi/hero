@@ -44,7 +44,7 @@ const reportChartConfig = {
   },
   manpowerPresent: {
     label: "Manpower",
-    color: "#5a2200",
+    color: "#8c5818",
   },
 } satisfies ChartConfig;
 
@@ -95,7 +95,7 @@ export function MobileReportsOverview({
     <div className="space-y-5">
       <section>
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Daily Report</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Site Summary</h1>
+        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#0b4f4e]">Site Summary</h1>
         <p className="mt-2 text-sm font-medium leading-6 text-[#486275]">{data.context.site.customerName}</p>
       </section>
 
@@ -119,7 +119,7 @@ export function MobileReportsOverview({
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Jobs Done</p>
         </div>
         <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-          <UsersRound className="size-5 text-[#5a2200]" />
+          <UsersRound className="size-5 text-[#8c5818]" />
           <p className="mt-3 text-2xl font-black text-[#082033]">{latest?.manpowerPresent ?? 0}</p>
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Manpower</p>
         </div>
