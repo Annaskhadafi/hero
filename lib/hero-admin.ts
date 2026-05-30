@@ -658,6 +658,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Safety Dashboard',
+    url: '/dashboard/safety',
+    iconName: 'activity',
+    resource: 'safety_dashboard',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',
