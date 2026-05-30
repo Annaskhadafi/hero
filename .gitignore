@@ -44,3 +44,6 @@ next-env.d.ts
 # face-api.js model files must ship with mobile face recognition
 !public/models/*-shard*
 !public/models/*.bin
+
+# database dumps (may contain credentials/data)
+*.sql
