@@ -205,22 +205,26 @@ export function EnterpriseRecordDialog({
   children,
   footer,
   access,
+  open,
+  onOpenChange,
 }: {
-  trigger: React.ReactNode
+  trigger?: React.ReactNode
   title: string
   description?: string
   mode?: "view" | "edit" | "delete" | "form"
   children: React.ReactNode
   footer?: React.ReactNode
   access?: TableRbacAccess
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const allowed = mode === "delete" ? (access?.canDelete ?? true) : mode === "edit" || mode === "form" ? (access?.canEdit ?? true) : (access?.canView ?? true)
 
   return (
-    <Dialog>
-      <DialogTrigger asChild disabled={!allowed}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {trigger ? <DialogTrigger asChild disabled={!allowed}>
         {trigger}
-      </DialogTrigger>
+      </DialogTrigger> : null}
       <DialogContent className="grid max-h-[calc(100vh-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-[760px]">
         <DialogHeader className="border-b border-border/70 bg-surface-container-low px-5 py-4">
           <div className="flex flex-wrap items-center gap-2">

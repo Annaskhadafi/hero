@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import { Boxes, Download, Package, PackageCheck, PackageMinus, PackagePlus, Plus } from "lucide-react"
+import { Boxes, Download, Eye, FilePenLine, Package, PackageMinus, PackagePlus, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/app/actions/warehouse-repair"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog, type TableRbacAccess } from "@/components/ui/enterprise-table-kit"
+import { EnterpriseFormGrid, EnterpriseRecordDialog, type TableRbacAccess } from "@/components/ui/enterprise-table-kit"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
@@ -66,38 +66,48 @@ function DetailGrid({ row, labels }: { row: Row; labels: Array<[string, string]>
   return <EnterpriseFormGrid>{labels.map(([key, label]) => <div key={key} className="rounded-xl border border-border/70 bg-muted/20 p-3"><div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div><div className="mt-1 break-words text-sm font-medium">{String(row[key] ?? "-")}</div></div>)}</EnterpriseFormGrid>
 }
 
-function DialogActionButtons({ view, edit, remove }: { view?: React.ReactNode; edit?: React.ReactNode; remove?: React.ReactNode }) {
+
+function ActionIconButton({ kind, label, onClick }: { kind: "view" | "edit" | "delete"; label: string; onClick: () => void }) {
+  const Icon = kind === "view" ? Eye : kind === "edit" ? FilePenLine : Trash2
+  return (
+    <Button type="button" variant="ghost" size="denseIcon" aria-label={label} onClick={onClick}>
+      <Icon className={kind === "delete" ? "size-4 text-destructive" : "size-4"} />
+    </Button>
+  )
+}
+
+function DialogActionButtons({ onView, onEdit, onDelete }: { onView?: () => void; onEdit?: () => void; onDelete?: () => void }) {
   return (
     <div className="flex min-w-max items-center justify-end gap-1.5">
-      {view}
-      {edit}
-      {remove}
+      {onView ? <ActionIconButton kind="view" label="View detail" onClick={onView} /> : null}
+      {onEdit ? <ActionIconButton kind="edit" label="Edit data" onClick={onEdit} /> : null}
+      {onDelete ? <ActionIconButton kind="delete" label="Delete data" onClick={onDelete} /> : null}
     </div>
   )
 }
 
-function DeleteDialog({ title, description, trigger, row, labels, action }: { title: string; description: string; trigger: React.ReactNode; row: Row; labels: Array<[string, string]>; action: () => Promise<ActionResult> }) {
+function DeleteDialog({ title, description, open, onOpenChange, row, labels, action }: { title: string; description: string; open: boolean; onOpenChange: (open: boolean) => void; row: Row; labels: Array<[string, string]>; action: () => Promise<ActionResult> }) {
   const [pending, start] = useTransition()
   const remove = () => start(async () => {
     const res = await action()
     if (res.success) { toast.success("Data berhasil dihapus"); reload() } else toast.error(res.error ?? "Gagal menghapus data")
   })
   return (
-    <EnterpriseRecordDialog trigger={trigger} title={title} description={description} mode="delete" access={access} footer={<Button variant="destructive" disabled={pending} onClick={remove}>Hapus Data</Button>}>
+    <EnterpriseRecordDialog open={open} onOpenChange={onOpenChange} title={title} description={description} mode="delete" access={access} footer={<Button variant="destructive" disabled={pending} onClick={remove}>Hapus Data</Button>}>
       <DetailGrid row={row} labels={labels} />
     </EnterpriseRecordDialog>
   )
 }
 
-function ViewDialog({ title, trigger, row, labels }: { title: string; trigger: React.ReactNode; row: Row; labels: Array<[string, string]> }) {
+function ViewDialog({ title, open, onOpenChange, row, labels }: { title: string; open: boolean; onOpenChange: (open: boolean) => void; row: Row; labels: Array<[string, string]> }) {
   return (
-    <EnterpriseRecordDialog trigger={trigger} title={title} mode="view" access={access}>
+    <EnterpriseRecordDialog open={open} onOpenChange={onOpenChange} title={title} mode="view" access={access}>
       <DetailGrid row={row} labels={labels} />
     </EnterpriseRecordDialog>
   )
 }
 
-function MasterDialog({ kind, row, types, units, trigger }: { kind: "item" | "type" | "unit"; row?: Row; types: Row[]; units: Row[]; trigger: React.ReactNode }) {
+function MasterDialog({ kind, row, types, units, trigger, open, onOpenChange }: { kind: "item" | "type" | "unit"; row?: Row; types: Row[]; units: Row[]; trigger?: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [pending, start] = useTransition()
   const [form, setForm] = useState<Row>(row ?? { itemName: "", minimumStock: 0, typeId: null, unitId: null, typeName: "", unitName: "", isActive: true })
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }))
@@ -111,7 +121,7 @@ function MasterDialog({ kind, row, types, units, trigger }: { kind: "item" | "ty
     if (res.success) { toast.success("Data tersimpan"); reload() } else toast.error(res.error)
   })
   return (
-    <EnterpriseRecordDialog trigger={trigger} title={title} mode="form" access={access} footer={<Button disabled={pending} onClick={save}>Simpan</Button>}>
+    <EnterpriseRecordDialog trigger={trigger} open={open} onOpenChange={onOpenChange} title={title} mode="form" access={access} footer={<Button disabled={pending} onClick={save}>Simpan</Button>}>
       <EnterpriseFormGrid>
         {kind === "item" ? <>
           <Field label="Kode Barang"><Input value={form.itemCode ?? ""} placeholder="Auto jika kosong" onChange={(e) => set("itemCode", e.target.value)} /></Field>
@@ -127,7 +137,7 @@ function MasterDialog({ kind, row, types, units, trigger }: { kind: "item" | "ty
   )
 }
 
-function TransactionDialog({ kind, items, row, trigger }: { kind: "in" | "out"; items: Row[]; row?: Row; trigger?: React.ReactNode }) {
+function TransactionDialog({ kind, items, row, trigger, open, onOpenChange }: { kind: "in" | "out"; items: Row[]; row?: Row; trigger: React.ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [pending, start] = useTransition()
   const [form, setForm] = useState({ transactionDate: fmtDate(row?.transactionDate ?? today()), itemId: row?.itemId ? String(row.itemId) : "", quantity: Number(row?.quantity ?? 1), note: row?.note ?? "" })
   const save = () => start(async () => {
@@ -138,7 +148,7 @@ function TransactionDialog({ kind, items, row, trigger }: { kind: "in" | "out"; 
     if (res.success) { toast.success("Transaksi tersimpan"); reload() } else toast.error(res.error)
   })
   return (
-    <EnterpriseRecordDialog trigger={trigger ?? <Button><Plus className="mr-2 h-4 w-4" />Entri Data</Button>} title={`${row ? "Edit" : "Entri"} Barang ${kind === "in" ? "Masuk" : "Keluar"}`} mode="form" access={access} footer={<Button disabled={pending || !form.itemId} onClick={save}>Simpan</Button>}>
+    <EnterpriseRecordDialog trigger={trigger} open={open} onOpenChange={onOpenChange} title={`${row ? "Edit" : "Entri"} Barang ${kind === "in" ? "Masuk" : "Keluar"}`} mode="form" access={access} footer={<Button disabled={pending || !form.itemId} onClick={save}>Simpan</Button>}>
       <EnterpriseFormGrid>
         <Field label="Tanggal"><Input type="date" value={form.transactionDate} onChange={(e) => setForm({ ...form, transactionDate: e.target.value })} /></Field>
         <Field label="Barang"><Select value={form.itemId} onValueChange={(v) => setForm({ ...form, itemId: v })}><SelectTrigger><SelectValue placeholder="Pilih barang" /></SelectTrigger><SelectContent>{items.map((i) => <SelectItem key={i.id} value={String(i.id)}>{i.itemCode} - {i.itemName} (stok {i.stock})</SelectItem>)}</SelectContent></Select></Field>
@@ -149,13 +159,52 @@ function TransactionDialog({ kind, items, row, trigger }: { kind: "in" | "out"; 
   )
 }
 
+function ItemActions({ row, types, units, labels }: { row: Row; types: Row[]; units: Row[]; labels: Array<[string, string]> }) {
+  const [open, setOpen] = useState<"view" | "edit" | "delete" | null>(null)
+  const detailRow = { ...row, status: statusLabel(row.isActive) }
+  return (
+    <>
+      <DialogActionButtons onView={() => setOpen("view")} onEdit={() => setOpen("edit")} onDelete={() => setOpen("delete")} />
+      <ViewDialog title={`Detail Barang ${row.itemCode}`} row={detailRow} labels={labels} open={open === "view"} onOpenChange={(v) => setOpen(v ? "view" : null)} />
+      <MasterDialog kind="item" row={row} types={types} units={units} open={open === "edit"} onOpenChange={(v) => setOpen(v ? "edit" : null)} />
+      <DeleteDialog title={`Hapus Barang ${row.itemCode}`} description="Data barang akan dihapus dari Warehouse Repair." row={detailRow} labels={labels} action={() => deleteWarehouseRepairItem(row.id)} open={open === "delete"} onOpenChange={(v) => setOpen(v ? "delete" : null)} />
+    </>
+  )
+}
+
+function MasterActions({ kind, row, types, units, title, labels, deleteAction }: { kind: "type" | "unit"; row: Row; types: Row[]; units: Row[]; title: string; labels: Array<[string, string]>; deleteAction: (id: number) => Promise<ActionResult> }) {
+  const [open, setOpen] = useState<"view" | "edit" | "delete" | null>(null)
+  const detailRow = { code: kind === "type" ? row.typeCode : row.unitCode, name: kind === "type" ? row.typeName : row.unitName, status: statusLabel(row.isActive) }
+  return (
+    <>
+      <DialogActionButtons onView={() => setOpen("view")} onEdit={() => setOpen("edit")} onDelete={() => setOpen("delete")} />
+      <ViewDialog title={`Detail ${title}`} row={detailRow} labels={labels} open={open === "view"} onOpenChange={(v) => setOpen(v ? "view" : null)} />
+      <MasterDialog kind={kind} row={row} types={types} units={units} open={open === "edit"} onOpenChange={(v) => setOpen(v ? "edit" : null)} />
+      <DeleteDialog title={`Hapus ${title}`} description={`Data ${title.toLowerCase()} akan dihapus.`} row={detailRow} labels={labels} action={() => deleteAction(row.id)} open={open === "delete"} onOpenChange={(v) => setOpen(v ? "delete" : null)} />
+    </>
+  )
+}
+
+function TransactionActions({ kind, row, items, title, labels, deleteAction }: { kind: "in" | "out"; row: Row; items: Row[]; title: string; labels: Array<[string, string]>; deleteAction: (id: number) => Promise<ActionResult> }) {
+  const [open, setOpen] = useState<"view" | "edit" | "delete" | null>(null)
+  const detailRow = { ...row, date: fmtDate(row.transactionDate), note: row.note || "-" }
+  return (
+    <>
+      <DialogActionButtons onView={() => setOpen("view")} onEdit={() => setOpen("edit")} onDelete={() => setOpen("delete")} />
+      <ViewDialog title={`Detail ${title} ${row.transactionNo}`} row={detailRow} labels={labels} open={open === "view"} onOpenChange={(v) => setOpen(v ? "view" : null)} />
+      <TransactionDialog kind={kind} items={items} row={row} trigger={<span className="hidden" />} open={open === "edit"} onOpenChange={(v) => setOpen(v ? "edit" : null)} />
+      <DeleteDialog title={`Hapus ${title} ${row.transactionNo}`} description="Transaksi akan dihapus dan stok akan disesuaikan kembali." row={detailRow} labels={labels} action={() => deleteAction(row.id)} open={open === "delete"} onOpenChange={(v) => setOpen(v ? "delete" : null)} />
+    </>
+  )
+}
+
 function ItemTable({ rows, types, units, title, report = false }: { rows: Row[]; types: Row[]; units: Row[]; title: string; report?: boolean }) {
   const typeOptions = useMemo(() => types.map((t) => ({ value: t.typeName, label: t.typeName })), [types])
   const unitOptions = useMemo(() => units.map((u) => ({ value: u.unitName, label: u.unitName })), [units])
   const columns = report ? itemReportColumns : itemColumns
   const detailLabels: Array<[string, string]> = [["itemCode", "Kode Barang"], ["itemName", "Nama Barang"], ["typeName", "Jenis"], ["unitName", "Satuan"], ["stock", "Stok"], ["minimumStock", "Minimum"], ["status", "Status"], ["photoUrl", "Foto URL"]]
   return <MinimalTableShell label={title.toLowerCase()} fileName={title} searchPlaceholder={`Cari ${title.toLowerCase()}...`} showImport={!report} access={access} filters={<><TableMultiFilter label="jenis" filterKey="type" options={typeOptions} /><TableMultiFilter label="satuan" filterKey="unit" options={unitOptions} /><TableMultiFilter label="status stok" filterKey="stock" options={[{ value: "low", label: "Low stock" }, { value: "safe", label: "Stok aman" }]} /></>} primaryAction={!report ? <MasterDialog kind="item" types={types} units={units} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} dateFilter={false} scorecards={[{ label: "Barang", value: rows.length, icon: <Boxes className="size-4 text-primary" />, tone: "info" }, { label: "Total Stok", value: rows.reduce((s, i) => s + Number(i.stock ?? 0), 0), tone: "default" }, { label: "Low Stock", value: rows.filter((i) => Number(i.stock ?? 0) <= Number(i.minimumStock ?? 0)).length, tone: "warning" }, { label: "Aktif", value: rows.filter((i) => i.isActive).length, tone: "success" }]}>
-    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, status: statusLabel(r.isActive) }; return <TableRow key={r.id} data-filter-type={r.typeName ?? ""} data-filter-unit={r.unitName ?? ""} data-filter-stock={Number(r.stock ?? 0) <= Number(r.minimumStock ?? 0) ? "low" : "safe"}><TableCell className="font-mono text-xs font-semibold text-primary">{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{statusLabel(r.isActive)}</Badge></TableCell>{!report ? <TableCell><DialogActionButtons view={<ViewDialog title={`Detail Barang ${r.itemCode}`} row={detailRow} labels={detailLabels} trigger={<EnterpriseActionButtons access={access} onView={() => {}} />} />} edit={<MasterDialog kind="item" row={r} types={types} units={units} trigger={<EnterpriseActionButtons access={access} onEdit={() => {}} />} />} remove={<DeleteDialog title={`Hapus Barang ${r.itemCode}`} description="Data barang akan dihapus dari Warehouse Repair." row={detailRow} labels={detailLabels} action={() => deleteWarehouseRepairItem(r.id)} trigger={<EnterpriseActionButtons access={access} onDelete={() => {}} />} />} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data barang.</TableCell></TableRow>}</TableBody></Table>
+    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, status: statusLabel(r.isActive) }; return <TableRow key={r.id} data-filter-type={r.typeName ?? ""} data-filter-unit={r.unitName ?? ""} data-filter-stock={Number(r.stock ?? 0) <= Number(r.minimumStock ?? 0) ? "low" : "safe"}><TableCell className="font-mono text-xs font-semibold text-primary">{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.typeName ?? "-"}</TableCell><TableCell>{r.unitName ?? "-"}</TableCell><TableCell>{r.stock}</TableCell><TableCell>{r.minimumStock}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{statusLabel(r.isActive)}</Badge></TableCell>{!report ? <TableCell><ItemActions row={r} types={types} units={units} labels={detailLabels} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data barang.</TableCell></TableRow>}</TableBody></Table>
   </MinimalTableShell>
 }
 
@@ -163,7 +212,7 @@ function MasterTable({ kind, rows, types, units, title }: { kind: "type" | "unit
   const deleteAction = kind === "type" ? deleteWarehouseRepairType : deleteWarehouseRepairUnit
   const detailLabels: Array<[string, string]> = [["code", "Kode"], ["name", "Nama"], ["status", "Status"]]
   return <MinimalTableShell label={title.toLowerCase()} fileName={title} access={access} primaryAction={<MasterDialog kind={kind} types={types} units={units} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah {title}</Button>} />} columnOptions={masterColumns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} dateFilter={false}>
-    <Table><TableHeader><TableRow>{masterColumns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { code: kind === "type" ? r.typeCode : r.unitCode, name: kind === "type" ? r.typeName : r.unitName, status: statusLabel(r.isActive) }; return <TableRow key={r.id}><TableCell className="font-mono text-xs font-semibold text-primary">{detailRow.code}</TableCell><TableCell>{detailRow.name}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{detailRow.status}</Badge></TableCell><TableCell><DialogActionButtons view={<ViewDialog title={`Detail ${title}`} row={detailRow} labels={detailLabels} trigger={<EnterpriseActionButtons access={access} onView={() => {}} />} />} edit={<MasterDialog kind={kind} row={r} types={types} units={units} trigger={<EnterpriseActionButtons access={access} onEdit={() => {}} />} />} remove={<DeleteDialog title={`Hapus ${title}`} description={`Data ${title.toLowerCase()} akan dihapus.`} row={detailRow} labels={detailLabels} action={() => deleteAction(r.id)} trigger={<EnterpriseActionButtons access={access} onDelete={() => {}} />} />} /></TableCell></TableRow> }) : <TableRow><TableCell colSpan={masterColumns.length} className="h-24 text-center text-muted-foreground">Belum ada data.</TableCell></TableRow>}</TableBody></Table>
+    <Table><TableHeader><TableRow>{masterColumns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { code: kind === "type" ? r.typeCode : r.unitCode, name: kind === "type" ? r.typeName : r.unitName, status: statusLabel(r.isActive) }; return <TableRow key={r.id}><TableCell className="font-mono text-xs font-semibold text-primary">{detailRow.code}</TableCell><TableCell>{detailRow.name}</TableCell><TableCell><Badge variant={r.isActive ? "default" : "outline"}>{detailRow.status}</Badge></TableCell><TableCell><MasterActions kind={kind} row={r} types={types} units={units} title={title} labels={detailLabels} deleteAction={deleteAction} /></TableCell></TableRow> }) : <TableRow><TableCell colSpan={masterColumns.length} className="h-24 text-center text-muted-foreground">Belum ada data.</TableCell></TableRow>}</TableBody></Table>
   </MinimalTableShell>
 }
 
@@ -172,8 +221,8 @@ function TransactionTable({ rows, items, title, kind, report = false }: { rows: 
   const deleteAction = kind === "in" ? deleteWarehouseRepairInbound : deleteWarehouseRepairOutbound
   const itemOptions = useMemo(() => items.map((i) => ({ value: i.itemName, label: i.itemName })), [items])
   const detailLabels: Array<[string, string]> = [["transactionNo", "No Transaksi"], ["date", "Tanggal"], ["itemCode", "Kode Barang"], ["itemName", "Nama Barang"], ["quantity", "Qty"], ["note", "Keterangan"]]
-  return <MinimalTableShell label={title.toLowerCase()} fileName={title} showImport={false} access={access} dateFilter filters={<TableMultiFilter label="barang" filterKey="item" options={itemOptions} />} primaryAction={!report ? <TransactionDialog kind={kind} items={items} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} scorecards={[{ label: "Transaksi", value: rows.length, tone: "info", icon: kind === "in" ? <PackagePlus className="size-4 text-primary" /> : <PackageMinus className="size-4 text-primary" /> }, { label: "Total Qty", value: rows.reduce((s, r) => s + Number(r.quantity ?? 0), 0), tone: "default" }, { label: "Barang", value: new Set(rows.map((r) => r.itemId ?? r.itemCode)).size, tone: "success" }, { label: "Export", value: <Download className="size-5" />, tone: "warning" }]}>
-    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, date: fmtDate(r.transactionDate), note: r.note || "-" }; return <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""}><TableCell className="font-mono text-xs font-semibold text-primary">{r.transactionNo}</TableCell><TableCell>{fmtDate(r.transactionDate)}</TableCell><TableCell>{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.quantity}</TableCell><TableCell>{r.note || "-"}</TableCell>{!report ? <TableCell><DialogActionButtons view={<ViewDialog title={`Detail ${title} ${r.transactionNo}`} row={detailRow} labels={detailLabels} trigger={<EnterpriseActionButtons access={access} onView={() => {}} />} />} edit={<TransactionDialog kind={kind} items={items} row={r} trigger={<EnterpriseActionButtons access={access} onEdit={() => {}} />} />} remove={<DeleteDialog title={`Hapus ${title} ${r.transactionNo}`} description="Transaksi akan dihapus dan stok akan disesuaikan kembali." row={detailRow} labels={detailLabels} action={() => deleteAction(r.id)} trigger={<EnterpriseActionButtons access={access} onDelete={() => {}} />} />} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data transaksi.</TableCell></TableRow>}</TableBody></Table>
+  return <MinimalTableShell label={title.toLowerCase()} fileName={title} showImport={false} access={access} dateFilter filters={<TableMultiFilter label="barang" filterKey="item" options={itemOptions} />} primaryAction={!report ? <TransactionDialog kind={kind} items={items} trigger={<Button><Plus className="mr-2 h-4 w-4" />Entri Data</Button>} /> : undefined} columnOptions={columns.map((c, i) => ({ key: c, label: c, required: i < 2 }))} scorecards={[{ label: "Transaksi", value: rows.length, tone: "info", icon: kind === "in" ? <PackagePlus className="size-4 text-primary" /> : <PackageMinus className="size-4 text-primary" /> }, { label: "Total Qty", value: rows.reduce((s, r) => s + Number(r.quantity ?? 0), 0), tone: "default" }, { label: "Barang", value: new Set(rows.map((r) => r.itemId ?? r.itemCode)).size, tone: "success" }, { label: "Export", value: <Download className="size-5" />, tone: "warning" }]}>
+    <Table><TableHeader><TableRow>{columns.map((c) => <TableHead key={c}>{c}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length ? rows.map((r) => { const detailRow = { ...r, date: fmtDate(r.transactionDate), note: r.note || "-" }; return <TableRow key={r.id} data-date-value={fmtDate(r.transactionDate)} data-filter-item={r.itemName ?? ""}><TableCell className="font-mono text-xs font-semibold text-primary">{r.transactionNo}</TableCell><TableCell>{fmtDate(r.transactionDate)}</TableCell><TableCell>{r.itemCode}</TableCell><TableCell>{r.itemName}</TableCell><TableCell>{r.quantity}</TableCell><TableCell>{r.note || "-"}</TableCell>{!report ? <TableCell><TransactionActions kind={kind} row={r} items={items} title={title} labels={detailLabels} deleteAction={deleteAction} /></TableCell> : null}</TableRow> }) : <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">Belum ada data transaksi.</TableCell></TableRow>}</TableBody></Table>
   </MinimalTableShell>
 }
 

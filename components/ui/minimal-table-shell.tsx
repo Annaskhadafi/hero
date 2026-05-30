@@ -480,7 +480,7 @@ export function MinimalTableShell({
   const [totalCount, setTotalCount] = React.useState(0)
   const [showNoResults, setShowNoResults] = React.useState(false)
   const [pageIndex, setPageIndex] = React.useState(0)
-  const [pageSize, setPageSize] = React.useState(10)
+  const [pageSize, setPageSize] = React.useState(25)
   const [sortColumnIndex, setSortColumnIndex] = React.useState<number | null>(null)
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("asc")
   const sortColumnIndexRef = React.useRef<number | null>(null)
@@ -896,7 +896,7 @@ export function MinimalTableShell({
               onChange={(event) => setPageSize(Number(event.target.value))}
               className="h-8 rounded-lg border border-border/70 bg-muted/30 px-2 text-[13px] text-foreground shadow-none"
             >
-              {[10, 20, 50, 100].map((size) => (
+              {[25, 50, 100].map((size) => (
                 <option key={size} value={size}>
                   {size}
                 </option>
