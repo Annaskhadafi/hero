@@ -680,6 +680,136 @@ export const hseIncidents = pgTable(
   })
 )
 
+export const safetyIncidentSummaryYearly = pgTable('hero_safety_incident_summary_yearly', {
+  id: serial('id').primaryKey(),
+  year: integer('year').notNull(),
+  fatality: integer('fatality').notNull().default(0),
+  lostDayInjury: integer('lost_day_injury').notNull().default(0),
+  restrictedWorkDayInjury: integer('restricted_work_day_injury').notNull().default(0),
+  medicalTreatmentCase: integer('medical_treatment_case').notNull().default(0),
+  firstAid: integer('first_aid').notNull().default(0),
+  propertyDamage: integer('property_damage').notNull().default(0),
+  nearMissReport: integer('near_miss_report').notNull().default(0),
+  environmental: integer('environmental').notNull().default(0),
+  fatigue: integer('fatigue').notNull().default(0),
+  totalEvents: integer('total_events').notNull().default(0),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyIncidentSummaryMonthly = pgTable('hero_safety_incident_summary_monthly', {
+  id: serial('id').primaryKey(),
+  month: date('month').notNull(),
+  fatality: integer('fatality').notNull().default(0),
+  lostDayInjury: integer('lost_day_injury').notNull().default(0),
+  restrictedWorkDayInjury: integer('restricted_work_day_injury').notNull().default(0),
+  medicalTreatmentCase: integer('medical_treatment_case').notNull().default(0),
+  firstAid: integer('first_aid').notNull().default(0),
+  propertyDamage: integer('property_damage').notNull().default(0),
+  nearMissReport: integer('near_miss_report').notNull().default(0),
+  environmental: integer('environmental').notNull().default(0),
+  totalEvents: integer('total_events').notNull().default(0),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyIncidentReports = pgTable('hero_safety_incident_reports', {
+  id: serial('id').primaryKey(),
+  workerName: text('worker_name').notNull().default(''),
+  department: text('department').notNull().default(''),
+  incidentDescription: text('incident_description').notNull(),
+  propertyDamage: text('property_damage').notNull().default(''),
+  location: text('location').notNull().default(''),
+  category: text('category').notNull().default(''),
+  incidentDate: date('incident_date'),
+  notes: text('notes').notNull().default(''),
+  status: text('status').notNull().default('open'),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyCertifications = pgTable('hero_safety_certifications', {
+  id: serial('id').primaryKey(),
+  equipmentName: text('equipment_name').notNull(),
+  picDepartment: text('pic_department').notNull().default(''),
+  workArea: text('work_area').notNull().default(''),
+  equipmentClassification: text('equipment_classification').notNull().default(''),
+  certifier: text('certifier').notNull().default(''),
+  certificationDate: date('certification_date'),
+  nextCertificationDate: date('next_certification_date'),
+  status: text('status').notNull().default('UNKNOWN'),
+  regulation: text('regulation').notNull().default(''),
+  remarks: text('remarks').notNull().default(''),
+  workLocation: text('work_location').notNull().default(''),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyPerformanceMetrics = pgTable('hero_safety_performance_metrics', {
+  id: serial('id').primaryKey(),
+  year: integer('year').notNull(),
+  periodLabel: text('period_label').notNull(),
+  employeeCount: integer('employee_count').notNull().default(0),
+  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 }).notNull().default('0'),
+  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
+  fatalityActual: decimal('fatality_actual', { precision: 10, scale: 2 }).notNull().default('0'),
+  ltiThreshold: decimal('lti_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
+  ltiActual: decimal('lti_actual', { precision: 10, scale: 2 }).notNull().default('0'),
+  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
+  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 }).notNull().default('0'),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyManHours = pgTable('hero_safety_man_hours', {
+  id: serial('id').primaryKey(),
+  workLocation: text('work_location').notNull(),
+  employeeCount: integer('employee_count').notNull().default(0),
+  safetyManHours: decimal('safety_man_hours', { precision: 14, scale: 2 }).notNull().default('0'),
+  safeTarget: decimal('safe_target', { precision: 14, scale: 2 }).notNull().default('0'),
+  averageWeeklyRevenue: decimal('average_weekly_revenue', { precision: 14, scale: 2 }),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyMonthlyManHours = pgTable('hero_safety_monthly_man_hours', {
+  id: serial('id').primaryKey(),
+  workLocation: text('work_location').notNull(),
+  employeeCount: integer('employee_count').notNull().default(0),
+  month: date('month').notNull(),
+  safetyManHours: decimal('safety_man_hours', { precision: 14, scale: 2 }).notNull().default('0'),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyWeeklyActivities = pgTable('hero_safety_weekly_activities', {
+  id: serial('id').primaryKey(),
+  activity: text('activity').notNull(),
+  activityDate: date('activity_date'),
+  pic: text('pic').notNull().default(''),
+  category: text('category').notNull().default(''),
+  imageUrl: text('image_url').notNull().default(''),
+  evidenceUrl: text('evidence_url').notNull().default(''),
+  sourceSheet: text('source_sheet').notNull().default('manual'),
+  sourceRowNumber: integer('source_row_number'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const attendanceRecords = pgTable(
   'hero_attendance_records',
   {

@@ -176,6 +176,13 @@
       "when": 1778718809560,
       "tag": "0024_glossy_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780139052707,
+      "tag": "0025_salty_the_executioner",
+      "breakpoints": true
     }
   ]
 }
