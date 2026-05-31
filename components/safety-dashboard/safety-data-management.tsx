@@ -23,6 +23,17 @@ import {
 import { TableFilterPresets } from "@/components/table-filter-presets"
 import { TableMultiFilter } from "@/components/ui/table-multi-filter"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  CertificationsDashboard,
+  CollapsibleTabDashboard,
+  IncidentReportsDashboard,
+  ManHoursDashboard,
+  MonthlyManHoursDashboard,
+  MonthlySummaryDashboard,
+  PerformanceDashboard,
+  WeeklyActivitiesDashboard,
+  YearlySummaryDashboard,
+} from "@/components/safety-dashboard/safety-tab-dashboards"
 import type { getSafetyDashboardData } from "@/lib/safety-dashboard/queries"
 
 type SafetyData = Awaited<ReturnType<typeof getSafetyDashboardData>>
@@ -62,6 +73,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsList>
 
       <TabsContent value="incident-reports">
+        <CollapsibleTabDashboard title="Incident Reports Overview">
+          <IncidentReportsDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Incident reports"
           description="Form, import, export, dan CRUD incident individual."
@@ -84,6 +98,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="yearly-summary">
+        <CollapsibleTabDashboard title="Yearly Summary Overview">
+          <YearlySummaryDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Incident yearly summary"
           description="Form, import, export, dan CRUD rekap incident tahunan."
@@ -98,6 +115,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="monthly-summary">
+        <CollapsibleTabDashboard title="Monthly Summary Overview">
+          <MonthlySummaryDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Incident monthly summary"
           description="Form, import, export, dan CRUD rekap incident bulanan."
@@ -111,6 +131,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="certifications">
+        <CollapsibleTabDashboard title="Certifications Overview">
+          <CertificationsDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Safety certifications"
           description="Form, import, export, dan CRUD sertifikasi alat."
@@ -132,6 +155,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="performance">
+        <CollapsibleTabDashboard title="Performance Overview">
+          <PerformanceDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Safety performance"
           description="Form, import, export, dan CRUD safety performance."
@@ -146,6 +172,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="man-hours">
+        <CollapsibleTabDashboard title="Man Hours Overview">
+          <ManHoursDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Safety man hours"
           description="Form, import, export, dan CRUD safe manhours kumulatif."
@@ -160,6 +189,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="monthly-man-hours">
+        <CollapsibleTabDashboard title="Monthly Man Hours Overview">
+          <MonthlyManHoursDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Monthly safety man hours"
           description="Form, import, export, dan CRUD safe manhours bulanan."
@@ -174,6 +206,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="weekly">
+        <CollapsibleTabDashboard title="Weekly Activities Overview">
+          <WeeklyActivitiesDashboard data={data} />
+        </CollapsibleTabDashboard>
         <AdminTableCard
           title="Weekly safety activities"
           description="Form, import, export, dan CRUD aktivitas K3 mingguan."

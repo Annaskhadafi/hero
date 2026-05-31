@@ -16,9 +16,22 @@ import {
 } from "@/app/dashboard/safety/actions"
 import { Button } from "@/components/ui/button"
 import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog, type TableRbacAccess } from "@/components/ui/enterprise-table-kit"
+import { Combobox } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+
+export type SafetyFormOptions = {
+  locations?: string[]
+  categories?: string[]
+  statuses?: string[]
+  departments?: string[]
+  workAreas?: string[]
+  equipmentClassifications?: string[]
+  regulations?: string[]
+  pics?: string[]
+  years?: string[]
+}
 
 type SafetyActionResult = { ok: boolean; message: string }
 type NativeFormAction = (formData: FormData) => Promise<SafetyActionResult>
@@ -55,6 +68,23 @@ function TextAreaField({ name, label, defaultValue }: { name: string; label: str
     <Label className="grid gap-2 text-sm font-medium">
       {label}
       <Textarea name={name} defaultValue={defaultValue ?? ""} rows={3} />
+    </Label>
+  )
+}
+
+function ComboboxField({ name, label, defaultValue, options = [] }: { name: string; label: string; defaultValue?: string | null; options?: string[] }) {
+  const [value, setValue] = React.useState(defaultValue ?? "")
+  return (
+    <Label className="grid gap-2 text-sm font-medium">
+      {label}
+      <input type="hidden" name={name} value={value} />
+      <Combobox 
+        value={value} 
+        onChange={setValue} 
+        options={options} 
+        placeholder={`Pilih ${label.toLowerCase()}...`} 
+        allowCustom 
+      />
     </Label>
   )
 }
@@ -108,7 +138,7 @@ function useDialogMode() {
   return { mode, setMode, open: mode != null, onOpenChange: (open: boolean) => !open && setMode(null) }
 }
 
-function SummaryFields({ row, monthly = false }: { row?: Partial<YearlySummaryRow & MonthlySummaryRow>; monthly?: boolean }) {
+function SummaryFields({ row, monthly = false, options }: { row?: Partial<YearlySummaryRow & MonthlySummaryRow>; monthly?: boolean; options?: SafetyFormOptions }) {
   return (
     <EnterpriseFormGrid>
       {monthly ? <TextField name="month" label="Bulan" type="date" defaultValue={formatDateInput(row?.month ?? null)} /> : <TextField name="year" label="Tahun" type="number" defaultValue={row?.year ?? new Date().getFullYear()} />}
@@ -126,17 +156,17 @@ function SummaryFields({ row, monthly = false }: { row?: Partial<YearlySummaryRo
   )
 }
 
-function IncidentFields({ row }: { row?: Partial<IncidentRow> }) {
+function IncidentFields({ row, options }: { row?: Partial<IncidentRow>; options?: SafetyFormOptions }) {
   return (
     <>
       <EnterpriseFormGrid>
         <TextField name="workerName" label="Nama" defaultValue={row?.workerName} />
-        <TextField name="department" label="Departemen" defaultValue={row?.department} />
+        <ComboboxField name="department" label="Departemen" defaultValue={row?.department} options={options?.departments} />
         <TextField name="propertyDamage" label="Property damage" defaultValue={row?.propertyDamage} />
-        <TextField name="location" label="Lokasi" defaultValue={row?.location} />
-        <TextField name="category" label="Category" defaultValue={row?.category} />
+        <ComboboxField name="location" label="Lokasi" defaultValue={row?.location} options={options?.locations} />
+        <ComboboxField name="category" label="Category" defaultValue={row?.category} options={options?.categories} />
         <TextField name="incidentDate" label="Tanggal" type="date" defaultValue={formatDateInput(row?.incidentDate ?? null)} />
-        <TextField name="status" label="Status" defaultValue={row?.status ?? "open"} />
+        <ComboboxField name="status" label="Status" defaultValue={row?.status ?? "open"} options={options?.statuses} />
       </EnterpriseFormGrid>
       <TextAreaField name="incidentDescription" label="Incident" defaultValue={row?.incidentDescription} />
       <TextAreaField name="notes" label="Keterangan" defaultValue={row?.notes} />
@@ -144,27 +174,27 @@ function IncidentFields({ row }: { row?: Partial<IncidentRow> }) {
   )
 }
 
-function CertificationFields({ row }: { row?: Partial<CertificationRow> }) {
+function CertificationFields({ row, options }: { row?: Partial<CertificationRow>; options?: SafetyFormOptions }) {
   return (
     <>
       <EnterpriseFormGrid>
         <TextField name="equipmentName" label="Nama alat" defaultValue={row?.equipmentName} />
-        <TextField name="picDepartment" label="PIC dept/sec" defaultValue={row?.picDepartment} />
-        <TextField name="workArea" label="Area kerja" defaultValue={row?.workArea} />
-        <TextField name="equipmentClassification" label="Klasifikasi" defaultValue={row?.equipmentClassification} />
+        <ComboboxField name="picDepartment" label="PIC dept/sec" defaultValue={row?.picDepartment} options={options?.departments} />
+        <ComboboxField name="workArea" label="Area kerja" defaultValue={row?.workArea} options={options?.workAreas} />
+        <ComboboxField name="equipmentClassification" label="Klasifikasi" defaultValue={row?.equipmentClassification} options={options?.equipmentClassifications} />
         <TextField name="certifier" label="Sertifikator" defaultValue={row?.certifier} />
         <TextField name="certificationDate" label="Waktu sertifikasi" type="date" defaultValue={formatDateInput(row?.certificationDate ?? null)} />
         <TextField name="nextCertificationDate" label="Next sert." type="date" defaultValue={formatDateInput(row?.nextCertificationDate ?? null)} />
-        <TextField name="status" label="Status" defaultValue={row?.status ?? "AKTIF"} />
-        <TextField name="regulation" label="Regulasi" defaultValue={row?.regulation} />
-        <TextField name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} />
+        <ComboboxField name="status" label="Status" defaultValue={row?.status ?? "AKTIF"} options={options?.statuses} />
+        <ComboboxField name="regulation" label="Regulasi" defaultValue={row?.regulation} options={options?.regulations} />
+        <ComboboxField name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} options={options?.locations} />
       </EnterpriseFormGrid>
       <TextAreaField name="remarks" label="Keterangan" defaultValue={row?.remarks} />
     </>
   )
 }
 
-function PerformanceFields({ row }: { row?: Partial<PerformanceRow> }) {
+function PerformanceFields({ row, options }: { row?: Partial<PerformanceRow>; options?: SafetyFormOptions }) {
   return (
     <EnterpriseFormGrid>
       <TextField name="year" label="Tahun" type="number" defaultValue={row?.year ?? new Date().getFullYear()} />
@@ -181,10 +211,10 @@ function PerformanceFields({ row }: { row?: Partial<PerformanceRow> }) {
   )
 }
 
-function ManHoursFields({ row, monthly = false }: { row?: Partial<ManHoursRow & MonthlyManHoursRow>; monthly?: boolean }) {
+function ManHoursFields({ row, monthly = false, options }: { row?: Partial<ManHoursRow & MonthlyManHoursRow>; monthly?: boolean; options?: SafetyFormOptions }) {
   return (
     <EnterpriseFormGrid>
-      <TextField name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} />
+      <ComboboxField name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} options={options?.locations} />
       <TextField name="employeeCount" label="Jumlah karyawan" type="number" defaultValue={row?.employeeCount ?? 0} />
       {monthly ? <TextField name="month" label="Bulan" type="date" defaultValue={formatDateInput(row?.month ?? null)} /> : null}
       <TextField name="safetyManHours" label="Safety manhours" defaultValue={row?.safetyManHours ?? "0"} />
@@ -194,13 +224,13 @@ function ManHoursFields({ row, monthly = false }: { row?: Partial<ManHoursRow & 
   )
 }
 
-function WeeklyActivityFields({ row }: { row?: Partial<WeeklyActivityRow> }) {
+function WeeklyActivityFields({ row, options }: { row?: Partial<WeeklyActivityRow>; options?: SafetyFormOptions }) {
   return (
     <EnterpriseFormGrid>
       <TextField name="activity" label="Kegiatan" defaultValue={row?.activity} />
       <TextField name="activityDate" label="Tanggal" type="date" defaultValue={formatDateInput(row?.activityDate ?? null)} />
-      <TextField name="pic" label="PIC" defaultValue={row?.pic} />
-      <TextField name="category" label="Kategori" defaultValue={row?.category} />
+      <ComboboxField name="pic" label="PIC" defaultValue={row?.pic} options={options?.pics} />
+      <ComboboxField name="category" label="Kategori" defaultValue={row?.category} options={options?.categories} />
       <TextField name="imageUrl" label="Image link" defaultValue={row?.imageUrl} />
       <TextField name="evidenceUrl" label="Evidence link" defaultValue={row?.evidenceUrl} />
     </EnterpriseFormGrid>
@@ -243,14 +273,14 @@ function CreateDialog({ title, access, action, children }: { title: string; acce
   )
 }
 
-export function CreateIncidentReportButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah incident report" access={access} action={manageSafetyIncidentReportAction as unknown as NativeFormAction}><IncidentFields /></CreateDialog> }
-export function CreateYearlySummaryButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah rekap tahunan" access={access} action={manageSafetyIncidentSummaryYearlyAction as unknown as NativeFormAction}><SummaryFields /></CreateDialog> }
-export function CreateMonthlySummaryButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah rekap bulanan" access={access} action={manageSafetyIncidentSummaryMonthlyAction as unknown as NativeFormAction}><SummaryFields monthly /></CreateDialog> }
-export function CreateCertificationButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah sertifikasi" access={access} action={manageSafetyCertificationAction as unknown as NativeFormAction}><CertificationFields /></CreateDialog> }
-export function CreatePerformanceButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah performance" access={access} action={manageSafetyPerformanceAction as unknown as NativeFormAction}><PerformanceFields /></CreateDialog> }
-export function CreateManHoursButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah safety manhours" access={access} action={manageSafetyManHoursAction as unknown as NativeFormAction}><ManHoursFields /></CreateDialog> }
-export function CreateMonthlyManHoursButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah monthly manhours" access={access} action={manageSafetyMonthlyManHoursAction as unknown as NativeFormAction}><ManHoursFields monthly /></CreateDialog> }
-export function CreateWeeklyActivityButton({ access }: { access: TableRbacAccess }) { return <CreateDialog title="Tambah weekly activity" access={access} action={manageSafetyWeeklyActivityAction as unknown as NativeFormAction}><WeeklyActivityFields /></CreateDialog> }
+export function CreateIncidentReportButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah incident report" access={access} action={manageSafetyIncidentReportAction as unknown as NativeFormAction}><IncidentFields options={options} /></CreateDialog> }
+export function CreateYearlySummaryButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah rekap tahunan" access={access} action={manageSafetyIncidentSummaryYearlyAction as unknown as NativeFormAction}><SummaryFields options={options} /></CreateDialog> }
+export function CreateMonthlySummaryButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah rekap bulanan" access={access} action={manageSafetyIncidentSummaryMonthlyAction as unknown as NativeFormAction}><SummaryFields monthly options={options} /></CreateDialog> }
+export function CreateCertificationButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah sertifikasi" access={access} action={manageSafetyCertificationAction as unknown as NativeFormAction}><CertificationFields options={options} /></CreateDialog> }
+export function CreatePerformanceButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah performance" access={access} action={manageSafetyPerformanceAction as unknown as NativeFormAction}><PerformanceFields options={options} /></CreateDialog> }
+export function CreateManHoursButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah safety manhours" access={access} action={manageSafetyManHoursAction as unknown as NativeFormAction}><ManHoursFields options={options} /></CreateDialog> }
+export function CreateMonthlyManHoursButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah monthly manhours" access={access} action={manageSafetyMonthlyManHoursAction as unknown as NativeFormAction}><ManHoursFields monthly options={options} /></CreateDialog> }
+export function CreateWeeklyActivityButton({ access, options }: { access: TableRbacAccess; options?: SafetyFormOptions }) { return <CreateDialog title="Tambah weekly activity" access={access} action={manageSafetyWeeklyActivityAction as unknown as NativeFormAction}><WeeklyActivityFields options={options} /></CreateDialog> }
 
 function GenericRowActions({ access, title, deleteLabel, action, id, children }: { access: TableRbacAccess; title: string; deleteLabel: string; action: NativeFormAction; id: number; children: React.ReactNode }) {
   const dialog = useDialogMode()
@@ -308,11 +338,11 @@ function GenericRowActions({ access, title, deleteLabel, action, id, children }:
   )
 }
 
-export function YearlySummaryRowActions({ row, access }: { row: YearlySummaryRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Incident yearly summary" deleteLabel={`rekap tahun ${row.year}`} id={row.id} action={manageSafetyIncidentSummaryYearlyAction as unknown as NativeFormAction}><SummaryFields row={row} /></GenericRowActions> }
-export function MonthlySummaryRowActions({ row, access }: { row: MonthlySummaryRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Incident monthly summary" deleteLabel="rekap bulanan" id={row.id} action={manageSafetyIncidentSummaryMonthlyAction as unknown as NativeFormAction}><SummaryFields row={row} monthly /></GenericRowActions> }
-export function IncidentReportRowActions({ row, access }: { row: IncidentRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Incident report" deleteLabel={row.workerName || row.category || "incident"} id={row.id} action={manageSafetyIncidentReportAction as unknown as NativeFormAction}><IncidentFields row={row} /></GenericRowActions> }
-export function CertificationRowActions({ row, access }: { row: CertificationRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Safety certification" deleteLabel={row.equipmentName} id={row.id} action={manageSafetyCertificationAction as unknown as NativeFormAction}><CertificationFields row={row} /></GenericRowActions> }
-export function WeeklyActivityRowActions({ row, access }: { row: WeeklyActivityRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Weekly activity" deleteLabel={row.activity} id={row.id} action={manageSafetyWeeklyActivityAction as unknown as NativeFormAction}><WeeklyActivityFields row={row} /></GenericRowActions> }
-export function PerformanceRowActions({ row, access }: { row: PerformanceRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Safety performance" deleteLabel={row.periodLabel} id={row.id} action={manageSafetyPerformanceAction as unknown as NativeFormAction}><PerformanceFields row={row} /></GenericRowActions> }
-export function ManHoursRowActions({ row, access }: { row: ManHoursRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Safety manhours" deleteLabel={row.workLocation} id={row.id} action={manageSafetyManHoursAction as unknown as NativeFormAction}><ManHoursFields row={row} /></GenericRowActions> }
-export function MonthlyManHoursRowActions({ row, access }: { row: MonthlyManHoursRow; access: TableRbacAccess }) { return <GenericRowActions access={access} title="Monthly manhours" deleteLabel={row.workLocation} id={row.id} action={manageSafetyMonthlyManHoursAction as unknown as NativeFormAction}><ManHoursFields row={row} monthly /></GenericRowActions> }
+export function YearlySummaryRowActions({ row, access, options }: { row: YearlySummaryRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Incident yearly summary" deleteLabel={`rekap tahun ${row.year}`} id={row.id} action={manageSafetyIncidentSummaryYearlyAction as unknown as NativeFormAction}><SummaryFields row={row} options={options} /></GenericRowActions> }
+export function MonthlySummaryRowActions({ row, access, options }: { row: MonthlySummaryRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Incident monthly summary" deleteLabel="rekap bulanan" id={row.id} action={manageSafetyIncidentSummaryMonthlyAction as unknown as NativeFormAction}><SummaryFields row={row} monthly options={options} /></GenericRowActions> }
+export function IncidentReportRowActions({ row, access, options }: { row: IncidentRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Incident report" deleteLabel={row.workerName || row.category || "incident"} id={row.id} action={manageSafetyIncidentReportAction as unknown as NativeFormAction}><IncidentFields row={row} options={options} /></GenericRowActions> }
+export function CertificationRowActions({ row, access, options }: { row: CertificationRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Safety certification" deleteLabel={row.equipmentName} id={row.id} action={manageSafetyCertificationAction as unknown as NativeFormAction}><CertificationFields row={row} options={options} /></GenericRowActions> }
+export function WeeklyActivityRowActions({ row, access, options }: { row: WeeklyActivityRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Weekly activity" deleteLabel={row.activity} id={row.id} action={manageSafetyWeeklyActivityAction as unknown as NativeFormAction}><WeeklyActivityFields row={row} options={options} /></GenericRowActions> }
+export function PerformanceRowActions({ row, access, options }: { row: PerformanceRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Safety performance" deleteLabel={row.periodLabel} id={row.id} action={manageSafetyPerformanceAction as unknown as NativeFormAction}><PerformanceFields row={row} options={options} /></GenericRowActions> }
+export function ManHoursRowActions({ row, access, options }: { row: ManHoursRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Safety manhours" deleteLabel={row.workLocation} id={row.id} action={manageSafetyManHoursAction as unknown as NativeFormAction}><ManHoursFields row={row} options={options} /></GenericRowActions> }
+export function MonthlyManHoursRowActions({ row, access, options }: { row: MonthlyManHoursRow; access: TableRbacAccess; options?: SafetyFormOptions }) { return <GenericRowActions access={access} title="Monthly manhours" deleteLabel={row.workLocation} id={row.id} action={manageSafetyMonthlyManHoursAction as unknown as NativeFormAction}><ManHoursFields row={row} monthly options={options} /></GenericRowActions> }

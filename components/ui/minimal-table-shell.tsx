@@ -827,9 +827,9 @@ export function MinimalTableShell({
                 />
               </div>
             ) : null}
-            {filters}
-            {presets}
-            {dateFilterSupported ? <TableDateRangePicker value={dateRange} onChange={setDateRange} /> : null}
+            {filters ? <React.Fragment key="table-filters-slot">{filters}</React.Fragment> : null}
+            {presets ? <React.Fragment key="table-presets-slot">{presets}</React.Fragment> : null}
+            {dateFilterSupported ? <TableDateRangePicker key="table-date-range-slot" value={dateRange} onChange={setDateRange} /> : null}
             {(query || dateRange?.from || dateRange?.to) ? (
               <Button
                 variant="ghost"
@@ -843,10 +843,10 @@ export function MinimalTableShell({
           </div>
 
           <div className="flex min-w-max items-center gap-2">
-            {actions}
-            {columnOptions?.length ? <EnterpriseColumnVisibility columns={columnOptions} tableRoot={shellRef} /> : null}
+            {actions ? <React.Fragment key="table-actions-slot">{actions}</React.Fragment> : null}
+            {columnOptions?.length ? <EnterpriseColumnVisibility key="table-column-visibility-slot" columns={columnOptions} tableRoot={shellRef} /> : null}
             {showImport && (access?.canEdit ?? true) ? (
-              <div aria-label="Import data">
+              <div key="table-import-slot" aria-label="Import data">
                 {importAction ?? (
                   <AdminImportDialog
                     title={`Import ${label}`}
@@ -856,6 +856,7 @@ export function MinimalTableShell({
               </div>
             ) : null}
             <Button
+              key="table-export-slot"
               variant="outline"
               onClick={() => exportVisibleTable()}
               className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
@@ -863,7 +864,7 @@ export function MinimalTableShell({
               <IconFileSpreadsheet className="size-4" />
               Excel
             </Button>
-            {primaryAction}
+            {primaryAction ? <React.Fragment key="table-primary-action-slot">{primaryAction}</React.Fragment> : null}
           </div>
         </div>
       </div>

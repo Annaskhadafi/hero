@@ -78,6 +78,22 @@ export async function getSafetyDashboardData() {
         ...incidentReports.map((row) => row.status),
         ...certifications.map((row) => row.status),
       ].filter(Boolean))).sort(),
+      departments: Array.from(new Set([
+        ...incidentReports.map((row) => row.department),
+        ...certifications.map((row) => row.picDepartment),
+      ].filter(Boolean))).sort(),
+      workAreas: Array.from(new Set([
+        ...certifications.map((row) => row.workArea),
+      ].filter(Boolean))).sort(),
+      equipmentClassifications: Array.from(new Set([
+        ...certifications.map((row) => row.equipmentClassification),
+      ].filter(Boolean))).sort(),
+      regulations: Array.from(new Set([
+        ...certifications.map((row) => row.regulation),
+      ].filter(Boolean))).sort(),
+      pics: Array.from(new Set([
+        ...weeklyActivities.map((row) => row.pic),
+      ].filter(Boolean))).sort(),
       years: Array.from(new Set([
         ...yearlySummaries.map((row) => `${row.year}`),
         ...performanceMetrics.map((row) => `${row.year}`),
