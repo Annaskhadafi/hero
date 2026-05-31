@@ -1,4 +1,4 @@
-﻿import {
+import {
   type AnyPgColumn,
   boolean,
   decimal,
@@ -1989,6 +1989,23 @@ export const cargoMasterSites = pgTable('hero_cargo_master_sites', {
   location: text('location').notNull().default(''),
   notes: text('notes').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const safetyInspections = pgTable('hero_safety_inspections', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  date: timestamp('date').notNull(),
+  location: text('location').notNull().default(''),
+  category: text('category').notNull().default(''),
+  findings: text('findings').notNull().default(''),
+  recommendation: text('recommendation').notNull().default(''),
+  status: text('status').notNull().default('Pending'),
+  assessmentScore: integer('assessment_score'),
+  picName: text('pic_name').notNull().default(''),
+  reportAttachmentUrl: text('report_attachment_url').notNull().default(''),
+  resultAttachmentUrl: text('result_attachment_url').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

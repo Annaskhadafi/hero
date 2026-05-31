@@ -1,4 +1,5 @@
 import { desc } from "drizzle-orm"
+import Fuse from "fuse.js"
 import { db } from "@/db"
 import {
   safetyCertifications,
@@ -26,7 +27,55 @@ async function getSafetyAccess(): Promise<SafetyDashboardAccess> {
   }
 }
 
-export async function getSafetyDashboardData() {
+function getCanonicalLocations(rawLocations: string[]) {
+  const mapping: Record<string, string> = {}
+  const canonical: string[] = []
+
+  // Sort by length ascending so base names like "CK MHU" come before variations like "CK MHU (HO)"
+  const uniqueLocations = Array.from(new Set(rawLocations.filter(Boolean))).sort((a, b) => a.length - b.length)
+
+  const fuse = new Fuse(canonical, {
+    includeScore: true,
+    threshold: 0.3,
+    ignoreLocation: true,
+  })
+
+  for (const raw of uniqueLocations) {
+    if (canonical.length === 0) {
+      canonical.push(raw)
+      mapping[raw] = raw
+      continue
+    }
+
+    const normalizedRaw = raw.toUpperCase().replace(/[-_]/g, " ").trim()
+    
+    // Exact or substring match (e.g. "CK MHU" inside "CK MHU SITE")
+    const substringMatch = canonical.find(c => {
+      const normalizedC = c.toUpperCase().replace(/[-_]/g, " ").trim()
+      // Use length > 3 to avoid matching random short acronyms to everything
+      return normalizedC.length >= 3 && (normalizedRaw === normalizedC || normalizedRaw.includes(normalizedC))
+    })
+
+    if (substringMatch) {
+      mapping[raw] = substringMatch
+      continue
+    }
+
+    fuse.setCollection(canonical)
+    const results = fuse.search(raw)
+    
+    if (results.length > 0 && results[0].score !== undefined && results[0].score <= 0.3) {
+      mapping[raw] = results[0].item
+    } else {
+      canonical.push(raw)
+      mapping[raw] = raw
+    }
+  }
+
+  return { mapping, canonical: canonical.sort() }
+}
+
+export async function getSafetyDashboardData(filters?: { year?: string; location?: string }) {
   const [
     yearlySummaries,
     monthlySummaries,
@@ -49,8 +98,87 @@ export async function getSafetyDashboardData() {
     getSafetyAccess(),
   ])
 
-  const kpis = buildSafetyKpis({ monthlySummaries, certifications, weeklyActivities, manHours })
-  const charts = buildSafetyCharts({ monthlySummaries, certifications, weeklyActivities, manHours, monthlyManHours, performanceMetrics })
+  // Group locations using Fuse.js and substring matching
+  const allRawLocations = [
+    ...incidentReports.map((row) => row.location),
+    ...certifications.map((row) => row.workLocation),
+    ...manHours.map((row) => row.workLocation),
+    ...monthlyManHours.map((row) => row.workLocation),
+    ...performanceMetrics.map((row) => row.periodLabel), // site/location
+  ]
+  const { mapping: locationMapping, canonical: locationOptions } = getCanonicalLocations(allRawLocations)
+
+  let filteredMonthlySummaries = monthlySummaries
+  let filteredIncidentReports = incidentReports
+  let filteredCertifications = certifications
+  let filteredPerformanceMetrics = performanceMetrics
+  let filteredManHours = manHours
+  let filteredMonthlyManHours = monthlyManHours
+  let filteredWeeklyActivities = weeklyActivities
+
+  if (filters?.year) {
+    const yearNum = parseInt(filters.year)
+    filteredPerformanceMetrics = filteredPerformanceMetrics.filter(row => row.year === yearNum)
+    filteredMonthlySummaries = filteredMonthlySummaries.filter(row => {
+      const d = new Date(row.month)
+      return d.getFullYear() === yearNum
+    })
+    filteredIncidentReports = filteredIncidentReports.filter(row => {
+      if (!row.incidentDate) return false
+      const d = new Date(row.incidentDate)
+      return d.getFullYear() === yearNum
+    })
+    filteredCertifications = filteredCertifications.filter(row => {
+      if (!row.certificationDate) return true
+      const d = new Date(row.certificationDate)
+      return d.getFullYear() === yearNum
+    })
+    filteredMonthlyManHours = filteredMonthlyManHours.filter(row => {
+      const d = new Date(row.month)
+      return d.getFullYear() === yearNum
+    })
+    filteredWeeklyActivities = filteredWeeklyActivities.filter(row => {
+      if (!row.activityDate) return true
+      const d = new Date(row.activityDate)
+      return d.getFullYear() === yearNum
+    })
+  }
+
+  if (filters?.location) {
+    const loc = filters.location
+    filteredIncidentReports = filteredIncidentReports.filter(row => locationMapping[row.location] === loc)
+    filteredCertifications = filteredCertifications.filter(row => locationMapping[row.workLocation] === loc)
+    filteredManHours = filteredManHours.filter(row => locationMapping[row.workLocation] === loc)
+    filteredMonthlyManHours = filteredMonthlyManHours.filter(row => locationMapping[row.workLocation] === loc)
+    filteredPerformanceMetrics = filteredPerformanceMetrics.filter(row => locationMapping[row.periodLabel] === loc)
+  }
+
+  const kpis = buildSafetyKpis({ 
+    monthlySummaries: filteredMonthlySummaries, 
+    certifications: filteredCertifications, 
+    weeklyActivities: filteredWeeklyActivities, 
+    manHours: filteredManHours 
+  })
+  
+  const charts = buildSafetyCharts({ 
+    monthlySummaries: filteredMonthlySummaries, 
+    certifications: filteredCertifications, 
+    weeklyActivities: filteredWeeklyActivities, 
+    manHours: filteredManHours, 
+    monthlyManHours: filteredMonthlyManHours, 
+    performanceMetrics: filteredPerformanceMetrics 
+  })
+
+  // Extract all available years from the full dataset (not just filtered)
+  const allYears = new Set([
+    ...yearlySummaries.map(r => r.year ? `${r.year}` : ''),
+    ...performanceMetrics.map(r => r.year ? `${r.year}` : ''),
+    ...monthlySummaries.map(r => r.month ? new Date(r.month).getFullYear().toString() : ''),
+    ...incidentReports.map(r => r.incidentDate ? new Date(r.incidentDate).getFullYear().toString() : ''),
+    ...certifications.map(r => r.certificationDate ? new Date(r.certificationDate).getFullYear().toString() : ''),
+    ...monthlyManHours.map(r => r.month ? new Date(r.month).getFullYear().toString() : ''),
+    ...weeklyActivities.map(r => r.activityDate ? new Date(r.activityDate).getFullYear().toString() : ''),
+  ].filter(y => y && y !== 'NaN'))
 
   return {
     yearlySummaries,
@@ -64,12 +192,7 @@ export async function getSafetyDashboardData() {
     kpis,
     charts,
     filterOptions: {
-      locations: Array.from(new Set([
-        ...incidentReports.map((row) => row.location),
-        ...certifications.map((row) => row.workLocation),
-        ...manHours.map((row) => row.workLocation),
-        ...monthlyManHours.map((row) => row.workLocation),
-      ].filter(Boolean))).sort(),
+      locations: locationOptions,
       categories: Array.from(new Set([
         ...incidentReports.map((row) => row.category),
         ...weeklyActivities.map((row) => row.category),
@@ -94,10 +217,7 @@ export async function getSafetyDashboardData() {
       pics: Array.from(new Set([
         ...weeklyActivities.map((row) => row.pic),
       ].filter(Boolean))).sort(),
-      years: Array.from(new Set([
-        ...yearlySummaries.map((row) => `${row.year}`),
-        ...performanceMetrics.map((row) => `${row.year}`),
-      ])).sort().reverse(),
+      years: Array.from(allYears).sort().reverse(),
     },
     access,
   }
