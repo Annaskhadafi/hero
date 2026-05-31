@@ -68,17 +68,17 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Nama", "Departemen", "Incident", "Property Damage", "Lokasi", "Category", "Tanggal", "Status", "Action"]}
           dateFilter
           access={data.access}
-          actions={<CreateIncidentReportButton access={data.access} />}
+          actions={<CreateIncidentReportButton access={data.access} options={data.filterOptions} />}
           presets={<TableFilterPresets presets={[{ label: "Open", filters: { status: "open" } }, { label: "Property Damage", filters: { category: "Property Damage" } }]} />}
           filters={
             <>
-              <TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} />
-              <TableMultiFilter label="category" filterKey="category" options={categoryOptions} />
-              <TableMultiFilter label="status" filterKey="status" options={statusOptions} />
+              <TableMultiFilter key="lokasi" label="lokasi" filterKey="location" options={locationOptions} />
+              <TableMultiFilter key="category" label="category" filterKey="category" options={categoryOptions} />
+              <TableMultiFilter key="status" label="status" filterKey="status" options={statusOptions} />
             </>
           }
           scorecards={[{ label: "Total", value: data.incidentReports.length, description: "Incident detail" }, { label: "Open", value: data.incidentReports.filter((row) => row.status === "open").length, description: "Belum ditutup", tone: "warning" }]}
-          rows={data.incidentReports.map((row) => [row.workerName, row.department, row.incidentDescription, row.propertyDamage, row.location, row.category, formatDate(row.incidentDate), <AdminStatusBadge key={`${row.id}-status`} value={row.status} />, <IncidentReportRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          rows={data.incidentReports.map((row) => [row.workerName, row.department, row.incidentDescription, row.propertyDamage, row.location, row.category, formatDate(row.incidentDate), <AdminStatusBadge key={`${row.id}-status`} value={row.status} />, <IncidentReportRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.incidentReports.map((row) => ({ "data-date-value": row.incidentDate ? `${row.incidentDate}` : "", "data-filter-location": row.location, "data-filter-category": row.category, "data-filter-status": row.status }))}
         />
       </TabsContent>
@@ -90,9 +90,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Year", "FTL", "LDI", "RWDI", "MTC", "FA", "PD", "NR", "ENV", "FTG", "Total", "Action"]}
           dateFilter={false}
           access={data.access}
-          actions={<CreateYearlySummaryButton access={data.access} />}
-          filters={<TableMultiFilter label="tahun" filterKey="year" options={yearOptions} />}
-          rows={data.yearlySummaries.map((row) => [row.year, row.fatality, row.lostDayInjury, row.restrictedWorkDayInjury, row.medicalTreatmentCase, row.firstAid, row.propertyDamage, row.nearMissReport, row.environmental, row.fatigue, row.totalEvents, <YearlySummaryRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          actions={<CreateYearlySummaryButton access={data.access} options={data.filterOptions} />}
+          filters={<TableMultiFilter key="tahun" label="tahun" filterKey="year" options={yearOptions} />}
+          rows={data.yearlySummaries.map((row) => [row.year, row.fatality, row.lostDayInjury, row.restrictedWorkDayInjury, row.medicalTreatmentCase, row.firstAid, row.propertyDamage, row.nearMissReport, row.environmental, row.fatigue, row.totalEvents, <YearlySummaryRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.yearlySummaries.map((row) => ({ "data-filter-year": `${row.year}` }))}
         />
       </TabsContent>
@@ -104,8 +104,8 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Month", "Fatality", "LDI", "RWDI", "MTC", "FA", "PD", "NR", "ENV", "Total", "Action"]}
           dateFilter
           access={data.access}
-          actions={<CreateMonthlySummaryButton access={data.access} />}
-          rows={data.monthlySummaries.map((row) => [formatDate(row.month), row.fatality, row.lostDayInjury, row.restrictedWorkDayInjury, row.medicalTreatmentCase, row.firstAid, row.propertyDamage, row.nearMissReport, row.environmental, row.totalEvents, <MonthlySummaryRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          actions={<CreateMonthlySummaryButton access={data.access} options={data.filterOptions} />}
+          rows={data.monthlySummaries.map((row) => [formatDate(row.month), row.fatality, row.lostDayInjury, row.restrictedWorkDayInjury, row.medicalTreatmentCase, row.firstAid, row.propertyDamage, row.nearMissReport, row.environmental, row.totalEvents, <MonthlySummaryRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.monthlySummaries.map((row) => ({ "data-date-value": `${row.month}` }))}
         />
       </TabsContent>
@@ -117,16 +117,16 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Nama Alat", "PIC Dept", "Area Kerja", "Klasifikasi", "Sertifikator", "Sertifikasi", "Next Sert.", "Status", "Regulasi", "Lokasi", "Action"]}
           dateFilter
           access={data.access}
-          actions={<CreateCertificationButton access={data.access} />}
+          actions={<CreateCertificationButton access={data.access} options={data.filterOptions} />}
           presets={<TableFilterPresets presets={[{ label: "Expired", filters: { status: "EXPIRED" } }, { label: "Aktif", filters: { status: "AKTIF" } }]} />}
           filters={
             <>
-              <TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} />
-              <TableMultiFilter label="status" filterKey="status" options={statusOptions} />
+              <TableMultiFilter key="lokasi" label="lokasi" filterKey="location" options={locationOptions} />
+              <TableMultiFilter key="status" label="status" filterKey="status" options={statusOptions} />
             </>
           }
           scorecards={[{ label: "Total alat", value: data.certifications.length, description: "Sertifikasi tercatat" }, { label: "Expired", value: data.kpis.certificationExpired, description: "Perlu follow up", tone: "danger" }]}
-          rows={data.certifications.map((row) => [row.equipmentName, row.picDepartment, row.workArea, row.equipmentClassification, row.certifier, formatDate(row.certificationDate), formatDate(row.nextCertificationDate), <AdminStatusBadge key={`${row.id}-status`} value={row.status} />, row.regulation, row.workLocation, <CertificationRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          rows={data.certifications.map((row) => [row.equipmentName, row.picDepartment, row.workArea, row.equipmentClassification, row.certifier, formatDate(row.certificationDate), formatDate(row.nextCertificationDate), <AdminStatusBadge key={`${row.id}-status`} value={row.status} />, row.regulation, row.workLocation, <CertificationRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.certifications.map((row) => ({ "data-date-value": row.nextCertificationDate ? `${row.nextCertificationDate}` : "", "data-filter-location": row.workLocation, "data-filter-status": row.status }))}
         />
       </TabsContent>
@@ -138,9 +138,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Year", "Periode", "Karyawan", "Safe Man Hours", "Fatality T/A", "LTI T/A", "PD T/A", "Action"]}
           dateFilter={false}
           access={data.access}
-          actions={<CreatePerformanceButton access={data.access} />}
-          filters={<TableMultiFilter label="tahun" filterKey="year" options={yearOptions} />}
-          rows={data.performanceMetrics.map((row) => [row.year, row.periodLabel, row.employeeCount, formatNumber(row.safeManHoursUpToYear), `${row.fatalityThreshold} / ${row.fatalityActual}`, `${row.ltiThreshold} / ${row.ltiActual}`, `${row.propertyDamageThreshold} / ${row.propertyDamageActual}`, <PerformanceRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          actions={<CreatePerformanceButton access={data.access} options={data.filterOptions} />}
+          filters={<TableMultiFilter key="tahun" label="tahun" filterKey="year" options={yearOptions} />}
+          rows={data.performanceMetrics.map((row) => [row.year, row.periodLabel, row.employeeCount, formatNumber(row.safeManHoursUpToYear), `${row.fatalityThreshold} / ${row.fatalityActual}`, `${row.ltiThreshold} / ${row.ltiActual}`, `${row.propertyDamageThreshold} / ${row.propertyDamageActual}`, <PerformanceRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.performanceMetrics.map((row) => ({ "data-filter-year": `${row.year}` }))}
         />
       </TabsContent>
@@ -152,9 +152,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Lokasi", "Karyawan", "Safety Man Hours", "Target Aman", "Pendapatan/Minggu", "Action"]}
           dateFilter={false}
           access={data.access}
-          actions={<CreateManHoursButton access={data.access} />}
-          filters={<TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} />}
-          rows={data.manHours.map((row) => [row.workLocation, row.employeeCount, formatNumber(row.safetyManHours), formatNumber(row.safeTarget), row.averageWeeklyRevenue ? formatNumber(row.averageWeeklyRevenue) : "-", <ManHoursRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          actions={<CreateManHoursButton access={data.access} options={data.filterOptions} />}
+          filters={<TableMultiFilter key="lokasi" label="lokasi" filterKey="location" options={locationOptions} />}
+          rows={data.manHours.map((row) => [row.workLocation, row.employeeCount, formatNumber(row.safetyManHours), formatNumber(row.safeTarget), row.averageWeeklyRevenue ? formatNumber(row.averageWeeklyRevenue) : "-", <ManHoursRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.manHours.map((row) => ({ "data-filter-location": row.workLocation }))}
         />
       </TabsContent>
@@ -166,9 +166,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Lokasi", "Karyawan", "Bulan", "Safety Man Hours", "Action"]}
           dateFilter
           access={data.access}
-          actions={<CreateMonthlyManHoursButton access={data.access} />}
-          filters={<TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} />}
-          rows={data.monthlyManHours.map((row) => [row.workLocation, row.employeeCount, formatDate(row.month), formatNumber(row.safetyManHours), <MonthlyManHoursRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          actions={<CreateMonthlyManHoursButton access={data.access} options={data.filterOptions} />}
+          filters={<TableMultiFilter key="lokasi" label="lokasi" filterKey="location" options={locationOptions} />}
+          rows={data.monthlyManHours.map((row) => [row.workLocation, row.employeeCount, formatDate(row.month), formatNumber(row.safetyManHours), <MonthlyManHoursRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.monthlyManHours.map((row) => ({ "data-date-value": `${row.month}`, "data-filter-location": row.workLocation }))}
         />
       </TabsContent>
@@ -180,9 +180,9 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Kegiatan", "Tanggal", "PIC", "Kategori", "Evidence", "Action"]}
           dateFilter
           access={data.access}
-          actions={<CreateWeeklyActivityButton access={data.access} />}
-          filters={<TableMultiFilter label="category" filterKey="category" options={categoryOptions} />}
-          rows={data.weeklyActivities.map((row) => [row.activity, formatDate(row.activityDate), row.pic, row.category, row.evidenceUrl ? <Link key={`${row.id}-link`} href={row.evidenceUrl} className="text-primary underline" target="_blank">Buka bukti</Link> : "-", <WeeklyActivityRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
+          actions={<CreateWeeklyActivityButton access={data.access} options={data.filterOptions} />}
+          filters={<TableMultiFilter key="category" label="category" filterKey="category" options={categoryOptions} />}
+          rows={data.weeklyActivities.map((row) => [row.activity, formatDate(row.activityDate), row.pic, row.category, row.evidenceUrl ? <Link key={`${row.id}-link`} href={row.evidenceUrl} className="text-primary underline" target="_blank">Buka bukti</Link> : "-", <WeeklyActivityRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.weeklyActivities.map((row) => ({ "data-date-value": row.activityDate ? `${row.activityDate}` : "", "data-filter-category": row.category }))}
         />
       </TabsContent>

@@ -72,30 +72,32 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0" align="start">
-        <Command>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder={`Search ${placeholder.toLowerCase()}...`}
             value={search}
             onValueChange={setSearch}
           />
           <CommandList>
-            <CommandEmpty>
-              {allowCustom && search.trim() ? (
-                <div className="py-2 px-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={handleCustomInput}
-                    className="w-full rounded-md bg-primary/10 px-2 py-1.5 text-left text-primary hover:bg-primary/20"
-                  >
-                    Add "{search.trim()}"
-                  </button>
-                </div>
-              ) : (
-                <div className="py-6 text-center text-xs text-muted-foreground">
-                  {emptyText}
-                </div>
-              )}
-            </CommandEmpty>
+            {filteredOptions.length === 0 && (
+              <div className="py-6 text-center text-sm">
+                {allowCustom && search.trim() ? (
+                  <div className="py-2 px-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={handleCustomInput}
+                      className="w-full rounded-md bg-primary/10 px-2 py-1.5 text-left text-primary hover:bg-primary/20"
+                    >
+                      Add "{search.trim()}"
+                    </button>
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-xs text-muted-foreground">
+                    {emptyText}
+                  </div>
+                )}
+              </div>
+            )}
             <CommandGroup>
               {filteredOptions.map((option) => (
                 <CommandItem
