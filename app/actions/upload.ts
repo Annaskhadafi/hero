@@ -1,3 +1,5 @@
+"use server"
+
 import { isS3UploadConfigured, uploadAnyFileToS3, uploadAttendancePhotoToS3 } from "@/lib/s3-storage";
 
 const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024;

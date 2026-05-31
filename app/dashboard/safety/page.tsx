@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, BadgeCheck, Clock, Database, FileWarning, Shie
 
 import { AdminPageShell } from "@/components/admin-page-shell"
 import { SafetyDashboardCharts } from "@/components/safety-dashboard/safety-dashboard-charts"
+import { SafetyDashboardFilter } from "./safety-filter"
 import { Button } from "@/components/ui/button"
 import { EnterpriseScorecards } from "@/components/ui/enterprise-table-kit"
 import { getSafetyDashboardData } from "@/lib/safety-dashboard/queries"
@@ -12,8 +13,13 @@ function formatNumber(value: unknown) {
   return new Intl.NumberFormat("id-ID").format(Number.isFinite(parsed) ? parsed : 0)
 }
 
-export default async function SafetyDashboardPage() {
-  const data = await getSafetyDashboardData()
+export default async function SafetyDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string; location?: string }>
+}) {
+  const params = await searchParams
+  const data = await getSafetyDashboardData(params)
 
   return (
     <AdminPageShell
@@ -21,12 +27,15 @@ export default async function SafetyDashboardPage() {
       title="Safety Dashboard"
       description="Overview KPI dan grafik K3 untuk manajemen. Form, import, dan tabel data dipisah ke halaman Data Management."
       actions={(
-        <Button asChild>
-          <Link href="/dashboard/safety/data">
-            <Database className="size-4" />
-            Kelola Data Safety
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <SafetyDashboardFilter filterOptions={data.filterOptions} />
+          <Button asChild>
+            <Link href="/dashboard/safety/data">
+              <Database className="size-4" />
+              Kelola Data Safety
+            </Link>
+          </Button>
+        </div>
       )}
     >
       <EnterpriseScorecards
