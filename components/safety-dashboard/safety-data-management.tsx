@@ -70,7 +70,13 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           access={data.access}
           actions={<CreateIncidentReportButton access={data.access} />}
           presets={<TableFilterPresets presets={[{ label: "Open", filters: { status: "open" } }, { label: "Property Damage", filters: { category: "Property Damage" } }]} />}
-          filters={<><TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} /><TableMultiFilter label="category" filterKey="category" options={categoryOptions} /><TableMultiFilter label="status" filterKey="status" options={statusOptions} /></>}
+          filters={
+            <>
+              <TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} />
+              <TableMultiFilter label="category" filterKey="category" options={categoryOptions} />
+              <TableMultiFilter label="status" filterKey="status" options={statusOptions} />
+            </>
+          }
           scorecards={[{ label: "Total", value: data.incidentReports.length, description: "Incident detail" }, { label: "Open", value: data.incidentReports.filter((row) => row.status === "open").length, description: "Belum ditutup", tone: "warning" }]}
           rows={data.incidentReports.map((row) => [row.workerName, row.department, row.incidentDescription, row.propertyDamage, row.location, row.category, formatDate(row.incidentDate), <AdminStatusBadge key={`${row.id}-status`} value={row.status} />, <IncidentReportRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
           rowAttributes={data.incidentReports.map((row) => ({ "data-date-value": row.incidentDate ? `${row.incidentDate}` : "", "data-filter-location": row.location, "data-filter-category": row.category, "data-filter-status": row.status }))}
@@ -113,7 +119,12 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           access={data.access}
           actions={<CreateCertificationButton access={data.access} />}
           presets={<TableFilterPresets presets={[{ label: "Expired", filters: { status: "EXPIRED" } }, { label: "Aktif", filters: { status: "AKTIF" } }]} />}
-          filters={<><TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} /><TableMultiFilter label="status" filterKey="status" options={statusOptions} /></>}
+          filters={
+            <>
+              <TableMultiFilter label="lokasi" filterKey="location" options={locationOptions} />
+              <TableMultiFilter label="status" filterKey="status" options={statusOptions} />
+            </>
+          }
           scorecards={[{ label: "Total alat", value: data.certifications.length, description: "Sertifikasi tercatat" }, { label: "Expired", value: data.kpis.certificationExpired, description: "Perlu follow up", tone: "danger" }]}
           rows={data.certifications.map((row) => [row.equipmentName, row.picDepartment, row.workArea, row.equipmentClassification, row.certifier, formatDate(row.certificationDate), formatDate(row.nextCertificationDate), <AdminStatusBadge key={`${row.id}-status`} value={row.status} />, row.regulation, row.workLocation, <CertificationRowActions key={`${row.id}-actions`} row={row} access={data.access} />])}
           rowAttributes={data.certifications.map((row) => ({ "data-date-value": row.nextCertificationDate ? `${row.nextCertificationDate}` : "", "data-filter-location": row.workLocation, "data-filter-status": row.status }))}

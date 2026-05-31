@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { Plus } from "lucide-react"
 
 import {
@@ -19,7 +20,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 
-type NativeFormAction = (formData: FormData) => Promise<void>
+type SafetyActionResult = { ok: boolean; message: string }
+type NativeFormAction = (formData: FormData) => Promise<SafetyActionResult>
 type TimestampValue = Date | string | null
 
 type YearlySummaryRow = { id: number; year: number; fatality: number; lostDayInjury: number; restrictedWorkDayInjury: number; medicalTreatmentCase: number; firstAid: number; propertyDamage: number; nearMissReport: number; environmental: number; fatigue: number; totalEvents: number }
@@ -57,23 +59,49 @@ function TextAreaField({ name, label, defaultValue }: { name: string; label: str
   )
 }
 
-function DeleteFooter({ id, action }: { id: number; action: NativeFormAction }) {
+function useSafetyMutation(action: NativeFormAction, onDone: () => void) {
+  const router = useRouter()
+  const [pending, startTransition] = React.useTransition()
+  const [error, setError] = React.useState<string | null>(null)
+
+  const run = (formData: FormData) => {
+    startTransition(async () => {
+      const result = await action(formData)
+      if (result.ok) {
+        setError(null)
+        onDone()
+        router.refresh()
+      } else {
+        setError(result.message)
+      }
+    })
+  }
+
+  return { pending, error, setError, run }
+}
+
+function DialogSubmitButton({ pending, onClick, children, variant }: { pending: boolean; onClick: () => void; children: React.ReactNode; variant?: "default" | "destructive" }) {
   return (
-    <form action={action} className="ml-auto flex gap-2">
-      <input type="hidden" name="intent" value="delete" />
-      <input type="hidden" name="id" value={id} />
-      <Button type="submit" variant="destructive">Hapus</Button>
-    </form>
+    <Button type="button" variant={variant} disabled={pending} onClick={onClick} className="ml-auto">
+      {pending ? "Memproses..." : children}
+    </Button>
   )
 }
 
-function SubmitFooter() {
-  return <Button type="submit" className="ml-auto">Simpan</Button>
+function FormError({ message }: { message: string | null }) {
+  if (!message) return null
+  return <p className="text-sm font-medium text-destructive">{message}</p>
 }
 
-function AddButton({ children }: { children: React.ReactNode }) {
-  return <Button type="button" size="dense"><Plus className="size-4" />{children}</Button>
-}
+const AddButton = React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof Button>>(({ children, ...props }, ref) => {
+  return (
+    <Button ref={ref} type="button" size="dense" {...props}>
+      <Plus className="size-4" />
+      {children}
+    </Button>
+  )
+})
+AddButton.displayName = "AddButton"
 
 function useDialogMode() {
   const [mode, setMode] = React.useState<"view" | "edit" | "delete" | "form" | null>(null)
@@ -180,18 +208,36 @@ function WeeklyActivityFields({ row }: { row?: Partial<WeeklyActivityRow> }) {
 }
 
 function CreateDialog({ title, access, action, children }: { title: string; access: TableRbacAccess; action: NativeFormAction; children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false)
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const mutation = useSafetyMutation(action, () => setOpen(false))
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
+    if (!next) {
+      mutation.setError(null)
+      formRef.current?.reset()
+    }
+  }
+
   return (
     <EnterpriseRecordDialog
       trigger={<AddButton>Tambah Data</AddButton>}
       title={title}
       mode="form"
       access={access}
-      footer={<SubmitFooter />}
+      open={open}
+      onOpenChange={handleOpenChange}
+      footer={<DialogSubmitButton pending={mutation.pending} onClick={() => formRef.current?.requestSubmit()}>Simpan</DialogSubmitButton>}
     >
-      <form id={`${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-form`} action={action} className="grid gap-4">
+      <form
+        ref={formRef}
+        action={mutation.run}
+        className="grid gap-4"
+      >
         <input type="hidden" name="intent" value="create" />
         {children}
-        <SubmitFooter />
+        <FormError message={mutation.error} />
       </form>
     </EnterpriseRecordDialog>
   )
@@ -208,16 +254,53 @@ export function CreateWeeklyActivityButton({ access }: { access: TableRbacAccess
 
 function GenericRowActions({ access, title, deleteLabel, action, id, children }: { access: TableRbacAccess; title: string; deleteLabel: string; action: NativeFormAction; id: number; children: React.ReactNode }) {
   const dialog = useDialogMode()
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const mutation = useSafetyMutation(action, () => dialog.setMode(null))
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      mutation.setError(null)
+      dialog.setMode(null)
+    }
+  }
+
+  const submitDelete = () => {
+    const formData = new FormData()
+    formData.set("intent", "delete")
+    formData.set("id", `${id}`)
+    mutation.run(formData)
+  }
+
   return (
     <>
       <EnterpriseActionButtons access={access} onView={() => dialog.setMode("view")} onEdit={() => dialog.setMode("edit")} onDelete={() => dialog.setMode("delete")} />
-      <EnterpriseRecordDialog open={dialog.open} onOpenChange={dialog.onOpenChange} title={title} mode={dialog.mode === "delete" ? "delete" : dialog.mode === "edit" ? "edit" : "view"} access={access} footer={dialog.mode === "delete" ? <DeleteFooter id={id} action={action} /> : undefined}>
-        {dialog.mode === "delete" ? <p className="text-sm text-muted-foreground">Hapus {deleteLabel}?</p> : (
-          <form action={action} className="grid gap-4">
+      <EnterpriseRecordDialog
+        open={dialog.open}
+        onOpenChange={handleOpenChange}
+        title={title}
+        mode={dialog.mode === "delete" ? "delete" : dialog.mode === "edit" ? "edit" : "view"}
+        access={access}
+        footer={
+          dialog.mode === "delete" ? (
+            <DialogSubmitButton pending={mutation.pending} variant="destructive" onClick={submitDelete}>Hapus</DialogSubmitButton>
+          ) : dialog.mode === "edit" ? (
+            <DialogSubmitButton pending={mutation.pending} onClick={() => formRef.current?.requestSubmit()}>Simpan</DialogSubmitButton>
+          ) : undefined
+        }
+      >
+        {dialog.mode === "delete" ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-muted-foreground">Hapus {deleteLabel}?</p>
+            <FormError message={mutation.error} />
+          </div>
+        ) : (
+          <form ref={formRef} action={mutation.run} className="grid gap-4">
             <input type="hidden" name="intent" value="update" />
             <input type="hidden" name="id" value={id} />
-            {children}
-            {dialog.mode === "edit" ? <SubmitFooter /> : null}
+            <fieldset disabled={dialog.mode === "view"} className="grid gap-4 border-0 p-0 disabled:opacity-100">
+              {children}
+            </fieldset>
+            <FormError message={mutation.error} />
           </form>
         )}
       </EnterpriseRecordDialog>
