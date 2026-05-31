@@ -85,6 +85,7 @@
     "face-api.js": "^0.22.2",
     "fuse.js": "^7.3.0",
     "html2canvas": "^1.4.1",
+    "html2canvas-pro": "^2.0.4",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.541.0",

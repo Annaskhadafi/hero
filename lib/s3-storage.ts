@@ -250,6 +250,41 @@ export async function getS3ObjectReadUrl(objectUrl: string | null, expiresIn = 3
   }
 }
 
+export function resolveS3ObjectKey(objectUrl: string | null) {
+  if (!objectUrl) {
+    return null;
+  }
+
+  return getObjectKeyFromUrl(objectUrl);
+}
+
+export async function getS3ObjectForProxy(objectUrl: string | null) {
+  const key = resolveS3ObjectKey(objectUrl);
+
+  if (!key) {
+    return null;
+  }
+
+  const response = await getS3Client().send(
+    new GetObjectCommand({
+      Bucket: serverEnv.s3BucketName,
+      Key: key,
+    }),
+  );
+
+  if (!response.Body) {
+    return null;
+  }
+
+  const byteArray = await response.Body.transformToByteArray();
+
+  return {
+    body: byteArray,
+    contentType: response.ContentType ?? "application/octet-stream",
+    contentLength: response.ContentLength ?? byteArray.byteLength,
+  };
+}
+
 export function isS3UploadConfigured() {
   return Boolean(
     serverEnv.s3BucketName &&
