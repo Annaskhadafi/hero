@@ -13,8 +13,13 @@ import { type SafetyInspection } from "@/app/actions/safety-inspections"
 import html2canvas from "html2canvas-pro"
 import jsPDF from "jspdf"
 
+type InspectionWithAttachments = SafetyInspection & {
+  reportAttachmentSignedUrl?: string
+  resultAttachmentSignedUrl?: string
+}
+
 interface InspectionPreviewDialogProps {
-  inspection?: SafetyInspection
+  inspection?: InspectionWithAttachments
   open: boolean
   onOpenChange: (open: boolean) => void
   onEdit: () => void
@@ -40,8 +45,8 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
   const resultUrl = inspection?.resultAttachmentUrl ?? ""
   const reportIsPdf = isPdfUrl(reportUrl)
   const resultIsPdf = isPdfUrl(resultUrl)
-  const reportSrc = toProxyUrl(reportUrl)
-  const resultSrc = toProxyUrl(resultUrl)
+  const reportSrc = inspection?.reportAttachmentSignedUrl || toProxyUrl(reportUrl)
+  const resultSrc = inspection?.resultAttachmentSignedUrl || toProxyUrl(resultUrl)
 
   if (!inspection) return null
 

@@ -13,15 +13,20 @@ import { InspectionFormDialog } from "./inspection-form-dialog"
 import { InspectionPreviewDialog } from "./inspection-preview-dialog"
 import { deleteSafetyInspection, type SafetyInspection } from "@/app/actions/safety-inspections"
 
+export type SafetyInspectionWithAttachments = SafetyInspection & {
+  reportAttachmentSignedUrl?: string
+  resultAttachmentSignedUrl?: string
+}
+
 interface InspectionClientProps {
-  inspections: SafetyInspection[]
+  inspections: SafetyInspectionWithAttachments[]
   categories: string[]
   pics: string[]
   currentUser: string
 }
 
 export function InspectionClient({ inspections, categories, pics, currentUser }: InspectionClientProps) {
-  const [selectedInspection, setSelectedInspection] = useState<SafetyInspection | undefined>(undefined)
+  const [selectedInspection, setSelectedInspection] = useState<SafetyInspectionWithAttachments | undefined>(undefined)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
 
@@ -47,12 +52,12 @@ export function InspectionClient({ inspections, categories, pics, currentUser }:
     }
   }
 
-  const handleEdit = (inspection: SafetyInspection) => {
+  const handleEdit = (inspection: SafetyInspectionWithAttachments) => {
     setSelectedInspection(inspection)
     setIsDialogOpen(true)
   }
 
-  const handleView = (inspection: SafetyInspection) => {
+  const handleView = (inspection: SafetyInspectionWithAttachments) => {
     setSelectedInspection(inspection)
     setIsPreviewOpen(true)
   }
