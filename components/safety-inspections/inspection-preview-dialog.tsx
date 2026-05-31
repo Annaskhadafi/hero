@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { format } from "date-fns"
 import { Printer, Download, FileText, CheckCircle2 } from "lucide-react"
 import {
@@ -9,10 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  getInspectionAttachmentDataUrl,
-  type SafetyInspection,
-} from "@/app/actions/safety-inspections"
+import { type SafetyInspection } from "@/app/actions/safety-inspections"
 import html2canvas from "html2canvas-pro"
 import jsPDF from "jspdf"
 
@@ -38,51 +35,13 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
   const documentRef = useRef<HTMLDivElement>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
-  const [reportSrc, setReportSrc] = useState("")
-  const [resultSrc, setResultSrc] = useState("")
-  const [imagesLoading, setImagesLoading] = useState(false)
 
   const reportUrl = inspection?.reportAttachmentUrl ?? ""
   const resultUrl = inspection?.resultAttachmentUrl ?? ""
   const reportIsPdf = isPdfUrl(reportUrl)
   const resultIsPdf = isPdfUrl(resultUrl)
-
-  useEffect(() => {
-    if (!open) return
-
-    let cancelled = false
-    setReportSrc("")
-    setResultSrc("")
-
-    const needsReportImage = Boolean(reportUrl) && !reportIsPdf
-    const needsResultImage = Boolean(resultUrl) && !resultIsPdf
-
-    if (!needsReportImage && !needsResultImage) {
-      setImagesLoading(false)
-      return
-    }
-
-    setImagesLoading(true)
-    Promise.all([
-      needsReportImage ? getInspectionAttachmentDataUrl(reportUrl) : Promise.resolve(null),
-      needsResultImage ? getInspectionAttachmentDataUrl(resultUrl) : Promise.resolve(null),
-    ])
-      .then(([reportData, resultData]) => {
-        if (cancelled) return
-        if (reportData) setReportSrc(reportData)
-        if (resultData) setResultSrc(resultData)
-      })
-      .catch((error) => {
-        console.error("Failed to load attachment images", error)
-      })
-      .finally(() => {
-        if (!cancelled) setImagesLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [open, reportUrl, resultUrl, reportIsPdf, resultIsPdf])
+  const reportSrc = toProxyUrl(reportUrl)
+  const resultSrc = toProxyUrl(resultUrl)
 
   if (!inspection) return null
 
@@ -207,11 +166,11 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
             <Button variant="outline" size="sm" onClick={onEdit} className="hidden sm:flex border-sky-200 text-sky-700 hover:bg-sky-50 font-bold">
               Edit Data
             </Button>
-            <Button size="sm" className="bg-[#059669] hover:bg-[#047857] text-white font-bold tracking-wide" onClick={handleDownloadPDF} disabled={isDownloading || isPrinting || imagesLoading}>
+            <Button size="sm" className="bg-[#059669] hover:bg-[#047857] text-white font-bold tracking-wide" onClick={handleDownloadPDF} disabled={isDownloading || isPrinting}>
               <Download className={`mr-2 h-4 w-4 ${isDownloading ? "animate-bounce" : ""}`} /> 
               {isDownloading ? "Memproses..." : "Unduh Laporan"}
             </Button>
-            <Button size="sm" className="bg-[#0f172a] text-white hover:bg-slate-800 font-bold tracking-wide" onClick={handlePrint} disabled={isDownloading || isPrinting || imagesLoading}>
+            <Button size="sm" className="bg-[#0f172a] text-white hover:bg-slate-800 font-bold tracking-wide" onClick={handlePrint} disabled={isDownloading || isPrinting}>
               <Printer className="mr-2 h-4 w-4" /> {isPrinting ? "Menyiapkan..." : "Cetak Dokumen"}
             </Button>
           </div>
@@ -354,14 +313,10 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
                           {reportIsPdf ? (
                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 bg-white">
                               <FileText className="h-16 w-16 mb-3 text-red-500" />
-                              <a href={toProxyUrl(reportUrl)} target="_blank" rel="noreferrer" className="text-sm font-bold hover:underline text-blue-600">Lihat PDF Laporan</a>
+                              <a href={reportSrc} target="_blank" rel="noreferrer" className="text-sm font-bold hover:underline text-blue-600">Lihat PDF Laporan</a>
                             </div>
-                          ) : reportSrc ? (
-                            <img src={reportSrc} alt="Report Attachment" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[11px] font-bold uppercase tracking-widest text-slate-400 bg-white">
-                              {imagesLoading ? "Memuat gambar..." : "Gambar gagal dimuat"}
-                            </div>
+                            <img src={reportSrc} alt="Report Attachment" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           )}
                         </div>
                       </div>
@@ -372,14 +327,10 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
                           {resultIsPdf ? (
                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 bg-white">
                               <FileText className="h-16 w-16 mb-3 text-red-500" />
-                              <a href={toProxyUrl(resultUrl)} target="_blank" rel="noreferrer" className="text-sm font-bold hover:underline text-blue-600">Lihat PDF Hasil</a>
+                              <a href={resultSrc} target="_blank" rel="noreferrer" className="text-sm font-bold hover:underline text-blue-600">Lihat PDF Hasil</a>
                             </div>
-                          ) : resultSrc ? (
-                            <img src={resultSrc} alt="Result Attachment" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[11px] font-bold uppercase tracking-widest text-slate-400 bg-white">
-                              {imagesLoading ? "Memuat gambar..." : "Gambar gagal dimuat"}
-                            </div>
+                            <img src={resultSrc} alt="Result Attachment" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           )}
                         </div>
                       </div>

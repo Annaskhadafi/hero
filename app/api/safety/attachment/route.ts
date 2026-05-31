@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "@/lib/auth-session";
+import { hasValidSessionCookie } from "@/lib/auth-cookie";
 import {
   getS3ObjectForProxy,
   isS3UploadConfigured,
@@ -9,9 +9,12 @@ import {
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const session = await getServerSession();
+  // Validate the signed session cookie locally (HMAC) so attachment loading
+  // does not depend on a live database round-trip, which can be flaky against
+  // the remote Postgres link.
+  const isAuthenticated = await hasValidSessionCookie(request.headers.get("cookie"));
 
-  if (!session?.user) {
+  if (!isAuthenticated) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
