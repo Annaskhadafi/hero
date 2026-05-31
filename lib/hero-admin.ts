@@ -691,6 +691,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Checklist Generator',
+    url: '/dashboard/hse/checklist-generator',
+    iconName: 'checklist',
+    resource: 'hse_checklist_generator',
+    sortOrder: 5,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',
@@ -1387,6 +1398,16 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       canEdit: true,
       canDelete: true,
       canSelectAll: true,
+    }
+  }
+
+  if (resource === 'hse_checklist_generator') {
+    const allowed = roleName === 'User Safety'
+    return {
+      canView: allowed,
+      canEdit: allowed,
+      canDelete: allowed,
+      canSelectAll: false,
     }
   }
 

@@ -2,6 +2,7 @@ import {
   type AnyPgColumn,
   boolean,
   decimal,
+  doublePrecision,
   integer,
   date,
   jsonb,
@@ -758,13 +759,21 @@ export const safetyPerformanceMetrics = pgTable('hero_safety_performance_metrics
   year: integer('year').notNull(),
   periodLabel: text('period_label').notNull(),
   employeeCount: integer('employee_count').notNull().default(0),
-  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 }).notNull().default('0'),
-  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
+  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 })
+    .notNull()
+    .default('0'),
+  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
   fatalityActual: decimal('fatality_actual', { precision: 10, scale: 2 }).notNull().default('0'),
   ltiThreshold: decimal('lti_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
   ltiActual: decimal('lti_actual', { precision: 10, scale: 2 }).notNull().default('0'),
-  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
-  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 }).notNull().default('0'),
+  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
+  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 })
+    .notNull()
+    .default('0'),
   sourceSheet: text('source_sheet').notNull().default('manual'),
   sourceRowNumber: integer('source_row_number'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -2009,3 +2018,112 @@ export const safetyInspections = pgTable('hero_safety_inspections', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+export const checklistTemplates = pgTable('hero_checklist_templates', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const checklistTemplateRevisions = pgTable(
+  'hero_checklist_template_revisions',
+  {
+    id: serial('id').primaryKey(),
+    templateId: integer('template_id')
+      .notNull()
+      .references(() => checklistTemplates.id, { onDelete: 'cascade' }),
+    revisionNumber: integer('revision_number').notNull().default(1),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    templateRevisionUnique: uniqueIndex('hero_checklist_template_revisions_template_rev_uq').on(
+      table.templateId,
+      table.revisionNumber
+    ),
+  })
+)
+
+export const checklistTemplateRevisionItems = pgTable(
+  'hero_checklist_template_revision_items',
+  {
+    id: serial('id').primaryKey(),
+    revisionId: integer('revision_id')
+      .notNull()
+      .references(() => checklistTemplateRevisions.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull().default(0),
+    prompt: text('prompt').notNull(),
+    inputType: text('input_type').notNull(),
+    options: jsonb('options'),
+    isRequired: boolean('is_required').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    revisionOrderUnique: uniqueIndex('hero_checklist_template_revision_items_revision_order_uq').on(
+      table.revisionId,
+      table.orderIndex
+    ),
+  })
+)
+
+export const dailyChecklists = pgTable('hero_daily_checklists', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').references(() => checklistTemplates.id, {
+    onDelete: 'set null',
+  }),
+  templateRevisionId: integer('template_revision_id').references(
+    () => checklistTemplateRevisions.id,
+    {
+      onDelete: 'set null',
+    }
+  ),
+  titleSnapshot: text('title_snapshot').notNull(),
+  descriptionSnapshot: text('description_snapshot').notNull().default(''),
+  area: text('area').notNull().default(''),
+  responsibleEmployeeId: integer('responsible_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  responsibleName: text('responsible_name').notNull().default(''),
+  status: text('status').notNull().default('in_progress'),
+  scorePercent: doublePrecision('score_percent'),
+  completedAt: timestamp('completed_at'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const dailyChecklistAnswers = pgTable(
+  'hero_daily_checklist_answers',
+  {
+    id: serial('id').primaryKey(),
+    checklistId: integer('checklist_id')
+      .notNull()
+      .references(() => dailyChecklists.id, { onDelete: 'cascade' }),
+    revisionItemId: integer('revision_item_id')
+      .notNull()
+      .references(() => checklistTemplateRevisionItems.id, { onDelete: 'cascade' }),
+    inputType: text('input_type').notNull(),
+    valueText: text('value_text').notNull().default(''),
+    valueChoice: text('value_choice').notNull().default(''),
+    valueNumber: doublePrecision('value_number'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    checklistItemUnique: uniqueIndex('hero_daily_checklist_answers_checklist_item_uq').on(
+      table.checklistId,
+      table.revisionItemId
+    ),
+  })
+)

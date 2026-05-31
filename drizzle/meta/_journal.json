@@ -190,6 +190,13 @@
       "when": 1780230392275,
       "tag": "0026_woozy_justin_hammer",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1780240795646,
+      "tag": "0027_massive_moira_mactaggert",
+      "breakpoints": true
     }
   ]
 }
