@@ -151,12 +151,26 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               print-color-adjust: exact !important;
             }
 
+            /* Override Radix portal & presentation wrappers to flow naturally in block layout */
+            div[data-radix-portal],
+            div[data-radix-portal] > div,
+            div[role="presentation"] {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              height: auto !important;
+              overflow: visible !important;
+              transform: none !important;
+              inset: auto !important;
+            }
+
             /* Remove fixed centering, border, shadow, and sizing limits on Dialog Content */
             [data-slot="dialog-content"] {
               position: static !important;
               display: block !important;
               width: 100% !important;
-              max-width: 210mm !important;
+              max-width: 100% !important; /* Allow it to fit within print margin area */
               margin: 0 auto !important;
               padding: 0 !important;
               border: none !important;
@@ -165,6 +179,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               transform: none !important;
               max-height: none !important;
               overflow: visible !important;
+              inset: auto !important;
             }
 
             /* Remove height and scroll limits from ScrollArea viewport */
@@ -210,7 +225,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               padding: 0 !important;
               margin: 0 !important;
               width: 100% !important;
-              max-width: 210mm;
+              max-width: 100% !important; /* Scale to page print area width */
               background: white !important;
               overflow: visible !important;
             }
