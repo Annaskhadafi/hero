@@ -29,12 +29,12 @@ export function PrintButton({ title = "Laporan_HIRADC" }: { title?: string }) {
       if (!element) throw new Error("Document not found")
         
       const canvas = await html2canvas(element, {
-        scale: 1.5, 
+        scale: 1.0, 
         useCORS: true,
         logging: false,
       })
       
-      const imgData = canvas.toDataURL("image/jpeg", 0.7)
+      const imgData = canvas.toDataURL("image/jpeg", 0.5)
       
       // A4 size: 210 x 297 mm
       const pdf = new jsPDF({

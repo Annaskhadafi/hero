@@ -77,13 +77,13 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
       if (!element) throw new Error("Preview element not found")
       
       const canvas = await html2canvas(element, {
-        scale: 1.5, 
+        scale: 1.0, 
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
       })
       
-      const imgData = canvas.toDataURL("image/jpeg", 0.7)
+      const imgData = canvas.toDataURL("image/jpeg", 0.5)
       
       const pdf = new jsPDF({
         orientation: "portrait",
