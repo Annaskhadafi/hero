@@ -32,7 +32,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -150,13 +149,12 @@ function splitLines(text: string) {
 }
 
 function PtwDocumentDialog({ record }: { record: PtwRecord }) {
+  const [open, setOpen] = useState(false);
   const handlePrint = () => window.print();
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-2"><Eye className="size-4" /> View</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button type="button" variant="outline" size="sm" className="h-8 gap-2" data-testid={`ptw-view-${record.id}`} onClick={() => setOpen(true)}><Eye className="size-4" /> View</Button>
       <DialogContent className="max-w-6xl bg-slate-100 p-0">
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
@@ -278,7 +276,7 @@ function PtwFormDialog({ record, userOptions, onSave }: { record?: PtwRecord; us
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{isEdit ? <Button variant="outline" size="sm" className="h-8 gap-2"><Pencil className="size-4" /> Edit</Button> : <Button className="h-10 gap-2 bg-blue-600 text-white hover:bg-blue-700"><Plus className="size-4" /> Pengajuan Izin Baru</Button>}</DialogTrigger>
+      {isEdit ? <Button type="button" variant="outline" size="sm" className="h-8 gap-2" data-testid={`ptw-edit-${record?.id}`} onClick={() => setOpen(true)}><Pencil className="size-4" /> Edit</Button> : <Button type="button" className="h-10 gap-2 bg-blue-600 text-white hover:bg-blue-700" data-testid="ptw-add" onClick={() => setOpen(true)}><Plus className="size-4" /> Pengajuan Izin Baru</Button>}
       <DialogContent className="max-w-4xl bg-white">
         <DialogHeader><DialogTitle>{isEdit ? "Edit Izin Kerja Aman (PTW)" : "Pengajuan Izin Kerja Aman (PTW)"}</DialogTitle><DialogDescription>Field PTW dibuat lebih lengkap untuk kontrol pekerjaan berisiko di workshop mining.</DialogDescription></DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
