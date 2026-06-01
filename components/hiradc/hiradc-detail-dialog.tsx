@@ -6,9 +6,6 @@ import { Printer, ShieldAlert, ShieldCheck } from "lucide-react"
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import jsPDF from "jspdf"
-import html2canvas from "html2canvas-pro"
-import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -58,7 +55,6 @@ interface HiradcDetailDialogProps {
 
 export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps) {
   const [open, setOpen] = React.useState(false)
-  const [isDownloading, setIsDownloading] = React.useState(false)
 
   const riskLevel = entry.riskLevelBefore?.toUpperCase() || ""
   const isHighRisk = riskLevel === "HIGH" || riskLevel === "EXTREME"
@@ -67,63 +63,6 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
     ? new Date(entry.register.effectiveDate).toLocaleDateString("id-ID")
     : new Date().toLocaleDateString("id-ID")
   const picName = entry.register?.preparedBy || "PIC / Auditor"
-
-  const handleDownloadPDF = async () => {
-    try {
-      setIsDownloading(true)
-      const toastId = toast.loading("Mempersiapkan dokumen PDF...")
-      
-      const element = document.querySelector(`.pdf-wrapper-dialog-${entry.id}`) as HTMLElement
-      if (!element) throw new Error("Preview element not found")
-      
-      const canvas = await html2canvas(element, {
-        scale: 1.0, 
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-      })
-      
-      const imgData = canvas.toDataURL("image/jpeg", 0.5)
-      
-      const pdf = new jsPDF({
-        orientation: "portrait",
-        unit: "mm",
-        format: "a4"
-      })
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = pdf.internal.pageSize.getHeight()
-      
-      const imgProps = pdf.getImageProperties(imgData)
-      
-      const margin = 10
-      const contentWidth = pdfWidth - (margin * 2)
-      const contentHeight = (imgProps.height * contentWidth) / imgProps.width
-      
-      let heightLeft = contentHeight
-      let position = margin
-      
-      pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight, undefined, "FAST")
-      heightLeft -= (pdfHeight - margin * 2)
-      
-      while (heightLeft >= 0) {
-        position = heightLeft - contentHeight + margin
-        pdf.addPage()
-        pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight, undefined, "FAST")
-        heightLeft -= (pdfHeight - margin * 2)
-      }
-      
-      pdf.save(`HIRADC_Design_1_${entry.activityName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`)
-      toast.dismiss(toastId)
-      toast.success("Berhasil mengunduh PDF")
-    } catch (error) {
-      console.error(error)
-      toast.error("Gagal memproses PDF. Membuka dialog print bawaan...")
-      window.print()
-    } finally {
-      setIsDownloading(false)
-    }
-  }
 
   const renderBulletPoints = (text: string | null | undefined, fallbackText: string) => {
     if (!text) return <p className="text-slate-500 italic text-sm">{fallbackText}</p>
@@ -176,7 +115,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="max-w-5xl overflow-hidden p-0 sm:rounded-xl">
-        <DialogHeader className="bg-slate-50 px-6 py-4 border-b">
+        <DialogHeader className="bg-slate-50 px-6 py-4 border-b no-print">
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
@@ -185,23 +124,125 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               </DialogTitle>
               <p className="text-sm text-slate-500 font-medium tracking-wider mt-1">STANDARD ATTACHMENT</p>
             </div>
-            <Button 
-              onClick={handleDownloadPDF} 
-              disabled={isDownloading}
-              className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6"
-            >
-              {isDownloading ? (
-                <span className="animate-spin mr-2">⏳</span>
-              ) : (
-                <Printer className="w-4 h-4 mr-2" />
-              )}
-              {isDownloading ? "Memproses..." : "Download PDF"}
+            <Button onClick={() => window.print()} className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6 no-print">
+              <Printer className="w-4 h-4 mr-2" />
+              Download PDF
             </Button>
           </div>
         </DialogHeader>
 
+        <style dangerouslySetInnerHTML={{__html: `
+          @media print {
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            body {
+              background: white !important;
+              overflow: visible !important;
+              height: auto !important;
+            }
+            body * {
+              visibility: hidden;
+            }
+            /* Make the dialog content, scroll area viewport, and the report container visible */
+            div[data-radix-portal],
+            div[role="presentation"],
+            div[role="dialog"],
+            [data-slot="scroll-area"],
+            [data-slot="scroll-area-viewport"],
+            .pdf-wrapper-dialog,
+            .pdf-wrapper-dialog * {
+              visibility: visible !important;
+            }
+            
+            /* Override absolute/fixed layout wrappers to allow multiple pages */
+            div[data-radix-portal],
+            div[role="presentation"] {
+              position: static !important;
+              display: block !important;
+              width: auto !important;
+              height: auto !important;
+              overflow: visible !important;
+              transform: none !important;
+              inset: auto !important;
+            }
+            
+            /* Position dialog content to fill the screen cleanly and remove constraints */
+            div[role="dialog"] {
+              position: static !important;
+              display: block !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              height: auto !important;
+              max-height: none !important;
+              transform: none !important;
+              background: transparent !important;
+              border: none !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              overflow: visible !important;
+            }
+            
+            /* Remove scroll area limits for printing */
+            [data-slot="scroll-area"] {
+              max-height: none !important;
+              height: auto !important;
+              overflow: visible !important;
+              background: white !important;
+              width: 100% !important;
+            }
+            [data-slot="scroll-area-viewport"] {
+              max-height: none !important;
+              height: auto !important;
+              overflow: visible !important;
+              width: 100% !important;
+            }
+            
+            /* Keep absolute positions intact within the printable container */
+            .pdf-wrapper-dialog .absolute {
+              position: absolute !important;
+            }
+            
+            /* Avoid page-breaks inside individual cards */
+            .pdf-wrapper-dialog .rounded-2xl {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
+            
+            /* Hide print-irrelevant parts inside the visible parent tree */
+            .no-print,
+            [role="dialog"] > button,
+            [role="dialog"] > [class*="absolute"],
+            [data-slot="scroll-area-scrollbar"] {
+              display: none !important;
+              visibility: hidden !important;
+            }
+            
+            /* Outer A4 margins */
+            @page {
+              size: A4 portrait;
+              margin: 15mm 10mm 15mm 10mm;
+            }
+
+            .pdf-wrapper-dialog {
+              border: none !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              max-width: 210mm;
+              margin-left: auto !important;
+              margin-right: auto !important;
+              background: white !important;
+              overflow: visible !important;
+            }
+          }
+        `}} />
+
         <ScrollArea className="max-h-[80vh] bg-slate-50 p-6">
-          <div className={`pdf-wrapper-dialog-${entry.id} bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative overflow-hidden`}>
+          <div className="pdf-wrapper-dialog bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative overflow-hidden">
             {/* Watermark / Stamp */}
             <div className="absolute top-12 right-12 opacity-10 pointer-events-none">
               <ShieldCheck className="w-48 h-48" />
