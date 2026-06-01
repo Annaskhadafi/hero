@@ -64,12 +64,58 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
   const picName = entry.register?.preparedBy || "PIC / Auditor"
 
   const handlePrint = () => {
-    // Navigate to the printable report view
     if (entry.register) {
-      window.open(`/dashboard/hse/hiradc/report/${entry.register.id}`, "_blank")
+      window.open(`/print/hiradc/${entry.register.id}?activityName=${encodeURIComponent(entry.activityName)}&print=1`, "_blank")
     } else {
-      window.print() // Fallback if no register attached
+      window.print()
     }
+  }
+
+  const renderBulletPoints = (text: string | null | undefined, fallbackText: string) => {
+    if (!text) return <p className="text-slate-500 italic text-sm">{fallbackText}</p>
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
+    if (lines.length === 0) return <p className="text-slate-500 italic text-sm">{fallbackText}</p>
+
+    const docPrefixes = [
+      "uu", "undang", "kepmen", "permen", "pp", "sop", "wi", 
+      "keputusan", "peraturan", "instruksi", "sk", "se"
+    ]
+
+    const parsedPoints: string[] = []
+
+    lines.forEach((line) => {
+      // Check if it starts with bullet indicators: - or * or • or 1. etc
+      const hasBulletIndicator = /^[-*•\d+\ufe0f.]\s*/.test(line)
+      
+      // Clean leading bullet indicator for checks
+      const cleanLine = line.replace(/^[-*•\d+.]\s*/, "").trim()
+      if (!cleanLine) return
+
+      const firstWord = cleanLine.split(/[\s/]/)[0]?.toLowerCase() || ""
+      
+      // Heuristic check: is it a new list item?
+      const isNewItem = 
+        parsedPoints.length === 0 || 
+        hasBulletIndicator || 
+        docPrefixes.some(p => firstWord.startsWith(p))
+
+      if (isNewItem) {
+        parsedPoints.push(cleanLine)
+      } else {
+        const lastIdx = parsedPoints.length - 1
+        parsedPoints[lastIdx] = `${parsedPoints[lastIdx]} ${cleanLine}`
+      }
+    })
+
+    return (
+      <ul className="list-disc pl-5 space-y-1.5">
+        {parsedPoints.map((point, index) => (
+          <li key={index} className="text-slate-700 font-medium text-sm leading-relaxed">
+            {point}
+          </li>
+        ))}
+      </ul>
+    )
   }
 
   return (
@@ -87,7 +133,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
             </div>
             <Button onClick={handlePrint} className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6">
               <Printer className="w-4 h-4 mr-2" />
-              Cetak Dokumen
+              Download PDF
             </Button>
           </div>
         </DialogHeader>
@@ -217,17 +263,6 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
                   </div>
                 </div>
 
-                {/* Referensi Legal */}
-                <div className="border border-slate-200 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-slate-500 font-bold text-sm">📋</span>
-                    <h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">REFERENSI LEGAL (LEGAL REFERENCE)</h3>
-                  </div>
-                  <div className="text-slate-700 font-medium text-sm leading-relaxed whitespace-pre-wrap">
-                    {entry.legalReference || "Tidak ada referensi legal."}
-                  </div>
-                </div>
-
                 {/* Pengendalian Tambahan */}
                 <div className="border border-emerald-100 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
@@ -235,8 +270,19 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
                     <ShieldAlert className="w-4 h-4 text-emerald-600" />
                     <h3 className="font-bold text-emerald-700 tracking-wide uppercase text-sm">ADDITIONAL CONTROL (PENGENDALIAN TAMBAHAN)</h3>
                   </div>
-                  <div className="text-slate-700 font-medium text-sm leading-relaxed whitespace-pre-wrap">
-                    {entry.additionalControl || "Tidak ada pengendalian tambahan."}
+                  <div className="text-slate-700 font-medium text-sm leading-relaxed">
+                    {renderBulletPoints(entry.additionalControl, "Tidak ada pengendalian tambahan.")}
+                  </div>
+                </div>
+
+                {/* Referensi Legal */}
+                <div className="border border-slate-200 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-slate-500 font-bold text-sm">📋</span>
+                    <h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">REFERENSI LEGAL (LEGAL REFERENCE)</h3>
+                  </div>
+                  <div className="text-slate-700 font-medium text-sm leading-relaxed">
+                    {renderBulletPoints(entry.legalReference, "Tidak ada referensi legal.")}
                   </div>
                 </div>
               </div>
