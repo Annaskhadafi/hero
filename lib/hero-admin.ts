@@ -713,6 +713,28 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'SIA/SIO & Tools Certification',
+    url: '/dashboard/hse/sia-sio-tools-certification',
+    iconName: 'checklist',
+    resource: 'hse_sia_sio_tools_certification',
+    sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Inventaris',
+    url: '/dashboard/hse/inventaris',
+    iconName: 'checklist',
+    resource: 'hse_inventaris',
+    sortOrder: 8,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',

@@ -2211,3 +2211,27 @@ export const hiradcImports = pgTable('hero_hiradc_imports', {
   uploadedAt: timestamp('uploaded_at').notNull().defaultNow(),
   processedAt: timestamp('processed_at'),
 })
+
+export const hseInventories = pgTable('hero_hse_inventories', {
+  id: serial('id').primaryKey(),
+  documentId: text('document_id').notNull(),
+  name: text('name').notNull(),
+  category: text('category').notNull(),
+  qty: integer('qty').notNull().default(1),
+  location: text('location').notNull(),
+  condition: text('condition').notNull().default('Baik'),
+  notes: text('notes').notNull().default(''),
+  picName: text('pic_name').notNull().default(''),
+  photoUrl: text('photo_url').notNull().default(''),
+  verifiedStatus: text('verified_status').notNull().default('verified'),
+  verifiedAt: timestamp('verified_at').notNull().defaultNow(),
+  purchaseDate: timestamp('purchase_date'),
+  validityMonths: integer('validity_months'),
+  expirationDate: timestamp('expiration_date'),
+  reminderDaysBefore: integer('reminder_days_before').notNull().default(30),
+  reminderEmailRecipients: text('reminder_email_recipients').notNull().default(''),
+  lastReminderSentAt: timestamp('last_reminder_sent_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
