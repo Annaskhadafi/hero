@@ -211,6 +211,13 @@
       "when": 1780321412813,
       "tag": "0029_sparkling_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1780326605435,
+      "tag": "0030_wealthy_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

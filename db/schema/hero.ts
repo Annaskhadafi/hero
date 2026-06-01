@@ -1877,6 +1877,8 @@ export const hrEmployees = pgTable('hero_hr_employees', {
   positionId: integer('position_id').references(() => hrPositions.id, { onDelete: 'set null' }),
   orgNodeId: integer('org_node_id').references(() => hrOrgNodes.id, { onDelete: 'set null' }),
   joinDate: date('join_date'),
+  contractStart: date('contract_start'),
+  contractEnd: date('contract_end'),
   birthDate: date('birth_date'),
   genderCode: text('gender_code').references(() => hrGenders.code, { onDelete: 'set null' }),
   ageBandCode: text('age_band_code').references(() => hrAgeBands.code, { onDelete: 'set null' }),
@@ -2249,6 +2251,31 @@ export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
   rootCauseAnalysis: text('root_cause_analysis').notNull().default(''),
   immediateCorrectiveAction: text('immediate_corrective_action').notNull().default(''),
   documentationUrl: text('documentation_url').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcRecruitments = pgTable('hero_hc_recruitments', {
+  id: serial('id').primaryKey(),
+  jobTitle: text('job_title').notNull(),
+  totalRequested: integer('total_requested').notNull().default(1),
+  section: text('section').notNull(),
+  status: text('status').notNull().default('Sourcing'), // Sourcing, Psikotes, Interview, Offering, Medical Checkup, Selesai
+  requestDate: timestamp('request_date').notNull().defaultNow(),
+  dueDate: timestamp('due_date').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcCertificates = pgTable('hero_hc_certificates', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'cascade' }),
+  employeeName: text('employee_name').notNull().default(''),
+  certificateType: text('certificate_type').notNull(), // SIO or POP
+  licenseNumber: text('license_number').notNull(),
+  issuedDate: timestamp('issued_date').notNull().defaultNow(),
+  expiryDate: timestamp('expiry_date').notNull(),
+  status: text('status').notNull().default('Active'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
