@@ -29,12 +29,12 @@ export function PrintButton({ title = "Laporan_HIRADC" }: { title?: string }) {
       if (!element) throw new Error("Document not found")
         
       const canvas = await html2canvas(element, {
-        scale: 2, 
+        scale: 1.5, 
         useCORS: true,
         logging: false,
       })
       
-      const imgData = canvas.toDataURL("image/png")
+      const imgData = canvas.toDataURL("image/jpeg", 0.7)
       
       // A4 size: 210 x 297 mm
       const pdf = new jsPDF({
@@ -52,13 +52,13 @@ export function PrintButton({ title = "Laporan_HIRADC" }: { title?: string }) {
       let heightLeft = imgHeight
       let position = 0
       
-      pdf.addImage(imgData, "PNG", 0, position, pdfWidth, imgHeight)
+      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeight, undefined, "FAST")
       heightLeft -= pdfHeight
       
       while (heightLeft >= 0) {
         position = heightLeft - imgHeight
         pdf.addPage()
-        pdf.addImage(imgData, "PNG", 0, position, pdfWidth, imgHeight)
+        pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeight, undefined, "FAST")
         heightLeft -= pdfHeight
       }
       

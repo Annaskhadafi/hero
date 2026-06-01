@@ -77,13 +77,13 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
       if (!element) throw new Error("Preview element not found")
       
       const canvas = await html2canvas(element, {
-        scale: 2, 
+        scale: 1.5, 
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
       })
       
-      const imgData = canvas.toDataURL("image/png")
+      const imgData = canvas.toDataURL("image/jpeg", 0.7)
       
       const pdf = new jsPDF({
         orientation: "portrait",
@@ -103,13 +103,13 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
       let heightLeft = contentHeight
       let position = margin
       
-      pdf.addImage(imgData, "PNG", margin, position, contentWidth, contentHeight)
+      pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight, undefined, "FAST")
       heightLeft -= (pdfHeight - margin * 2)
       
       while (heightLeft >= 0) {
         position = heightLeft - contentHeight + margin
         pdf.addPage()
-        pdf.addImage(imgData, "PNG", margin, position, contentWidth, contentHeight)
+        pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight, undefined, "FAST")
         heightLeft -= (pdfHeight - margin * 2)
       }
       
