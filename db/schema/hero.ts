@@ -759,21 +759,13 @@ export const safetyPerformanceMetrics = pgTable('hero_safety_performance_metrics
   year: integer('year').notNull(),
   periodLabel: text('period_label').notNull(),
   employeeCount: integer('employee_count').notNull().default(0),
-  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 })
-    .notNull()
-    .default('0'),
-  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
+  safeManHoursUpToYear: decimal('safe_man_hours_up_to_year', { precision: 14, scale: 2 }).notNull().default('0'),
+  fatalityThreshold: decimal('fatality_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
   fatalityActual: decimal('fatality_actual', { precision: 10, scale: 2 }).notNull().default('0'),
   ltiThreshold: decimal('lti_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
   ltiActual: decimal('lti_actual', { precision: 10, scale: 2 }).notNull().default('0'),
-  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
-  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
+  propertyDamageThreshold: decimal('property_damage_threshold', { precision: 10, scale: 2 }).notNull().default('0'),
+  propertyDamageActual: decimal('property_damage_actual', { precision: 10, scale: 2 }).notNull().default('0'),
   sourceSheet: text('source_sheet').notNull().default('manual'),
   sourceRowNumber: integer('source_row_number'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -2049,9 +2041,9 @@ export const checklistTemplateRevisions = pgTable(
   (table) => ({
     templateRevisionUnique: uniqueIndex('hero_checklist_template_revisions_template_rev_uq').on(
       table.templateId,
-      table.revisionNumber
+      table.revisionNumber,
     ),
-  })
+  }),
 )
 
 export const checklistTemplateRevisionItems = pgTable(
@@ -2072,9 +2064,9 @@ export const checklistTemplateRevisionItems = pgTable(
   (table) => ({
     revisionOrderUnique: uniqueIndex('hero_checklist_template_revision_items_revision_order_uq').on(
       table.revisionId,
-      table.orderIndex
+      table.orderIndex,
     ),
-  })
+  }),
 )
 
 export const dailyChecklists = pgTable('hero_daily_checklists', {
@@ -2082,12 +2074,9 @@ export const dailyChecklists = pgTable('hero_daily_checklists', {
   templateId: integer('template_id').references(() => checklistTemplates.id, {
     onDelete: 'set null',
   }),
-  templateRevisionId: integer('template_revision_id').references(
-    () => checklistTemplateRevisions.id,
-    {
-      onDelete: 'set null',
-    }
-  ),
+  templateRevisionId: integer('template_revision_id').references(() => checklistTemplateRevisions.id, {
+    onDelete: 'set null',
+  }),
   titleSnapshot: text('title_snapshot').notNull(),
   descriptionSnapshot: text('description_snapshot').notNull().default(''),
   area: text('area').notNull().default(''),
@@ -2101,7 +2090,7 @@ export const dailyChecklists = pgTable('hero_daily_checklists', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+});
 
 export const dailyChecklistAnswers = pgTable(
   'hero_daily_checklist_answers',
@@ -2117,13 +2106,108 @@ export const dailyChecklistAnswers = pgTable(
     valueText: text('value_text').notNull().default(''),
     valueChoice: text('value_choice').notNull().default(''),
     valueNumber: doublePrecision('value_number'),
+    attachments: jsonb('attachments').$type<string[]>().default([]),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => ({
     checklistItemUnique: uniqueIndex('hero_daily_checklist_answers_checklist_item_uq').on(
       table.checklistId,
-      table.revisionItemId
+      table.revisionItemId,
     ),
-  })
+  }),
+);
+
+// ============================================================================
+// HIRADC & Risk Management
+// Hazard Identification, Risk Assessment & Determining Control.
+// Mirrors the standard HIRADC worksheet layout (see HIRA_Service_Import_v2).
+// ============================================================================
+
+export const hiradcRegisters = pgTable('hero_hiradc_registers', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  documentNo: text('document_no').notNull().default(''),
+  department: text('department').notNull().default(''),
+  location: text('location').notNull().default(''),
+  revision: text('revision').notNull().default('0'),
+  effectiveDate: date('effective_date'),
+  preparedBy: text('prepared_by').notNull().default(''),
+  reviewedBy: text('reviewed_by').notNull().default(''),
+  approvedBy: text('approved_by').notNull().default(''),
+  status: text('status').notNull().default('draft'),
+  notes: text('notes').notNull().default(''),
+  sourceBatchId: text('source_batch_id').notNull().default(''),
+  createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hiradcEntries = pgTable(
+  'hero_hiradc_entries',
+  {
+    id: serial('id').primaryKey(),
+    registerId: integer('register_id').references(() => hiradcRegisters.id, { onDelete: 'cascade' }),
+    orderIndex: integer('order_index').notNull().default(0),
+
+    department: text('department').notNull().default(''),
+    location: text('location').notNull().default(''),
+    activityName: text('activity_name').notNull().default(''),
+    routineType: text('routine_type').notNull().default('Rutin'),
+    equipment: text('equipment').notNull().default(''),
+
+    hazardCategory: text('hazard_category').notNull().default(''),
+    hazardDetails: text('hazard_details').notNull().default(''),
+    riskConsequence: text('risk_consequence').notNull().default(''),
+
+    likelihoodBefore: text('likelihood_before').notNull().default(''),
+    severityBefore: integer('severity_before'),
+    scoreBefore: integer('score_before'),
+    riskLevelBefore: text('risk_level_before').notNull().default(''),
+
+    existingControl: text('existing_control').notNull().default(''),
+    legalReference: text('legal_reference').notNull().default(''),
+
+    likelihoodAfter: text('likelihood_after').notNull().default(''),
+    severityAfter: integer('severity_after'),
+    scoreAfter: integer('score_after'),
+    riskLevelAfter: text('risk_level_after').notNull().default(''),
+
+    additionalControl: text('additional_control').notNull().default(''),
+
+    sourceBatchId: text('source_batch_id').notNull().default(''),
+    sourceRowNumber: integer('source_row_number'),
+    rawDepartment: text('raw_department').notNull().default(''),
+    rawRoutineType: text('raw_routine_type').notNull().default(''),
+    rawLikelihoodBefore: text('raw_likelihood_before').notNull().default(''),
+    rawSeverityBefore: text('raw_severity_before').notNull().default(''),
+    rawLikelihoodAfter: text('raw_likelihood_after').notNull().default(''),
+    rawSeverityAfter: text('raw_severity_after').notNull().default(''),
+    rawScoreBefore: text('raw_score_before').notNull().default(''),
+    rawScoreAfter: text('raw_score_after').notNull().default(''),
+
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    hiradcEntriesRegisterIdx: uniqueIndex('hero_hiradc_entries_register_order_uq').on(
+      table.registerId,
+      table.orderIndex,
+    ),
+  }),
 )
+
+export const hiradcImports = pgTable('hero_hiradc_imports', {
+  id: serial('id').primaryKey(),
+  batchId: text('batch_id').notNull().unique(),
+  originalFilename: text('original_filename').notNull().default(''),
+  totalRows: integer('total_rows').notNull().default(0),
+  successCount: integer('success_count').notNull().default(0),
+  errorCount: integer('error_count').notNull().default(0),
+  registerCount: integer('register_count').notNull().default(0),
+  status: text('status').notNull().default('pending'),
+  errorLog: text('error_log'),
+  uploadedByUserId: text('uploaded_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+  uploadedAt: timestamp('uploaded_at').notNull().defaultNow(),
+  processedAt: timestamp('processed_at'),
+})

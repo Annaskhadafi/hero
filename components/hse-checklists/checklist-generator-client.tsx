@@ -84,24 +84,25 @@ type LoadedChecklist = {
   }>
   answers: Record<
     number,
-    | { inputType: 'yes_no_na'; valueChoice: 'yes' | 'no' | 'na' | '' }
-    | { inputType: 'scale_1_5'; valueNumber: number | null }
-    | { inputType: 'free_text'; valueText: string }
+    | { inputType: 'yes_no_na'; valueChoice: 'yes' | 'no' | 'na' | ''; attachments: string[] }
+    | { inputType: 'scale_1_5'; valueNumber: number | null; attachments: string[] }
+    | { inputType: 'free_text'; valueText: string; attachments: string[] }
   >
 }
 
 function toChecklistAnswerState(
   itemType: string,
-  raw: { valueChoice: string; valueText: string; valueNumber: number | null } | null
+  raw: { valueChoice: string; valueText: string; valueNumber: number | null; attachments?: string[] } | null
 ) {
+  const attachments = raw?.attachments ?? []
   if (itemType === 'yes_no_na') {
     const value = (raw?.valueChoice ?? '') as 'yes' | 'no' | 'na' | ''
-    return { inputType: 'yes_no_na' as const, valueChoice: value }
+    return { inputType: 'yes_no_na' as const, valueChoice: value, attachments }
   }
   if (itemType === 'scale_1_5') {
-    return { inputType: 'scale_1_5' as const, valueNumber: raw?.valueNumber ?? null }
+    return { inputType: 'scale_1_5' as const, valueNumber: raw?.valueNumber ?? null, attachments }
   }
-  return { inputType: 'free_text' as const, valueText: raw?.valueText ?? '' }
+  return { inputType: 'free_text' as const, valueText: raw?.valueText ?? '', attachments }
 }
 
 export function ChecklistGeneratorClient({

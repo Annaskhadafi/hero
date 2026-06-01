@@ -1,11 +1,12 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, Camera, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { ChecklistInputType } from '@/app/actions/hse-checklists'
 import { saveDailyChecklistAnswers } from '@/app/actions/hse-checklists'
+import { uploadFile } from '@/app/actions/upload'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,14 +25,14 @@ type ChecklistItem = {
 }
 
 type ChecklistAnswerState =
-  | { inputType: 'yes_no_na'; valueChoice: 'yes' | 'no' | 'na' | '' }
-  | { inputType: 'scale_1_5'; valueNumber: number | null }
-  | { inputType: 'free_text'; valueText: string }
+  | { inputType: 'yes_no_na'; valueChoice: 'yes' | 'no' | 'na' | ''; attachments: string[] }
+  | { inputType: 'scale_1_5'; valueNumber: number | null; attachments: string[] }
+  | { inputType: 'free_text'; valueText: string; attachments: string[] }
 
 function buildInitialAnswer(item: ChecklistItem): ChecklistAnswerState {
-  if (item.inputType === 'yes_no_na') return { inputType: 'yes_no_na', valueChoice: '' }
-  if (item.inputType === 'scale_1_5') return { inputType: 'scale_1_5', valueNumber: null }
-  return { inputType: 'free_text', valueText: '' }
+  if (item.inputType === 'yes_no_na') return { inputType: 'yes_no_na', valueChoice: '', attachments: [] }
+  if (item.inputType === 'scale_1_5') return { inputType: 'scale_1_5', valueNumber: null, attachments: [] }
+  return { inputType: 'free_text', valueText: '', attachments: [] }
 }
 
 export function DailyChecklistRunDialog({
@@ -93,6 +94,7 @@ export function DailyChecklistRunDialog({
           revisionItemId: item.id,
           inputType: 'yes_no_na' as const,
           valueChoice: answer.valueChoice,
+          attachments: answer.attachments,
         }
       }
       if (answer.inputType === 'scale_1_5') {
@@ -100,12 +102,14 @@ export function DailyChecklistRunDialog({
           revisionItemId: item.id,
           inputType: 'scale_1_5' as const,
           valueNumber: answer.valueNumber,
+          attachments: answer.attachments,
         }
       }
       return {
         revisionItemId: item.id,
         inputType: 'free_text' as const,
         valueText: answer.valueText,
+        attachments: answer.attachments,
       }
     })
   }, [answers, items])
@@ -248,6 +252,7 @@ export function DailyChecklistRunDialog({
                           [item.id]: {
                             inputType: 'yes_no_na',
                             valueChoice: (value as 'yes' | 'no' | 'na' | '') ?? '',
+                            attachments: current[item.id]?.attachments ?? [],
                           },
                         }))
                       }
@@ -281,6 +286,7 @@ export function DailyChecklistRunDialog({
                             [item.id]: {
                               inputType: 'scale_1_5',
                               valueNumber: value ? Number(value) : null,
+                              attachments: current[item.id]?.attachments ?? [],
                             },
                           }))
                         }
@@ -308,7 +314,11 @@ export function DailyChecklistRunDialog({
                         onChange={(event) =>
                           setAnswers((current) => ({
                             ...current,
-                            [item.id]: { inputType: 'free_text', valueText: event.target.value },
+                            [item.id]: { 
+                              inputType: 'free_text', 
+                              valueText: event.target.value,
+                              attachments: current[item.id]?.attachments ?? [],
+                            },
                           }))
                         }
                         placeholder="Tulis catatan kondisi / temuan..."
@@ -317,6 +327,71 @@ export function DailyChecklistRunDialog({
                       />
                     </div>
                   ) : null}
+
+                  <div className="border-t border-border/70 mt-4 pt-4">
+                    <Label className="text-muted-foreground text-xs font-medium mb-2 block">Lampiran Foto</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {answer.attachments.map((url, i) => (
+                        <div key={i} className="relative group size-16 rounded-md overflow-hidden border border-border/70">
+                          <img src={url} className="w-full h-full object-cover" alt="Attachment" />
+                          {!isCompleted && canEdit && (
+                            <button
+                              type="button"
+                              className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                setAnswers(curr => ({
+                                  ...curr,
+                                  [item.id]: {
+                                    ...curr[item.id],
+                                    attachments: curr[item.id].attachments.filter((_, index) => index !== i)
+                                  } as ChecklistAnswerState
+                                }))
+                              }}
+                            >
+                              <X className="size-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      {!isCompleted && canEdit && (
+                        <label className="flex size-16 cursor-pointer items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/20 hover:bg-muted/30">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={async (e) => {
+                              const files = Array.from(e.target.files ?? [])
+                              if (!files.length) return
+                              const toastId = toast.loading('Mengunggah foto...')
+                              try {
+                                const uploadedUrls: string[] = []
+                                for (const file of files) {
+                                  const fd = new FormData()
+                                  fd.append('file', file)
+                                  const result = await uploadFile(fd)
+                                  if (result.success && result.url) {
+                                    uploadedUrls.push(result.url)
+                                  }
+                                }
+                                setAnswers(curr => ({
+                                  ...curr,
+                                  [item.id]: {
+                                    ...curr[item.id],
+                                    attachments: [...curr[item.id].attachments, ...uploadedUrls]
+                                  } as ChecklistAnswerState
+                                }))
+                                toast.success('Foto berhasil diunggah.', { id: toastId })
+                              } catch (error) {
+                                toast.error('Gagal mengunggah foto.', { id: toastId })
+                              }
+                            }}
+                          />
+                          <Camera className="text-muted-foreground size-4" />
+                        </label>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )

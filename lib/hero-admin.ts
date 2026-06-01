@@ -702,6 +702,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'HIRADC',
+    url: '/dashboard/hse/hiradc',
+    iconName: 'file-spreadsheet',
+    resource: 'hse_hiradc',
+    sortOrder: 6,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',

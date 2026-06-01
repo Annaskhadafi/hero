@@ -21,6 +21,7 @@ type ReportItem = {
     valueChoice: string
     valueText: string
     valueNumber: number | null
+    attachments: string[]
   } | null
 }
 
@@ -66,14 +67,13 @@ export function DailyChecklistReportDialog({
 
     const images = Array.from(element.querySelectorAll('img'))
     await Promise.all(
-      images.map((img) =>
-        img.complete && img.naturalWidth > 0
-          ? Promise.resolve()
-          : new Promise<void>((resolve) => {
-              img.addEventListener('load', () => resolve(), { once: true })
-              img.addEventListener('error', () => resolve(), { once: true })
-            })
-      )
+      images.map((img) => {
+        if (img.complete) return Promise.resolve()
+        return new Promise<void>((resolve) => {
+          img.addEventListener('load', () => resolve(), { once: true })
+          img.addEventListener('error', () => resolve(), { once: true })
+        })
+      })
     )
 
     return html2canvas(element, {
@@ -151,6 +151,7 @@ export function DailyChecklistReportDialog({
       const img = printWindow.document.querySelector('img')
       if (img && !img.complete) {
         img.addEventListener('load', () => void triggerPrint(), { once: true })
+        img.addEventListener('error', () => void triggerPrint(), { once: true })
       } else {
         setTimeout(() => void triggerPrint(), 200)
       }
@@ -174,8 +175,8 @@ export function DailyChecklistReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-surface-container-low border-border/70 max-h-[90vh] overflow-y-auto p-0 shadow-xl sm:max-w-5xl">
-        <DialogHeader className="sticky top-0 z-50 flex flex-row items-center justify-between border-b bg-white p-4 shadow-sm">
+      <DialogContent className="bg-surface-container-low border-border/70 max-h-[90vh] overflow-y-auto p-0 shadow-xl sm:max-w-7xl">
+        <DialogHeader className="no-print sticky top-0 z-50 flex flex-row items-center justify-between border-b bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="bg-surface-container-low text-primary grid size-10 place-items-center rounded-lg">
               <FileText className="h-5 w-5" />
@@ -206,10 +207,10 @@ export function DailyChecklistReportDialog({
           </div>
         </DialogHeader>
 
-        <div className="p-4 sm:p-8">
+        <div className="p-4 sm:p-8 overflow-x-auto">
           <div
             ref={documentRef}
-            className="border-border/70 mx-auto max-w-4xl overflow-hidden rounded-xl border bg-white shadow-sm"
+            className="pdf-wrapper border-border/70 mx-auto w-[794px] shrink-0 overflow-hidden rounded-xl border bg-white shadow-sm p-[10mm] pb-[15mm]"
           >
             <div className="border-border/70 flex items-start justify-between gap-6 border-b p-6">
               <div className="flex items-center gap-4">
@@ -297,17 +298,32 @@ export function DailyChecklistReportDialog({
                             : 'bg-surface-container-low text-foreground'
 
                       return (
-                        <tr key={item.id} className="border-border/70 border-b last:border-b-0">
-                          <td className="text-muted-foreground px-4 py-3">{index + 1}</td>
-                          <td className="text-foreground px-4 py-3 font-medium">{item.prompt}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span
-                              className={`inline-flex min-w-[64px] justify-center rounded-md px-2.5 py-1 text-xs font-semibold ${badgeTone}`}
-                            >
-                              {rendered || '—'}
-                            </span>
-                          </td>
-                        </tr>
+                        <React.Fragment key={item.id}>
+                          <tr className={answer?.attachments?.length ? 'border-none' : 'border-border/70 border-b last:border-b-0'}>
+                            <td className="text-muted-foreground px-4 py-3">{index + 1}</td>
+                            <td className="text-foreground px-4 py-3 font-medium">{item.prompt}</td>
+                            <td className="px-4 py-3 text-right">
+                              <span
+                                className={`inline-flex min-w-[64px] justify-center rounded-md px-2.5 py-1 text-xs font-semibold ${badgeTone}`}
+                              >
+                                {rendered || '—'}
+                              </span>
+                            </td>
+                          </tr>
+                          {answer?.attachments && answer.attachments.length > 0 && (
+                            <tr className="border-border/70 border-b last:border-b-0">
+                              <td colSpan={3} className="px-4 pb-4">
+                                <div className="flex flex-wrap gap-2">
+                                  {answer.attachments.map((url, i) => (
+                                    <div key={i} className="rounded-md border border-border/70 overflow-hidden w-24 h-24 shrink-0">
+                                      <img src={url} alt="Attachment" className="w-full h-full object-cover" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       )
                     })}
                   </tbody>

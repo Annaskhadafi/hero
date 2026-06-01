@@ -546,9 +546,9 @@ export async function saveDailyChecklistAnswers(params: {
   status?: 'in_progress' | 'completed'
   area?: string
   answers: Array<
-    | { revisionItemId: number; inputType: 'yes_no_na'; valueChoice: 'yes' | 'no' | 'na' | '' }
-    | { revisionItemId: number; inputType: 'scale_1_5'; valueNumber: number | null }
-    | { revisionItemId: number; inputType: 'free_text'; valueText: string }
+    | { revisionItemId: number; inputType: 'yes_no_na'; valueChoice: 'yes' | 'no' | 'na' | ''; attachments?: string[] }
+    | { revisionItemId: number; inputType: 'scale_1_5'; valueNumber: number | null; attachments?: string[] }
+    | { revisionItemId: number; inputType: 'free_text'; valueText: string; attachments?: string[] }
   >
 }) {
   const actor = await getActor()
@@ -612,6 +612,7 @@ export async function saveDailyChecklistAnswers(params: {
               valueChoice: answer.valueChoice ?? '',
               valueText: '',
               valueNumber: null,
+              attachments: answer.attachments ?? [],
             }
           : answer.inputType === 'scale_1_5'
             ? {
@@ -619,12 +620,14 @@ export async function saveDailyChecklistAnswers(params: {
                 valueChoice: '',
                 valueText: '',
                 valueNumber: answer.valueNumber ?? null,
+                attachments: answer.attachments ?? [],
               }
             : {
                 ...base,
                 valueChoice: '',
                 valueText: answer.valueText ?? '',
                 valueNumber: null,
+                attachments: answer.attachments ?? [],
               }
 
       const [existing] = await tx
@@ -667,6 +670,7 @@ export async function saveDailyChecklistAnswers(params: {
       valueChoice: dailyChecklistAnswers.valueChoice,
       valueText: dailyChecklistAnswers.valueText,
       valueNumber: dailyChecklistAnswers.valueNumber,
+      attachments: dailyChecklistAnswers.attachments,
     })
     .from(dailyChecklistAnswers)
     .where(eq(dailyChecklistAnswers.checklistId, params.checklistId))
@@ -679,6 +683,7 @@ export async function saveDailyChecklistAnswers(params: {
         valueChoice: answer.valueChoice,
         valueText: answer.valueText,
         valueNumber: answer.valueNumber ?? null,
+        attachments: (answer.attachments as string[]) ?? [],
       },
     ])
   )
@@ -801,11 +806,18 @@ export async function getDailyChecklistReportData(checklistId: number) {
       valueChoice: dailyChecklistAnswers.valueChoice,
       valueText: dailyChecklistAnswers.valueText,
       valueNumber: dailyChecklistAnswers.valueNumber,
+      attachments: dailyChecklistAnswers.attachments,
     })
     .from(dailyChecklistAnswers)
     .where(eq(dailyChecklistAnswers.checklistId, checklistId))
 
-  const answersByItemId = new Map(answers.map((answer) => [answer.revisionItemId, answer]))
+  const answersByItemId = new Map(answers.map((answer) => [
+    answer.revisionItemId, 
+    {
+      ...answer,
+      attachments: (answer.attachments as string[]) ?? []
+    }
+  ]))
 
   return {
     header,
