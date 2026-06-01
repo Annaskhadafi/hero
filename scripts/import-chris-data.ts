@@ -14,8 +14,8 @@ function parseInsertValues(sql: string, tableName: string) {
   // Very simplistic parser for values (assumes no complex escaping/newlines in strings)
   const valuesString = match[2];
   
-  const rows = [];
-  let currentRow = [];
+  const rows: Record<string, string>[] = [];
+  let currentRow: string[] = [];
   let inString = false;
   let currentVal = "";
   
