@@ -12,9 +12,8 @@ WORKDIR /app
 # Stage 2: Install dependencies
 FROM base AS deps
 COPY package.json package-lock.json* ./
-# Install all dependencies (production + development). 
-# We removed --ignore-scripts because native bindings (SWC, sharp) need to build/download.
-RUN npm install
+# Install all dependencies (production + development) to ensure drizzle-kit is available
+RUN npm install --ignore-scripts
 
 # Stage 3: Build the application
 FROM base AS builder
