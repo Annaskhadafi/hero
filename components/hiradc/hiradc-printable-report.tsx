@@ -8,9 +8,10 @@ import { HiradcEntryRow, HiradcRegisterRow } from "@/lib/hiradc/queries"
 interface HiradcPrintableReportProps {
   register: HiradcRegisterRow
   entries: HiradcEntryRow[]
+  activityName?: string
 }
 
-export function HiradcPrintableReport({ register, entries }: HiradcPrintableReportProps) {
+export function HiradcPrintableReport({ register, entries, activityName }: HiradcPrintableReportProps) {
 
 
   return (
@@ -74,7 +75,7 @@ export function HiradcPrintableReport({ register, entries }: HiradcPrintableRepo
             <tr>
               <td className="border border-black p-2 font-bold">Formulir</td>
               <td colSpan={3} className="border border-black p-2 text-center text-sm font-black uppercase tracking-wider">
-                TABEL IDENTIFIKASI BAHAYA DAN PENILAIAN RESIKO
+                TABEL IDENTIFIKASI BAHAYA DAN PENILAIAN RESIKO {activityName ? `(ACTIVITY: ${activityName})` : ""}
               </td>
             </tr>
             <tr>

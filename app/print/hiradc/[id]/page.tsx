@@ -11,10 +11,12 @@ export const dynamic = "force-dynamic"
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export default async function HiradcReportPage({ params }: PageProps) {
+export default async function HiradcReportPage({ params, searchParams }: PageProps) {
   const { id } = await params
+  const { activityName } = await searchParams
   const data = await getHiradcReport(parseInt(id, 10))
 
   if (!data) {
@@ -22,6 +24,11 @@ export default async function HiradcReportPage({ params }: PageProps) {
   }
 
   const { register, entries } = data
+
+  const queryActivity = typeof activityName === "string" ? activityName : undefined
+  const filteredEntries = queryActivity
+    ? entries.filter((e) => e.activityName === queryActivity)
+    : entries
 
   return (
     <div className="min-h-screen bg-slate-100 pb-12">
@@ -35,15 +42,17 @@ export default async function HiradcReportPage({ params }: PageProps) {
           </Button>
           <div className="h-6 w-px bg-slate-200" />
           <div>
-            <h1 className="font-bold text-slate-800">{register.title}</h1>
+            <h1 className="font-bold text-slate-800">
+              {register.title} {queryActivity ? ` - ${queryActivity}` : ""}
+            </h1>
             <p className="text-xs text-slate-500">Document No: {register.documentNo || `HSE/HIRADC/00${register.id}`}</p>
           </div>
         </div>
-        <PrintButton title={register.title} />
+        <PrintButton title={queryActivity ? `${register.title} - ${queryActivity}` : register.title} />
       </div>
 
       <div className="pt-8">
-        <HiradcPrintableReport register={register} entries={entries} />
+        <HiradcPrintableReport register={register} entries={filteredEntries} activityName={queryActivity} />
       </div>
     </div>
   )

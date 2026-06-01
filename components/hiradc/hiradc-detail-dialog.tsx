@@ -30,10 +30,12 @@ interface HiradcEntry {
   scoreBefore: number | null
   riskLevelBefore: string
   existingControl: string
+  legalReference?: string | null
   likelihoodAfter: string
   severityAfter: number | null
   scoreAfter: number | null
   riskLevelAfter: string
+  additionalControl?: string | null
   register?: {
     id: number
     documentNo: string
@@ -212,6 +214,29 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
                   </div>
                   <div className="text-slate-700 font-medium text-sm leading-relaxed whitespace-pre-wrap">
                     {entry.existingControl || "Belum ada tindakan pengendalian."}
+                  </div>
+                </div>
+
+                {/* Referensi Legal */}
+                <div className="border border-slate-200 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-slate-500 font-bold text-sm">📋</span>
+                    <h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">REFERENSI LEGAL (LEGAL REFERENCE)</h3>
+                  </div>
+                  <div className="text-slate-700 font-medium text-sm leading-relaxed whitespace-pre-wrap">
+                    {entry.legalReference || "Tidak ada referensi legal."}
+                  </div>
+                </div>
+
+                {/* Pengendalian Tambahan */}
+                <div className="border border-emerald-100 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+                  <div className="flex items-center gap-2 mb-4">
+                    <ShieldAlert className="w-4 h-4 text-emerald-600" />
+                    <h3 className="font-bold text-emerald-700 tracking-wide uppercase text-sm">ADDITIONAL CONTROL (PENGENDALIAN TAMBAHAN)</h3>
+                  </div>
+                  <div className="text-slate-700 font-medium text-sm leading-relaxed whitespace-pre-wrap">
+                    {entry.additionalControl || "Tidak ada pengendalian tambahan."}
                   </div>
                 </div>
               </div>

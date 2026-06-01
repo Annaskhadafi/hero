@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle2, Camera, X } from 'lucide-react'
+import { CheckCircle2, Camera, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { ChecklistInputType } from '@/app/actions/hse-checklists'
@@ -174,6 +174,7 @@ export function DailyChecklistRunDialog({
               onClick={handleSave}
               disabled={!canEdit || isSaving || isCompleting || isCompleted}
             >
+              {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               {isSaving ? 'Menyimpan...' : 'Simpan'}
             </Button>
             <Button
@@ -183,7 +184,11 @@ export function DailyChecklistRunDialog({
               disabled={!canEdit || isSaving || isCompleting || isCompleted}
               className={cn(isCompleted ? 'opacity-60' : '')}
             >
-              <CheckCircle2 className="size-4" />
+              {isCompleting ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
               {isCompleted ? 'Selesai' : isCompleting ? 'Memproses...' : 'Selesaikan'}
             </Button>
           </div>
@@ -371,7 +376,7 @@ export function DailyChecklistRunDialog({
                                   fd.append('file', file)
                                   const result = await uploadFile(fd)
                                   if (result.success && result.url) {
-                                    uploadedUrls.push(result.url)
+                                    uploadedUrls.push(result.readableUrl || result.url)
                                   }
                                 }
                                 setAnswers(curr => ({

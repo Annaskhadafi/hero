@@ -15,6 +15,7 @@ import {
 } from '@/db/schema/hero'
 import { logAuditEvent } from '@/lib/audit-logger'
 import { getServerSession } from '@/lib/auth-session'
+import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 
 export type ChecklistTemplate = typeof checklistTemplates.$inferSelect
 export type ChecklistTemplateRevision = typeof checklistTemplateRevisions.$inferSelect
@@ -597,6 +598,11 @@ export async function saveDailyChecklistAnswers(params: {
   }
 
   await db.transaction(async (tx) => {
+    const cleanUrl = (url: string) => {
+      if (!url) return ''
+      return url.split('?')[0].trim()
+    }
+
     for (const answer of params.answers) {
       const base = {
         checklistId: params.checklistId,
@@ -612,7 +618,7 @@ export async function saveDailyChecklistAnswers(params: {
               valueChoice: answer.valueChoice ?? '',
               valueText: '',
               valueNumber: null,
-              attachments: answer.attachments ?? [],
+              attachments: (answer.attachments ?? []).map(cleanUrl),
             }
           : answer.inputType === 'scale_1_5'
             ? {
@@ -620,14 +626,14 @@ export async function saveDailyChecklistAnswers(params: {
                 valueChoice: '',
                 valueText: '',
                 valueNumber: answer.valueNumber ?? null,
-                attachments: answer.attachments ?? [],
+                attachments: (answer.attachments ?? []).map(cleanUrl),
               }
             : {
                 ...base,
                 valueChoice: '',
                 valueText: answer.valueText ?? '',
                 valueNumber: null,
-                attachments: answer.attachments ?? [],
+                attachments: (answer.attachments ?? []).map(cleanUrl),
               }
 
       const [existing] = await tx
@@ -811,13 +817,50 @@ export async function getDailyChecklistReportData(checklistId: number) {
     .from(dailyChecklistAnswers)
     .where(eq(dailyChecklistAnswers.checklistId, checklistId))
 
-  const answersByItemId = new Map(answers.map((answer) => [
-    answer.revisionItemId, 
+  const answersByItemId = new Map<
+    number,
     {
-      ...answer,
-      attachments: (answer.attachments as string[]) ?? []
+      revisionItemId: number
+      inputType: string
+      valueChoice: string
+      valueText: string
+      valueNumber: number | null
+      attachments: string[]
     }
-  ]))
+  >(
+    await Promise.all(
+      answers.map(async (answer) => {
+        const urls = (answer.attachments as string[]) ?? []
+        const signedUrls = await Promise.all(
+          urls.map(async (url) => {
+            if (!url) return ''
+            return await getS3ObjectReadUrl(url)
+          })
+        )
+        return [
+          answer.revisionItemId,
+          {
+            revisionItemId: answer.revisionItemId,
+            inputType: answer.inputType,
+            valueChoice: answer.valueChoice,
+            valueText: answer.valueText,
+            valueNumber: answer.valueNumber,
+            attachments: signedUrls.filter(Boolean) as string[],
+          },
+        ] as [
+          number,
+          {
+            revisionItemId: number
+            inputType: string
+            valueChoice: string
+            valueText: string
+            valueNumber: number | null
+            attachments: string[]
+          },
+        ]
+      })
+    )
+  )
 
   return {
     header,

@@ -233,9 +233,19 @@ export function HiradcClientTable({ data, registers, canEdit }: HiradcClientTabl
                         <div className="space-y-2">
                           <p className="font-bold text-slate-800 text-sm leading-snug">{row.activityName}</p>
                           <p className="text-[10px] text-blue-500 font-bold">ID: {row.id}</p>
-                          <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-bold">
+                          <span className="block w-fit px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-bold">
                             HAZARDS: {group.length}
                           </span>
+                          {row.register && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="w-full mt-2 h-7 text-[10px] bg-white px-2 border-slate-200 text-slate-700 hover:text-slate-900"
+                              onClick={() => window.open(`/print/hiradc/${row.register!.id}?activityName=${encodeURIComponent(row.activityName || "")}&print=1`, "_blank")}
+                            >
+                              🖨️ Cetak PDF Activity
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell rowSpan={group.length} className="align-top bg-slate-50/30 border-r border-slate-100">
@@ -250,7 +260,7 @@ export function HiradcClientTable({ data, registers, canEdit }: HiradcClientTabl
                               className="w-full mt-2 h-7 text-[10px] bg-white px-2"
                               onClick={() => window.open(`/print/hiradc/${row.register!.id}?print=1`, "_blank")}
                             >
-                              🖨️ Cetak PDF
+                              🖨️ Cetak HIRADC SECT/DEPT
                             </Button>
                           )}
                         </div>

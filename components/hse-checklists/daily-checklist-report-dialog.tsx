@@ -165,6 +165,16 @@ export function DailyChecklistReportDialog({
   const createdAt = new Date(header.createdAt)
   const stampDate = completedAt ?? createdAt
 
+  const attachmentsList = report.items
+    .filter((item) => item.answer?.attachments && item.answer.attachments.length > 0)
+    .flatMap((item) =>
+      item.answer!.attachments.map((url) => ({
+        url,
+        prompt: item.prompt,
+        orderIndex: item.orderIndex,
+      }))
+    )
+
   const formatChoice = (value: string) => {
     const normalized = value.trim().toLowerCase()
     if (normalized === 'yes') return 'YES'
@@ -298,37 +308,42 @@ export function DailyChecklistReportDialog({
                             : 'bg-surface-container-low text-foreground'
 
                       return (
-                        <React.Fragment key={item.id}>
-                          <tr className={answer?.attachments?.length ? 'border-none' : 'border-border/70 border-b last:border-b-0'}>
-                            <td className="text-muted-foreground px-4 py-3">{index + 1}</td>
-                            <td className="text-foreground px-4 py-3 font-medium">{item.prompt}</td>
-                            <td className="px-4 py-3 text-right">
-                              <span
-                                className={`inline-flex min-w-[64px] justify-center rounded-md px-2.5 py-1 text-xs font-semibold ${badgeTone}`}
-                              >
-                                {rendered || '—'}
-                              </span>
-                            </td>
-                          </tr>
-                          {answer?.attachments && answer.attachments.length > 0 && (
-                            <tr className="border-border/70 border-b last:border-b-0">
-                              <td colSpan={3} className="px-4 pb-4">
-                                <div className="flex flex-wrap gap-2">
-                                  {answer.attachments.map((url, i) => (
-                                    <div key={i} className="rounded-md border border-border/70 overflow-hidden w-24 h-24 shrink-0">
-                                      <img src={url} alt="Attachment" className="w-full h-full object-cover" />
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
+                        <tr key={item.id} className="border-border/70 border-b last:border-b-0">
+                          <td className="text-muted-foreground px-4 py-3">{index + 1}</td>
+                          <td className="text-foreground px-4 py-3 font-medium">{item.prompt}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span
+                              className={`inline-flex min-w-[64px] justify-center rounded-md px-2.5 py-1 text-xs font-semibold ${badgeTone}`}
+                            >
+                              {rendered || '—'}
+                            </span>
+                          </td>
+                        </tr>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
+
+              {attachmentsList.length > 0 && (
+                <div className="mt-8 border-t border-border/70 pt-6">
+                  <div className="text-muted-foreground text-[11px] font-semibold tracking-[0.08em] uppercase mb-4">
+                    Lampiran Foto
+                  </div>
+                  <div className="grid grid-cols-3 gap-6">
+                    {attachmentsList.map((att, i) => (
+                      <div key={i} className="flex flex-col gap-1.5">
+                        <div className="rounded-lg border border-border/70 overflow-hidden w-full aspect-[4/3] bg-muted/10">
+                          <img src={att.url} alt={`Lampiran Poin ${att.orderIndex + 1}`} className="w-full h-full object-cover" />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground leading-snug">
+                          Poin {att.orderIndex + 1}: {att.prompt}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-10 grid gap-10 sm:grid-cols-2">
                 <div className="space-y-2 text-center">
