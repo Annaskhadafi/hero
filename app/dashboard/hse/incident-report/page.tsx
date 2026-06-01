@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import { db } from '@/db/drizzle'
+import { db } from '@/db'
 import { sites } from '@/db/schema/hero'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { IncidentReportClient } from './incident-client'
@@ -22,6 +22,7 @@ export default async function IncidentReportPage() {
 
   return (
     <AdminPageShell
+      eyebrow="HSE • Incident Control"
       title="HSE Incident Report"
       description="Laporan kejadian insiden keselamatan kerja, analisis akar masalah (RCA), dan tindakan perbaikan."
     >

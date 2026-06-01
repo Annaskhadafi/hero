@@ -44,6 +44,22 @@ import type { SecurityUserRecord } from "@/lib/hero-admin";
 type PermitStatus = "Draft" | "Pending Approval" | "Approved" | "Active" | "Closed" | "Rejected";
 type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
+export type HiradcPtwSource = {
+  id: number;
+  label: string;
+  activityName: string;
+  department: string;
+  location: string;
+  equipment: string;
+  hazardCategory: string;
+  hazardDetails: string;
+  riskConsequence: string;
+  existingControl: string;
+  additionalControl: string;
+  riskLevelBefore: string;
+  riskLevelAfter: string;
+};
+
 type PtwRecord = {
   id: string;
   projectName: string;
@@ -244,12 +260,38 @@ function Signature({ label, name }: { label: string; name: string }) {
   return <div><div className="mb-2 border-b border-slate-300 pb-8 text-slate-300">Ditandatangani Digital</div><p className="text-slate-900">{name}</p><p>{label}</p></div>;
 }
 
+
+function mapHiradcRiskLevel(value: string): RiskLevel {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "EXTREME") return "Critical";
+  if (normalized === "HIGH") return "High";
+  if (normalized === "MODERATE" || normalized === "MEDIUM") return "Medium";
+  return "Low";
+}
+
+function buildHiradcDescription(source: HiradcPtwSource) {
+  return [
+    `Aktivitas HIRADC: ${source.activityName || "-"}`,
+    `Bahaya: ${source.hazardDetails || source.hazardCategory || "-"}`,
+    `Konsekuensi Risiko: ${source.riskConsequence || "-"}`,
+    source.equipment ? `Equipment: ${source.equipment}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function buildHiradcControls(source: HiradcPtwSource) {
+  return [
+    source.existingControl ? `Existing Control:\n${source.existingControl}` : "",
+    source.additionalControl ? `Additional Control:\n${source.additionalControl}` : "",
+    source.riskLevelBefore ? `Risk Before: ${source.riskLevelBefore}` : "",
+    source.riskLevelAfter ? `Risk After: ${source.riskLevelAfter}` : "",
+  ].filter(Boolean).join("\n\n");
+}
 function PpeMultiSelect({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
   const [selected, setSelected] = useState("");
   return <div className="space-y-2"><div className="flex gap-2"><Combobox value={selected} onChange={setSelected} options={ppeOptions} placeholder="Pilih APD" className="h-10 bg-white" allowCustom /><Button type="button" variant="outline" className="h-10" onClick={() => { if (selected && !value.includes(selected)) onChange([...value, selected]); setSelected(""); }}><Plus className="mr-2 size-4" /> Add</Button></div><div className="flex flex-wrap gap-2">{value.map((item) => <button key={item} type="button" onClick={() => onChange(value.filter((entry) => entry !== item))} className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-rose-50 hover:text-rose-700">{item} ×</button>)}</div></div>;
 }
 
-function PtwFormDialog({ record, userOptions, onSave }: { record?: PtwRecord; userOptions: string[]; onSave: (record: PtwRecord) => void }) {
+function PtwFormDialog({ record, userOptions, hiradcSources, onSave }: { record?: PtwRecord; userOptions: string[]; hiradcSources: HiradcPtwSource[]; onSave: (record: PtwRecord) => void }) {
   const isEdit = Boolean(record);
   const [open, setOpen] = useState(false);
   const [projectName, setProjectName] = useState(record?.projectName ?? "");
@@ -268,7 +310,21 @@ function PtwFormDialog({ record, userOptions, onSave }: { record?: PtwRecord; us
   const [status, setStatus] = useState<PermitStatus>(record?.status ?? "Pending Approval");
   const [risk, setRisk] = useState<RiskLevel>(record?.risk ?? "High");
   const [ppe, setPpe] = useState(record?.ppe ?? ["Helmet", "Safety Shoes"]);
+  const [hiradcReference, setHiradcReference] = useState("");
+  const hiradcOptions = useMemo(() => hiradcSources.map((source) => source.label), [hiradcSources]);
 
+  const applyHiradcReference = (label: string) => {
+    setHiradcReference(label);
+    const source = hiradcSources.find((item) => item.label === label);
+    if (!source) return;
+
+    if (!projectName.trim()) setProjectName(source.activityName || "Permit dari HIRADC");
+    if (source.location) setLocation(source.location);
+    if (source.department) setArea(source.department);
+    setDescription(buildHiradcDescription(source));
+    setControlSteps(buildHiradcControls(source));
+    setRisk(mapHiradcRiskLevel(source.riskLevelBefore));
+  };
   const save = () => {
     onSave({ id: record?.id ?? `PTW-${Date.now().toString().slice(-6)}`, projectName: projectName || "New Permit to Work", permitType, location: location || "Workshop Tire Mining", area, startDate: startDate || new Date().toISOString().slice(0, 10), startTime, endDate: endDate || startDate || new Date().toISOString().slice(0, 10), endTime, applicant, fieldPic, authorizedBy, status, risk, description: description || "Deskripsi pekerjaan belum diisi.", controlSteps: controlSteps || "Checklist kontrol risiko belum diisi.", ppe, gasTestRequired: permitType === "Confined Space", isolationRequired: ["Electrical Isolation", "Hot Work", "Confined Space"].includes(permitType), attachmentName: record?.attachmentName ?? "JSA / Work Plan Attachment.pdf" });
     setOpen(false);
@@ -281,6 +337,7 @@ function PtwFormDialog({ record, userOptions, onSave }: { record?: PtwRecord; us
         <DialogHeader><DialogTitle>{isEdit ? "Edit Izin Kerja Aman (PTW)" : "Pengajuan Izin Kerja Aman (PTW)"}</DialogTitle><DialogDescription>Field PTW dibuat lebih lengkap untuk kontrol pekerjaan berisiko di workshop mining.</DialogDescription></DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2"><Label>Nama proyek / kontrak</Label><Input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Ketik nama proyek / kontrak" /></div>
+          <div className="space-y-2 md:col-span-2"><Label>Referensi HIRADC</Label><Combobox value={hiradcReference} onChange={applyHiradcReference} options={hiradcOptions} placeholder="Pilih HIRADC / ketik custom" className="h-10 bg-white" allowCustom /><p className="text-xs font-medium text-slate-500">Pilih aktivitas HIRADC untuk autofill, atau ketik custom dan isi manual deskripsi pekerjaan serta kontrol risiko.</p></div>
           <div className="space-y-2"><Label>Tipe izin kerja</Label><Combobox value={permitType} onChange={setPermitType} options={permitTypes} placeholder="Pilih / tambah tipe PTW" className="h-10 bg-white" allowCustom /></div>
           <div className="space-y-2"><Label>Lokasi spesifik</Label><Input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Contoh: Area Tangki T-102" /></div>
           <div className="space-y-2"><Label>Area kerja</Label><Input value={area} onChange={(event) => setArea(event.target.value)} /></div>
@@ -304,10 +361,11 @@ function PtwFormDialog({ record, userOptions, onSave }: { record?: PtwRecord; us
   );
 }
 
-export function IzinKerjaPtwWorkspace({ users }: { users: SecurityUserRecord[] }) {
+export function IzinKerjaPtwWorkspace({ users, hiradcSources }: { users: SecurityUserRecord[]; hiradcSources: HiradcPtwSource[] }) {
   const userOptions = useMemo(() => {
     const options = users.filter((user) => user.isActive).map((user) => `${user.name}${user.jobTitle ? ` — ${user.jobTitle}` : ""}${user.email ? ` (${user.email})` : ""}`).filter(Boolean);
-    return options.length ? options : fallbackUsers;
+    const uniqueOptions = Array.from(new Set(options));
+    return uniqueOptions.length ? uniqueOptions : fallbackUsers;
   }, [users]);
   const [records, setRecords] = useState(initialRecords);
   const [query, setQuery] = useState("");
@@ -326,10 +384,10 @@ export function IzinKerjaPtwWorkspace({ users }: { users: SecurityUserRecord[] }
     <div className="space-y-5 text-slate-900">
       <div className="grid gap-3 md:grid-cols-4"><Metric icon={FileText} label="Total PTW" value={kpis.total} /><Metric icon={CalendarClock} label="Pending" value={kpis.pending} tone="amber" /><Metric icon={CheckCircle2} label="Approved / Active" value={kpis.approved} tone="emerald" /><Metric icon={Flame} label="Critical Risk" value={kpis.critical} tone="rose" /></div>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-display text-lg font-black uppercase italic text-slate-900">Permit to Work Register</h2><p className="text-sm font-medium text-slate-500">Izin kerja aman untuk hot work, confined space, lifting, isolation, dan pekerjaan critical workshop.</p></div><PtwFormDialog userOptions={userOptions} onSave={saveRecord} /></div>
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-display text-lg font-black uppercase italic text-slate-900">Permit to Work Register</h2><p className="text-sm font-medium text-slate-500">Izin kerja aman untuk hot work, confined space, lifting, isolation, dan pekerjaan critical workshop.</p></div><PtwFormDialog userOptions={userOptions} hiradcSources={hiradcSources} onSave={saveRecord} /></div>
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center"><div className="relative lg:w-[260px]"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="h-9 pl-9" /></div><Select value={status} onValueChange={setStatus}><SelectTrigger className="h-9 lg:w-[220px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem>{statusOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
         <div className="px-4 py-3 text-sm font-semibold text-slate-500">Showing {filteredRecords.length} of {records.length} permits</div>
-        <div className="overflow-x-auto"><Table><TableHeader className="bg-slate-50"><TableRow><TableHead>Permit Info</TableHead><TableHead>Type & Location</TableHead><TableHead>Duration</TableHead><TableHead>Applicant</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredRecords.map((record) => <TableRow key={record.id} className="hover:bg-slate-50/70"><TableCell className="min-w-[280px]"><div className="font-bold text-slate-900">{record.projectName}</div><div className="mt-1 text-xs font-medium text-blue-700">{record.id}</div></TableCell><TableCell className="min-w-[260px]"><div className="flex items-center gap-2 font-bold text-slate-900"><MapPin className="size-4 text-blue-600" /> {record.permitType}</div><div className="text-xs font-medium text-slate-500">{record.location} • {record.area}</div><Pill className={cn("mt-2", riskTone[record.risk])}>{record.risk}</Pill></TableCell><TableCell className="min-w-[150px] font-semibold text-slate-800">{formatDate(record.startDate)}<div className="text-xs text-slate-500">{record.startTime} - {record.endTime}</div></TableCell><TableCell className="min-w-[220px]"><div className="flex items-center gap-2"><div className="grid size-8 place-items-center rounded-full bg-slate-100 text-xs font-bold">{record.applicant.slice(0, 2).toUpperCase()}</div><div><p className="font-semibold text-slate-900">{record.applicant}</p><p className="text-xs text-slate-500">Auth: {record.authorizedBy}</p></div></div></TableCell><TableCell><Pill className={statusTone[record.status]}>{record.status}</Pill></TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><PtwDocumentDialog record={record} /><PtwFormDialog record={record} userOptions={userOptions} onSave={saveRecord} /><Button variant="outline" size="sm" className="h-8 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => deleteRecord(record)}><Trash2 className="size-4" /> Delete</Button></div></TableCell></TableRow>)}</TableBody></Table></div>
+        <div className="overflow-x-auto"><Table><TableHeader className="bg-slate-50"><TableRow><TableHead>Permit Info</TableHead><TableHead>Type & Location</TableHead><TableHead>Duration</TableHead><TableHead>Applicant</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredRecords.map((record) => <TableRow key={record.id} className="hover:bg-slate-50/70"><TableCell className="min-w-[280px]"><div className="font-bold text-slate-900">{record.projectName}</div><div className="mt-1 text-xs font-medium text-blue-700">{record.id}</div></TableCell><TableCell className="min-w-[260px]"><div className="flex items-center gap-2 font-bold text-slate-900"><MapPin className="size-4 text-blue-600" /> {record.permitType}</div><div className="text-xs font-medium text-slate-500">{record.location} • {record.area}</div><Pill className={cn("mt-2", riskTone[record.risk])}>{record.risk}</Pill></TableCell><TableCell className="min-w-[150px] font-semibold text-slate-800">{formatDate(record.startDate)}<div className="text-xs text-slate-500">{record.startTime} - {record.endTime}</div></TableCell><TableCell className="min-w-[220px]"><div className="flex items-center gap-2"><div className="grid size-8 place-items-center rounded-full bg-slate-100 text-xs font-bold">{record.applicant.slice(0, 2).toUpperCase()}</div><div><p className="font-semibold text-slate-900">{record.applicant}</p><p className="text-xs text-slate-500">Auth: {record.authorizedBy}</p></div></div></TableCell><TableCell><Pill className={statusTone[record.status]}>{record.status}</Pill></TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><PtwDocumentDialog record={record} /><PtwFormDialog record={record} userOptions={userOptions} hiradcSources={hiradcSources} onSave={saveRecord} /><Button variant="outline" size="sm" className="h-8 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => deleteRecord(record)}><Trash2 className="size-4" /> Delete</Button></div></TableCell></TableRow>)}</TableBody></Table></div>
       </div>
     </div>
   );

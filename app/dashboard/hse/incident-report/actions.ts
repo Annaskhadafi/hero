@@ -1,7 +1,7 @@
 'use server'
 
 import { eq, desc, and, or, ilike } from 'drizzle-orm'
-import { db } from '@/db/drizzle'
+import { db } from '@/db'
 import { hseIncidentRecords } from '@/db/schema/hero'
 
 export async function getIncidentRecords(params?: {

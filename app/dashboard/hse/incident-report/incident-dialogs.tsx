@@ -150,7 +150,7 @@ export function IncidentFormDialog({ open, onOpenChange, item, sites, onSuccess 
       category,
       severity,
       description,
-      siteId,
+      siteId: siteId ?? undefined,
       investigationStatus,
       incidentDate: new Date(incidentDate),
       picName,

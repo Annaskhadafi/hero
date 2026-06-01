@@ -1,9 +1,59 @@
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { IzinKerjaPtwWorkspace, type HiradcPtwSource } from "@/components/izin-kerja-ptw-workspace";
 import { getSecurityUsersData } from "@/lib/hero-admin";
-import { IzinKerjaPtwWorkspace } from "@/components/izin-kerja-ptw-workspace";
+import { getHiradcData } from "@/lib/hiradc/queries";
+
+function compactLines(values: string[]) {
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => value.split(/\r?\n/))
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ).join("\n");
+}
+
+function getHighestRisk(values: string[]) {
+  const order = ["LOW", "MODERATE", "MEDIUM", "HIGH", "EXTREME"];
+  return values.reduce((highest, value) => {
+    const normalized = value.trim().toUpperCase();
+    return order.indexOf(normalized) > order.indexOf(highest) ? normalized : highest;
+  }, "LOW");
+}
 
 export default async function IzinKerjaPtwPage() {
-  const users = await getSecurityUsersData();
+  const [users, hiradcData] = await Promise.all([getSecurityUsersData(), getHiradcData()]);
+
+  const groupedSources = new Map<string, typeof hiradcData.entries>();
+  for (const entry of hiradcData.entries) {
+    const key = [entry.activityName, entry.department, entry.location]
+      .map((value) => (value || "-").trim().toLowerCase())
+      .join("|");
+    groupedSources.set(key, [...(groupedSources.get(key) ?? []), entry]);
+  }
+
+  const hiradcSources: HiradcPtwSource[] = Array.from(groupedSources.values()).map((entries) => {
+    const first = entries[0];
+    const riskBefore = getHighestRisk(entries.map((entry) => entry.riskLevelBefore));
+    const riskAfter = getHighestRisk(entries.map((entry) => entry.riskLevelAfter));
+
+    return {
+      id: first.id,
+      label: `${first.activityName || "HIRADC Activity"} • ${first.department || first.location || "Workshop"}`,
+      activityName: first.activityName,
+      department: first.department,
+      location: first.location,
+      equipment: compactLines(entries.map((entry) => entry.equipment)),
+      hazardCategory: compactLines(entries.map((entry) => entry.hazardCategory)),
+      hazardDetails: compactLines(entries.map((entry) => entry.hazardDetails)),
+      riskConsequence: compactLines(entries.map((entry) => entry.riskConsequence)),
+      existingControl: compactLines(entries.map((entry) => entry.existingControl)),
+      additionalControl: compactLines(entries.map((entry) => entry.additionalControl)),
+      riskLevelBefore: riskBefore,
+      riskLevelAfter: riskAfter,
+    };
+  });
 
   return (
     <AdminPageShell
@@ -12,7 +62,7 @@ export default async function IzinKerjaPtwPage() {
       description="Kontrol Permit to Work untuk pekerjaan berisiko, approval lapangan, verifikasi HSE, dan dokumen siap cetak PDF."
       badge="Permit to Work"
     >
-      <IzinKerjaPtwWorkspace users={users} />
+      <IzinKerjaPtwWorkspace users={users} hiradcSources={hiradcSources} />
     </AdminPageShell>
   );
 }
