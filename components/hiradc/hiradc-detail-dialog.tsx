@@ -110,7 +110,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               </div>
               <div>
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">PT. CHITRA PARATAMA</h1>
-                <p className="text-blue-700 font-bold text-sm tracking-wide">SAFETY IS OUR CORE VALUE. PROTECT YOUR FUTURE.</p>
+                <p className="text-blue-700 font-bold text-sm tracking-wide">SAFETY FIRST | COLLABORATE -INNOVATE - DOMINATE</p>
                 <div className="flex items-center gap-1 text-[10px] text-slate-600 mt-1">
                   <span className="font-bold">OFFICIAL HSE SYSTEM</span>
                 </div>

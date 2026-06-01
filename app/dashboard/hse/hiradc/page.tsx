@@ -20,7 +20,11 @@ export default async function HiradcPage() {
       description="Hazard Identification, Risk Assessment, and Determining Control"
     >
       <div className="mt-4">
-        <HiradcClientTable data={entriesWithRegister} />
+        <HiradcClientTable 
+          data={entriesWithRegister} 
+          registers={data.registers} 
+          canEdit={data.access.canEdit} 
+        />
       </div>
     </AdminPageShell>
   )

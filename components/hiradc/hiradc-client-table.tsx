@@ -21,18 +21,31 @@ import {
 } from "@/components/ui/select"
 import { HiradcEntryRow, HiradcRegisterRow } from "@/lib/hiradc/queries"
 import { HiradcDetailDialog } from "./hiradc-detail-dialog"
+import { HiradcEntryFormDialog } from "./hiradc-entry-form"
+import { deleteHiradcEntryAction } from "@/app/dashboard/hse/hiradc/actions"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 type HiradcEntryWithRegister = HiradcEntryRow & {
   register: HiradcRegisterRow | null
 }
 
-export function HiradcClientTable({ data }: { data: HiradcEntryWithRegister[] }) {
+interface HiradcClientTableProps {
+  data: HiradcEntryWithRegister[]
+  registers: HiradcRegisterRow[]
+  canEdit: boolean
+}
+
+export function HiradcClientTable({ data, registers, canEdit }: HiradcClientTableProps) {
   const [filter, setFilter] = React.useState<"ALL" | "EXTREME" | "HIGH" | "MODERATE" | "LOW">("ALL")
   const [search, setSearch] = React.useState("")
   const [pageSize, setPageSize] = React.useState("10")
   const [currentPage, setCurrentPage] = React.useState(1)
   const [departmentFilter, setDepartmentFilter] = React.useState<string>("ALL")
+
+  // Form states
+  const [formOpen, setFormOpen] = React.useState(false)
+  const [selectedEntry, setSelectedEntry] = React.useState<HiradcEntryWithRegister | null>(null)
 
   const uniqueDepartments = React.useMemo(() => {
     const deps = new Set(data.map(d => d.department))
@@ -82,18 +95,33 @@ export function HiradcClientTable({ data }: { data: HiradcEntryWithRegister[] })
     currentPage * Number(pageSize)
   )
 
-  const handleVerify = (id: number) => {
-    alert(`Verifikasi entry ID: ${id}. Fitur Server Action menyusul.`)
+  const handleAdd = () => {
+    setSelectedEntry(null)
+    setFormOpen(true)
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus hazard ID: ${id}?`)) {
-      alert(`Deleted ${id}`)
+  const handleEdit = (entry: HiradcEntryWithRegister) => {
+    setSelectedEntry(entry)
+    setFormOpen(true)
+  }
+
+  const handleDelete = async (id: number) => {
+    if (confirm(`Apakah Anda yakin ingin menghapus baris HIRADC ini?`)) {
+      const formData = new FormData()
+      formData.append("id", id.toString())
+      
+      try {
+        const res = await deleteHiradcEntryAction({ ok: false, message: "" }, formData)
+        if (res.ok) {
+          toast.success(res.message || "Baris HIRADC berhasil dihapus")
+        } else {
+          toast.error(res.message || "Gagal menghapus baris HIRADC")
+        }
+      } catch (err) {
+        console.error(err)
+        toast.error("Terjadi kesalahan saat menghapus data")
+      }
     }
-  }
-
-  const handleEdit = (id: number) => {
-    alert(`Edit entry ID: ${id}`)
   }
 
   return (
@@ -122,9 +150,11 @@ export function HiradcClientTable({ data }: { data: HiradcEntryWithRegister[] })
               </button>
             ))}
           </div>
-          <Button className="bg-[#1a2332] text-white hover:bg-[#1a2332]/90 rounded-lg">
-            + HIRADC Baru
-          </Button>
+          {canEdit && (
+            <Button onClick={handleAdd} className="bg-[#1a2332] text-white hover:bg-[#1a2332]/90 rounded-lg">
+              + HIRADC Baru
+            </Button>
+          )}
         </div>
       </div>
 
@@ -264,17 +294,16 @@ export function HiradcClientTable({ data }: { data: HiradcEntryWithRegister[] })
                           <Eye className="w-4 h-4" />
                         </Button>
                       </HiradcDetailDialog>
-                      <Button size="icon" variant="outline" title="Verify (Check)" onClick={() => handleVerify(row.id)} className="h-8 w-8 bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </Button>
-                      <Button size="icon" variant="outline" title="Edit Hazard" onClick={() => handleEdit(row.id)} className="h-8 w-8 bg-lime-50 text-lime-600 border-lime-200 hover:bg-lime-100">
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button size="icon" variant="outline" title="Hapus Hazard" onClick={() => handleDelete(row.id)} className="h-8 w-8 bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {canEdit && (
+                        <>
+                          <Button size="icon" variant="outline" title="Edit Hazard" onClick={() => handleEdit(row)} className="h-8 w-8 bg-lime-50 text-lime-600 border-lime-200 hover:bg-lime-100">
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button size="icon" variant="outline" title="Hapus Hazard" onClick={() => handleDelete(row.id)} className="h-8 w-8 bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -319,6 +348,13 @@ export function HiradcClientTable({ data }: { data: HiradcEntryWithRegister[] })
           </p>
         </div>
       </div>
+      <HiradcEntryFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        entry={selectedEntry}
+        registers={registers}
+        canEdit={canEdit}
+      />
     </div>
   )
 }

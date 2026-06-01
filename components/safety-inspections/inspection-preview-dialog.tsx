@@ -192,7 +192,7 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
                 </div>
                 <div>
                   <h1 className="text-2xl font-black tracking-tight text-slate-900 leading-none mb-1">PT. CHITRA PARATAMA</h1>
-                  <p className="text-xs font-bold text-sky-600 tracking-widest mb-1.5">SAFETY IS OUR CORE VALUE. PROTECT YOUR FUTURE.</p>
+                  <p className="text-xs font-bold text-sky-600 tracking-widest mb-1.5">SAFETY FIRST | COLLABORATE -INNOVATE - DOMINATE</p>
                   <p className="text-[10px] text-slate-500 leading-tight">Kawasan Industri Kariangau, Balikpapan, Indonesia</p>
                   <p className="text-[10px] text-slate-500 font-semibold leading-tight">
                     <span className="font-bold text-slate-700">Phone:</span> +62 542 748 123 | <span className="font-bold text-slate-700">Email:</span> hse@chitra.co.id 
