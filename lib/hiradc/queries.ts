@@ -13,6 +13,9 @@ export type HiradcAccess = {
 
 export type HiradcEntryRow = typeof hiradcEntries.$inferSelect
 export type HiradcRegisterRow = typeof hiradcRegisters.$inferSelect
+export type HiradcEntryReportData = HiradcEntryRow & {
+  register: HiradcRegisterRow | null
+}
 
 async function getHiradcAccess(): Promise<HiradcAccess> {
   const role = (await getCurrentEmployeeAccessRole())?.toLowerCase() ?? ""
@@ -103,6 +106,20 @@ export async function getHiradcReport(registerId: number): Promise<HiradcReportD
     .orderBy(asc(hiradcEntries.orderIndex))
 
   return { register, entries }
+}
+
+export async function getHiradcEntryReport(entryId: number): Promise<HiradcEntryReportData | null> {
+  const [entry] = await db.select().from(hiradcEntries).where(eq(hiradcEntries.id, entryId)).limit(1)
+  if (!entry) return null
+  if (!entry.registerId) return { ...entry, register: null }
+
+  const [register] = await db
+    .select()
+    .from(hiradcRegisters)
+    .where(eq(hiradcRegisters.id, entry.registerId))
+    .limit(1)
+
+  return { ...entry, register: register ?? null }
 }
 
 export async function getHiradcRegisters(): Promise<HiradcRegisterRow[]> {

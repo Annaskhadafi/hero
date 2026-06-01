@@ -2,9 +2,9 @@
 
 import * as React from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Printer, ShieldAlert, ShieldCheck } from "lucide-react"
 
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -124,15 +124,27 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               </DialogTitle>
               <p className="text-sm text-slate-500 font-medium tracking-wider mt-1">STANDARD ATTACHMENT</p>
             </div>
-            <Button onClick={() => window.print()} className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6 no-print">
-              <Printer className="w-4 h-4 mr-2" />
-              Download PDF
+            <Button asChild className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6 no-print">
+              <Link href={`/print/hiradc-entry/${entry.id}?print=1`} target="_blank" rel="noreferrer">
+                <Printer className="w-4 h-4 mr-2" />
+                Download PDF
+              </Link>
             </Button>
           </div>
         </DialogHeader>
 
         <style dangerouslySetInnerHTML={{__html: `
           @media print {
+            /* Print only the HIRADC design sheet; avoid dashboard/dialog clipping */
+            body * {
+              visibility: hidden !important;
+            }
+
+            .pdf-wrapper-dialog,
+            .pdf-wrapper-dialog * {
+              visibility: visible !important;
+            }
+
             /* Hide the background app layout and backdrop overlay completely */
             [data-slot="sidebar-wrapper"],
             [data-slot="dialog-overlay"],
@@ -170,7 +182,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
 
             /* Remove fixed centering, border, shadow, and sizing limits on Dialog Content */
             [data-slot="dialog-content"] {
-              position: relative !important; /* Force relative position to allow natural page flow */
+              position: static !important;   /* Force natural page flow */
               left: 0 !important;            /* Cancel left-[50%] centering */
               top: 0 !important;             /* Cancel top-[50%] centering */
               transform: none !important;     /* Cancel translate centering offset */
@@ -227,19 +239,30 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
             /* Outer page margins */
             @page {
               size: A4 portrait;
-              margin: 15mm 10mm 15mm 10mm;
+              margin: 8mm;
             }
 
             .pdf-wrapper-dialog {
+              position: absolute !important;
+              top: 0 !important;
+              left: 0 !important;
               border: none !important;
               box-shadow: none !important;
               padding: 0 !important;
               margin: 0 !important;
-              width: 100% !important;
-              max-width: 100% !important;
+              width: 194mm !important;
+              max-width: 194mm !important;
               background: white !important;
               overflow: visible !important;
               border-radius: 0 !important;
+            }
+
+            .pdf-wrapper-dialog .grid {
+              gap: 4mm !important;
+            }
+
+            .pdf-wrapper-dialog .rounded-2xl {
+              border-radius: 10px !important;
             }
           }
         `}} />
