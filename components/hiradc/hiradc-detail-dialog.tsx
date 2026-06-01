@@ -4,6 +4,7 @@ import * as React from "react"
 import Image from "next/image"
 import { Printer, ShieldAlert, ShieldCheck } from "lucide-react"
 
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -131,9 +132,21 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               </DialogTitle>
               <p className="text-sm text-slate-500 font-medium tracking-wider mt-1">STANDARD ATTACHMENT</p>
             </div>
-            <Button onClick={handlePrint} className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6">
-              <Printer className="w-4 h-4 mr-2" />
-              Download PDF
+            <Button asChild className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6">
+              {entry.register ? (
+                <Link 
+                  href={`/print/hiradc/${entry.register.id}?activityName=${encodeURIComponent(entry.activityName)}&print=1`}
+                  target="_blank"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Download PDF
+                </Link>
+              ) : (
+                <button onClick={handlePrint}>
+                  <Printer className="w-4 h-4 mr-2" />
+                  Download PDF
+                </button>
+              )}
             </Button>
           </div>
         </DialogHeader>
