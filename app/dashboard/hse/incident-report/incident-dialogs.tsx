@@ -382,74 +382,20 @@ export function IncidentDetailDialog({
 }: DetailDialogProps) {
   if (!item) return null
 
-  const handlePrint = () => {
-    const printContent = document.getElementById("printable-document-hse-incident")?.innerHTML
-    if (!printContent) return
-
-    const printWindow = window.open("", "_blank")
-    if (!printWindow) return
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>INCIDENT REPORT - ${item.title}</title>
-          <style>
-            @media print {
-              @page { size: A4; margin: 15mm; }
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: Arial, sans-serif; font-size: 10pt; color: #0f172a; margin: 0; padding: 0; }
-              .no-print { display: none !important; }
-              .pdf-wrapper { padding: 0; box-shadow: none !important; border: none !important; }
-            }
-            body { font-family: Arial, sans-serif; font-size: 10pt; color: #0f172a; margin: 20px; }
-            .pdf-wrapper { max-width: 800px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; }
-            .header-container { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
-            .header-left { display: flex; align-items: center; gap: 12px; }
-            .header-title { font-size: 16px; font-weight: bold; margin: 0; color: #0f172a; }
-            .header-subtitle { font-size: 10px; font-weight: bold; margin: 2px 0 0; color: #1e3a8a; letter-spacing: 0.5px; }
-            .header-meta { font-size: 9px; color: #64748b; margin-top: 4px; }
-            .badge-verified { border: 2px solid #0f172a; border-radius: 50%; width: 56px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; color: #0f172a; transform: rotate(-5deg); }
-            .meta-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px; font-size: 9px; }
-            .meta-item { display: flex; flex-direction: column; gap: 2px; }
-            .meta-label { font-weight: bold; text-transform: uppercase; color: #64748b; font-size: 8px; letter-spacing: 0.5px; }
-            .meta-val { font-weight: bold; color: #0f172a; }
-            .banner-strip { background-color: #1e293b; color: white; padding: 12px 16px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-            .banner-left { flex: 1; }
-            .banner-label { font-size: 9px; text-transform: uppercase; color: #94a3b8; font-weight: bold; letter-spacing: 1px; }
-            .banner-title { font-size: 14px; font-weight: bold; margin: 2px 0 0; text-transform: uppercase; }
-            .banner-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-            .badge-severity { background: #f59e0b; color: white; padding: 4px 10px; border-radius: 9999px; font-size: 9px; font-weight: bold; }
-            .badge-severity.critical { background: #e11d48; }
-            .badge-severity.high { background: #f97316; }
-            .badge-severity.medium { background: #f59e0b; }
-            .badge-severity.low { background: #3b82f6; }
-            .box-section { border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 16px; page-break-inside: avoid; }
-            .box-title { font-size: 9px; font-weight: bold; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 8px; }
-            .box-content { font-size: 10px; color: #0f172a; line-height: 1.5; white-space: pre-wrap; }
-            .photo-section { border-top: 1px dashed #cbd5e1; padding-top: 16px; page-break-inside: avoid; }
-            .photo-title { font-size: 9px; font-weight: bold; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px; }
-            .photo-img { max-width: 100%; max-height: 300px; border-radius: 6px; border: 1px solid #e2e8f0; object-fit: contain; }
-          </style>
-        </head>
-        <body>
-          <div class="pdf-wrapper">
-            ${printContent}
-          </div>
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(function() { window.close(); }, 500);
-            }
-          </script>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
-  }
-
   const getSiteName = (siteId: number | null) => {
     if (!siteId) return "-"
     const site = sites.find((s) => s.id === siteId)
     return site ? site.name : "-"
+  }
+
+  const handlePrint = () => {
+    window.localStorage.setItem("hero-incident-print-record", JSON.stringify({
+      ...item,
+      siteName: getSiteName(item.siteId),
+      incidentDate: new Date(item.incidentDate).toISOString(),
+      createdAt: new Date(item.createdAt).toISOString(),
+    }))
+    window.open("/print/incident-report", "_blank", "noopener,noreferrer")
   }
 
   const incDateStr = new Date(item.incidentDate).toLocaleString("id-ID", {

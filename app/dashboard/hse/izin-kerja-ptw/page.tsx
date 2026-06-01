@@ -3,6 +3,10 @@ import { IzinKerjaPtwWorkspace, type HiradcPtwSource } from "@/components/izin-k
 import { getSecurityUsersData } from "@/lib/hero-admin";
 import { getHiradcData } from "@/lib/hiradc/queries";
 
+function cleanLabel(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function compactLines(values: string[]) {
   return Array.from(
     new Set(
@@ -27,9 +31,8 @@ export default async function IzinKerjaPtwPage() {
 
   const groupedSources = new Map<string, typeof hiradcData.entries>();
   for (const entry of hiradcData.entries) {
-    const key = [entry.activityName, entry.department, entry.location]
-      .map((value) => (value || "-").trim().toLowerCase())
-      .join("|");
+    const displayLabel = `${cleanLabel(entry.activityName || "HIRADC Activity")} • ${cleanLabel(entry.department || entry.location || "Workshop")}`;
+    const key = displayLabel.toLowerCase();
     groupedSources.set(key, [...(groupedSources.get(key) ?? []), entry]);
   }
 
@@ -40,7 +43,7 @@ export default async function IzinKerjaPtwPage() {
 
     return {
       id: first.id,
-      label: `${first.activityName || "HIRADC Activity"} • ${first.department || first.location || "Workshop"}`,
+      label: `${cleanLabel(first.activityName || "HIRADC Activity")} • ${cleanLabel(first.department || first.location || "Workshop")}`,
       activityName: first.activityName,
       department: first.department,
       location: first.location,

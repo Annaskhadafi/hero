@@ -166,22 +166,108 @@ function splitLines(text: string) {
 
 function PtwDocumentDialog({ record }: { record: PtwRecord }) {
   const [open, setOpen] = useState(false);
-  const handlePrint = () => window.print();
+  const openPrintPage = () => {
+    window.localStorage.setItem("hero-ptw-print-record", JSON.stringify(record));
+    window.open("/print/izin-kerja-ptw", "_blank", "noopener,noreferrer");
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Button type="button" variant="outline" size="sm" className="h-8 gap-2" data-testid={`ptw-view-${record.id}`} onClick={() => setOpen(true)}><Eye className="size-4" /> View</Button>
-      <DialogContent className="max-w-6xl bg-slate-100 p-0">
+      <DialogContent className="ptw-print-dialog max-w-6xl bg-slate-100 p-0">
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
+            @page { size: A4 portrait; margin: 8mm; }
+
+            html,
+            body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: white !important;
+              overflow: visible !important;
+              height: auto !important;
+              width: auto !important;
+            }
+
             body * { visibility: hidden !important; }
-            .ptw-print-sheet, .ptw-print-sheet * { visibility: visible !important; }
-            [data-slot="sidebar-wrapper"], [data-slot="dialog-overlay"], .no-print { display: none !important; }
-            body { background: white !important; overflow: visible !important; height: auto !important; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            div[data-radix-portal], div[data-radix-portal] > div, div[role="presentation"] { position: static !important; transform: none !important; inset: auto !important; width: auto !important; height: auto !important; display: block !important; }
-            [data-slot="dialog-content"] { position: static !important; transform: none !important; inset: auto !important; width: 100% !important; max-width: none !important; max-height: none !important; overflow: visible !important; box-shadow: none !important; border: none !important; padding: 0 !important; background: white !important; }
-            .ptw-print-sheet { position: static !important; width: 100% !important; max-width: 210mm !important; margin: 0 auto !important; box-shadow: none !important; border: none !important; border-radius: 0 !important; }
+
+            .ptw-print-sheet,
+            .ptw-print-sheet * { visibility: visible !important; }
+
+            [data-slot="sidebar-wrapper"],
+            [data-slot="dialog-overlay"],
+            [data-slot="dialog-close"],
+            [role="dialog"] > button,
+            .no-print { display: none !important; }
+
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            div[data-radix-portal],
+            div[data-radix-portal] > div,
+            div[role="presentation"],
+            [data-slot="dialog-portal"],
+            [data-slot="dialog-content"],
+            .ptw-print-dialog {
+              position: static !important;
+              left: auto !important;
+              top: auto !important;
+              right: auto !important;
+              bottom: auto !important;
+              inset: auto !important;
+              transform: none !important;
+              translate: none !important;
+              display: block !important;
+              width: auto !important;
+              max-width: none !important;
+              min-width: 0 !important;
+              height: auto !important;
+              min-height: 0 !important;
+              max-height: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+              background: transparent !important;
+              overflow: visible !important;
+            }
+
+            .ptw-print-shell {
+              position: static !important;
+              display: block !important;
+              width: 194mm !important;
+              max-width: 194mm !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
+              overflow: visible !important;
+              background: white !important;
+            }
+
+            .ptw-print-sheet {
+              position: static !important;
+              display: block !important;
+              width: 194mm !important;
+              max-width: 194mm !important;
+              min-width: 0 !important;
+              margin: 0 auto !important;
+              padding: 6mm !important;
+              border: none !important;
+              box-shadow: none !important;
+              background: white !important;
+              overflow: visible !important;
+              border-radius: 0 !important;
+              transform: none !important;
+            }
+
+            .ptw-print-sheet .absolute { position: absolute !important; }
+            .ptw-print-sheet .grid { gap: 4mm !important; }
+            .ptw-print-sheet .rounded-2xl {
+              border-radius: 10px !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
           }
         ` }} />
         <DialogHeader className="border-b bg-white px-6 py-4 no-print">
@@ -191,12 +277,12 @@ function PtwDocumentDialog({ record }: { record: PtwRecord }) {
               <DialogDescription>{record.projectName}</DialogDescription>
             </div>
             <div className="flex gap-2 pr-8">
-              <Button size="sm" className="gap-2 bg-[#1a2332] text-white hover:bg-[#1a2332]/90" onClick={handlePrint}><Download className="size-4" /> Download PDF</Button>
-              <Button size="sm" variant="outline" className="gap-2" onClick={handlePrint}><Printer className="size-4" /> Cetak Dokumen</Button>
+              <Button size="sm" className="gap-2 bg-[#1a2332] text-white hover:bg-[#1a2332]/90" onClick={openPrintPage}><Download className="size-4" /> Download PDF</Button>
+              <Button size="sm" variant="outline" className="gap-2" onClick={openPrintPage}><Printer className="size-4" /> Cetak Dokumen</Button>
             </div>
           </div>
         </DialogHeader>
-        <div className="px-6 py-6">
+        <div className="ptw-print-shell px-6 py-6">
           <div className="ptw-print-sheet relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="pointer-events-none absolute right-12 top-12 opacity-10"><ShieldCheck className="size-48" /></div>
             <div className="flex items-center gap-6 border-b border-slate-200 pb-6">
@@ -269,21 +355,40 @@ function mapHiradcRiskLevel(value: string): RiskLevel {
   return "Low";
 }
 
+function toBulletLines(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `  • ${line}`);
+}
+
+function buildSection(title: string, lines: string[]) {
+  const cleanLines = lines.map((line) => line.trim()).filter(Boolean);
+  if (cleanLines.length === 0) return "";
+  return [`${title}:`, ...cleanLines].join("\n");
+}
+
 function buildHiradcDescription(source: HiradcPtwSource) {
   return [
-    `Aktivitas HIRADC: ${source.activityName || "-"}`,
-    `Bahaya: ${source.hazardDetails || source.hazardCategory || "-"}`,
-    `Konsekuensi Risiko: ${source.riskConsequence || "-"}`,
-    source.equipment ? `Equipment: ${source.equipment}` : "",
-  ].filter(Boolean).join("\n");
+    buildSection("1. Aktivitas HIRADC", [`  • ${source.activityName || "-"}`]),
+    buildSection("2. Identifikasi Bahaya", [
+      source.hazardCategory ? `  • Kategori: ${source.hazardCategory}` : "",
+      ...toBulletLines(source.hazardDetails),
+    ]),
+    buildSection("3. Konsekuensi Risiko", toBulletLines(source.riskConsequence)),
+    buildSection("4. Equipment / Area Terkait", toBulletLines(source.equipment)),
+  ].filter(Boolean).join("\n\n");
 }
 
 function buildHiradcControls(source: HiradcPtwSource) {
   return [
-    source.existingControl ? `Existing Control:\n${source.existingControl}` : "",
-    source.additionalControl ? `Additional Control:\n${source.additionalControl}` : "",
-    source.riskLevelBefore ? `Risk Before: ${source.riskLevelBefore}` : "",
-    source.riskLevelAfter ? `Risk After: ${source.riskLevelAfter}` : "",
+    buildSection("1. Existing Control", toBulletLines(source.existingControl)),
+    buildSection("2. Additional Control", toBulletLines(source.additionalControl)),
+    buildSection("3. Risk Rating", [
+      source.riskLevelBefore ? `  • Before: ${source.riskLevelBefore}` : "",
+      source.riskLevelAfter ? `  • After: ${source.riskLevelAfter}` : "",
+    ]),
   ].filter(Boolean).join("\n\n");
 }
 function PpeMultiSelect({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
@@ -311,7 +416,7 @@ function PtwFormDialog({ record, userOptions, hiradcSources, onSave }: { record?
   const [risk, setRisk] = useState<RiskLevel>(record?.risk ?? "High");
   const [ppe, setPpe] = useState(record?.ppe ?? ["Helmet", "Safety Shoes"]);
   const [hiradcReference, setHiradcReference] = useState("");
-  const hiradcOptions = useMemo(() => hiradcSources.map((source) => source.label), [hiradcSources]);
+  const hiradcOptions = useMemo(() => Array.from(new Set(hiradcSources.map((source) => source.label))), [hiradcSources]);
 
   const applyHiradcReference = (label: string) => {
     setHiradcReference(label);
