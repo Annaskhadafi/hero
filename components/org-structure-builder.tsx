@@ -342,7 +342,7 @@ export function OrgStructureBuilder({ orgStructures, positions, departments, sec
     }
     setIsExportingPdf(true);
     try {
-      const html2canvas = (await import("html2canvas")).default;
+      const html2canvas = (await import("html2canvas-pro")).default;
       const element = document.getElementById("org-chart-canvas");
       if (!element) {
         toast.error("Canvas tidak ditemukan");

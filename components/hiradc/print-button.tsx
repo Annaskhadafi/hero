@@ -4,7 +4,7 @@ import * as React from "react"
 import { Download, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import jsPDF from "jspdf"
-import html2canvas from "html2canvas"
+import html2canvas from "html2canvas-pro"
 import { toast } from "sonner"
 
 export function PrintButton({ title = "Laporan_HIRADC" }: { title?: string }) {
