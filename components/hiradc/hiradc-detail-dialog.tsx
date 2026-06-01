@@ -6,6 +6,9 @@ import { Printer, ShieldAlert, ShieldCheck } from "lucide-react"
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import jsPDF from "jspdf"
+import html2canvas from "html2canvas-pro"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -55,6 +58,7 @@ interface HiradcDetailDialogProps {
 
 export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps) {
   const [open, setOpen] = React.useState(false)
+  const [isDownloading, setIsDownloading] = React.useState(false)
 
   const riskLevel = entry.riskLevelBefore?.toUpperCase() || ""
   const isHighRisk = riskLevel === "HIGH" || riskLevel === "EXTREME"
@@ -64,11 +68,60 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
     : new Date().toLocaleDateString("id-ID")
   const picName = entry.register?.preparedBy || "PIC / Auditor"
 
-  const handlePrint = () => {
-    if (entry.register) {
-      window.open(`/print/hiradc/${entry.register.id}?activityName=${encodeURIComponent(entry.activityName)}&print=1`, "_blank")
-    } else {
+  const handleDownloadPDF = async () => {
+    try {
+      setIsDownloading(true)
+      const toastId = toast.loading("Mempersiapkan dokumen PDF...")
+      
+      const element = document.querySelector(`.pdf-wrapper-dialog-${entry.id}`) as HTMLElement
+      if (!element) throw new Error("Preview element not found")
+      
+      const canvas = await html2canvas(element, {
+        scale: 2, 
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      })
+      
+      const imgData = canvas.toDataURL("image/png")
+      
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      })
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      
+      const imgProps = pdf.getImageProperties(imgData)
+      
+      const margin = 10
+      const contentWidth = pdfWidth - (margin * 2)
+      const contentHeight = (imgProps.height * contentWidth) / imgProps.width
+      
+      let heightLeft = contentHeight
+      let position = margin
+      
+      pdf.addImage(imgData, "PNG", margin, position, contentWidth, contentHeight)
+      heightLeft -= (pdfHeight - margin * 2)
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - contentHeight + margin
+        pdf.addPage()
+        pdf.addImage(imgData, "PNG", margin, position, contentWidth, contentHeight)
+        heightLeft -= (pdfHeight - margin * 2)
+      }
+      
+      pdf.save(`HIRADC_Design_1_${entry.activityName.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`)
+      toast.dismiss(toastId)
+      toast.success("Berhasil mengunduh PDF")
+    } catch (error) {
+      console.error(error)
+      toast.error("Gagal memproses PDF. Membuka dialog print bawaan...")
       window.print()
+    } finally {
+      setIsDownloading(false)
     }
   }
 
@@ -132,27 +185,23 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               </DialogTitle>
               <p className="text-sm text-slate-500 font-medium tracking-wider mt-1">STANDARD ATTACHMENT</p>
             </div>
-            <Button asChild className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6">
-              {entry.register ? (
-                <Link 
-                  href={`/print/hiradc/${entry.register.id}?activityName=${encodeURIComponent(entry.activityName)}&print=1`}
-                  target="_blank"
-                >
-                  <Printer className="w-4 h-4 mr-2" />
-                  Download PDF
-                </Link>
+            <Button 
+              onClick={handleDownloadPDF} 
+              disabled={isDownloading}
+              className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6"
+            >
+              {isDownloading ? (
+                <span className="animate-spin mr-2">⏳</span>
               ) : (
-                <button onClick={handlePrint}>
-                  <Printer className="w-4 h-4 mr-2" />
-                  Download PDF
-                </button>
+                <Printer className="w-4 h-4 mr-2" />
               )}
+              {isDownloading ? "Memproses..." : "Download PDF"}
             </Button>
           </div>
         </DialogHeader>
 
         <ScrollArea className="max-h-[80vh] bg-slate-50 p-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative overflow-hidden">
+          <div className={`pdf-wrapper-dialog-${entry.id} bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative overflow-hidden`}>
             {/* Watermark / Stamp */}
             <div className="absolute top-12 right-12 opacity-10 pointer-events-none">
               <ShieldCheck className="w-48 h-48" />
