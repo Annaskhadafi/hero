@@ -11,16 +11,7 @@ interface HiradcPrintableReportProps {
 }
 
 export function HiradcPrintableReport({ register, entries }: HiradcPrintableReportProps) {
-  // Trigger print immediately when loaded if query param ?print=1 is present, 
-  // or provide a button
-  React.useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.search.includes('print=1')) {
-      const timer = setTimeout(() => {
-        window.print()
-      }, 800)
-      return () => clearTimeout(timer)
-    }
-  }, [])
+
 
   return (
     <div className="pdf-wrapper bg-white text-black min-h-screen">

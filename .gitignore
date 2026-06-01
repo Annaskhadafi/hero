@@ -47,3 +47,4 @@ next-env.d.ts
 
 # database dumps (may contain credentials/data)
 *.sql
+!drizzle/*.sql

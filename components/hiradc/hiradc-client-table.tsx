@@ -218,7 +218,7 @@ export function HiradcClientTable({ data }: { data: HiradcEntryWithRegister[] })
                               size="sm" 
                               variant="outline" 
                               className="w-full mt-2 h-7 text-[10px] bg-white px-2"
-                              onClick={() => window.open(`/dashboard/hse/hiradc/report/${row.register!.id}?print=1`, "_blank")}
+                              onClick={() => window.open(`/print/hiradc/${row.register!.id}?print=1`, "_blank")}
                             >
                               🖨️ Cetak PDF
                             </Button>
