@@ -133,94 +133,72 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
 
         <style dangerouslySetInnerHTML={{__html: `
           @media print {
-            * {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
+            /* Hide the background app layout and backdrop overlay completely */
+            [data-slot="sidebar-wrapper"],
+            [data-slot="dialog-overlay"],
+            .no-print {
+              display: none !important;
             }
+
             body {
               background: white !important;
               overflow: visible !important;
               height: auto !important;
             }
-            body * {
-              visibility: hidden;
+
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
             }
-            /* Make the dialog content, scroll area viewport, and the report container visible */
-            div[data-radix-portal],
-            div[role="presentation"],
-            div[role="dialog"],
-            [data-slot="scroll-area"],
-            [data-slot="scroll-area-viewport"],
-            .pdf-wrapper-dialog,
-            .pdf-wrapper-dialog * {
-              visibility: visible !important;
-            }
-            
-            /* Override absolute/fixed layout wrappers to allow multiple pages */
-            div[data-radix-portal],
-            div[role="presentation"] {
-              position: static !important;
-              display: block !important;
-              width: auto !important;
-              height: auto !important;
-              overflow: visible !important;
-              transform: none !important;
-              inset: auto !important;
-            }
-            
-            /* Position dialog content to fill the screen cleanly and remove constraints */
-            div[role="dialog"] {
+
+            /* Remove fixed centering, border, shadow, and sizing limits on Dialog Content */
+            [data-slot="dialog-content"] {
               position: static !important;
               display: block !important;
               width: 100% !important;
-              max-width: 100% !important;
-              height: auto !important;
-              max-height: none !important;
-              transform: none !important;
-              background: transparent !important;
+              max-width: 210mm !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
               border: none !important;
               box-shadow: none !important;
-              padding: 0 !important;
-              margin: 0 !important;
+              background: transparent !important;
+              transform: none !important;
+              max-height: none !important;
               overflow: visible !important;
             }
-            
-            /* Remove scroll area limits for printing */
-            [data-slot="scroll-area"] {
+
+            /* Remove height and scroll limits from ScrollArea viewport */
+            [data-slot="scroll-area"],
+            [data-slot="scroll-area-viewport"] {
               max-height: none !important;
               height: auto !important;
               overflow: visible !important;
               background: white !important;
               width: 100% !important;
             }
-            [data-slot="scroll-area-viewport"] {
-              max-height: none !important;
-              height: auto !important;
-              overflow: visible !important;
-              width: 100% !important;
+
+            [data-slot="scroll-area-scrollbar"] {
+              display: none !important;
             }
-            
-            /* Keep absolute positions intact within the printable container */
+
+            /* Restore absolute styling inside the printable container */
             .pdf-wrapper-dialog .absolute {
               position: absolute !important;
             }
-            
-            /* Avoid page-breaks inside individual cards */
+
+            /* Keep each info card whole and avoid splitting across page boundaries */
             .pdf-wrapper-dialog .rounded-2xl {
               break-inside: avoid !important;
               page-break-inside: avoid !important;
             }
-            
-            /* Hide print-irrelevant parts inside the visible parent tree */
-            .no-print,
-            [role="dialog"] > button,
-            [role="dialog"] > [class*="absolute"],
-            [data-slot="scroll-area-scrollbar"] {
+
+            /* Hide dialog close buttons and manual controls */
+            [data-slot="dialog-close"],
+            [role="dialog"] > button {
               display: none !important;
-              visibility: hidden !important;
             }
-            
-            /* Outer A4 margins */
+
+            /* Outer page margins */
             @page {
               size: A4 portrait;
               margin: 15mm 10mm 15mm 10mm;
@@ -233,8 +211,6 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               margin: 0 !important;
               width: 100% !important;
               max-width: 210mm;
-              margin-left: auto !important;
-              margin-right: auto !important;
               background: white !important;
               overflow: visible !important;
             }
