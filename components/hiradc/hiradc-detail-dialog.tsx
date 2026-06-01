@@ -160,35 +160,46 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               width: 100% !important;
               max-width: 100% !important;
               height: auto !important;
+              min-height: 0 !important;
               overflow: visible !important;
               transform: none !important;
               inset: auto !important;
+              margin: 0 !important;
+              padding: 0 !important;
             }
 
             /* Remove fixed centering, border, shadow, and sizing limits on Dialog Content */
             [data-slot="dialog-content"] {
-              position: static !important;
+              position: relative !important; /* Force relative position to allow natural page flow */
+              left: 0 !important;            /* Cancel left-[50%] centering */
+              top: 0 !important;             /* Cancel top-[50%] centering */
+              transform: none !important;     /* Cancel translate centering offset */
               display: block !important;
               width: 100% !important;
-              max-width: 100% !important; /* Allow it to fit within print margin area */
+              max-width: 100% !important;    /* Allow it to fit within print margin area */
               margin: 0 auto !important;
               padding: 0 !important;
               border: none !important;
               box-shadow: none !important;
               background: transparent !important;
-              transform: none !important;
               max-height: none !important;
               overflow: visible !important;
               inset: auto !important;
             }
 
-            /* Remove height and scroll limits from ScrollArea viewport */
-            [data-slot="scroll-area"],
-            [data-slot="scroll-area-viewport"] {
+            /* Remove height, scroll, and double-padding limits from ScrollArea viewport */
+            [data-slot="scroll-area"] {
+              padding: 0 !important;         /* Eliminate screen-only inner margins */
               max-height: none !important;
               height: auto !important;
               overflow: visible !important;
               background: white !important;
+              width: 100% !important;
+            }
+            [data-slot="scroll-area-viewport"] {
+              max-height: none !important;
+              height: auto !important;
+              overflow: visible !important;
               width: 100% !important;
             }
 
