@@ -2235,3 +2235,20 @@ export const hseInventories = pgTable('hero_hse_inventories', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  category: text('category').notNull(),
+  severity: text('severity').notNull(),
+  description: text('description').notNull(),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  investigationStatus: text('investigation_status').notNull().default('Open'),
+  incidentDate: timestamp('incident_date').notNull(),
+  picEmployeeId: integer('pic_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  picName: text('pic_name').notNull().default(''),
+  rootCauseAnalysis: text('root_cause_analysis').notNull().default(''),
+  immediateCorrectiveAction: text('immediate_corrective_action').notNull().default(''),
+  documentationUrl: text('documentation_url').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})

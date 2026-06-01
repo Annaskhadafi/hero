@@ -735,6 +735,28 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Incident Report',
+    url: '/dashboard/hse/incident-report',
+    iconName: 'alert-triangle',
+    resource: 'hse_incident_report',
+    sortOrder: 9,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Izin Kerja PTW',
+    url: '/dashboard/hse/izin-kerja-ptw',
+    iconName: 'checklist',
+    resource: 'hse_izin_kerja_ptw',
+    sortOrder: 10,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',
@@ -3782,3 +3804,4 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+
