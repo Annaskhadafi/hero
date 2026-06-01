@@ -207,6 +207,11 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               page-break-inside: avoid !important;
             }
 
+            /* Tighten grid gaps to save horizontal space when printing */
+            .pdf-wrapper-dialog .grid {
+              gap: 16px !important;
+            }
+
             /* Hide dialog close buttons and manual controls */
             [data-slot="dialog-close"],
             [role="dialog"] > button {
@@ -219,15 +224,18 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               margin: 15mm 10mm 15mm 10mm;
             }
 
+            /* Main dialog content preview container matches A4 page */
             .pdf-wrapper-dialog {
-              border: none !important;
+              border: 1px solid #e2e8f0 !important;
               box-shadow: none !important;
-              padding: 0 !important;
+              padding: 24px !important;
               margin: 0 !important;
               width: 100% !important;
-              max-width: 100% !important; /* Scale to page print area width */
+              max-width: 100% !important;
               background: white !important;
               overflow: visible !important;
+              border-radius: 16px !important;
+              zoom: 90%; /* Scale down slightly to guarantee 100% fit on physical A4 pages */
             }
           }
         `}} />
