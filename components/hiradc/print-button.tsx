@@ -47,19 +47,22 @@ export function PrintButton({ title = "Laporan_HIRADC" }: { title?: string }) {
       const pdfHeight = pdf.internal.pageSize.getHeight()
       
       const imgProps = pdf.getImageProperties(imgData)
-      const imgHeight = (imgProps.height * pdfWidth) / imgProps.width
       
-      let heightLeft = imgHeight
-      let position = 0
+      const margin = 10
+      const contentWidth = pdfWidth - (margin * 2)
+      const contentHeight = (imgProps.height * contentWidth) / imgProps.width
       
-      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeight, undefined, "FAST")
-      heightLeft -= pdfHeight
+      let heightLeft = contentHeight
+      let position = margin
+      
+      pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight, undefined, "FAST")
+      heightLeft -= (pdfHeight - margin * 2)
       
       while (heightLeft >= 0) {
-        position = heightLeft - imgHeight
+        position = heightLeft - contentHeight + margin
         pdf.addPage()
-        pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeight, undefined, "FAST")
-        heightLeft -= pdfHeight
+        pdf.addImage(imgData, "JPEG", margin, position, contentWidth, contentHeight, undefined, "FAST")
+        heightLeft -= (pdfHeight - margin * 2)
       }
       
       pdf.save(`${title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`)

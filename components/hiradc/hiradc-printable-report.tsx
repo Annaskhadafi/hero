@@ -15,7 +15,7 @@ export function HiradcPrintableReport({ register, entries, activityName }: Hirad
 
 
   return (
-    <div className="pdf-wrapper bg-white text-black min-h-screen">
+    <div className="bg-white text-black min-h-screen">
       {/* 
         Print styling ensures it looks good on paper.
         We hide standard navbars using .no-print classes applied in the global layout 
@@ -31,7 +31,7 @@ export function HiradcPrintableReport({ register, entries, activityName }: Hirad
         }
       `}} />
 
-      <div className="max-w-[210mm] mx-auto bg-white p-8 shadow-sm border border-slate-200 print:border-none print:shadow-none print:p-0">
+      <div className="pdf-wrapper max-w-[210mm] mx-auto bg-white p-8 shadow-sm border border-slate-200 print:border-none print:shadow-none print:p-0">
         
         {/* Header Logo & Title */}
         <div className="flex items-center justify-between border-b-2 border-slate-800 pb-4 mb-4">
