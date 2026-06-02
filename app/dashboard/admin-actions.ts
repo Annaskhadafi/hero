@@ -1,4 +1,4 @@
-﻿'use server'
+'use server'
 
 import { logAuditEvent } from '@/lib/audit-logger'
 import {
@@ -2519,7 +2519,8 @@ function determinePassword(employee: {
 }): string {
   const migration = employee.emailPasswordMigration?.trim()
   if (migration && migration.length > 0) return migration
-  return `Chitra#${employee.employeeId}`
+  const normalizedSn = employee.employeeId.trim().replace(/^EMP-/i, '')
+  return `Chitra#${normalizedSn}`
 }
 
 function isValidEmailFormat(email: string): boolean {
