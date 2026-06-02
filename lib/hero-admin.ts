@@ -3728,6 +3728,7 @@ export async function getSecurityUsersData() {
     id: row.id,
     siteId: row.siteId,
     employeeSn: row.employeeSn,
+    contractEnd: row.contractEnd ?? null,
     joinYear: row.joinDate ? new Date(row.joinDate).getFullYear() : new Date().getFullYear(),
     name: row.name,
     profileImage: row.profileImage,
