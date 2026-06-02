@@ -187,6 +187,7 @@ export default function SafetyInductionPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-red-800">
                 <div>Safety (Andi Safari): <span className="font-semibold">08125440961</span></div>
                 <div>HRD (Muhammad Iqbal): <span className="font-semibold">081253369994</span></div>
+                <div>Support Facility Management (Didik Wahyudi): <span className="font-semibold">+62 811-5425-546</span></div>
                 <div>Security: <span className="font-semibold">112</span></div>
               </div>
             </section>
