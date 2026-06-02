@@ -14,36 +14,35 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
 
-  const initCanvas = () => {
+  const ensureCanvasSize = () => {
     const canvas = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container) return
 
-    // Hanya ubah ukuran jika ukurannya lebih dari 0 (tidak hidden)
+    // Jika container tersembunyi (width 0), abaikan
     if (container.offsetWidth === 0 || container.offsetHeight === 0) return
 
-    // Simpan gambar lama sebelum resize agar tidak hilang
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    let tempCanvas: HTMLCanvasElement | null = null
-    if (canvas.width > 0 && canvas.height > 0) {
-      tempCanvas = document.createElement('canvas')
-      tempCanvas.width = canvas.width
-      tempCanvas.height = canvas.height
-      tempCanvas.getContext('2d')?.drawImage(canvas, 0, 0)
-    }
+    // Jika ukuran canvas tidak sesuai dengan ukuran fisik container, sesuaikan
+    if (canvas.width !== container.offsetWidth || canvas.height !== container.offsetHeight) {
+      let tempCanvas: HTMLCanvasElement | null = null
+      
+      // Simpan gambar lama jika ada
+      if (canvas.width > 0 && canvas.height > 0) {
+        tempCanvas = document.createElement('canvas')
+        tempCanvas.width = canvas.width
+        tempCanvas.height = canvas.height
+        tempCanvas.getContext('2d')?.drawImage(canvas, 0, 0)
+      }
 
-    canvas.width = container.offsetWidth
-    canvas.height = container.offsetHeight
-    
-    ctx.lineWidth = 3
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#000000'
+      // Update ukuran
+      canvas.width = container.offsetWidth
+      canvas.height = container.offsetHeight
 
-    // Kembalikan gambar
-    if (tempCanvas) {
-      ctx.drawImage(tempCanvas, 0, 0)
+      // Kembalikan gambar lama
+      const ctx = canvas.getContext('2d')
+      if (ctx && tempCanvas) {
+        ctx.drawImage(tempCanvas, 0, 0)
+      }
     }
   }
 
@@ -52,7 +51,7 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     if (!container) return
 
     const observer = new ResizeObserver(() => {
-      initCanvas()
+      ensureCanvasSize()
     })
     
     observer.observe(container)
@@ -64,19 +63,26 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     if (!canvas) return { x: 0, y: 0 }
 
     const rect = canvas.getBoundingClientRect()
+    
+    // Hitung rasio antara ukuran CSS (rect) dan ukuran internal canvas (canvas.width)
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+
     if ('touches' in e) {
       return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY
       }
     }
     return {
-      x: (e as React.MouseEvent).clientX - rect.left,
-      y: (e as React.MouseEvent).clientY - rect.top
+      x: ((e as React.MouseEvent).clientX - rect.left) * scaleX,
+      y: ((e as React.MouseEvent).clientY - rect.top) * scaleY
     }
   }
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    ensureCanvasSize() // Pastikan ukuran canvas 100% benar sebelum digambar
+    
     setIsDrawing(true)
     const { x, y } = getCoordinates(e)
     const ctx = canvasRef.current?.getContext('2d')
@@ -154,7 +160,7 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
           onTouchStart={startDrawing}
           onTouchEnd={stopDrawing}
           onTouchMove={draw}
-          className="w-full h-full cursor-crosshair touch-none absolute inset-0"
+          className="w-full h-full cursor-crosshair touch-none absolute inset-0 bg-transparent"
           style={{ touchAction: 'none' }}
         />
       </div>
