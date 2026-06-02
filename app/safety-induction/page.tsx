@@ -85,22 +85,22 @@ export default function SafetyInductionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 py-4 sm:py-8 px-3 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto space-y-4 sm:space-y-8">
         
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="bg-primary/10 p-4 rounded-full inline-block mb-2">
-            <ShieldAlert className="w-12 h-12 text-primary" />
+        <div className="text-center space-y-1 sm:space-y-2 mt-4 sm:mt-0">
+          <div className="bg-primary/10 p-3 sm:p-4 rounded-full inline-block mb-1 sm:mb-2">
+            <ShieldAlert className="w-8 h-8 sm:w-12 sm:h-12 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Safety Induction</h1>
-          <p className="text-slate-500 text-lg">PT. Chitra Paratama</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Safety Induction</h1>
+          <p className="text-slate-500 text-sm sm:text-lg">PT. Chitra Paratama</p>
         </div>
 
         {/* Document Content */}
         <Card className="border-0 shadow-lg overflow-hidden bg-white">
-          <CardHeader className="bg-slate-900 text-white p-6">
-            <CardTitle className="text-xl">INFORMASI KESELAMATAN KERJA</CardTitle>
+          <CardHeader className="bg-slate-900 text-white p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl">INFORMASI KESELAMATAN KERJA</CardTitle>
             <CardDescription className="text-slate-300">
               Harap dibaca dan dipatuhi sebagai aturan keselamatan ketika berkunjung ke lokasi pabrik agar senantiasa memastikan dan menjaga keselamatan diri Anda sendiri dan perlindungan terhadap: Karyawan, Peralatan kerja, Lingkungan, Mutu dan produk kami.
             </CardDescription>
@@ -109,11 +109,11 @@ export default function SafetyInductionPage() {
           <div 
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="h-[400px] overflow-y-auto p-6 space-y-8 text-sm text-slate-700 leading-relaxed border-b scrollbar-thin scrollbar-thumb-slate-300"
+            className="h-[50vh] sm:h-[400px] overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8 text-xs sm:text-sm text-slate-700 leading-relaxed border-b scrollbar-thin scrollbar-thumb-slate-300"
           >
             {/* Kebijakan K3L */}
             <section>
-              <h3 className="text-lg font-bold text-slate-900 mb-3 border-b pb-2">KEBIJAKAN K3L</h3>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3 border-b pb-2">KEBIJAKAN K3L</h3>
               <p className="mb-4">PT. Chitra Paratama akan selalu mengutamakan penerapan system K3L dalam peningkatan Operasional di seluruh wilayah kerjanya. PT. Chitra Paratama akan senantiasa menciptakan, pemberian dan memelihara lingkungan kerja yang aman dan sehat bagi seluruh karyawan, pelanggan serta mitra kerja.</p>
               <p className="mb-2 font-medium">Untuk itu, PT. Chitra Paratama akan:</p>
               <ol className="list-decimal pl-5 space-y-2">
@@ -199,7 +199,7 @@ export default function SafetyInductionPage() {
             )}
           </div>
 
-          <div className="p-6 bg-slate-50 border-t">
+          <div className="p-4 sm:p-6 bg-slate-50 border-t">
             <div className={`flex items-start space-x-3 transition-opacity duration-500 ${hasScrolled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
               <Checkbox 
                 id="agree" 
@@ -225,19 +225,19 @@ export default function SafetyInductionPage() {
         {/* Data Pribadi Form - Fades in after agreement */}
         <div className={`transition-all duration-700 ${isAgreed ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none hidden'}`}>
           <Card className="border-0 shadow-xl overflow-hidden bg-white ring-1 ring-primary/10">
-            <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b">
-              <CardTitle className="flex items-center text-primary">
+            <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent border-b p-4 sm:p-6">
+              <CardTitle className="flex items-center text-primary text-lg sm:text-xl">
                 <User className="w-5 h-5 mr-2" />
                 Data Pribadi
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm">
                 Silakan lengkapi data diri Anda di bawah ini
               </CardDescription>
             </CardHeader>
-            <CardContent className="p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+            <CardContent className="p-4 sm:p-6">
+              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="fullName" className="flex items-center text-slate-700">
                       <User className="w-4 h-4 mr-2 text-slate-400" /> Nama Lengkap
