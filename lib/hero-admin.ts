@@ -1037,6 +1037,17 @@ const SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'JSA',
+    url: '/dashboard/hse/jsa',
+    iconName: 'checklist',
+    resource: 'hse_jsa',
+    sortOrder: 11,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Repair & Retread Operation
   {
     menuArea: 'main',

@@ -19,23 +19,44 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     const container = containerRef.current
     if (!canvas || !container) return
 
+    // Hanya ubah ukuran jika ukurannya lebih dari 0 (tidak hidden)
+    if (container.offsetWidth === 0 || container.offsetHeight === 0) return
+
+    // Simpan gambar lama sebelum resize agar tidak hilang
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    
-    // Scale canvas to match container size
+    let tempCanvas: HTMLCanvasElement | null = null
+    if (canvas.width > 0 && canvas.height > 0) {
+      tempCanvas = document.createElement('canvas')
+      tempCanvas.width = canvas.width
+      tempCanvas.height = canvas.height
+      tempCanvas.getContext('2d')?.drawImage(canvas, 0, 0)
+    }
+
     canvas.width = container.offsetWidth
     canvas.height = container.offsetHeight
     
     ctx.lineWidth = 3
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#000'
+    ctx.strokeStyle = '#000000'
+
+    // Kembalikan gambar
+    if (tempCanvas) {
+      ctx.drawImage(tempCanvas, 0, 0)
+    }
   }
 
   useEffect(() => {
-    initCanvas()
-    window.addEventListener('resize', initCanvas)
-    return () => window.removeEventListener('resize', initCanvas)
+    const container = containerRef.current
+    if (!container) return
+
+    const observer = new ResizeObserver(() => {
+      initCanvas()
+    })
+    
+    observer.observe(container)
+    return () => observer.disconnect()
   }, [])
 
   const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -60,6 +81,10 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
     const { x, y } = getCoordinates(e)
     const ctx = canvasRef.current?.getContext('2d')
     if (ctx) {
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = '#000000'
       ctx.beginPath()
       ctx.moveTo(x, y)
     }
