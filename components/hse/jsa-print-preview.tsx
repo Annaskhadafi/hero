@@ -23,7 +23,7 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
   const printRef = React.useRef<HTMLDivElement>(null)
 
   const handlePrint = () => {
-    window.print()
+    window.open(`/print/jsa/${data.id}`, '_blank')
   }
 
   if (!data) return null
@@ -43,17 +43,40 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
           </Button>
         </DialogHeader>
         
-        <div className="flex-1 overflow-y-auto p-8 flex justify-center print:p-0 print:overflow-visible print:bg-white">
+        <div className="flex-1 overflow-y-auto p-8 print:p-0 print:overflow-visible print:bg-white">
+          <style dangerouslySetInnerHTML={{__html: `
+            @media print {
+              body * {
+                visibility: hidden;
+              }
+              #jsa-print-section, #jsa-print-section * {
+                visibility: visible;
+              }
+              #jsa-print-section {
+                position: absolute;
+                left: 0;
+                top: 0;
+                margin: 0;
+                padding: 0;
+                width: 100%;
+              }
+              @page {
+                size: A4;
+                margin: 10mm;
+              }
+            }
+          `}} />
           {/* A4 Paper Container */}
           <div 
+            id="jsa-print-section"
             ref={printRef}
-            className="pdf-wrapper bg-white shadow-xl print:shadow-none w-[210mm] min-h-[297mm] p-8 text-[10pt] font-sans mx-auto"
+            className="pdf-wrapper bg-white shadow-xl print:shadow-none w-[210mm] min-h-[297mm] h-max p-8 text-[10pt] font-sans mx-auto"
             style={{ fontFamily: 'Arial, sans-serif' }}
           >
             {/* Header / Logo */}
             <div className="flex justify-between items-center mb-6">
               <div className="w-1/3">
-                <Image src="/logo-hero.png" alt="Logo" width={180} height={60} className="object-contain" />
+                <Image src="/cp_logo-removebg-preview.png" alt="Logo" width={180} height={60} className="object-contain" />
               </div>
               <div className="w-2/3 text-center">
                 <h1 className="text-2xl font-bold tracking-wider">JOB SAFETY ANALYSIS (JSA)</h1>
@@ -240,8 +263,7 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
                   <div className="flex-1 flex flex-col items-center">
                     {data.signatures?.executorUrl ? (
                       <div className="h-16 w-32 relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={data.signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" crossOrigin="anonymous" />
+                        <img src={data.signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" />
                       </div>
                     ) : (
                       <div className="h-16 border-b border-dotted border-black w-full" />

@@ -1,9 +1,10 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Printer, Edit, Trash2 } from 'lucide-react'
+import { Plus, Printer, Edit, Trash2, Eye } from 'lucide-react'
 
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { useRouter } from 'next/navigation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,9 +22,9 @@ export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
   const [search, setSearch] = React.useState('')
   const [formOpen, setFormOpen] = React.useState(false)
   const [printOpen, setPrintOpen] = React.useState(false)
-  
   const [selectedJsa, setSelectedJsa] = React.useState<any>(null)
   const [isLoadingJsa, setIsLoadingJsa] = React.useState(false)
+  const router = useRouter()
 
   const filteredJsaList = React.useMemo(() => {
     return jsaList.filter(jsa => 
@@ -51,7 +52,11 @@ export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
     }
   }
 
-  const handlePrint = async (id: string) => {
+  const handlePrint = (id: string) => {
+    window.open(`/print/jsa/${id}`, '_blank')
+  }
+
+  const handlePreview = async (id: string) => {
     try {
       setIsLoadingJsa(true)
       const data = await getJsaById(id)
@@ -69,6 +74,7 @@ export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
       try {
         await deleteJsa(id)
         toast.success('JSA berhasil dihapus')
+        router.refresh()
       } catch (err) {
         toast.error('Gagal menghapus JSA')
       }
@@ -128,11 +134,14 @@ export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="icon" onClick={() => handlePrint(jsa.id)} disabled={isLoadingJsa} title="Cetak JSA">
-                        <Printer className="w-4 h-4" />
+                      <Button variant="ghost" size="icon" onClick={() => handlePreview(jsa.id)} disabled={isLoadingJsa} title="Preview JSA">
+                        <Eye className="w-4 h-4 text-blue-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handlePrint(jsa.id)} disabled={isLoadingJsa} title="Cetak JSA Baru">
+                        <Printer className="w-4 h-4 text-slate-700" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(jsa.id)} disabled={isLoadingJsa} title="Edit JSA">
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-4 h-4 text-green-600" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(jsa.id)} className="text-red-500 hover:text-red-600" disabled={isLoadingJsa} title="Hapus JSA">
                         <Trash2 className="w-4 h-4" />

@@ -49,9 +49,14 @@ export async function saveJsa(
       )
     }
   } else {
-
-    
     // Create new
+    if (!data.jsaNumber || data.jsaNumber === 'AUTO') {
+      const today = new Date()
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
+      const randStr = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+      data.jsaNumber = `JSA/${dateStr}/${randStr}`
+    }
+
     const [inserted] = await db.insert(heroJsas).values(data).returning()
     if (steps.length > 0) {
       await db.insert(heroJsaSteps).values(

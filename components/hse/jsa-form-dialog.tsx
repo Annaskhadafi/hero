@@ -118,6 +118,9 @@ interface JsaFormDialogProps {
 export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [executorSignature, setExecutorSignature] = React.useState<File | null>(null)
+  const [customEquipment, setCustomEquipment] = React.useState('')
+  const [customPermit, setCustomPermit] = React.useState('')
+  const [customPpe, setCustomPpe] = React.useState('')
   
   const form = useForm<JsaFormValues>({
     resolver: zodResolver(jsaSchema),
@@ -146,21 +149,31 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
   React.useEffect(() => {
     if (open) {
       if (initialData) {
+        const equipmentLain = initialData.equipmentUsed?.find((i: string) => i.startsWith('Lain-Lain: '))
+        if (equipmentLain) setCustomEquipment(equipmentLain.replace('Lain-Lain: ', ''))
+        const permitLain = initialData.permits?.find((i: string) => i.startsWith('Lain-lainnya: '))
+        if (permitLain) setCustomPermit(permitLain.replace('Lain-lainnya: ', ''))
+        const ppeLain = initialData.ppeRequirements?.find((i: string) => i.startsWith('Lainnya: '))
+        if (ppeLain) setCustomPpe(ppeLain.replace('Lainnya: ', ''))
+
         form.reset({
-          jsaNumber: initialData.jsaNumber ?? '',
-          jobDescription: initialData.jobDescription ?? '',
-          equipmentNumber: initialData.equipmentNumber ?? '',
-          teamMembers: initialData.teamMembers ?? '',
-          equipmentUsed: initialData.equipmentUsed ?? [],
-          requirements: initialData.requirements ?? [],
-          permits: initialData.permits ?? [],
-          ppeRequirements: initialData.ppeRequirements ?? [],
-          riskLevel: initialData.riskLevel ?? 'L',
-          steps: initialData.steps && initialData.steps.length > 0 ? initialData.steps : [{ workStep: '', hazard: '', consequence: '', control: '', residualRisk: '', pic: '' }],
+          jsaNumber: initialData.jsaNumber || '',
+          jobDescription: initialData.jobDescription || '',
+          equipmentNumber: initialData.equipmentNumber || '',
+          teamMembers: initialData.teamMembers || '',
+          equipmentUsed: initialData.equipmentUsed?.map((i: string) => i.startsWith('Lain-Lain:') ? 'Lain-Lain' : i) || [],
+          requirements: initialData.requirements || [],
+          permits: initialData.permits?.map((i: string) => i.startsWith('Lain-lainnya:') ? 'Lain-lainnya' : i) || [],
+          ppeRequirements: initialData.ppeRequirements?.map((i: string) => i.startsWith('Lainnya:') ? 'Lainnya' : i) || [],
+          riskLevel: initialData.riskLevel || 'L',
+          steps: initialData.steps || [],
         })
       } else {
+        setCustomEquipment('')
+        setCustomPermit('')
+        setCustomPpe('')
         form.reset({
-          jsaNumber: '',
+          jsaNumber: 'AUTO',
           jobDescription: '',
           equipmentNumber: '',
           teamMembers: '',
@@ -181,16 +194,12 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
     try {
       let signatureUrl = initialData?.signatures?.executorUrl || ''
       if (executorSignature) {
-        const formData = new FormData()
-        formData.append('file', executorSignature)
-        const uploadRes = await uploadFile(formData)
-        if (uploadRes.success && uploadRes.url) {
-          signatureUrl = uploadRes.url
-        } else {
-          toast.error('Gagal mengupload tanda tangan.')
-          setIsSubmitting(false)
-          return
-        }
+        const reader = new FileReader()
+        const base64Url = await new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string)
+          reader.readAsDataURL(executorSignature)
+        })
+        signatureUrl = base64Url
       }
 
       const signatures = {
@@ -203,10 +212,10 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
         jobDescription: data.jobDescription,
         equipmentNumber: data.equipmentNumber,
         teamMembers: data.teamMembers,
-        equipmentUsed: data.equipmentUsed,
+        equipmentUsed: data.equipmentUsed.map(i => i === 'Lain-Lain' ? (customEquipment ? `Lain-Lain: ${customEquipment}` : 'Lain-Lain') : i),
         requirements: data.requirements,
-        permits: data.permits,
-        ppeRequirements: data.ppeRequirements,
+        permits: data.permits.map(i => i === 'Lain-lainnya' ? (customPermit ? `Lain-lainnya: ${customPermit}` : 'Lain-lainnya') : i),
+        ppeRequirements: data.ppeRequirements.map(i => i === 'Lainnya' ? (customPpe ? `Lainnya: ${customPpe}` : 'Lainnya') : i),
         riskLevel: data.riskLevel,
         signatures: signatures
       }, data.steps.map((s, idx) => ({ ...s, stepOrder: idx + 1 })), id)
@@ -224,7 +233,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+      <DialogContent className="max-w-[95vw] lg:max-w-7xl xl:max-w-[1400px] h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 py-4 border-b">
           <DialogTitle>{id ? 'Edit JSA' : 'Buat JSA Baru'}</DialogTitle>
         </DialogHeader>
@@ -239,9 +248,9 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                   name="jsaNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>No. JSA (Opsional)</FormLabel>
+                      <FormLabel>No. JSA</FormLabel>
                       <FormControl>
-                        <Input placeholder="Otomatis atau ketik manual..." {...field} />
+                        <Input placeholder="Otomatis" disabled {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -288,16 +297,16 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                 />
               </div>
 
-              <div className="grid grid-cols-4 gap-6">
+              <div className="grid grid-cols-4 gap-6 items-start">
                 <FormField
                   control={form.control}
                   name="equipmentUsed"
                   render={() => (
                     <FormItem>
-                      <div className="mb-4">
+                      <div className="mb-2">
                         <FormLabel className="text-base font-semibold">Peralatan Yang Dipergunakan</FormLabel>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         {equipmentUsedOptions.map((item) => (
                           <FormField
                             key={item}
@@ -305,23 +314,35 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                             name="equipmentUsed"
                             render={({ field }) => {
                               return (
-                                <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0">
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(item)}
-                                      onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...field.value, item])
-                                          : field.onChange(
-                                              field.value?.filter((value) => value !== item)
-                                            )
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">{item}</FormLabel>
-                                </FormItem>
+                                <div key={item}>
+                                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(item)}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([...field.value, item])
+                                            : field.onChange(
+                                                field.value?.filter((value) => value !== item)
+                                              )
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="font-normal">{item}</FormLabel>
+                                  </FormItem>
+                                  {item === 'Lain-Lain' && field.value?.includes('Lain-Lain') && (
+                                    <div className="pl-7 mt-1">
+                                      <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Sebutkan peralatan..."
+                                        value={customEquipment}
+                                        onChange={(e) => setCustomEquipment(e.target.value)}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               )
-                            }}
+                          }}
                           />
                         ))}
                       </div>
@@ -336,10 +357,10 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                     name="requirements"
                     render={() => (
                       <FormItem>
-                        <div className="mb-4">
+                        <div className="mb-2">
                           <FormLabel className="text-base font-semibold">Keperluan</FormLabel>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {requirementsOptions.map((item) => (
                             <FormField
                               key={item}
@@ -375,18 +396,19 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                     name="permits"
                     render={() => (
                       <FormItem>
-                        <div className="mb-4">
+                        <div className="mb-2">
                           <FormLabel className="text-base font-semibold">Permit</FormLabel>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {permitOptions.map((item) => (
                             <FormField
                               key={item}
                               control={form.control}
                               name="permits"
                               render={({ field }) => {
-                                return (
-                                  <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0">
+                              return (
+                                <div key={item}>
+                                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                                     <FormControl>
                                       <Checkbox
                                         checked={field.value?.includes(item)}
@@ -399,7 +421,18 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                                     </FormControl>
                                     <FormLabel className="font-normal">{item}</FormLabel>
                                   </FormItem>
-                                )
+                                  {item === 'Lain-lainnya' && field.value?.includes('Lain-lainnya') && (
+                                    <div className="pl-7 mt-1">
+                                      <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Sebutkan permit..."
+                                        value={customPermit}
+                                        onChange={(e) => setCustomPermit(e.target.value)}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )
                               }}
                             />
                           ))}
@@ -415,10 +448,10 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                   name="ppeRequirements"
                   render={() => (
                     <FormItem>
-                      <div className="mb-4">
+                      <div className="mb-2">
                         <FormLabel className="text-base font-semibold">Keperluan PPE</FormLabel>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         {ppeOptions.map((item) => (
                           <FormField
                             key={item}
@@ -426,21 +459,33 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                             name="ppeRequirements"
                             render={({ field }) => {
                               return (
-                                <FormItem key={item} className="flex flex-row items-start space-x-3 space-y-0">
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(item)}
-                                      onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...field.value, item])
-                                          : field.onChange(field.value?.filter((value) => value !== item))
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">{item}</FormLabel>
-                                </FormItem>
+                                <div key={item}>
+                                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(item)}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([...field.value, item])
+                                            : field.onChange(field.value?.filter((value) => value !== item))
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="font-normal">{item}</FormLabel>
+                                  </FormItem>
+                                  {item === 'Lainnya' && field.value?.includes('Lainnya') && (
+                                    <div className="pl-7 mt-1">
+                                      <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Sebutkan PPE..."
+                                        value={customPpe}
+                                        onChange={(e) => setCustomPpe(e.target.value)}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               )
-                            }}
+                          }}
                           />
                         ))}
                       </div>
@@ -453,7 +498,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                   control={form.control}
                   name="riskLevel"
                   render={({ field }) => (
-                    <FormItem className="space-y-4">
+                    <FormItem className="space-y-2">
                       <FormLabel className="text-base font-semibold">Tingkat Resiko</FormLabel>
                       <FormControl>
                         <RadioGroup
@@ -517,21 +562,21 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                     </thead>
                     <tbody className="divide-y">
                       {fields.map((item, index) => (
-                        <tr key={item.id} className="group hover:bg-slate-50">
-                          <td className="py-2 px-3 text-center text-slate-500">{index + 1}</td>
+                        <tr key={item.id} className="group hover:bg-slate-50 align-top">
+                          <td className="py-2 px-3 text-center text-slate-500 pt-3">{index + 1}</td>
                           <td className="py-2 px-3">
-                            <Input {...form.register(`steps.${index}.workStep`)} className="h-8 border-transparent hover:border-input focus:border-input bg-transparent" />
+                            <Textarea {...form.register(`steps.${index}.workStep`)} className="min-h-[60px] min-w-[150px] resize-y border-transparent hover:border-input focus:border-input bg-transparent" />
                           </td>
                           <td className="py-2 px-3">
-                            <Input {...form.register(`steps.${index}.hazard`)} className="h-8 border-transparent hover:border-input focus:border-input bg-transparent" />
+                            <Textarea {...form.register(`steps.${index}.hazard`)} className="min-h-[60px] min-w-[150px] resize-y border-transparent hover:border-input focus:border-input bg-transparent" />
                           </td>
                           <td className="py-2 px-3">
-                            <Input {...form.register(`steps.${index}.consequence`)} className="h-8 border-transparent hover:border-input focus:border-input bg-transparent" />
+                            <Textarea {...form.register(`steps.${index}.consequence`)} className="min-h-[60px] min-w-[150px] resize-y border-transparent hover:border-input focus:border-input bg-transparent" />
                           </td>
                           <td className="py-2 px-3">
-                            <Input {...form.register(`steps.${index}.control`)} className="h-8 border-transparent hover:border-input focus:border-input bg-transparent" />
+                            <Textarea {...form.register(`steps.${index}.control`)} className="min-h-[60px] min-w-[150px] resize-y border-transparent hover:border-input focus:border-input bg-transparent" />
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-3 pt-3">
                             <select 
                               {...form.register(`steps.${index}.residualRisk`)} 
                               className="w-full h-8 px-2 py-1 text-sm bg-transparent border border-transparent rounded hover:border-input focus:border-input outline-none"
@@ -542,9 +587,9 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                             </select>
                           </td>
                           <td className="py-2 px-3">
-                            <Input {...form.register(`steps.${index}.pic`)} className="h-8 border-transparent hover:border-input focus:border-input bg-transparent" />
+                            <Textarea {...form.register(`steps.${index}.pic`)} className="min-h-[60px] min-w-[150px] resize-y border-transparent hover:border-input focus:border-input bg-transparent" />
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-3 pt-3">
                             <Button
                               type="button"
                               variant="ghost"
