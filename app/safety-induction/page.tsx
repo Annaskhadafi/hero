@@ -11,8 +11,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { SignaturePad } from '@/components/signature-pad'
 import { toast } from 'sonner'
 import { ShieldAlert, CheckCircle2, User, Building, Phone, Target } from 'lucide-react'
+import { useTheme } from '@/components/theme-provider'
 
 export default function SafetyInductionPage() {
+  const { setTheme } = useTheme()
+  
+  useEffect(() => {
+    setTheme('light')
+  }, [setTheme])
+
   const [hasScrolled, setHasScrolled] = useState(false)
   const [isAgreed, setIsAgreed] = useState(false)
   const [signature, setSignature] = useState<File | null>(null)
