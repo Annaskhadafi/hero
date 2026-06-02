@@ -10,81 +10,92 @@ interface SignaturePadProps {
 
 export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
 
-  useEffect(() => {
+  const initCanvas = () => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    const container = containerRef.current
+    if (!canvas || !container) return
 
-    // Setup canvas context
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     
-    // Scale canvas to physical pixels to avoid blurring
-    const rect = canvas.getBoundingClientRect()
-    canvas.width = rect.width
-    canvas.height = rect.height
+    // Scale canvas to match container size
+    canvas.width = container.offsetWidth
+    canvas.height = container.offsetHeight
     
-    ctx.lineWidth = 2
+    ctx.lineWidth = 3
     ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
     ctx.strokeStyle = '#000'
-  }, [])
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault()
-    setIsDrawing(true)
-    draw(e)
   }
 
-  const stopDrawing = () => {
-    setIsDrawing(false)
+  useEffect(() => {
+    initCanvas()
+    window.addEventListener('resize', initCanvas)
+    return () => window.removeEventListener('resize', initCanvas)
+  }, [])
+
+  const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
-    if (canvas) {
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.beginPath()
+    if (!canvas) return { x: 0, y: 0 }
+
+    const rect = canvas.getBoundingClientRect()
+    if ('touches' in e) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
       }
-      
-      if (hasSignature) {
-        // Convert to file
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], 'signature.png', { type: 'image/png' })
-            onSignatureChange(file)
-          }
-        }, 'image/png')
-      }
+    }
+    return {
+      x: (e as React.MouseEvent).clientX - rect.left,
+      y: (e as React.MouseEvent).clientY - rect.top
+    }
+  }
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true)
+    const { x, y } = getCoordinates(e)
+    const ctx = canvasRef.current?.getContext('2d')
+    if (ctx) {
+      ctx.beginPath()
+      ctx.moveTo(x, y)
     }
   }
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return
-    e.preventDefault()
-
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const rect = canvas.getBoundingClientRect()
-    let x, y
-
-    if ('touches' in e) {
-      x = e.touches[0].clientX - rect.left
-      y = e.touches[0].clientY - rect.top
-    } else {
-      x = e.clientX - rect.left
-      y = e.clientY - rect.top
+    
+    // Mencegah scrolling saat sedang tanda tangan di mobile
+    if (e.cancelable) {
+      e.preventDefault()
     }
 
-    ctx.lineTo(x, y)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.moveTo(x, y)
+    const { x, y } = getCoordinates(e)
+    const ctx = canvasRef.current?.getContext('2d')
+    if (ctx) {
+      ctx.lineTo(x, y)
+      ctx.stroke()
+      
+      if (!hasSignature) setHasSignature(true)
+    }
+  }
+
+  const stopDrawing = () => {
+    if (!isDrawing) return
+    setIsDrawing(false)
     
-    if (!hasSignature) setHasSignature(true)
+    const canvas = canvasRef.current
+    if (canvas && hasSignature) {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], 'signature.png', { type: 'image/png' })
+          onSignatureChange(file)
+        }
+      }, 'image/png')
+    }
   }
 
   const clearSignature = () => {
@@ -99,8 +110,16 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
   }
 
   return (
-    <div className="flex flex-col space-y-2">
-      <div className="border rounded-md bg-white overflow-hidden touch-none">
+    <div className="flex flex-col space-y-2 w-full">
+      <div 
+        ref={containerRef}
+        className="border-2 border-slate-300 border-dashed rounded-md bg-white overflow-hidden touch-none h-40 relative"
+      >
+        {!hasSignature && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 text-sm">
+            Tanda Tangan Di Sini
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
@@ -110,12 +129,13 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
           onTouchStart={startDrawing}
           onTouchEnd={stopDrawing}
           onTouchMove={draw}
-          className="w-full h-40 cursor-crosshair"
+          className="w-full h-full cursor-crosshair touch-none absolute inset-0"
+          style={{ touchAction: 'none' }}
         />
       </div>
       <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">
-          {hasSignature ? 'Tanda tangan terisi' : 'Silakan tanda tangan di atas'}
+        <span className="text-xs text-slate-500">
+          {hasSignature ? 'Tanda tangan terisi' : 'Gunakan mouse atau sentuhan jari'}
         </span>
         <Button 
           type="button" 
@@ -125,7 +145,7 @@ export function SignaturePad({ onSignatureChange }: SignaturePadProps) {
           disabled={!hasSignature}
         >
           <Trash2 className="w-4 h-4 mr-2" />
-          Bersihkan
+          Ulangi
         </Button>
       </div>
     </div>
