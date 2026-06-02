@@ -131,6 +131,8 @@ function KpiCard({ title, value, subtext, icon: Icon, color, isPercentage = fals
 
 // 1. Incident Reports
 export function IncidentReportsDashboard({ data }: { data: SafetyData }) {
+  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(undefined)
+
   const categoryCount = data.incidentReports.reduce<Record<string, number>>((acc, row) => {
     const key = row.category || "Uncategorized"
     acc[key] = (acc[key] ?? 0) + 1
@@ -155,6 +157,16 @@ export function IncidentReportsDashboard({ data }: { data: SafetyData }) {
   const incidentDates = data.incidentReports
     .filter(r => r.incidentDate)
     .map(r => new Date(r.incidentDate as Date | string))
+
+  const selectedIncidents = selectedDate 
+    ? data.incidentReports.filter(r => {
+        if (!r.incidentDate) return false;
+        const d = new Date(r.incidentDate as Date | string);
+        return d.getDate() === selectedDate.getDate() && 
+               d.getMonth() === selectedDate.getMonth() && 
+               d.getFullYear() === selectedDate.getFullYear();
+      })
+    : [];
 
   return (
     <div className="grid gap-6 xl:grid-cols-4">
@@ -186,24 +198,81 @@ export function IncidentReportsDashboard({ data }: { data: SafetyData }) {
       <Card className="xl:col-span-3 border-border/40 shadow-sm bg-card/30">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-bold">Incident Calendar View</CardTitle>
-          <CardDescription>Calendar heat map indicating dates when incidents or accidents occurred.</CardDescription>
+          <CardDescription>Calendar heat map indicating dates when incidents or accidents occurred. Klik tanggal merah untuk melihat detail incident.</CardDescription>
         </CardHeader>
-        <CardContent className="flex justify-center items-center overflow-x-auto">
-          {incidentDates.length > 0 ? (
-            <div className="scale-125 transform origin-top my-4">
-              <Calendar
-                mode="multiple"
-                selected={incidentDates}
-                defaultMonth={incidentDates[0] || new Date()}
-                className="rounded-xl border border-border/50 bg-background/50 shadow-inner"
-                classNames={{
-                  day_selected: "bg-red-500 text-white hover:bg-red-600 hover:text-white focus:bg-red-500 focus:text-white",
-                }}
-              />
+        <CardContent>
+          <div className="flex flex-col md:flex-row gap-8 items-start">
+            <div className="flex-shrink-0 flex justify-center w-full md:w-auto overflow-x-auto">
+              {incidentDates.length > 0 ? (
+                <div className="my-4">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    modifiers={{
+                      incident: incidentDates,
+                    }}
+                    modifiersClassNames={{
+                      incident: "bg-red-500 text-white hover:bg-red-600 hover:text-white focus:bg-red-500 focus:text-white font-bold",
+                    }}
+                    defaultMonth={incidentDates[0] || new Date()}
+                    className="rounded-xl border border-border/50 bg-background/50 shadow-inner"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-[350px] w-[300px] items-center justify-center text-sm font-medium text-muted-foreground bg-muted/10 rounded-xl border border-dashed border-border/50">No incidents to display</div>
+              )}
             </div>
-          ) : (
-            <div className="flex h-[350px] items-center justify-center text-sm font-medium text-muted-foreground bg-muted/10 rounded-xl border border-dashed border-border/50">No incidents to display</div>
-          )}
+
+            <div className="flex-1 min-w-0 w-full bg-background/50 rounded-xl border border-border/50 p-4 max-h-[400px] overflow-y-auto shadow-inner">
+              <h3 className="font-semibold text-lg mb-4 text-foreground/80 border-b border-border/50 pb-2">
+                {selectedDate ? `Incidents on ${selectedDate.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}` : "Detail Incident"}
+              </h3>
+              
+              {selectedDate ? (
+                selectedIncidents.length > 0 ? (
+                  <div className="space-y-4">
+                    {selectedIncidents.map(incident => (
+                      <div key={incident.id} className="p-4 rounded-xl bg-card border border-border shadow-sm flex flex-col gap-3 hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-base">{incident.category}</p>
+                            <p className="text-xs font-medium text-muted-foreground bg-muted/50 inline-block px-2 py-0.5 rounded-sm mt-1">{incident.location} • {incident.department}</p>
+                          </div>
+                          <span className={`px-2 py-1 text-xs font-bold rounded-md ${incident.status === "open" ? "bg-red-500/10 text-red-600 border border-red-500/20" : "bg-green-500/10 text-green-600 border border-green-500/20"}`}>
+                            {incident.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-sm leading-relaxed text-foreground/90 bg-muted/30 p-3 rounded-lg border border-border/40">
+                          {incident.incidentDescription}
+                        </div>
+                        {incident.propertyDamage && (
+                          <div className="text-xs text-orange-600/90 font-medium">
+                            <span className="font-bold">Property Damage:</span> {incident.propertyDamage}
+                          </div>
+                        )}
+                        <div className="text-xs text-muted-foreground flex items-center justify-between">
+                          <span>Reported by: <span className="font-semibold text-foreground/70">{incident.workerName}</span></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground text-sm flex flex-col items-center justify-center h-32 gap-2">
+                    <CheckCircle2 className="h-8 w-8 text-green-500/50" />
+                    <p>No incidents reported on this date.</p>
+                  </div>
+                )
+              ) : (
+                <div className="text-muted-foreground text-sm flex flex-col items-center justify-center h-32 gap-2">
+                  <div className="p-3 bg-red-500/10 rounded-full">
+                    <AlertTriangle className="h-6 w-6 text-red-500/70" />
+                  </div>
+                  <p>Klik tanggal berwarna merah untuk melihat detail incident.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

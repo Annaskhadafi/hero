@@ -16,7 +16,7 @@ function formatNumber(value: unknown) {
 export default async function SafetyDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; location?: string }>
+  searchParams: Promise<{ year?: string; month?: string; location?: string }>
 }) {
   const params = await searchParams
   const data = await getSafetyDashboardData(params)

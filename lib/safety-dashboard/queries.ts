@@ -75,7 +75,7 @@ function getCanonicalLocations(rawLocations: string[]) {
   return { mapping, canonical: canonical.sort() }
 }
 
-export async function getSafetyDashboardData(filters?: { year?: string; location?: string }) {
+export async function getSafetyDashboardData(filters?: { year?: string; month?: string; location?: string }) {
   const [
     yearlySummaries,
     monthlySummaries,
@@ -141,6 +141,33 @@ export async function getSafetyDashboardData(filters?: { year?: string; location
       if (!row.activityDate) return true
       const d = new Date(row.activityDate)
       return d.getFullYear() === yearNum
+    })
+  }
+
+  if (filters?.month) {
+    const monthNum = parseInt(filters.month)
+    filteredMonthlySummaries = filteredMonthlySummaries.filter(row => {
+      const d = new Date(row.month)
+      return d.getMonth() === monthNum
+    })
+    filteredIncidentReports = filteredIncidentReports.filter(row => {
+      if (!row.incidentDate) return false
+      const d = new Date(row.incidentDate)
+      return d.getMonth() === monthNum
+    })
+    filteredCertifications = filteredCertifications.filter(row => {
+      if (!row.certificationDate) return true
+      const d = new Date(row.certificationDate)
+      return d.getMonth() === monthNum
+    })
+    filteredMonthlyManHours = filteredMonthlyManHours.filter(row => {
+      const d = new Date(row.month)
+      return d.getMonth() === monthNum
+    })
+    filteredWeeklyActivities = filteredWeeklyActivities.filter(row => {
+      if (!row.activityDate) return true
+      const d = new Date(row.activityDate)
+      return d.getMonth() === monthNum
     })
   }
 
@@ -218,6 +245,20 @@ export async function getSafetyDashboardData(filters?: { year?: string; location
         ...weeklyActivities.map((row) => row.pic),
       ].filter(Boolean))).sort(),
       years: Array.from(allYears).sort().reverse(),
+      months: [
+        { value: "0", label: "Januari" },
+        { value: "1", label: "Februari" },
+        { value: "2", label: "Maret" },
+        { value: "3", label: "April" },
+        { value: "4", label: "Mei" },
+        { value: "5", label: "Juni" },
+        { value: "6", label: "Juli" },
+        { value: "7", label: "Agustus" },
+        { value: "8", label: "September" },
+        { value: "9", label: "Oktober" },
+        { value: "10", label: "November" },
+        { value: "11", label: "Desember" },
+      ],
     },
     access,
   }

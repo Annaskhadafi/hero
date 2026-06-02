@@ -103,6 +103,19 @@ function getUserInitials(name: string) {
   return parts.map((part) => part[0]?.toUpperCase() ?? '').join('')
 }
 
+const getContractStatus = (endStr: string | null | undefined) => {
+  if (!endStr) return { label: 'Belum Diatur', type: 'NONE' }
+  
+  const today = new Date()
+  const end = new Date(endStr)
+  const diffTime = end.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+  if (diffDays <= 0) return { label: 'Contract Completed', type: 'COMPLETED' }
+  if (diffDays <= 30) return { label: 'Will Expired', type: 'EXPIRING' }
+  return { label: 'Contract Active', type: 'ACTIVE' }
+}
+
 function FilterChip({ children, onRemove }: { children: React.ReactNode; onRemove: () => void }) {
   return (
     <Badge
@@ -789,13 +802,14 @@ export function SecurityUserManagement({
                   <TableHead>Lokasi Site</TableHead>
                   <TableHead>Site</TableHead>
                   <TableHead>Tipe Status</TableHead>
+                  <TableHead>Status Kontrak</TableHead>
                   <TableHead className="w-[120px] text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.length > 0 ? (
-                  filteredUsers.map((user) => (
-                    <TableRow key={user.id} className="hover:bg-white/55">
+                  filteredUsers.map((user, index) => (
+                    <TableRow key={`${user.id}-${index}`} className="hover:bg-white/55">
                       <TableCell className="py-3.5">
                         <Checkbox
                           checked={selectedIds.includes(user.id)}
@@ -861,6 +875,24 @@ export function SecurityUserManagement({
                         >
                           {user.employeeStatusType}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="py-3.5">
+                        {(() => {
+                          const status = getContractStatus(user.contractEnd)
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "rounded-full border-0 px-3 py-1 text-[10px] uppercase tracking-wide",
+                                status.type === 'NONE' 
+                                  ? "bg-slate-100 text-slate-500" 
+                                  : "bg-[#183d6a] text-white"
+                              )}
+                            >
+                              {status.label}
+                            </Badge>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell className="py-3.5 text-right">
                         <SecurityUserRowActions

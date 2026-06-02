@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 type SafetyFilterProps = {
   filterOptions: {
     years: string[]
+    months: { value: string; label: string }[]
     locations: string[]
   }
 }
@@ -15,6 +16,7 @@ export function SafetyDashboardFilter({ filterOptions }: SafetyFilterProps) {
   const searchParams = useSearchParams()
 
   const year = searchParams.get("year") || ""
+  const month = searchParams.get("month") || ""
   const location = searchParams.get("location") || ""
 
   const updateParam = (key: string, value: string) => {
@@ -37,6 +39,18 @@ export function SafetyDashboardFilter({ filterOptions }: SafetyFilterProps) {
           <SelectItem value="all" className="font-semibold text-primary">Semua Tahun</SelectItem>
           {filterOptions.years.map(y => (
             <SelectItem key={y} value={y}>{y}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      
+      <Select value={month || "all"} onValueChange={(val) => updateParam("month", val)}>
+        <SelectTrigger className="w-[140px] bg-surface-container-lowest font-medium shadow-sm">
+          <SelectValue placeholder="Semua Bulan" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all" className="font-semibold text-primary">Semua Bulan</SelectItem>
+          {filterOptions.months?.map(m => (
+            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
           ))}
         </SelectContent>
       </Select>

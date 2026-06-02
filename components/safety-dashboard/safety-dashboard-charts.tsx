@@ -27,6 +27,7 @@ type SafetyCharts = {
   certificationStatus: Array<{ name: string; value: number }>
   weeklyActivitiesByCategory: Array<{ category: string; count: number }>
   manHoursByLocation: Array<{ location: string; manHours: number; target: number }>
+  monthlyManHoursTrend: Array<{ month: string; manHours: number }>
   performanceComparison: Array<Record<string, string | number>>
 }
 
@@ -141,6 +142,25 @@ export function SafetyDashboardCharts({ charts }: { charts: SafetyCharts }) {
               <Bar dataKey="propertyDamageThreshold" fill="#cbd5e1" radius={[6, 6, 0, 0]} name="PD Threshold" />
               <Bar dataKey="propertyDamageActual" fill="#f43f5e" radius={[6, 6, 0, 0]} name="PD Actual">
                 <LabelList dataKey="propertyDamageActual" position="top" fill="#f43f5e" fontSize={11} fontWeight={600} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      <div className="xl:col-span-2">
+        <ChartCard title="Safety Man Hours Per Bulan" description="Tren jam kerja aman bulanan.">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={charts.monthlyManHoursTrend} margin={{ left: 0, right: 16, top: 20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} tick={{ fill: "#64748b" }} />
+              <YAxis tickLine={false} axisLine={false} fontSize={12} tick={{ fill: "#64748b" }} />
+              <Tooltip
+                cursor={{ fill: "#f1f5f9" }}
+                contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }}
+              />
+              <Bar dataKey="manHours" fill="#10b981" radius={[6, 6, 0, 0]}>
+                <LabelList dataKey="manHours" position="top" fill="#10b981" fontSize={11} fontWeight={600} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

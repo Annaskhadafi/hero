@@ -98,6 +98,7 @@ export type SecurityUserRecord = {
   isActive: boolean
   siteName: string
   totalPoints: number
+  contractEnd: string | null
 }
 
 export async function getSecurityUserReferenceData() {
@@ -677,6 +678,17 @@ const SIDEBAR_MENU_SEEDS = [
     iconName: 'list-details',
     resource: 'safety_data_management',
     sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    title: 'Safety Induction',
+    url: '/dashboard/safety-induction',
+    iconName: 'shield-alert',
+    resource: 'safety_induction',
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -3691,6 +3703,7 @@ export async function getSecurityUsersData() {
       isActive: hrEmployees.isActive,
       siteName: hrSites.name,
       totalPoints: sql<number>`0`.as('total_points'),
+      contractEnd: hrEmployees.contractEnd,
     })
     .from(hrEmployees)
     .leftJoin(

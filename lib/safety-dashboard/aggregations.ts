@@ -110,11 +110,13 @@ export function buildSafetyCharts(input: {
       manHours: asNumber(row.safetyManHours),
       target: asNumber(row.safeTarget),
     })),
-    monthlyManHoursTrend: input.monthlyManHours.map((row) => ({
-      month: monthLabel(row.month),
-      location: row.workLocation,
-      manHours: asNumber(row.safetyManHours),
-    })),
+    monthlyManHoursTrend: Object.entries(
+      input.monthlyManHours.reduce<Record<string, number>>((acc, row) => {
+        const m = monthLabel(row.month)
+        acc[m] = (acc[m] || 0) + asNumber(row.safetyManHours)
+        return acc
+      }, {})
+    ).map(([month, manHours]) => ({ month, manHours })).reverse(),
     performanceComparison: input.performanceMetrics.map((row) => ({
       site: row.periodLabel,
       fatalityThreshold: asNumber(row.fatalityThreshold),
