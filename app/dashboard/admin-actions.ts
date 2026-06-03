@@ -38,6 +38,7 @@ import {
   hrPositions,
   hrSections,
   hrSites,
+  hrWorkLocations,
   hseIncidents,
   hseObservations,
   masterDepartments,
@@ -3686,6 +3687,7 @@ export async function manageSecurityUserAction(
         name: hrEmployees.fullName,
         email: hrEmployees.email,
         siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
         accessRole: sql<string>`coalesce(${employees.accessRole}, ${hrPositions.levelName}, 'User')`,
         legacyEmployeeId: employees.id,
       })
@@ -3712,6 +3714,13 @@ export async function manageSecurityUserAction(
       const profileImage = normalizeProfileImageValue(payload.profileImage)
       const [selectedSite] = payload.siteId
         ? await db.select().from(hrSites).where(eq(hrSites.id, payload.siteId)).limit(1)
+        : []
+      const [selectedWorkLocation] = payload.workLocation
+        ? await db
+            .select({ id: hrWorkLocations.id, name: hrWorkLocations.name })
+            .from(hrWorkLocations)
+            .where(eq(hrWorkLocations.name, payload.workLocation))
+            .limit(1)
         : []
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
@@ -3743,6 +3752,7 @@ export async function manageSecurityUserAction(
           positionId: hrGovernanceIds.positionId,
           orgNodeId: hrGovernanceIds.orgNodeId,
           siteId: selectedSite?.id ?? employee.siteId,
+          workLocationId: selectedWorkLocation?.id ?? employee.workLocationId,
           email,
           demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
           accountStatus: normalizedStatus.status,
@@ -3769,7 +3779,7 @@ export async function manageSecurityUserAction(
             department,
             role: jobTitle,
             jobTitle,
-            workLocation: selectedSite?.name || payload.workLocation || '',
+            workLocation: selectedWorkLocation?.name || payload.workLocation || selectedSite?.name || '',
             phoneNumber: payload.phoneNumber || '',
             email,
             employmentStatus: normalizedStatus.status,

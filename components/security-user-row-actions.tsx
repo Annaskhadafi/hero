@@ -37,6 +37,11 @@ const INITIAL_STATE: AdminMutationState = {
   message: '',
 }
 
+const detailValueClass = 'min-w-0 break-words text-sm leading-relaxed text-[#064e4a]'
+const compactSelectTriggerClass =
+  'min-h-10 w-full min-w-0 overflow-hidden text-left [&>span]:block [&>span]:truncate'
+const compactSelectContentClass = 'max-w-[min(36rem,calc(100vw-3rem))]'
+
 function getUserInitials(name: string) {
   return (
     name
@@ -108,7 +113,9 @@ export function SecurityUserRowActions({
     ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
     : sections
   const filteredPositions = selectedDepartmentId
-    ? positions.filter((position) => position.departmentId?.toString() === selectedDepartmentId)
+    ? positions.filter(
+        (position) => !position.departmentId || position.departmentId.toString() === selectedDepartmentId
+      )
     : positions
   const selectedDepartmentName =
     departments.find((department) => department.id.toString() === selectedDepartmentId)?.name ||
@@ -116,7 +123,7 @@ export function SecurityUserRowActions({
   const selectedSectionName =
     sections.find((section) => section.id.toString() === selectedSectionId)?.name || user.section
   const resolvedWorkLocation =
-    selectedSite?.name || selectedPosition?.siteLocation || user.workLocation || ''
+    user.workLocation || selectedPosition?.siteLocation || selectedSite?.name || ''
 
   useEffect(() => {
     if (state.status === 'success') {
@@ -160,7 +167,8 @@ export function SecurityUserRowActions({
           <span className="sr-only">Kelola pengguna</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] w-full overflow-y-auto sm:max-w-5xl">
+      <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-5xl">
+        <div className="max-h-[90vh] overflow-y-auto overflow-x-hidden p-5 sm:p-6">
         <DialogHeader className="pr-8">
           <DialogTitle>Kelola Pengguna</DialogTitle>
           <DialogDescription>
@@ -169,7 +177,7 @@ export function SecurityUserRowActions({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="profile" className="space-y-4">
+        <Tabs defaultValue="profile" className="min-w-0 space-y-4">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile">Profil</TabsTrigger>
             <TabsTrigger value="access">Akses</TabsTrigger>
@@ -177,9 +185,9 @@ export function SecurityUserRowActions({
             <TabsTrigger value="danger">Danger</TabsTrigger>
           </TabsList>
           <TabsContent value="profile" className="mt-0">
-            <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-              <div className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4 xl:sticky xl:top-0">
-                <div className="flex items-center justify-between gap-3">
+            <div className="grid min-w-0 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="bg-surface-container-low min-w-0 space-y-4 rounded-[1.2rem] p-4 xl:sticky xl:top-0">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     <Avatar className="border-border size-14 border">
                       <AvatarImage
@@ -192,7 +200,7 @@ export function SecurityUserRowActions({
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className="text-lg font-semibold">{user.name}</p>
+                      <p className="break-words text-lg font-semibold leading-snug">{user.name}</p>
                       <p className="text-muted-foreground text-sm break-all">{user.email}</p>
                     </div>
                   </div>
@@ -202,7 +210,7 @@ export function SecurityUserRowActions({
                 <div className="grid gap-3 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs">SN</p>
-                    <p className="font-medium">{user.employeeSn}</p>
+                    <p className={detailValueClass}>{user.employeeSn}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Peran</p>
@@ -212,39 +220,39 @@ export function SecurityUserRowActions({
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Position</p>
-                    <p>{user.jobTitle}</p>
+                    <p className={detailValueClass}>{user.jobTitle || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Lokasi Site Jabatan</p>
-                    <p>{selectedPosition?.siteLocation || user.workLocation || '—'}</p>
+                    <p className={detailValueClass}>{selectedPosition?.siteLocation || user.workLocation || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Departement</p>
-                    <p>{user.department}</p>
+                    <p className={detailValueClass}>{user.department || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Section</p>
-                    <p>{user.section}</p>
+                    <p className={detailValueClass}>{user.section || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">TTL</p>
-                    <p>{normalizeBirthDateValue(user.birthPlaceDate) || '—'}</p>
+                    <p className={detailValueClass}>{normalizeBirthDateValue(user.birthPlaceDate) || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Domisili</p>
-                    <p>{user.domicile || '—'}</p>
+                    <p className={detailValueClass}>{user.domicile || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Atasan Langsung</p>
-                    <p>{user.directManagerName || 'Belum dipilih'}</p>
+                    <p className={detailValueClass}>{user.directManagerName || 'Belum dipilih'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Lokasi Kerja</p>
-                    <p>{user.workLocation || '—'}</p>
+                    <p className={detailValueClass}>{user.workLocation || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Nomor Telp</p>
-                    <p>{user.phoneNumber || '—'}</p>
+                    <p className={detailValueClass}>{user.phoneNumber || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Tipe Status Karyawan</p>
@@ -262,7 +270,7 @@ export function SecurityUserRowActions({
                 </div>
               </div>
 
-              <div className="space-y-5">
+              <div className="min-w-0 space-y-5">
                 {state.status !== 'idle' ? (
                   <Alert
                     className={
@@ -277,7 +285,7 @@ export function SecurityUserRowActions({
 
                 <form
                   action={formAction}
-                  className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4"
+                  className="bg-surface-container-low min-w-0 space-y-4 rounded-[1.2rem] p-4"
                 >
                   <div className="flex items-center gap-2">
                     <Pencil className="text-muted-foreground size-4" />
@@ -291,20 +299,20 @@ export function SecurityUserRowActions({
                     initialValue={user.profileImage ?? ''}
                   />
 
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-2">
+                  <div className="grid min-w-0 gap-4 md:grid-cols-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>Nama Lengkap</Label>
                       <Input name="fullName" defaultValue={user.name} />
                     </label>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>SN</Label>
                       <Input name="employeeSn" defaultValue={user.employeeSn} />
                     </label>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>Tahun Masuk</Label>
                       <Input name="joinYear" defaultValue={`${user.joinYear}`} />
                     </label>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>TTL</Label>
                       <Input
                         name="birthPlaceDate"
@@ -312,20 +320,20 @@ export function SecurityUserRowActions({
                         defaultValue={getBirthDateInputValue(user.birthPlaceDate)}
                       />
                     </label>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>Domisili</Label>
                       <Input name="domicile" defaultValue={user.domicile} />
                     </label>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Atasan Langsung</Label>
                       <Select
                         name="directManagerId"
                         defaultValue={user.directManagerId ? `${user.directManagerId}` : 'none'}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue placeholder="Pilih atasan" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           <SelectItem value="none">Belum dipilih</SelectItem>
                           {managerOptions
                             .filter((manager) => manager.id !== user.id)
@@ -337,16 +345,16 @@ export function SecurityUserRowActions({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Tipe Status Karyawan</Label>
                       <Select
                         name="employeeStatusType"
                         defaultValue={user.employeeStatusType || 'Permanen | Staff'}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue placeholder="Pilih tipe status" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
                           <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
                           <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
@@ -354,7 +362,7 @@ export function SecurityUserRowActions({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Departement</Label>
                       <Select
                         value={selectedDepartmentId}
@@ -364,10 +372,10 @@ export function SecurityUserRowActions({
                           setSelectedJobTitle('')
                         }}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue placeholder="Pilih department" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           {departments.map((department) => (
                             <SelectItem key={department.id} value={`${department.id}`}>
                               {department.name} ({department.code})
@@ -377,21 +385,21 @@ export function SecurityUserRowActions({
                       </Select>
                       <input type="hidden" name="department" value={selectedDepartmentName} />
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Section</Label>
                       <Select
                         value={selectedSectionId}
                         onValueChange={setSelectedSectionId}
                         disabled={!selectedDepartmentId}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue
                             placeholder={
                               selectedDepartmentId ? 'Pilih section' : 'Pilih department dulu'
                             }
                           />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           {filteredSections.map((section) => (
                             <SelectItem key={section.id} value={`${section.id}`}>
                               {section.name} ({section.code})
@@ -401,17 +409,17 @@ export function SecurityUserRowActions({
                       </Select>
                       <input type="hidden" name="section" value={selectedSectionName} />
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Position</Label>
                       <Select
                         name="jobTitle"
                         value={selectedJobTitle}
                         onValueChange={setSelectedJobTitle}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue placeholder="Pilih jabatan" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           {filteredPositions.map((position) => (
                             <SelectItem key={position.id} value={position.name}>
                               {position.name} ({position.code}) -{' '}
@@ -421,21 +429,21 @@ export function SecurityUserRowActions({
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Lokasi Site</Label>
                       <Select
                         value={selectedSiteId}
                         onValueChange={setSelectedSiteId}
                         disabled={sites.length === 0}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue
                             placeholder={
                               sites.length > 0 ? 'Pilih lokasi site' : 'Belum ada site aktif'
                             }
                           />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           {sites.map((site) => (
                             <SelectItem key={site.id} value={`${site.id}`}>
                               {site.name} {site.location ? `- ${site.location}` : ''}
@@ -445,7 +453,7 @@ export function SecurityUserRowActions({
                       </Select>
                       <input type="hidden" name="siteId" value={selectedSiteId} />
                     </div>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>Lokasi Kerja</Label>
                       <Input
                         name="workLocationDisplay"
@@ -455,21 +463,21 @@ export function SecurityUserRowActions({
                       />
                       <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
                     </label>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>Nomor Telp</Label>
                       <Input name="phoneNumber" defaultValue={user.phoneNumber} />
                     </label>
-                    <label className="grid gap-2">
+                    <label className="grid min-w-0 gap-2">
                       <Label>Email</Label>
                       <Input name="email" defaultValue={user.email} type="email" />
                     </label>
-                    <div className="grid gap-2">
+                    <div className="grid min-w-0 gap-2">
                       <Label>Status</Label>
                       <Select name="employmentStatus" defaultValue={user.status}>
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue placeholder="Pilih status" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className={compactSelectContentClass}>
                           <SelectItem value="active">active</SelectItem>
                           <SelectItem value="probation">probation</SelectItem>
                           <SelectItem value="contract">contract</SelectItem>
@@ -605,6 +613,7 @@ export function SecurityUserRowActions({
             Nonaktifkan dan hapus pengguna tersedia di bagian profil pengguna.
           </TabsContent>
         </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
   )

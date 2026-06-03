@@ -1,30 +1,21 @@
 import { SecurityUserManagement } from "@/components/security-user-management";
-import { getSecurityRoleOptions, getSecurityUsersData } from "@/lib/hero-admin";
-import {
-  getSectionOptions,
-  getDepartmentOptions,
-  getPositionOptions,
-  getSiteOptions,
-} from "@/lib/master-data";
+import { getSecurityRoleOptions, getSecurityUserReferenceData, getSecurityUsersData } from "@/lib/hero-admin";
 
 export default async function SecurityUsersPage() {
-  const [users, roleOptions, sections, departments, positions, sites] = await Promise.all([
+  const [users, roleOptions, referenceData] = await Promise.all([
     getSecurityUsersData(),
     getSecurityRoleOptions(),
-    getSectionOptions(),
-    getDepartmentOptions(),
-    getPositionOptions(),
-    getSiteOptions(),
+    getSecurityUserReferenceData(),
   ]);
 
   return (
     <SecurityUserManagement
       users={users}
       roleOptions={roleOptions}
-      sections={sections}
-      departments={departments}
-      positions={positions}
-      sites={sites}
+      sections={referenceData.sections}
+      departments={referenceData.departments}
+      positions={referenceData.positions}
+      sites={referenceData.sites}
     />
   );
 }

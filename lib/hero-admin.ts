@@ -34,6 +34,7 @@ import {
   hrPositions,
   hrSections,
   hrSites,
+  hrWorkLocations,
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
@@ -127,7 +128,7 @@ export async function getSecurityUserReferenceData() {
         id: hrPositions.id,
         code: hrPositions.code,
         name: hrPositions.rankName,
-        siteLocation: sql<string>``.as('site_location'),
+        siteLocation: sql<string>`''`.as('site_location'),
         level: sql<number>`1`.as('level'),
         departmentId: sql<number | null>`null`.as('department_id'),
       })
@@ -3559,7 +3560,9 @@ export async function getSecurityUsersData() {
       directManagerId: employees.directManagerId,
       section: hrSections.name,
       jobTitle: hrPositions.rankName,
-      workLocation: hrOrgNodes.name,
+      workLocation: sql<string>`coalesce(${hrWorkLocations.name}, ${hrOrgNodes.name}, ${hrSites.name}, '')`.as(
+        'work_location'
+      ),
       phoneNumber: employees.phoneNumber,
       email: hrEmployees.email,
       employmentStatus: hrEmployeeStatuses.name,
@@ -3587,6 +3590,7 @@ export async function getSecurityUsersData() {
     .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
     .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
     .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
+    .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
     .leftJoin(hrOrgNodes, eq(hrEmployees.orgNodeId, hrOrgNodes.id))
     .leftJoin(
       hrEmployeeStatuses,
@@ -3958,4 +3962,5 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+
 
