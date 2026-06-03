@@ -48,3 +48,9 @@ next-env.d.ts
 # database dumps (may contain credentials/data)
 *.sql
 !drizzle/*.sql
+
+# local agent/generated artifacts
+*.backup
+.claude/worktrees/
+graphify-out/
+.code-review-graph/
