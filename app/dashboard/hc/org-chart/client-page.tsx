@@ -51,6 +51,7 @@ type OrgNode = {
     positionId: number | null;
     siteName: string | null;
     workLocationName: string | null;
+    isVirtual?: boolean;
   }>;
 };
 
@@ -276,6 +277,118 @@ function groupOrgUnitEmployeesByWorkLocation(node: OrgTreeNode): OrgTreeNode {
     employeeCount: departmentEmployees.length,
     children: [...children, ...virtualLocationNodes],
   };
+}
+
+
+function isExecutiveEmployee(employee: OrgEmployee) {
+  const searchable = normalizeOrgLabel(`${employee.fullName} ${employee.positionName ?? ""} ${employee.departmentName ?? ""} ${employee.sectionName ?? ""}`);
+  return (
+    searchable.includes("management") ||
+    searchable.includes("director") ||
+    searchable.includes("general manager") ||
+    searchable.includes("board secretary") ||
+    searchable.includes("bod") ||
+    searchable.includes("executive")
+  );
+}
+
+function addBodExecutiveRoot(nodes: OrgTreeNode[]): OrgTreeNode[] {
+  const allEmployees = new Map<number, OrgEmployee>();
+  const removeExecutiveEmployees = (node: OrgTreeNode): OrgTreeNode => {
+    const employees: OrgEmployee[] = [];
+    for (const employee of node.employees) {
+      if (isExecutiveEmployee(employee)) allEmployees.set(employee.id, employee);
+      else employees.push(employee);
+    }
+    const children = node.children.map(removeExecutiveEmployees);
+    return { ...node, employees, employeeCount: employees.length, children };
+  };
+
+  const cleanedNodes = nodes.map(removeExecutiveEmployees);
+  const virtualExecutives: OrgEmployee[] = [
+    {
+      id: -900001,
+      employeeId: "BOD-DIRECTOR",
+      fullName: "Hidayat Rahman",
+      orgNodeId: null,
+      positionName: "Director",
+      email: null,
+      departmentName: "Management",
+      sectionName: "Management",
+      departmentId: null,
+      sectionId: null,
+      siteId: null,
+      workLocationId: null,
+      positionId: null,
+      siteName: null,
+      workLocationName: null,
+      isVirtual: true,
+    },
+    {
+      id: -900002,
+      employeeId: "BOD-GM",
+      fullName: "Person Sihaloho",
+      orgNodeId: null,
+      positionName: "General Manager",
+      email: null,
+      departmentName: "Management",
+      sectionName: "Management",
+      departmentId: null,
+      sectionId: null,
+      siteId: null,
+      workLocationId: null,
+      positionId: null,
+      siteName: null,
+      workLocationName: null,
+      isVirtual: true,
+    },
+  ];
+
+  const executivesByName = new Map<string, OrgEmployee>();
+  for (const employee of virtualExecutives) executivesByName.set(normalizeOrgLabel(employee.fullName), employee);
+  for (const employee of allEmployees.values()) executivesByName.set(normalizeOrgLabel(employee.fullName), employee);
+
+  const executives = Array.from(executivesByName.values()).sort((a, b) => {
+    const positionA = normalizeOrgLabel(a.positionName ?? "");
+    const positionB = normalizeOrgLabel(b.positionName ?? "");
+    const order = (position: string) => position.includes("director") ? 0 : position.includes("secretary") ? 1 : position.includes("general manager") ? 2 : 3;
+    return order(positionA) - order(positionB) || a.fullName.localeCompare(b.fullName, "id-ID");
+  });
+
+  const existingBodIndex = cleanedNodes.findIndex((node) => getNodeOrder(node) === 0);
+  if (existingBodIndex >= 0) {
+    return cleanedNodes.map((node, index) =>
+      index === existingBodIndex
+        ? {
+            ...node,
+            employees: executives,
+            employeeCount: executives.length,
+          }
+        : node,
+    );
+  }
+
+  const bodNode: OrgTreeNode = {
+    id: -500000,
+    code: "BOD_EXECUTIVE",
+    parentNodeId: null,
+    nodeType: "bod_executive_virtual",
+    name: "BOD / Executive",
+    hierarchyLevel: 0,
+    departmentName: "Management",
+    sectionName: "Management",
+    siteName: null,
+    workLocationName: null,
+    departmentId: executives[0]?.departmentId ?? null,
+    sectionId: executives[0]?.sectionId ?? null,
+    siteId: executives[0]?.siteId ?? null,
+    employeeCount: executives.length,
+    employees: executives,
+    children: cleanedNodes,
+    isVirtual: true,
+  };
+
+  return [bodNode];
 }
 
 function pruneEmptyLeaves(nodes: OrgTreeNode[]): OrgTreeNode[] {
@@ -563,12 +676,13 @@ function OrgEmployeePreview({ employee, onEditEmployee }: { employee: OrgEmploye
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: "employee-" + employee.id,
     data: { type: "employee", employee },
+    disabled: employee.isVirtual,
   });
 
   return (
     <div ref={setNodeRef} className={"w-full min-w-0 overflow-hidden rounded-lg border border-slate-200/80 bg-white/90 p-2 text-left shadow-sm transition " + (isDragging ? "scale-95 opacity-40 ring-2 ring-blue-400" : "")}>
       <div className="flex min-w-0 items-start gap-2">
-        <button {...listeners} {...attributes} className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 active:cursor-grabbing" title="Drag orang">
+        <button {...listeners} {...attributes} className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60" title={employee.isVirtual ? "Data BOD visual" : "Drag orang"} disabled={employee.isVirtual}>
           <GripVertical className="size-3" />
         </button>
         <div className="min-w-0 flex-1">
@@ -577,9 +691,11 @@ function OrgEmployeePreview({ employee, onEditEmployee }: { employee: OrgEmploye
           <p className="truncate text-[10px] text-slate-400">Lokasi: {[employee.siteName, employee.workLocationName].filter(Boolean).join(" • ") || "-"}</p>
           <span className={"mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ring-1 " + role.className}>{role.label}</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-slate-500 hover:bg-slate-100 hover:text-blue-700" onClick={() => onEditEmployee(employee)} title="Edit profil orang">
-          <Edit className="size-3.5" />
-        </Button>
+        {!employee.isVirtual && (
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-slate-500 hover:bg-slate-100 hover:text-blue-700" onClick={() => onEditEmployee(employee)} title="Edit profil orang">
+            <Edit className="size-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );
