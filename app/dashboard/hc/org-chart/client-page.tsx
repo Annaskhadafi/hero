@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { Building2, GitBranch, Search, UserRound, Users, Edit, Trash2, Plus, GripVertical, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -424,23 +424,46 @@ function getSiteEmployees(nodes: OrgNode[], siteGroupKey: string) {
   return Array.from(employeeMap.values());
 }
 
+function nodeMatchesOrgFilters(node: OrgTreeNode, departmentId: string, sectionId: string) {
+  const matchesDepartment = departmentId === "all" || node.departmentId?.toString() === departmentId || node.employees.some((employee) => employee.departmentId?.toString() === departmentId);
+  const matchesSection = sectionId === "all" || node.sectionId?.toString() === sectionId || node.employees.some((employee) => employee.sectionId?.toString() === sectionId);
+  return matchesDepartment && matchesSection;
+}
+
+function filterTreeWithAncestors(nodes: OrgTreeNode[], departmentId: string, sectionId: string): OrgTreeNode[] {
+  if (departmentId === "all" && sectionId === "all") return nodes;
+
+  return nodes
+    .map((node) => {
+      const filteredChildren = filterTreeWithAncestors(node.children, departmentId, sectionId);
+      if (nodeMatchesOrgFilters(node, departmentId, sectionId) || filteredChildren.length > 0) {
+        return { ...node, children: filteredChildren };
+      }
+      return null;
+    })
+    .filter((node): node is OrgTreeNode => Boolean(node));
+}
+
 function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTreeNode[] {
   const employees = getSiteEmployees(nodes, siteGroupKey);
   const selectedLocation = siteGroupKey === "all" ? null : employees[0] ? getEmployeeSiteGroupLabel(employees[0]) : null;
-  const sections = ["HSE", "Technical", "Service", "Repair"];
 
-  const sectionNodes = sections.reduce<OrgTreeNode[]>((accumulator, sectionName, index) => {
+  function membersFor(sectionName: string) {
     const sectionKey = normalizeOrgLabel(sectionName);
-    const members = employees.filter((employee) => normalizeOrgLabel(`${employee.departmentName ?? ""} ${employee.sectionName ?? ""} ${employee.positionName ?? ""}`).includes(sectionKey));
-    if (members.length === 0) return accumulator;
+    return employees.filter((employee) => normalizeOrgLabel(`${employee.departmentName ?? ""} ${employee.sectionName ?? ""} ${employee.positionName ?? ""}`).includes(sectionKey));
+  }
 
-    accumulator.push({
+  function makeSectionNode(sectionName: string, index: number, parentNodeId: number, hierarchyLevel: number): OrgTreeNode | null {
+    const members = membersFor(sectionName);
+    if (members.length === 0) return null;
+
+    return {
       id: -700000 - index,
       code: `SITE_SECTION_${sectionName.toUpperCase()}`,
-      parentNodeId: -600000,
+      parentNodeId,
       nodeType: "section_virtual",
       name: sectionName,
-      hierarchyLevel: 1,
+      hierarchyLevel,
       departmentName: "Site",
       sectionName,
       siteName: members[0]?.siteName ?? null,
@@ -454,10 +477,20 @@ function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTree
       isVirtual: true,
       virtualParentNodeId: members[0]?.orgNodeId ?? undefined,
       virtualWorkLocationId: members[0]?.workLocationId ?? null,
-    });
+    };
+  }
 
-    return accumulator;
-  }, []);
+  const technicalNode = makeSectionNode("Technical", 0, -600000, 1);
+  const repairNode = makeSectionNode("Repair", 1, technicalNode ? technicalNode.id : -600000, technicalNode ? 2 : 1);
+  const serviceNode = makeSectionNode("Service", 2, technicalNode ? technicalNode.id : -600000, technicalNode ? 2 : 1);
+  const hseNode = makeSectionNode("HSE", 3, -600000, 1);
+
+  if (technicalNode) {
+    technicalNode.name = "Technical / PJO Site";
+    technicalNode.children = [repairNode, serviceNode].filter((node): node is OrgTreeNode => Boolean(node));
+  }
+
+  const rootChildren = [technicalNode, hseNode, technicalNode ? null : repairNode, technicalNode ? null : serviceNode].filter((node): node is OrgTreeNode => Boolean(node));
 
   const root: OrgTreeNode = {
     id: -600000,
@@ -475,7 +508,7 @@ function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTree
     siteId: employees[0]?.siteId ?? null,
     employeeCount: 0,
     employees: [],
-    children: sectionNodes,
+    children: rootChildren,
     isVirtual: true,
     virtualWorkLocationId: employees[0]?.workLocationId ?? null,
   };
@@ -690,9 +723,14 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   const [query, setQuery] = useState("");
   const [chartTab, setChartTab] = useState<"organization" | "site">("organization");
   const [siteGroupKey, setSiteGroupKey] = useState("all");
+  const [departmentFilterId, setDepartmentFilterId] = useState("all");
+  const [sectionFilterId, setSectionFilterId] = useState("all");
   const [isPending, startTransition] = useTransition();
   const [activeDragNode, setActiveDragNode] = useState<OrgTreeNode | null>(null);
   const [activeDragEmployee, setActiveDragEmployee] = useState<OrgEmployee | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  const [isCanvasPanning, setIsCanvasPanning] = useState(false);
 
   // Dialog states
   const [editingNode, setEditingNode] = useState<OrgTreeNode | null>(null);
@@ -731,8 +769,13 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   // Derived data
   const tree = useMemo(() => buildTree(nodes), [nodes]);
   const siteGroupOptions = useMemo(() => getSiteGroupOptions(nodes), [nodes]);
+  const sectionFilterOptions = useMemo(
+    () => departmentFilterId === "all" ? referenceData.sections : referenceData.sections.filter((section) => section.departmentId?.toString() === departmentFilterId),
+    [referenceData.sections, departmentFilterId],
+  );
+  const organizationFilteredTree = useMemo(() => filterTreeWithAncestors(tree, departmentFilterId, sectionFilterId), [tree, departmentFilterId, sectionFilterId]);
   const siteTree = useMemo(() => buildSiteStructureTree(nodes, siteGroupKey), [nodes, siteGroupKey]);
-  const activeTree = chartTab === "site" ? siteTree : tree;
+  const activeTree = chartTab === "site" ? siteTree : organizationFilteredTree;
   const selectableNodes = useMemo(() => flattenTreeNodes(tree).filter((node) => !node.isVirtual), [tree]);
   const activeAllTreeNodes = useMemo(() => flattenTreeNodes(activeTree), [activeTree]);
   const selectedEmployeeTargetNode = useMemo(
@@ -998,6 +1041,41 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     { label: "Root Nodes", value: stats.rootNodes, description: "Node level teratas", tone: "warning" as const, icon: <GitBranch className="size-5" /> },
   ];
 
+  const handleCanvasPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button,input,textarea,select,[role='button'],[data-no-pan='true']")) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    panStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: canvas.scrollLeft,
+      scrollTop: canvas.scrollTop,
+    };
+    setIsCanvasPanning(true);
+    canvas.setPointerCapture(event.pointerId);
+  };
+
+  const handleCanvasPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isCanvasPanning) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const deltaX = event.clientX - panStartRef.current.x;
+    const deltaY = event.clientY - panStartRef.current.y;
+    canvas.scrollLeft = panStartRef.current.scrollLeft - deltaX;
+    canvas.scrollTop = panStartRef.current.scrollTop - deltaY;
+  };
+
+  const stopCanvasPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isCanvasPanning) return;
+    setIsCanvasPanning(false);
+    const canvas = canvasRef.current;
+    if (canvas?.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  };
+
   return (
     <AdminPageShell eyebrow="HC • Org Chart" title="PDF-Style Organization Chart" description="Visualisasi struktur organisasi bergaya PDF, tetap editable dengan action node dan drag & drop reparenting.">
       <div className="space-y-6">
@@ -1007,13 +1085,35 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
           <CardHeader className="gap-4 border-b bg-white pb-4 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle className="text-lg">Struktur Organisasi (PDF-Style Editable)</CardTitle>
-              <CardDescription>{chartTab === "site" ? "Struktur Site: grouping lokasi kerja, Technical Engineer masuk di Section Technical." : "Root di atas, child berjajar horizontal seperti PDF. Lokasi tampil sebagai keterangan di tiap user."}</CardDescription>
+              <CardDescription>{chartTab === "site" ? "Struktur Site: Technical/PJO membawahi Repair dan Service; HSE sebagai pendamping site." : "Root di atas, child berjajar horizontal seperti PDF. Lokasi tampil sebagai keterangan di tiap user."}</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
               <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
                 <button type="button" onClick={() => setChartTab("organization")} className={"rounded-lg px-3 py-1.5 transition " + (chartTab === "organization" ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-900")}>Org Structure</button>
                 <button type="button" onClick={() => setChartTab("site")} className={"rounded-lg px-3 py-1.5 transition " + (chartTab === "site" ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-900")}>Struktur Site</button>
               </div>
+              {chartTab === "organization" && (
+                <>
+                  <Select value={departmentFilterId} onValueChange={(value) => { setDepartmentFilterId(value); setSectionFilterId("all"); }}>
+                    <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter department" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Department</SelectItem>
+                      {referenceData.departments.map((department) => (
+                        <SelectItem key={department.id} value={department.id.toString()}>{department.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={sectionFilterId} onValueChange={setSectionFilterId}>
+                    <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter section" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Section</SelectItem>
+                      {sectionFilterOptions.map((section) => (
+                        <SelectItem key={section.id} value={section.id.toString()}>{section.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
               {chartTab === "site" && (
                 <Select value={siteGroupKey} onValueChange={setSiteGroupKey}>
                   <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter lokasi kerja" /></SelectTrigger>
@@ -1038,7 +1138,15 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
           </CardHeader>
 
           <CardContent className="p-0">
-            <div className="relative max-h-[72vh] min-h-[560px] overflow-auto bg-[#f8fafc]">
+            <div
+              ref={canvasRef}
+              className={"relative max-h-[72vh] min-h-[560px] overflow-auto bg-[#f8fafc] select-none " + (isCanvasPanning ? "cursor-grabbing" : "cursor-grab")}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={stopCanvasPan}
+              onPointerCancel={stopCanvasPan}
+              onPointerLeave={stopCanvasPan}
+            >
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.08)_1px,transparent_0)] [background-size:24px_24px]" />
               <div className="relative min-w-max p-8 pl-24 pr-24">
                 {isPending && (
@@ -1047,14 +1155,14 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                   </div>
                 )}
 
-                <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm backdrop-blur">
+                <div data-no-pan="true" className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm backdrop-blur">
                   <span className="font-semibold text-slate-900">Legend:</span>
                   <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">BOD / EXECUTIVE</span>
                   <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">MANAGERIAL</span>
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SUPERVISORY</span>
                   <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-800">WORK LOCATION / SITE</span>
                   <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">PEOPLE / UNIT</span>
-                  <span className="ml-auto hidden text-slate-500 lg:inline">{chartTab === "site" ? "Struktur Site: Site → HSE/Technical/Service/Repair → Orang." : "Urutan: Department → Section → Work Location/Site → Orang."}</span>
+                  <span className="ml-auto hidden text-slate-500 lg:inline">{chartTab === "site" ? "Struktur Site: Site → Technical/PJO → Repair/Service; HSE pendamping." : "Urutan: Department → Section → Work Location/Site → Orang."}</span>
                 </div>
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -1378,3 +1486,4 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     </AdminPageShell>
   );
 }
+
