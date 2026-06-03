@@ -50,6 +50,157 @@ type OrgTreeNode = OrgNode & { children: OrgTreeNode[] };
 type Stats = { totalNodes: number; totalEmployeesAssigned: number; departments: number; rootNodes: number };
 
 // Helper to build tree
+function getNodeOrder(node: OrgNode) {
+  const normalized = node.nodeType.toLowerCase().replace(/[\s_-]+/g, "_");
+  if (normalized.includes("company") || normalized.includes("bod") || normalized.includes("executive")) return 0;
+  if (normalized.includes("department")) return 1;
+  if (normalized.includes("section")) return 2;
+  if (normalized.includes("work_location") || normalized.includes("worklocation") || normalized.includes("site")) return 3;
+  return 4;
+}
+
+function sortOrgNodes(nodes: OrgTreeNode[]) {
+  for (const node of nodes) sortOrgNodes(node.children);
+  nodes.sort(
+    (a, b) =>
+      getNodeOrder(a) - getNodeOrder(b) ||
+      a.hierarchyLevel - b.hierarchyLevel ||
+      a.name.localeCompare(b.name, "id-ID"),
+  );
+}
+
+function normalizeOrgLabel(value: string) {
+  return value.trim().toLocaleLowerCase("id-ID").replace(/[\s_-]+/g, " ");
+}
+
+function isLocationNode(node: OrgNode) {
+  const normalized = node.nodeType.toLowerCase().replace(/[\s_-]+/g, "_");
+  return normalized.includes("work_location") || normalized.includes("worklocation") || normalized.includes("site");
+}
+
+function extractEmployeesDeep(node: OrgTreeNode): OrgNode["employees"] {
+  let all = [...node.employees];
+  for (const child of node.children) {
+    all = all.concat(extractEmployeesDeep(child));
+  }
+  return all;
+}
+
+function absorbLocationNodes(nodes: OrgTreeNode[]): OrgTreeNode[] {
+  return nodes.map((node) => {
+    const children = absorbLocationNodes(node.children);
+    
+    const locationChildren = children.filter(isLocationNode);
+    const nonLocationChildren = children.filter(c => !isLocationNode(c));
+    
+    if (locationChildren.length > 0) {
+      let absorbedEmployees = [...node.employees];
+      for (const child of locationChildren) {
+        absorbedEmployees = absorbedEmployees.concat(extractEmployeesDeep(child));
+      }
+      
+      // Deduplicate employees by ID just in case
+      const uniqueEmployeesMap = new Map();
+      for (const emp of absorbedEmployees) {
+        uniqueEmployeesMap.set(emp.id, emp);
+      }
+      const uniqueEmployees = Array.from(uniqueEmployeesMap.values());
+      
+      return {
+        ...node,
+        children: nonLocationChildren,
+        employees: uniqueEmployees,
+        employeeCount: uniqueEmployees.length,
+      };
+    }
+
+    return { ...node, children };
+  });
+}
+
+function isManagerEmployee(employee: OrgNode["employees"][number]) {
+  return normalizeOrgLabel(employee.positionName ?? "").includes("manager");
+}
+
+function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
+  // Flag apakah node ini adalah target Department/Managerial
+  const isDepartmentNode = 
+    node.nodeType.toLowerCase().includes("department") || 
+    node.nodeType.toLowerCase().includes("manager");
+
+  // Jika node ini BUKAN department (misal root company atau section),
+  // cukup jalankan proses ke anak-anaknya saja.
+  if (!isDepartmentNode) {
+    return {
+      ...node,
+      children: node.children.map(hoistManagersToDepartment)
+    };
+  }
+
+  // Jika INI adalah node Department, tarik semua manager dari anak-anaknya.
+  // Tapi jangan tarik manager dari department lain di bawahnya (kalau ada).
+  const extractedManagers = new Map<number, OrgNode["employees"][number]>();
+  
+  function processAndExtractChildren(child: OrgTreeNode): OrgTreeNode {
+    // Stop ekstrak jika ketemu department lain di bawah
+    const isChildDept = child.nodeType.toLowerCase().includes("department") || 
+                        child.nodeType.toLowerCase().includes("manager");
+    
+    if (isChildDept) {
+      // Jalankan fungsi utama untuk department tersebut
+      return hoistManagersToDepartment(child);
+    }
+
+    // Ekstrak manager di node ini
+    const localEmployees = [];
+    for (const emp of child.employees) {
+      if (isManagerEmployee(emp)) extractedManagers.set(emp.id, emp);
+      else localEmployees.push(emp);
+    }
+
+    // Rekursif ke bawah
+    return {
+      ...child,
+      employees: localEmployees,
+      employeeCount: localEmployees.length,
+      children: child.children.map(processAndExtractChildren)
+    };
+  }
+
+  const newChildren = node.children.map(processAndExtractChildren);
+
+  // Gabungkan manager yang diekstrak dengan employee asli node Department ini
+  const rootEmployeesById = new Map(node.employees.map((emp) => [emp.id, emp]));
+  for (const manager of extractedManagers.values()) {
+    rootEmployeesById.set(manager.id, manager);
+  }
+  
+  const rootEmployees = Array.from(rootEmployeesById.values()).sort((a, b) => {
+    const managerDiff = Number(isManagerEmployee(b)) - Number(isManagerEmployee(a));
+    return managerDiff || a.fullName.localeCompare(b.fullName, "id-ID");
+  });
+
+  return {
+    ...node,
+    children: newChildren,
+    employees: rootEmployees,
+    employeeCount: rootEmployees.length,
+  };
+}
+
+function pruneEmptyLeaves(nodes: OrgTreeNode[]): OrgTreeNode[] {
+  return nodes
+    .map((node) => {
+      // Rekursif ke bawah dulu
+      const children = pruneEmptyLeaves(node.children);
+      return { ...node, children };
+    })
+    .filter((node) => {
+      // Pertahankan node JIKA dia punya employee ATAU punya child (yang tidak kosong)
+      return node.employeeCount > 0 || node.children.length > 0;
+    });
+}
+
 function buildTree(nodes: OrgNode[]): OrgTreeNode[] {
   const map = new Map<number, OrgTreeNode>();
   for (const node of nodes) map.set(node.id, { ...node, children: [] });
@@ -58,7 +209,27 @@ function buildTree(nodes: OrgNode[]): OrgTreeNode[] {
     if (node.parentNodeId && map.has(node.parentNodeId)) map.get(node.parentNodeId)!.children.push(node);
     else roots.push(node);
   }
-  return roots.sort((a, b) => a.hierarchyLevel - b.hierarchyLevel || a.name.localeCompare(b.name));
+  let processedRoots = absorbLocationNodes(roots);
+  
+  // Clean up any stray location nodes at root level by absorbing them into the first non-location root
+  const nonLocRoots = processedRoots.filter(n => !isLocationNode(n));
+  const locRoots = processedRoots.filter(n => isLocationNode(n));
+  if (nonLocRoots.length > 0 && locRoots.length > 0) {
+    const target = nonLocRoots[0];
+    let absorbed = [...target.employees];
+    for (const lr of locRoots) absorbed = absorbed.concat(extractEmployeesDeep(lr));
+    target.employees = absorbed;
+    target.employeeCount = absorbed.length;
+    processedRoots = nonLocRoots;
+  }
+  
+  processedRoots = processedRoots.map(hoistManagersToDepartment);
+  
+  // Prune "dead leaves" (kotak tanpa orang dan tanpa child)
+  processedRoots = pruneEmptyLeaves(processedRoots);
+  
+  sortOrgNodes(processedRoots);
+  return processedRoots;
 }
 
 function getNodeContext(node: OrgTreeNode) {
@@ -83,18 +254,27 @@ function getNodeTone(nodeType: string, hierarchyLevel: number) {
       connector: "bg-slate-400",
     };
   }
+  if (normalized.includes("work_location") || normalized.includes("worklocation") || normalized.includes("site")) {
+    return {
+      label: "WORK LOCATION / SITE",
+      card: "border-violet-200 bg-violet-50 text-slate-950 shadow-violet-100/80",
+      badge: "bg-violet-100 text-violet-800 ring-violet-200",
+      text: "text-slate-600",
+      connector: "bg-violet-300",
+    };
+  }
   if (normalized.includes("manager") || normalized === "department" || hierarchyLevel <= 1) {
     return {
-      label: "MANAGERIAL",
+      label: normalized === "department" ? "DEPARTMENT" : "MANAGERIAL",
       card: "border-sky-200 bg-sky-50 text-slate-950 shadow-sky-100/80",
       badge: "bg-sky-100 text-sky-800 ring-sky-200",
       text: "text-slate-600",
       connector: "bg-sky-300",
     };
   }
-  if (normalized.includes("supervisor") || normalized === "section" || hierarchyLevel === 2) {
+  if (normalized.includes("supervisor") || normalized === "section") {
     return {
-      label: "SUPERVISORY",
+      label: normalized === "section" ? "SECTION" : "SUPERVISORY",
       card: "border-emerald-200 bg-emerald-50 text-slate-950 shadow-emerald-100/80",
       badge: "bg-emerald-100 text-emerald-800 ring-emerald-200",
       text: "text-slate-600",
@@ -102,7 +282,7 @@ function getNodeTone(nodeType: string, hierarchyLevel: number) {
     };
   }
   return {
-    label: nodeType.toUpperCase(),
+    label: "PEOPLE / UNIT",
     card: "border-amber-200 bg-amber-50 text-slate-950 shadow-amber-100/80",
     badge: "bg-amber-100 text-amber-800 ring-amber-200",
     text: "text-slate-600",
@@ -213,14 +393,9 @@ function InteractiveTreeNode({
 
         {node.employees.length > 0 && isExpanded && (
           <div className="mt-3 grid gap-2">
-            {node.employees.slice(0, 3).map((employee) => (
+            {node.employees.map((employee) => (
               <OrgEmployeePreview key={employee.id} employee={employee} />
             ))}
-            {node.employees.length > 3 && (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-2 text-xs font-medium text-slate-500">
-                + {node.employees.length - 3} lainnya
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -479,8 +654,9 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
                   <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">BOD / EXECUTIVE</span>
                   <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">MANAGERIAL</span>
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SUPERVISORY</span>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">STAFF / UNIT</span>
-                  <span className="ml-auto hidden text-slate-500 lg:inline">Hover node untuk action. Drag grip untuk pindah parent.</span>
+                  <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-800">WORK LOCATION / SITE</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">PEOPLE / UNIT</span>
+                  <span className="ml-auto hidden text-slate-500 lg:inline">Urutan: Department → Section → Work Location/Site → Orang.</span>
                 </div>
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
