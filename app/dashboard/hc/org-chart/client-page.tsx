@@ -39,8 +39,11 @@ type OrgNode = {
     id: number;
     employeeId: string;
     fullName: string;
+    orgNodeId: number | null;
     positionName: string | null;
     email: string | null;
+    departmentName: string | null;
+    sectionName: string | null;
     departmentId: number | null;
     sectionId: number | null;
     siteId: number | null;
@@ -125,23 +128,23 @@ function extractEmployeesDeep(node: OrgTreeNode): OrgNode["employees"] {
 function absorbLocationNodes(nodes: OrgTreeNode[]): OrgTreeNode[] {
   return nodes.map((node) => {
     const children = absorbLocationNodes(node.children);
-    
+
     const locationChildren = children.filter(isLocationNode);
     const nonLocationChildren = children.filter(c => !isLocationNode(c));
-    
+
     if (locationChildren.length > 0) {
       let absorbedEmployees = [...node.employees];
       for (const child of locationChildren) {
         absorbedEmployees = absorbedEmployees.concat(extractEmployeesDeep(child));
       }
-      
+
       // Deduplicate employees by ID just in case
       const uniqueEmployeesMap = new Map();
       for (const emp of absorbedEmployees) {
         uniqueEmployeesMap.set(emp.id, emp);
       }
       const uniqueEmployees = Array.from(uniqueEmployeesMap.values());
-      
+
       return {
         ...node,
         children: nonLocationChildren,
@@ -160,8 +163,8 @@ function isManagerEmployee(employee: OrgNode["employees"][number]) {
 
 function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
   // Flag apakah node ini adalah target Department/Managerial
-  const isDepartmentNode = 
-    node.nodeType.toLowerCase().includes("department") || 
+  const isDepartmentNode =
+    node.nodeType.toLowerCase().includes("department") ||
     node.nodeType.toLowerCase().includes("manager");
 
   // Jika node ini BUKAN department (misal root company atau section),
@@ -176,12 +179,12 @@ function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
   // Jika INI adalah node Department, tarik semua manager dari anak-anaknya.
   // Tapi jangan tarik manager dari department lain di bawahnya (kalau ada).
   const extractedManagers = new Map<number, OrgNode["employees"][number]>();
-  
+
   function processAndExtractChildren(child: OrgTreeNode): OrgTreeNode {
     // Stop ekstrak jika ketemu department lain di bawah
-    const isChildDept = child.nodeType.toLowerCase().includes("department") || 
+    const isChildDept = child.nodeType.toLowerCase().includes("department") ||
                         child.nodeType.toLowerCase().includes("manager");
-    
+
     if (isChildDept) {
       // Jalankan fungsi utama untuk department tersebut
       return hoistManagersToDepartment(child);
@@ -210,7 +213,7 @@ function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
   for (const manager of extractedManagers.values()) {
     rootEmployeesById.set(manager.id, manager);
   }
-  
+
   const rootEmployees = Array.from(rootEmployeesById.values()).sort((a, b) => {
     const managerDiff = Number(isManagerEmployee(b)) - Number(isManagerEmployee(a));
     return managerDiff || a.fullName.localeCompare(b.fullName, "id-ID");
@@ -297,7 +300,7 @@ function buildTree(nodes: OrgNode[]): OrgTreeNode[] {
     else roots.push(node);
   }
   let processedRoots = absorbLocationNodes(roots);
-  
+
   // Clean up any stray location nodes at root level by absorbing them into the first non-location root
   const nonLocRoots = processedRoots.filter(n => !isLocationNode(n));
   const locRoots = processedRoots.filter(n => isLocationNode(n));
@@ -309,12 +312,12 @@ function buildTree(nodes: OrgNode[]): OrgTreeNode[] {
     target.employeeCount = absorbed.length;
     processedRoots = nonLocRoots;
   }
-  
+
   processedRoots = processedRoots.map(hoistManagersToDepartment).map(groupOrgUnitEmployeesByWorkLocation);
-  
+
   // Prune "dead leaves" (kotak tanpa orang dan tanpa child)
   processedRoots = pruneEmptyLeaves(processedRoots);
-  
+
   sortOrgNodes(processedRoots);
   return processedRoots;
 }
@@ -377,8 +380,112 @@ function getNodeTone(nodeType: string, hierarchyLevel: number) {
   };
 }
 
-function getEmployeeRoleGroup(employee: OrgEmployee) {
-  const position = (employee.positionName ?? "").toLocaleLowerCase("id-ID");
+
+function getTotalEmployeeCount(node: OrgTreeNode): number {
+  return node.employees.length + node.children.reduce((sum, child) => sum + getTotalEmployeeCount(child), 0);
+}
+
+function getSiteGroupLabel(value?: string | null) {
+  const cleaned = (value ?? "").trim();
+  if (!cleaned) return "Lokasi Belum Diisi";
+  const parts = cleaned.split(" - ").map((part) => part.trim()).filter(Boolean);
+  return parts[parts.length - 1] || cleaned;
+}
+
+function getEmployeeSiteGroupLabel(employee: OrgEmployee) {
+  return getSiteGroupLabel(employee.workLocationName || employee.siteName);
+}
+
+function getSiteGroupOptions(nodes: OrgNode[]) {
+  const options = new Map<string, string>();
+  for (const node of nodes) {
+    for (const employee of node.employees) {
+      const label = getEmployeeSiteGroupLabel(employee);
+      options.set(normalizeOrgLabel(label), label);
+    }
+  }
+  return Array.from(options.entries())
+    .map(([key, label]) => ({ key, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, "id-ID"));
+}
+
+function getSiteEmployees(nodes: OrgNode[], siteGroupKey: string) {
+  const employeeMap = new Map<number, OrgEmployee>();
+
+  for (const node of nodes) {
+    for (const employee of node.employees) {
+      const departmentName = normalizeOrgLabel(employee.departmentName ?? node.departmentName ?? "");
+      if (!departmentName.includes("central service")) continue;
+      if (siteGroupKey !== "all" && normalizeOrgLabel(getEmployeeSiteGroupLabel(employee)) !== siteGroupKey) continue;
+      employeeMap.set(employee.id, employee);
+    }
+  }
+
+  return Array.from(employeeMap.values());
+}
+
+function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTreeNode[] {
+  const employees = getSiteEmployees(nodes, siteGroupKey);
+  const selectedLocation = siteGroupKey === "all" ? null : employees[0] ? getEmployeeSiteGroupLabel(employees[0]) : null;
+  const sections = ["HSE", "Technical", "Service", "Repair"];
+
+  const sectionNodes = sections.reduce<OrgTreeNode[]>((accumulator, sectionName, index) => {
+    const sectionKey = normalizeOrgLabel(sectionName);
+    const members = employees.filter((employee) => normalizeOrgLabel(`${employee.departmentName ?? ""} ${employee.sectionName ?? ""} ${employee.positionName ?? ""}`).includes(sectionKey));
+    if (members.length === 0) return accumulator;
+
+    accumulator.push({
+      id: -700000 - index,
+      code: `SITE_SECTION_${sectionName.toUpperCase()}`,
+      parentNodeId: -600000,
+      nodeType: "section_virtual",
+      name: sectionName,
+      hierarchyLevel: 1,
+      departmentName: "Site",
+      sectionName,
+      siteName: members[0]?.siteName ?? null,
+      workLocationName: members[0]?.workLocationName ?? selectedLocation,
+      departmentId: members[0]?.departmentId ?? null,
+      sectionId: members[0]?.sectionId ?? null,
+      siteId: members[0]?.siteId ?? null,
+      employeeCount: members.length,
+      employees: members,
+      children: [],
+      isVirtual: true,
+      virtualParentNodeId: members[0]?.orgNodeId ?? undefined,
+      virtualWorkLocationId: members[0]?.workLocationId ?? null,
+    });
+
+    return accumulator;
+  }, []);
+
+  const root: OrgTreeNode = {
+    id: -600000,
+    code: "SITE_ROOT",
+    parentNodeId: null,
+    nodeType: "site_department_virtual",
+    name: selectedLocation ? `Site • ${selectedLocation}` : "Site • Semua Lokasi",
+    hierarchyLevel: 0,
+    departmentName: "Site",
+    sectionName: null,
+    siteName: employees[0]?.siteName ?? null,
+    workLocationName: selectedLocation,
+    departmentId: employees[0]?.departmentId ?? null,
+    sectionId: null,
+    siteId: employees[0]?.siteId ?? null,
+    employeeCount: 0,
+    employees: [],
+    children: sectionNodes,
+    isVirtual: true,
+    virtualWorkLocationId: employees[0]?.workLocationId ?? null,
+  };
+
+  return pruneEmptyLeaves([root]);
+}
+
+
+function getRoleGroupFromPositionName(positionName?: string | null) {
+  const position = (positionName ?? "").toLocaleLowerCase("id-ID");
 
   if (/(manager|mgr|kepala departemen|department head)/i.test(position)) {
     return { key: "manager", label: "MANAGER", order: 0, className: "bg-sky-100 text-sky-800 ring-sky-200" };
@@ -390,6 +497,10 @@ function getEmployeeRoleGroup(employee: OrgEmployee) {
     return { key: "leader", label: "LEADER / KOORDINATOR", order: 2, className: "bg-violet-100 text-violet-800 ring-violet-200" };
   }
   return { key: "staff", label: "STAFF", order: 3, className: "bg-slate-100 text-slate-700 ring-slate-200" };
+}
+
+function getEmployeeRoleGroup(employee: OrgEmployee) {
+  return getRoleGroupFromPositionName(employee.positionName);
 }
 
 function groupEmployeesByRole(employees: OrgEmployee[]) {
@@ -458,6 +569,7 @@ function InteractiveTreeNode({
   const tone = getNodeTone(node.nodeType, node.hierarchyLevel);
   const nodeContext = getNodeContext(node);
   const employeeGroups = groupEmployeesByRole(node.employees);
+  const totalEmployeeCount = getTotalEmployeeCount(node);
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: "node-" + node.id,
@@ -527,9 +639,15 @@ function InteractiveTreeNode({
 
         <p className={"mx-auto mt-2 max-w-[220px] truncate text-[11px] " + tone.text}>{nodeContext || node.code}</p>
 
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200/80">
-          <UserRound className="size-3" />
-          {node.employeeCount} assigned
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200/80">
+            <UserRound className="size-3" />
+            {node.employees.length} langsung
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200/80">
+            <Users className="size-3" />
+            Total {totalEmployeeCount} karyawan
+          </span>
         </div>
 
         {node.employees.length > 0 && isExpanded && (
@@ -570,17 +688,19 @@ function InteractiveTreeNode({
 export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: OrgNode[]; stats: Stats; referenceData: ReferenceData }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [chartTab, setChartTab] = useState<"organization" | "site">("organization");
+  const [siteGroupKey, setSiteGroupKey] = useState("all");
   const [isPending, startTransition] = useTransition();
   const [activeDragNode, setActiveDragNode] = useState<OrgTreeNode | null>(null);
   const [activeDragEmployee, setActiveDragEmployee] = useState<OrgEmployee | null>(null);
-  
+
   // Dialog states
   const [editingNode, setEditingNode] = useState<OrgTreeNode | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  
+
   const [deletingNode, setDeletingNode] = useState<OrgTreeNode | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  
+
   const [creatingParentId, setCreatingParentId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
@@ -597,7 +717,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     positionId: "",
     orgNodeId: "",
   });
-  
+
   // Form states
   const [formData, setFormData] = useState({
     code: "",
@@ -610,12 +730,20 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
 
   // Derived data
   const tree = useMemo(() => buildTree(nodes), [nodes]);
+  const siteGroupOptions = useMemo(() => getSiteGroupOptions(nodes), [nodes]);
+  const siteTree = useMemo(() => buildSiteStructureTree(nodes, siteGroupKey), [nodes, siteGroupKey]);
+  const activeTree = chartTab === "site" ? siteTree : tree;
   const selectableNodes = useMemo(() => flattenTreeNodes(tree).filter((node) => !node.isVirtual), [tree]);
-  const allTreeNodes = useMemo(() => flattenTreeNodes(tree), [tree]);
+  const activeAllTreeNodes = useMemo(() => flattenTreeNodes(activeTree), [activeTree]);
   const selectedEmployeeTargetNode = useMemo(
-    () => allTreeNodes.find((node) => node.id.toString() === employeeFormData.orgNodeId) ?? editingEmployee?.currentNode ?? null,
-    [allTreeNodes, employeeFormData.orgNodeId, editingEmployee],
+    () => activeAllTreeNodes.find((node) => node.id.toString() === employeeFormData.orgNodeId) ?? editingEmployee?.currentNode ?? null,
+    [activeAllTreeNodes, employeeFormData.orgNodeId, editingEmployee],
   );
+  const selectedPosition = useMemo(
+    () => referenceData.positions.find((position) => position.id.toString() === employeeFormData.positionId) ?? null,
+    [referenceData.positions, employeeFormData.positionId],
+  );
+  const selectedRoleGroup = getRoleGroupFromPositionName(selectedPosition?.rankName ?? editingEmployee?.employee.positionName);
   const directSupervisor = useMemo(() => {
     if (!editingEmployee || !selectedEmployeeTargetNode) return null;
     let node: OrgTreeNode | undefined = selectedEmployeeTargetNode;
@@ -624,22 +752,21 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
         .flatMap((group) => group.employees)
         .find((employee) => employee.id !== editingEmployee.employee.id && getEmployeeRoleGroup(employee).order < 3);
       if (leader) return leader;
-      node = selectableNodes.find((candidate) => candidate.id === node?.parentNodeId);
+      node = activeAllTreeNodes.find((candidate) => candidate.id === node?.parentNodeId);
     }
     return null;
-  }, [editingEmployee, selectedEmployeeTargetNode, selectableNodes]);
-  
+  }, [editingEmployee, selectedEmployeeTargetNode, activeAllTreeNodes]);
+
   const filteredTree = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tree;
-    
-    // Simple filter for demo - real implementation might need recursive filtering
-    return tree.filter(node => 
-      node.name.toLowerCase().includes(q) || 
+    if (!q) return activeTree;
+
+    return activeTree.filter(node =>
+      node.name.toLowerCase().includes(q) ||
       node.code.toLowerCase().includes(q) ||
       node.children.some(c => c.name.toLowerCase().includes(q))
     );
-  }, [tree, query]);
+  }, [activeTree, query]);
 
   // DnD Setup
   const sensors = useSensors(
@@ -673,7 +800,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     setActiveDragNode(null);
     setActiveDragEmployee(null);
     const { active, over } = event;
-    
+
     if (!over) return;
     if (active.id === over.id) return;
 
@@ -683,7 +810,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     if (activeId.startsWith("employee-") && overId.startsWith("node-")) {
       const employeeId = parseInt(activeId.replace("employee-", ""));
       const targetNodeId = parseInt(overId.replace("node-", ""));
-      const targetNode = allTreeNodes.find((node) => node.id === targetNodeId);
+      const targetNode = activeAllTreeNodes.find((node) => node.id === targetNodeId);
       startTransition(async () => {
         const result = targetNode?.isVirtual
           ? await updateOrgChartEmployeeProfile(employeeId, {
@@ -700,14 +827,14 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       });
       return;
     }
-    
+
     const nodeId = parseInt(activeId.replace('node-', ''));
     let newParentId: number | null = null;
-    
+
     if (over.id !== 'root-dropzone') {
       newParentId = parseInt(overId.replace('node-', ''));
     }
-    
+
     startTransition(async () => {
       const result = await updateOrgNodeParent(nodeId, newParentId);
       if (result?.success) {
@@ -751,6 +878,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   };
 
   const handleEmployeeEditClick = (employee: OrgEmployee, currentNode: OrgTreeNode) => {
+    const dbNodeId = currentNode.isVirtual ? currentNode.virtualParentNodeId : currentNode.id;
     setEditingEmployee({ employee, currentNode });
     setEmployeeFormData({
       employeeId: employee.employeeId,
@@ -759,9 +887,9 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       departmentId: employee.departmentId?.toString() ?? "",
       sectionId: employee.sectionId?.toString() ?? "",
       siteId: employee.siteId?.toString() ?? "",
-      workLocationId: employee.workLocationId?.toString() ?? "",
+      workLocationId: (employee.workLocationId ?? currentNode.virtualWorkLocationId)?.toString() ?? "",
       positionId: employee.positionId?.toString() ?? "",
-      orgNodeId: currentNode.id.toString(),
+      orgNodeId: dbNodeId?.toString() ?? "",
     });
     setIsEmployeeDialogOpen(true);
   };
@@ -769,7 +897,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   // Submit handlers
   const onSaveEdit = async () => {
     if (!editingNode) return;
-    
+
     startTransition(async () => {
       const payload = {
         name: formData.name,
@@ -778,7 +906,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
         sectionId: formData.sectionId ? parseInt(formData.sectionId) : null,
         siteId: formData.siteId ? parseInt(formData.siteId) : null,
       };
-      
+
       const result = await updateOrgNode(editingNode.id, payload);
       if (result?.success) {
         toast.success(result.message || "Node berhasil disimpan");
@@ -795,7 +923,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       toast.error("Code dan Nama wajib diisi");
       return;
     }
-    
+
     startTransition(async () => {
       const payload = {
         code: formData.code,
@@ -806,7 +934,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
         sectionId: formData.sectionId ? parseInt(formData.sectionId) : null,
         siteId: formData.siteId ? parseInt(formData.siteId) : null,
       };
-      
+
       const result = await createOrgNode(payload);
       if (result?.success) {
         toast.success(result.message || "Node berhasil dibuat");
@@ -820,7 +948,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
 
   const onConfirmDelete = async () => {
     if (!deletingNode) return;
-    
+
     startTransition(async () => {
       const result = await deleteOrgNode(deletingNode.id);
       if (result?.success) {
@@ -857,7 +985,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       }
     });
   };
-  
+
   // Root droppable zone setup
   const { setNodeRef: setRootDropRef, isOver: isRootOver } = useDroppable({
     id: 'root-dropzone',
@@ -874,24 +1002,41 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     <AdminPageShell eyebrow="HC • Org Chart" title="PDF-Style Organization Chart" description="Visualisasi struktur organisasi bergaya PDF, tetap editable dengan action node dan drag & drop reparenting.">
       <div className="space-y-6">
         <EnterpriseScorecards items={scorecards} />
-        
+
         <Card className="overflow-hidden border-slate-200/60 shadow-sm">
           <CardHeader className="gap-4 border-b bg-white pb-4 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle className="text-lg">Struktur Organisasi (PDF-Style Editable)</CardTitle>
-              <CardDescription>Root di atas, child berjajar horizontal seperti PDF. Lokasi tampil sebagai keterangan di tiap user.</CardDescription>
+              <CardDescription>{chartTab === "site" ? "Struktur Site: grouping lokasi kerja, Technical Engineer masuk di Section Technical." : "Root di atas, child berjajar horizontal seperti PDF. Lokasi tampil sebagai keterangan di tiap user."}</CardDescription>
             </div>
-            <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+                <button type="button" onClick={() => setChartTab("organization")} className={"rounded-lg px-3 py-1.5 transition " + (chartTab === "organization" ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-900")}>Org Structure</button>
+                <button type="button" onClick={() => setChartTab("site")} className={"rounded-lg px-3 py-1.5 transition " + (chartTab === "site" ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-900")}>Struktur Site</button>
+              </div>
+              {chartTab === "site" && (
+                <Select value={siteGroupKey} onValueChange={setSiteGroupKey}>
+                  <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter lokasi kerja" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Lokasi Kerja</SelectItem>
+                    {siteGroupOptions.map((location) => (
+                      <SelectItem key={location.key} value={location.key}>{location.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="relative w-full md:w-64">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari node..." className="pl-9 h-9" />
               </div>
-              <Button onClick={() => handleCreateClick(null)} size="sm" className="gap-1.5 shrink-0 shadow-sm">
-                <Plus className="size-4" /> Root Node
-              </Button>
+              {chartTab === "organization" && (
+                <Button onClick={() => handleCreateClick(null)} size="sm" className="gap-1.5 shrink-0 shadow-sm">
+                  <Plus className="size-4" /> Root Node
+                </Button>
+              )}
             </div>
           </CardHeader>
-          
+
           <CardContent className="p-0">
             <div className="relative max-h-[72vh] min-h-[560px] overflow-auto bg-[#f8fafc]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.08)_1px,transparent_0)] [background-size:24px_24px]" />
@@ -909,7 +1054,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SUPERVISORY</span>
                   <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-800">WORK LOCATION / SITE</span>
                   <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">PEOPLE / UNIT</span>
-                  <span className="ml-auto hidden text-slate-500 lg:inline">Urutan: Department → Section → Work Location/Site → Orang.</span>
+                  <span className="ml-auto hidden text-slate-500 lg:inline">{chartTab === "site" ? "Struktur Site: Site → HSE/Technical/Service/Repair → Orang." : "Urutan: Department → Section → Work Location/Site → Orang."}</span>
                 </div>
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -929,11 +1074,13 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                   ) : (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500 shadow-sm">
                       <GitBranch className="mx-auto mb-3 size-10 text-slate-300" />
-                      <p className="font-medium text-slate-700">Belum ada struktur organisasi</p>
-                      <p className="mb-4 mt-1 text-sm">Mulai dengan membuat root node pertama Anda</p>
-                      <Button onClick={() => handleCreateClick(null)} variant="outline" className="shadow-sm">
-                        <Plus className="mr-2 size-4" /> Buat Root Node
-                      </Button>
+                      <p className="font-medium text-slate-700">{chartTab === "site" ? "Belum ada struktur site" : "Belum ada struktur organisasi"}</p>
+                      <p className="mb-4 mt-1 text-sm">{chartTab === "site" ? "Tidak ada karyawan untuk filter lokasi ini." : "Mulai dengan membuat root node pertama Anda"}</p>
+                      {chartTab === "organization" && (
+                        <Button onClick={() => handleCreateClick(null)} variant="outline" className="shadow-sm">
+                          <Plus className="mr-2 size-4" /> Buat Root Node
+                        </Button>
+                      )}
                     </div>
                   )}
 
@@ -991,8 +1138,8 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
               </div>
               <div>
                 <Label className="text-xs text-slate-500">Role Terdeteksi</Label>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{editingEmployee ? getEmployeeRoleGroup(editingEmployee.employee).label : "-"}</p>
-                <p className="text-xs text-slate-500">Berdasarkan nama jabatan.</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{selectedRoleGroup.label}</p>
+                <p className="text-xs text-slate-500">Berdasarkan jabatan yang dipilih.</p>
               </div>
             </div>
 
@@ -1134,7 +1281,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                 <Input type="number" value={formData.sectionId || ''} onChange={(e) => setFormData({...formData, sectionId: e.target.value})} placeholder="Opsional" />
               </div>
             </div>
-            
+
             <Alert className="col-span-1 bg-amber-50 text-amber-800 border-amber-200 mt-2">
               <AlertTriangle className="size-4 text-amber-600" />
               <AlertDescription className="text-xs">
@@ -1218,9 +1365,9 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isPending}>Batal</Button>
-            <Button 
-              variant="destructive" 
-              onClick={onConfirmDelete} 
+            <Button
+              variant="destructive"
+              onClick={onConfirmDelete}
               disabled={isPending || (deletingNode ? deletingNode.children.length > 0 || deletingNode.employeeCount > 0 : true)}
             >
               {isPending ? "Menghapus..." : "Ya, Hapus Node"}
@@ -1231,14 +1378,3 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     </AdminPageShell>
   );
 }
-
-
-
-
-
-
-
-
-
-
-

@@ -43,6 +43,8 @@ export async function getOrgChartData() {
       orgNodeId: hrEmployees.orgNodeId,
       positionName: hrPositions.rankName,
       email: hrEmployees.email,
+      departmentName: hrDepartments.name,
+      sectionName: hrSections.name,
       departmentId: hrEmployees.departmentId,
       sectionId: hrEmployees.sectionId,
       siteId: hrEmployees.siteId,
@@ -53,6 +55,8 @@ export async function getOrgChartData() {
     })
     .from(hrEmployees)
     .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
     .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
     .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
     .where(eq(hrEmployees.isActive, true));
@@ -209,7 +213,7 @@ export async function createOrgNode(data: {
       .returning();
 
     // Update pathText with actual ID
-    const actualPath = data.parentNodeId 
+    const actualPath = data.parentNodeId
       ? (await calculateHierarchy(newNode.id, data.parentNodeId)).path
       : `/${newNode.id}/`;
 
@@ -398,7 +402,3 @@ export async function getOrgNodeReferenceData() {
 
   return { departments, sections, sites, workLocations, positions };
 }
-
-
-
-
