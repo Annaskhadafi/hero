@@ -557,7 +557,7 @@ export function MobileNotificationsCenter({
     <div className="space-y-5">
       <section>
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Signal Queue</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Notifications</h1>
+        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Notifikasi Saya</h1>
       </section>
 
       <section className="rounded-[1.35rem] bg-[#003f78] p-5 text-white shadow-[0_20px_42px_rgba(0,63,120,0.24)]">

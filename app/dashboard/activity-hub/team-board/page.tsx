@@ -20,6 +20,7 @@ import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getServerSession } from "@/lib/auth-session";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getDailyActivityTeamBoardData } from "@/lib/daily-activity";
 
 type TeamBoardData = NonNullable<Awaited<ReturnType<typeof getDailyActivityTeamBoardData>>>;
@@ -210,29 +211,29 @@ export default async function TeamBoardPage() {
     return null;
   }
 
+  const pagePurpose = getActivityPagePurpose("teamBoard");
+
   return (
     <div className="space-y-5">
       <Card className="surface-module-card rounded-[1.1rem] border-0">
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">SPL Workspace</Badge>
+              <Badge variant="secondary">Monitoring, bukan approval resmi</Badge>
               <Badge variant="outline">{data.lead.department}</Badge>
               <Badge variant="outline">{data.lead.name}</Badge>
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl">SPL, Team Monitoring, dan Approval Queue</CardTitle>
+              <CardTitle className="text-2xl">{pagePurpose.title}</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Halaman lead diringkas jadi command surface untuk Surat Perintah Lembur, monitoring tim, approval
-                queue, dan dispute audit. Penugasan tetap satu pintu, tapi istilah kerja lapangan sekarang diselaraskan
-                ke SPL.
+                {pagePurpose.description} Penugasan tetap satu pintu, tapi istilah kerja lapangan sekarang diselaraskan ke SPL.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <MetricPill label="Workers" value={data.summary.activeWorkers} />
               <MetricPill label="Checked-in" value={data.summary.checkedIn} />
               <MetricPill label="Pending approval" value={data.summary.pendingApproval} />
-              <MetricPill label="Overdue" value={data.summary.overdueAssignments} />
+              <MetricPill label="SPL Overdue" value={data.summary.overdueAssignments} />
               <MetricPill label="Open SPL" value={data.summary.splOpen} />
               <MetricPill label="Overtime candidates" value={data.summary.overtimeCandidates} />
               <MetricPill label="Emergency jobs" value={data.summary.emergencyJobs} />
@@ -252,7 +253,7 @@ export default async function TeamBoardPage() {
             <Button asChild variant="outline" className="rounded-full">
               <Link href="/dashboard/approval">
                 <CheckCheck className="size-4" />
-                Approval inbox
+                {pagePurpose.primaryAction.label}
               </Link>
             </Button>
           </div>
@@ -261,7 +262,7 @@ export default async function TeamBoardPage() {
 
       <Tabs defaultValue="spl" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="spl">SPL Docs</TabsTrigger>
+          <TabsTrigger value="spl">Dokumen SPL</TabsTrigger>
           <TabsTrigger value="team">Team Status</TabsTrigger>
           <TabsTrigger value="activity-log">Activity Log Tim</TabsTrigger>
           <TabsTrigger value="approvals">Pending Approval</TabsTrigger>
@@ -453,7 +454,7 @@ export default async function TeamBoardPage() {
             <CardContent className="space-y-4 pt-6">
               <MinimalTableShell
                 title="Pending Approval Queue"
-                description="Approval yang menunggu tindak lanjut kini dipusatkan ke satu table audit."
+                description="Daftar ini hanya monitoring cepat. Klik Review untuk membuka Approval Inbox sebagai tempat keputusan resmi."
                 label="pending approvals"
                 fileName="team-board-approvals"
                 searchPlaceholder="Search requester, activity, approver, or risk..."

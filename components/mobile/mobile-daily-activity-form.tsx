@@ -997,7 +997,7 @@ export function MobileDailyActivityForm({
       <Dialog open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen}>
         <DialogContent className="max-h-[calc(100vh-1rem)] max-w-[calc(100vw-1rem)] gap-0 overflow-hidden rounded-[1.6rem] border-0 bg-white p-0 shadow-[0_28px_80px_rgba(8,32,51,0.22)] sm:max-w-xl">
           <DialogHeader className="bg-[linear-gradient(135deg,rgba(0,52,97,0.96),rgba(0,75,135,0.92))] px-5 py-5 text-left text-white">
-            <DialogTitle className="text-xl font-black">Pilih Activity Library</DialogTitle>
+            <DialogTitle className="text-xl font-black">Pilih Kamus Aktivitas</DialogTitle>
             <DialogDescription className="text-white/80">
               Search, scroll, lalu centang banyak item sesuai section. Item terpilih muncul sebagai checklist di bawah form.
             </DialogDescription>

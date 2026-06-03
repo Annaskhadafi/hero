@@ -25,7 +25,7 @@ const schemaLayers = [
     ],
   },
   {
-    title: "2. Route Builder",
+    title: "2. Route Builder (Template)",
     icon: Route,
     description: "Template per section + jabatan. Tempat nested group dan item harian dibangun.",
     tables: [
@@ -97,7 +97,7 @@ const desktopFlows = [
     ],
   },
   {
-    title: "Route Builder",
+    title: "Route Builder (Template)",
     eyebrow: "Desktop Flow",
     summary: "Builder fokus ke nested route. Satu route untuk satu kombinasi section + jabatan + shift.",
     columns: [
@@ -227,7 +227,7 @@ const mobileFlows = [
 
 const rolloutPhases = [
   "Phase 1: aktifkan tabel v2 additive tanpa mematikan library dan assignment lama.",
-  "Phase 2: buat admin workspace Blueprint + Route Builder sebagai surface review dan alignment.",
+  "Phase 2: buat admin workspace Blueprint + Route Builder (Template) sebagai surface review dan alignment.",
   "Phase 3: ganti mobile input dari form flat menjadi checklist route per section.",
   "Phase 4: ganti assignment bisnis menjadi SPL, tetap bridge ke approval engine existing.",
   "Phase 5: pindahkan analytics, leaderboard, dan export ke sumber session v2.",
@@ -498,7 +498,7 @@ export function ActivitySystemBlueprintBoard() {
                   },
                   {
                     icon: FileSpreadsheet,
-                    label: "Assignment bisnis diganti jadi SPL, tetap bridge ke approval engine existing.",
+                    label: "Istilah Assignment bisnis diganti jadi SPL, tetap bridge ke approval engine existing.",
                   },
                   {
                     icon: Smartphone,

@@ -25,6 +25,7 @@ import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityRouteBuilderData } from "@/lib/daily-activity";
 
@@ -592,6 +593,7 @@ export default async function DailyActivityRoutesPage() {
   }
 
   const data = await getDailyActivityRouteBuilderData(session.user.email);
+  const pagePurpose = getActivityPagePurpose("routes");
 
   return (
     <div className="space-y-5">
@@ -607,7 +609,7 @@ export default async function DailyActivityRoutesPage() {
 
       <Tabs defaultValue="routes" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="routes">Route Builder</TabsTrigger>
+          <TabsTrigger value="routes">Route Kerja Harian</TabsTrigger>
           <TabsTrigger value="overrides">Point Overrides</TabsTrigger>
         </TabsList>
 
@@ -618,10 +620,10 @@ export default async function DailyActivityRoutesPage() {
                 <div>
                   <CardTitle className="flex items-center gap-2 text-2xl">
                     <ListChecks className="size-5 text-primary" />
-                    Simple Nested Routes
+                    {pagePurpose.title}
                   </CardTitle>
                   <CardDescription>
-                    List route first. Click route to open group. Click group to open item.
+                    {pagePurpose.description} Klik route untuk membuka group, lalu klik group untuk membuka item.
                   </CardDescription>
                 </div>
                 <AddRouteDialog data={data} />

@@ -26,6 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getDailyActivityEmployeeData, getDailyActivityTeamBoardData } from "@/lib/daily-activity";
 
 function statusBadgeClass(status: string) {
@@ -122,6 +123,7 @@ export default async function MyDayPage() {
   const activityStatuses = Array.from(new Set(data.activities.map((activity) => activity.statusLabel))).sort();
   const activitySources = Array.from(new Set(data.activities.map((activity) => activity.sourceMode))).sort();
   const penaltyStatuses = Array.from(new Set(data.penalties.map((penalty) => penalty.disputeStatus))).sort();
+  const pagePurpose = getActivityPagePurpose("input");
 
   return (
     <div className="space-y-5">
@@ -129,7 +131,7 @@ export default async function MyDayPage() {
         <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Workspace Aktivitas Harian</Badge>
+              <Badge variant="secondary">Satu Pintu Aktivitas Harian</Badge>
               <Badge variant="outline">{data.site?.name ?? "Site"}</Badge>
               <Badge variant="outline">Shift {data.summary.shift}</Badge>
               {data.summary.activeModifier ? (
@@ -137,10 +139,10 @@ export default async function MyDayPage() {
               ) : null}
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl">Checklist Harian, Aktivitas, dan Feed Poin</CardTitle>
+              <CardTitle className="text-2xl">{pagePurpose.title}</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Workspace harian untuk cek assignment yang harus dikerjakan, submit aktivitas, lalu pantau status approval,
-                poin, dan penalty tanpa pindah halaman.
+                {pagePurpose.description} Cek assignment, submit aktivitas, lalu pantau status approval, poin, dan penalty
+                tanpa pindah halaman.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -160,14 +162,14 @@ export default async function MyDayPage() {
               <DialogTrigger asChild>
                 <Button className="rounded-full">
                   <Sparkles className="size-4" />
-                  Submit aktivitas
+                  Input Aktivitas Harian
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-3xl">
                 <DialogHeader>
-                  <DialogTitle>Submit aktivitas harian</DialogTitle>
+                  <DialogTitle>Input Aktivitas Harian</DialogTitle>
                   <DialogDescription>
-                    Form tetap lengkap, tapi sekarang dibuka sebagai modal supaya halaman utama tetap fokus ke data.
+                    Form desktop dan mobile memakai konsep yang sama; modal ini hanya layout desktop untuk input cepat.
                   </DialogDescription>
                 </DialogHeader>
                 <DailyActivitySubmitForm
@@ -563,7 +565,7 @@ export default async function MyDayPage() {
                     </p>
                   </div>
                   <Button asChild variant="outline" className="rounded-full">
-                    <Link href="/dashboard/activity-hub/team-board">Open Team Board</Link>
+                    <Link href="/dashboard/activity-hub/team-board">Buka Monitoring Tim & SPL</Link>
                   </Button>
                 </div>
 

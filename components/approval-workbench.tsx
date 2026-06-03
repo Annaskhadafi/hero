@@ -86,8 +86,8 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
     <Card className="rounded-[1.4rem] border-0 bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
       <CardContent className="pt-6">
         <MinimalTableShell
-          title="Inbox keputusan"
-          description="Mulai dari list kerja utama. Gunakan filter untuk fokus ke site, prioritas, atau SLA yang paling mendesak."
+          title="Tugas yang harus saya approve"
+          description="Approval Inbox hanya berisi tugas approval yang menunggu keputusan Anda. Request yang Anda buat ada di Request Center."
           label="approval items"
           fileName="approval-inbox"
           searchPlaceholder="Cari requester, site, aktivitas, unit, atau step approval..."
@@ -237,8 +237,8 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData["historyGroups"] })
     <Card className="rounded-[1.4rem] border-0 bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
       <CardContent className="pt-6">
         <MinimalTableShell
-          title="Riwayat pengajuan"
-          description="Lacak status akhir, approver aktif, dan jejak keputusan tanpa harus membuka banyak panel bertingkat."
+          title="Jejak keputusan Approval Inbox"
+          description="Lacak keputusan yang sudah lewat dari antrian approval Anda. Status pengajuan milik Anda tetap dibuka dari Request Center."
           label="request history"
           fileName="approval-history"
           searchPlaceholder="Cari aktivitas, site, approver, workflow, atau hasil keputusan..."
@@ -360,8 +360,8 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
   return (
     <AdminPageShell
       eyebrow="Approval"
-      title="Approval Center"
-      description="Antrian keputusan dan riwayat pengajuan dalam pola list-first supaya item mendesak lebih cepat terlihat dan ditindaklanjuti."
+      title="Approval Inbox"
+      description="Tugas yang harus saya approve. Gunakan halaman ini untuk mengambil keputusan sebagai approver, bukan untuk memantau request yang saya buat."
     >
       <AdminMetricGrid
         mode="compact"
@@ -401,7 +401,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
 
       <Tabs defaultValue="inbox" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="inbox">Inbox keputusan</TabsTrigger>
+          <TabsTrigger value="inbox">Approval Inbox</TabsTrigger>
           <TabsTrigger value="history">Riwayat pengajuan</TabsTrigger>
         </TabsList>
 

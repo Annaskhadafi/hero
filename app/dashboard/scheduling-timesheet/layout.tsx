@@ -7,13 +7,13 @@ export default function SchedulingTimesheetLayout({ children }: { children: Reac
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <p className="text-muted-foreground text-xs font-semibold tracking-[0.18em] uppercase">
-              HC · Scheduling Timesheet
+              HC · Roster & Schedule
             </p>
             <h1 className="font-display text-foreground mt-1 text-[1.75rem] leading-tight font-semibold sm:text-[2rem]">
-              Scheduling &amp; Timesheet
+              Roster &amp; Schedule
             </h1>
             <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-              Kelola roster, kehadiran, field break, hingga rekap MSA dan overtime dalam satu alur.
+              Kelola setup roster, jadwal kerja, attendance realisasi, field break, dan payroll timesheet.
             </p>
           </div>
         </div>

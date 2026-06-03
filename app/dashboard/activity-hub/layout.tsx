@@ -1,32 +1,6 @@
 import Link from "next/link";
 import { Activity } from "lucide-react";
-
-const tabs = [
-  {
-    label: "Daily Checklist",
-    href: "/dashboard/activity-hub/my-day",
-  },
-  {
-    label: "SPL",
-    href: "/dashboard/activity-hub/team-board",
-  },
-  {
-    label: "Library",
-    href: "/dashboard/activity-hub/library",
-  },
-  {
-    label: "Route Builder",
-    href: "/dashboard/activity-hub/routes",
-  },
-  {
-    label: "Blueprint",
-    href: "/dashboard/activity-hub/blueprint",
-  },
-  {
-    label: "Configuration",
-    href: "/dashboard/activity-hub/configuration",
-  },
-];
+import { activityHubTabs } from "@/lib/activity-navigation";
 
 export default function ActivityHubLayout({
   children,
@@ -43,7 +17,7 @@ export default function ActivityHubLayout({
           Daily Activity System
         </h1>
         <nav className="flex flex-wrap gap-2">
-          {tabs.map((tab) => (
+          {activityHubTabs.map((tab) => (
             <Link
               key={tab.href}
               href={tab.href}

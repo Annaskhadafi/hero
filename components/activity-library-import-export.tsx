@@ -172,7 +172,7 @@ export function ActivityLibraryImportExport({
         <DialogContent className="max-w-6xl border-0 bg-surface-container-lowest p-0 shadow-[0_28px_90px_rgba(8,32,51,0.22)]">
           <DialogHeader>
             <div className="rounded-t-[1.75rem] bg-[linear-gradient(135deg,rgba(0,52,97,0.96),rgba(0,75,135,0.92))] px-6 py-5 text-white">
-              <DialogTitle className="text-xl">Import Activity Library</DialogTitle>
+              <DialogTitle className="text-xl">Import Kamus Aktivitas</DialogTitle>
               <DialogDescription className="mt-2 text-white/80">
                 Support CSV comma atau semicolon. `activityCode` sama akan update record lama, bukan duplicate.
               </DialogDescription>
@@ -319,7 +319,7 @@ export function ActivityLibraryImportExport({
               className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,var(--primary),var(--primary-container))] text-white shadow-[0_16px_34px_rgba(0,52,97,0.24)]"
               disabled={isPending || isRefreshing}
             >
-              {isPending || isRefreshing ? "Importing..." : "Import ke Activity Library"}
+              {isPending || isRefreshing ? "Importing..." : "Import ke Kamus Aktivitas"}
             </Button>
           </form>
         </DialogContent>

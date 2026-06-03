@@ -180,7 +180,8 @@ export function MasterDataManagement({
         <div>
           <h1 className="text-2xl font-bold text-[#1e293b]">Master Data</h1>
           <p className="mt-1 text-sm text-[#64748b]">
-            Kelola fondasi Approval Engine: master organisasi, approval matrix, dan simulasi route approval.
+            Kelola data referensi global: site, department, section, jabatan, shift, kategori, struktur organisasi, dan
+            approval matrix. Kamus pekerjaan Daily Activity tetap dikelola di menu Kamus Aktivitas.
           </p>
         </div>
       </div>

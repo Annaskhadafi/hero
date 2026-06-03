@@ -359,7 +359,7 @@ export default async function MobileDashboardPage() {
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <span className="size-1.5 rounded-full bg-[#5a2200]" />
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Ongoing Assignment</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Pekerjaan Aktual</p>
         </div>
 
         <div className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
@@ -368,7 +368,7 @@ export default async function MobileDashboardPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-black leading-tight text-[#082033]">
-                    {primaryAssignment.customJobName || primaryAssignment.activityName || "Assignment Lapangan"}
+                    {primaryAssignment.customJobName || primaryAssignment.activityName || "Pekerjaan Aktual"}
                   </h2>
                   <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-[#486275]">
                     <MapPin className="size-3.5" />

@@ -104,7 +104,7 @@ export default async function OvertimeRequestsPage() {
                 <OvertimeCommandLetterComposer
                   action={manageOvertimeCommandLetterAction}
                   intent="create"
-                  submitLabel="Save Overtime Request"
+                  submitLabel="Simpan Pengajuan Lembur"
                   routeTemplates={data.splOptions.routeTemplates}
                   libraryActivities={data.splOptions.libraryActivities}
                   teamMembers={data.team.map((member) => ({

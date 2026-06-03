@@ -15,43 +15,43 @@ import { cn } from '@/lib/utils'
 
 const tabs = [
   {
-    label: 'Overview',
+    label: 'Overview Roster',
     href: '/dashboard/scheduling-timesheet',
     icon: LayoutDashboard,
     hint: 'Status per site & periode',
   },
   {
-    label: 'Setup',
+    label: 'Setup Roster',
     href: '/dashboard/scheduling-timesheet/setup',
     icon: Users,
     hint: 'Profil & konfigurasi site',
   },
   {
-    label: 'Schedule',
+    label: 'Roster & Schedule',
     href: '/dashboard/scheduling-timesheet/schedule',
     icon: CalendarDays,
     hint: 'Roster draft & tetap',
   },
   {
-    label: 'Attendance',
+    label: 'Sync Log',
     href: '/dashboard/scheduling-timesheet/attendance',
     icon: ClipboardList,
-    hint: 'Kehadiran real',
+    hint: 'Face/location, manual, Excel',
   },
   {
-    label: 'Izin',
+    label: 'Exceptions',
     href: '/dashboard/scheduling-timesheet/permission',
     icon: FileText,
-    hint: 'Sakit, urgent, dan izin manual',
+    hint: 'Sakit, urgent, izin manual',
   },
   {
-    label: 'Field Break',
+    label: 'Field Break Schedule',
     href: '/dashboard/scheduling-timesheet/field-break',
     icon: Coffee,
     hint: 'Rotasi FB',
   },
   {
-    label: 'MSA + OT',
+    label: 'Payroll Timesheet',
     href: '/dashboard/scheduling-timesheet/payroll',
     icon: FileSpreadsheet,
     hint: 'Rekap MSA & overtime',

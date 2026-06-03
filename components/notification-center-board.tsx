@@ -30,7 +30,7 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
     <AdminPageShell
       eyebrow="Communication Control"
       title="Notification Center"
-      description="Pusat pantau pesan, email, pengingat, delegasi, dan eskalasi agar tindak lanjut approval tidak terlewat."
+      description="Pusat pantau event, delivery pesan, reminder, delegasi, dan eskalasi. Action approval tetap dikerjakan di Approval Inbox."
     >
       <AdminMetricGrid
         items={[
@@ -45,8 +45,8 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
 
       <Alert className="bg-[#eff6ff]">
         <AlertDescription className="text-[#1d4ed8]">
-          Halaman ini membantu admin memantau pesan yang terkirim, pengingat yang menunggu jadwal, dan approval yang
-          perlu didelegasikan atau dieskalasikan.
+          Halaman ini membantu admin memantau pesan terkirim, pengingat yang menunggu jadwal, serta alert approval yang
+          perlu dibuka dan ditindaklanjuti dari Approval Inbox.
         </AlertDescription>
       </Alert>
 

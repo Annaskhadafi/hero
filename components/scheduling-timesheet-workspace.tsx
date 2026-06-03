@@ -3364,7 +3364,7 @@ export function SchedulingTimesheetWorkspace({
                 {mode === 'overview' && 'Ringkasan Site'}
                 {mode === 'setup' && 'Konfigurasi Site'}
                 {mode === 'schedule' && 'Parameter Jadwal'}
-                {mode === 'attendance' && 'Attendance Workspace'}
+                {mode === 'attendance' && 'Sync Log'}
                 {mode === 'field-break' && 'Field Break Planning'}
                 {mode === 'payroll' && 'MSA + Overtime'}
               </p>
@@ -4065,10 +4065,10 @@ export function SchedulingTimesheetWorkspace({
             <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
                 <p className="font-display text-foreground text-base font-semibold">
-                  Attendance Real
+                  Sync Log
                 </p>
                 <p className="text-muted-foreground text-xs">
-                  Terhubung dari face/location. Edit manual atau import via Excel.
+                  Log sinkronisasi attendance dari face/location, manual edit, dan import Excel.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -4131,7 +4131,7 @@ export function SchedulingTimesheetWorkspace({
                   {isSavingAttendance ? 'Menyimpan...' : 'Save Attendance'}
                 </Button>
                 <TabExportActions
-                  tabTitle="Attendance Real"
+                  tabTitle="Sync Log"
                   columns={[
                     'Nama',
                     'Masuk',

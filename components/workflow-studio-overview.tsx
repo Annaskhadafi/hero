@@ -84,8 +84,8 @@ export function WorkflowStudioOverview({ data }: { data: WorkflowStudioOverviewD
   return (
     <AdminPageShell
       eyebrow="Approval Operations"
-      title="Workflow Studio"
-      description="Pusat pengaturan alur approval, tahapan pemeriksa, notifikasi, pengingat, dan kesiapan aturan operasional."
+      title="Approval Workflow Builder"
+      description="Template lifecycle approval, notification, reminder, dan condition. Resolver approver berdasarkan org/site/role/overtime tetap dikelola di Approval Matrix."
     >
       <AdminMetricGrid
         items={[

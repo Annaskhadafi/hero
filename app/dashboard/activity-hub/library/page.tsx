@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityLibraryData } from "@/lib/daily-activity";
 
@@ -138,6 +139,7 @@ export default async function DailyActivityLibraryPage({
   const data = await getDailyActivityLibraryData(session.user.email);
   await searchParams;
   const filteredRows = data.rows;
+  const pagePurpose = getActivityPagePurpose("library");
 
   return (
     <div className="space-y-5">
@@ -152,7 +154,7 @@ export default async function DailyActivityLibraryPage({
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="overview">Activity Library Overview</TabsTrigger>
+          <TabsTrigger value="overview">Kamus Aktivitas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -160,8 +162,11 @@ export default async function DailyActivityLibraryPage({
             <CardHeader className="gap-3">
               <CardTitle className="flex items-center gap-2 text-2xl">
                 <Settings2 className="size-5 text-primary" />
-                Activity Library Overview
+                {pagePurpose.title}
               </CardTitle>
+              <CardDescription className="max-w-3xl text-sm leading-6">
+                {pagePurpose.description}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -182,8 +187,8 @@ export default async function DailyActivityLibraryPage({
                 importAction={<ActivityLibraryImportExport rows={filteredRows} currentEmployeeId={data.currentEmployee?.id ?? null} mode="import" />}
                 primaryAction={
                   <AdminCrudDialog
-                    title="Add Activity Library"
-                    description="Tambah master activity yang dipakai Route Builder."
+                    title="Tambah Kamus Aktivitas"
+                    description="Tambah pekerjaan resmi beserta base point dan requirement validasinya."
                     size="lg"
                   >
                     <ActivityLibraryCreateForm data={data} />
@@ -284,10 +289,10 @@ export default async function DailyActivityLibraryPage({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layers3 className="size-5 text-primary" />
-                Tambah Activity Library
+                Tambah Kamus Aktivitas
               </CardTitle>
               <CardDescription>
-                Panel untuk Section Head atau admin mengelola master activity library yang nanti dipakai Route Builder.
+                Panel untuk Section Head atau admin mengelola kamus pekerjaan resmi yang nanti dipakai Route Kerja Harian.
               </CardDescription>
             </CardHeader>
             <CardContent>

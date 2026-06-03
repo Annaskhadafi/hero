@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AdminPageShell } from "@/components/admin-page-shell";
-import { Printer } from "lucide-react";
+import { getNextLetterNumber, saveLetter } from "@/app/actions/surat";
+import { Archive, Printer } from "lucide-react";
+import Link from "next/link";
 
 type EmployeeForLetter = {
   id: number;
@@ -27,18 +29,83 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
       year: "numeric",
     });
   });
-  
+
   // Custom inputs for Surat Tugas
   const [tujuan, setTujuan] = useState("");
   const [keperluan, setKeperluan] = useState("");
   const [tglBerangkat, setTglBerangkat] = useState("");
   const [tglKembali, setTglKembali] = useState("");
 
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const letterNumberFetched = useRef(false);
+
   const selectedEmp = employees.find((e) => e.id.toString() === selectedEmpId);
+
+  // Auto-generate letter number on mount
+  useEffect(() => {
+    if (letterNumberFetched.current) return;
+    letterNumberFetched.current = true;
+
+    getNextLetterNumber("surat_tugas")
+      .then((num) => {
+        setNoSurat(num);
+      })
+      .catch((err) => {
+        console.error("Failed to generate letter number:", err);
+      });
+  }, []);
 
   const handlePrint = () => {
     window.print();
   };
+
+  const handleSaveToArchive = useCallback(async () => {
+    if (!selectedEmp) {
+      setSaveMessage("Pilih karyawan terlebih dahulu.");
+      return;
+    }
+
+    setSaving(true);
+    setSaveMessage("");
+
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const contentHtml = document.querySelector(".pdf-wrapper")?.innerHTML || "";
+
+      const result = await saveLetter({
+        letterType: "surat_tugas",
+        letterNumber: noSurat,
+        employeeId: selectedEmp.id,
+        employeeName: selectedEmp.name,
+        subject: keperluan || "Surat Tugas",
+        content: contentHtml,
+        destination: tujuan,
+        purpose: keperluan,
+        departureDate: tglBerangkat || undefined,
+        returnDate: tglKembali || undefined,
+        issuedDate: today,
+        issuedPlace: "Balikpapan",
+        signatoryName: "",
+        signatoryTitle: "Direktur / HR Manager",
+        status: "draft",
+      });
+
+      if (result.success) {
+        setSaveMessage("Surat berhasil disimpan ke arsip.");
+        // Refresh letter number for next use
+        const nextNum = await getNextLetterNumber("surat_tugas");
+        setNoSurat(nextNum);
+      } else {
+        setSaveMessage(result.error || "Gagal menyimpan surat.");
+      }
+    } catch (error) {
+      console.error("Error saving letter:", error);
+      setSaveMessage("Terjadi kesalahan saat menyimpan.");
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedEmp, noSurat, tujuan, keperluan, tglBerangkat, tglKembali]);
 
   return (
     <AdminPageShell
@@ -79,7 +146,7 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
                 onChange={(e) => setTanggal(e.target.value)}
               />
             </div>
-            
+
             <div className="border-t pt-4 mt-2">
               <h4 className="font-semibold text-sm mb-3">Detail Penugasan</h4>
               <div className="space-y-4">
@@ -121,10 +188,38 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
             </div>
           </Card>
 
-          <Button onClick={handlePrint} className="w-full gap-2">
-            <Printer className="size-4" />
-            Print Surat
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button onClick={handlePrint} className="w-full gap-2">
+              <Printer className="size-4" />
+              Print Surat
+            </Button>
+            <Button
+              onClick={handleSaveToArchive}
+              variant="outline"
+              className="w-full gap-2"
+              disabled={saving}
+            >
+              <Archive className="size-4" />
+              {saving ? "Menyimpan..." : "Simpan ke Arsip"}
+            </Button>
+            {saveMessage && (
+              <p
+                className={`text-xs text-center ${
+                  saveMessage.includes("berhasil")
+                    ? "text-emerald-600"
+                    : "text-destructive"
+                }`}
+              >
+                {saveMessage}
+              </p>
+            )}
+            <Link
+              href="/dashboard/hc/surat/archive"
+              className="text-center text-xs text-primary underline underline-offset-4 hover:text-primary/80"
+            >
+              Lihat Arsip Surat
+            </Link>
+          </div>
         </div>
 
         {/* Print Preview Area */}
@@ -147,7 +242,7 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
               </div>
 
               <p className="mb-6 text-justify">
-                Yang bertanda tangan di bawah ini, selaku pimpinan perusahaan PT Chitra Paratama, 
+                Yang bertanda tangan di bawah ini, selaku pimpinan perusahaan PT Chitra Paratama,
                 memberikan tugas kepada:
               </p>
 
@@ -201,7 +296,7 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
               </table>
 
               <p className="mb-12 text-justify">
-                Demikian surat tugas ini diberikan agar dapat dilaksanakan dengan penuh tanggung jawab. 
+                Demikian surat tugas ini diberikan agar dapat dilaksanakan dengan penuh tanggung jawab.
                 Setelah selesai melaksanakan tugas, harap segera memberikan laporan kepada atasan.
               </p>
 
@@ -209,7 +304,7 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
                 <div>
                   <p className="mb-1">Balikpapan, {tanggal || "_________________"}</p>
                   <p className="font-bold mb-20">PT Chitra Paratama</p>
-                  
+
                   <p className="font-bold underline">_________________________</p>
                   <p>Direktur / HR Manager</p>
                 </div>

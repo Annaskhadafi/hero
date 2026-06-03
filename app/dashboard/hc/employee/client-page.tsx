@@ -1,525 +1,1019 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { AdminPageShell } from "@/components/admin-page-shell";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import {
+  EnterpriseScorecards,
+  EnterpriseRecordDialog,
+  EnterpriseFormGrid,
+  EnterpriseActionButtons,
+  type EnterpriseScorecardItem,
+  type TableRbacAccess,
+} from "@/components/ui/enterprise-table-kit";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Pencil, Eye, Search, ChevronLeft, ChevronRight, User, Trash } from "lucide-react";
-import { updateEmployeeContract, deleteEmployee } from "@/app/actions/employee";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2 } from "lucide-react";
+import {
+  createEmployee,
+  updateEmployee,
+  deleteEmployee,
+} from "@/app/actions/employee";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+/* ─── Types ─────────────────────────────────────────────────────────── */
 
 type Employee = {
   id: number;
   employeeId: string;
   fullName: string;
+  email: string | null;
   joinDate: string | null;
   contractStart: string | null;
   contractEnd: string | null;
+  birthDate: string | null;
   accountStatus: string;
-  genderCode?: string | null;
-  jobTitle?: string | null;
-  location?: string | null;
+  genderCode: string | null;
+  jobTitle: string | null;
+  levelName: string | null;
+  departmentName: string | null;
+  sectionName: string | null;
+  siteName: string | null;
+  location: string | null;
+  departmentId: number | null;
+  sectionId: number | null;
+  workLocationId: number | null;
+  positionId: number | null;
 };
 
-export function EmployeeClientPage({ employees: initialData }: { employees: Employee[] }) {
-  const [data, setData] = useState<Employee[]>(initialData);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Employee | null>(null);
-  const [viewingItem, setViewingItem] = useState<Employee | null>(null);
-  const [deletingItem, setDeletingItem] = useState<Employee | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+type FilterOption = {
+  id: number;
+  name: string;
+  departmentId?: number | null;
+};
 
-  // Form states
-  const [joinDate, setJoinDate] = useState("");
-  const [contractStart, setContractStart] = useState("");
-  const [contractEnd, setContractEnd] = useState("");
-  
-  // Filters & Pagination
-  const [searchQuery, setSearchQuery] = useState("");
-  const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(new Date().getMonth() + 1);
+type FilterOptions = {
+  departments: FilterOption[];
+  sections: FilterOption[];
+  locations: FilterOption[];
+};
 
-  const handleOpenView = (item: Employee) => {
-    setViewingItem(item);
-    setIsViewModalOpen(true);
-  };
+type ContractStatus = {
+  label: string;
+  type: "ACTIVE" | "EXPIRING" | "COMPLETED" | "NO_CONTRACT";
+};
 
-  const handleOpenEdit = (item: Employee) => {
-    setEditingItem(item);
-    setJoinDate(item.joinDate || "");
-    setContractStart(item.contractStart || "");
-    setContractEnd(item.contractEnd || "");
-    setIsModalOpen(true);
-  };
+type EmployeeFormData = {
+  employeeId: string;
+  fullName: string;
+  email: string;
+  genderCode: string;
+  departmentId: string;
+  sectionId: string;
+  siteId: string;
+  workLocationId: string;
+  positionId: string;
+  joinDate: string;
+  contractStart: string;
+  contractEnd: string;
+  birthDate: string;
+};
 
-  const handleOpenDelete = (item: Employee) => {
-    setDeletingItem(item);
-    setIsDeleteModalOpen(true);
-  };
+/* ─── Helpers ───────────────────────────────────────────────────────── */
 
-  const handleDelete = async () => {
-    if (!deletingItem) return;
-    setIsLoading(true);
-    try {
-      await deleteEmployee(deletingItem.id);
-      setData(data.filter(d => d.id !== deletingItem.id));
-      setIsDeleteModalOpen(false);
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan saat menghapus.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+function getContractStatus(contractEnd: string | null): ContractStatus {
+  if (!contractEnd) {
+    return { label: "Tanpa Kontrak", type: "NO_CONTRACT" };
+  }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingItem) return;
-    
-    setIsLoading(true);
-    try {
-      const payload = {
-        joinDate: joinDate || null,
-        contractStart: contractStart || null,
-        contractEnd: contractEnd || null,
-      };
-
-      const updated = await updateEmployeeContract(editingItem.id, payload);
-      setData(data.map(d => d.id === editingItem.id ? {
-        ...d,
-        joinDate: updated.joinDate ? updated.joinDate.toString() : null,
-        contractStart: updated.contractStart ? updated.contractStart.toString() : null,
-        contractEnd: updated.contractEnd ? updated.contractEnd.toString() : null,
-      } : d));
-      
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const getContractStatus = (endStr: string | null) => {
-    if (!endStr) return { label: "Belum Diatur", type: "NONE" };
-    
-    const today = new Date();
-    const end = new Date(endStr);
-    const diffTime = end.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 0) return { label: "Contract Completed", type: "COMPLETED" };
-    if (diffDays <= 30) return { label: "Will Expired", type: "EXPIRING" };
-    return { label: "Contract Active", type: "ACTIVE" };
-  };
-
-  // Stats calculation
-  const totalEmployees = data.length;
-  
-  const activeEmployees = data.filter(e => getContractStatus(e.contractEnd).type === "ACTIVE");
-  const activeMale = activeEmployees.filter(e => e.genderCode === "L" || e.genderCode === "M").length;
-  const activeFemale = activeEmployees.filter(e => e.genderCode === "P" || e.genderCode === "F").length;
-  
-  const expiringEmployees = data.filter(e => getContractStatus(e.contractEnd).type === "EXPIRING");
-  const expiringMale = expiringEmployees.filter(e => e.genderCode === "L" || e.genderCode === "M").length;
-  const expiringFemale = expiringEmployees.filter(e => e.genderCode === "P" || e.genderCode === "F").length;
-
-  const completedEmployees = data.filter(e => getContractStatus(e.contractEnd).type === "COMPLETED");
-  const completedMale = completedEmployees.filter(e => e.genderCode === "L" || e.genderCode === "M").length;
-  const completedFemale = completedEmployees.filter(e => e.genderCode === "P" || e.genderCode === "F").length;
-
-  // Since we don't have an explicit 'On Progress' status in schema, we mock it or define it.
-  // Let's assume On Progress means join date is recent or contract just started. For now mock as 5.
-  const onProgressEmployees = data.filter(e => false); // Mocking or adjusting as needed. I'll just put 0 to be safe with real data.
-  const onProgressCount = 0;
-  
-  // Calculate percentage helper
-  const calcPct = (count: number, total: number) => total === 0 ? 0 : Math.round((count / total) * 10000) / 100;
-
-  // Months for timeline (Feb - Dec like mockup)
-  const months = [
-    { name: "February", num: 2 }, { name: "March", num: 3 }, { name: "April", num: 4 },
-    { name: "May", num: 5 }, { name: "June", num: 6 }, { name: "July", num: 7 },
-    { name: "August", num: 8 }, { name: "September", num: 9 }, { name: "October", num: 10 },
-    { name: "November", num: 11 }, { name: "December", num: 12 }
-  ];
-
-  const getCountForMonth = (monthNum: number) => {
-    return data.filter(e => {
-      if (!e.contractEnd) return false;
-      return new Date(e.contractEnd).getMonth() + 1 === monthNum;
-    }).length;
-  };
-
-  // Filtering
-  const filteredData = data.filter(emp => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = 
-        emp.fullName.toLowerCase().includes(q) || 
-        emp.employeeId.toLowerCase().includes(q);
-      if (!matchesSearch) return false;
-    }
-    
-    // Filter by selected month based on Contract End (assuming that's what the posts timeline represents)
-    if (selectedMonth !== null) {
-      if (!emp.contractEnd) return false;
-      if (new Date(emp.contractEnd).getMonth() + 1 !== selectedMonth) return false;
-    }
-    
-    return true;
-  });
-
-  // Pagination
-  const totalPages = Math.ceil(filteredData.length / pageSize);
-  const paginatedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  // Formatting dates
   const today = new Date();
-  const dateString = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const joinDateRange = "05 May 1997 - 05 May 2025"; // Placeholder matching the image
-
-  const StatCard = ({ title, total, male, female }: { title: string, total: number, male: number, female: number }) => (
-    <Card className="bg-[#0b3c6f] text-white border-0 overflow-hidden shadow-md">
-      <CardContent className="p-5 flex flex-col h-full justify-between">
-        <div className="flex justify-between items-start mb-4">
-          <div className="font-semibold text-lg max-w-[60%] leading-tight">{title}</div>
-          <div className="text-4xl font-light">{total}</div>
-        </div>
-        <div className="flex justify-between items-center text-xs opacity-90 mt-2">
-          <div className="flex items-center gap-1.5">
-            <User className="size-5" />
-            <span>{male} ({calcPct(male, total)}%)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <User className="size-5 text-pink-200" />
-            <span>{female} ({calcPct(female, total)}%)</span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(contractEnd);
+  end.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil(
+    (end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
   );
 
+  if (diffDays <= 0) {
+    return { label: "Selesai", type: "COMPLETED" };
+  }
+  if (diffDays <= 30) {
+    return { label: "Akan Berakhir", type: "EXPIRING" };
+  }
+  return { label: "Aktif", type: "ACTIVE" };
+}
+
+function isOnProgress(employee: Employee): boolean {
+  if (!employee.joinDate) return false;
+  const today = new Date();
+  const join = new Date(employee.joinDate);
+  const diffDays = Math.ceil(
+    (today.getTime() - join.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  return diffDays >= 0 && diffDays <= 90;
+}
+
+function isMale(genderCode: string | null): boolean {
+  return genderCode === "L" || genderCode === "M";
+}
+
+function isFemale(genderCode: string | null): boolean {
+  return genderCode === "P" || genderCode === "F";
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function toInputDate(value: string | null): string {
+  if (!value) return "";
+  try {
+    return new Date(value).toISOString().split("T")[0];
+  } catch {
+    return "";
+  }
+}
+
+function statusBadgeVariant(
+  type: ContractStatus["type"]
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (type) {
+    case "ACTIVE":
+      return "default";
+    case "EXPIRING":
+      return "secondary";
+    case "COMPLETED":
+      return "destructive";
+    case "NO_CONTRACT":
+      return "outline";
+    default:
+      return "outline";
+  }
+}
+
+function emptyFormData(): EmployeeFormData {
+  return {
+    employeeId: "",
+    fullName: "",
+    email: "",
+    genderCode: "",
+    departmentId: "",
+    sectionId: "",
+    siteId: "",
+    workLocationId: "",
+    positionId: "",
+    joinDate: "",
+    contractStart: "",
+    contractEnd: "",
+    birthDate: "",
+  };
+}
+
+function employeeToFormData(emp: Employee): EmployeeFormData {
+  return {
+    employeeId: emp.employeeId,
+    fullName: emp.fullName,
+    email: emp.email ?? "",
+    genderCode: emp.genderCode ?? "",
+    departmentId: emp.departmentId?.toString() ?? "",
+    sectionId: emp.sectionId?.toString() ?? "",
+    siteId: "",
+    workLocationId: emp.workLocationId?.toString() ?? "",
+    positionId: emp.positionId?.toString() ?? "",
+    joinDate: toInputDate(emp.joinDate),
+    contractStart: toInputDate(emp.contractStart),
+    contractEnd: toInputDate(emp.contractEnd),
+    birthDate: toInputDate(emp.birthDate),
+  };
+}
+
+/* ─── Component ─────────────────────────────────────────────────────── */
+
+export function EmployeeClientPage({
+  employees: initialData,
+  filterOptions,
+  access,
+}: {
+  employees: Employee[];
+  filterOptions: FilterOptions;
+  access: TableRbacAccess;
+}) {
+  const [data, setData] = useState<Employee[]>(initialData);
+
+  // Dialog state
+  const [formOpen, setFormOpen] = useState(false);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null);
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
+  const [formData, setFormData] = useState<EmployeeFormData>(emptyFormData());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /* ─── Computed values ──────────────────────────────────────────────── */
+
+  const contractStatusMap = useMemo(() => {
+    const map = new Map<number, ContractStatus>();
+    for (const emp of data) {
+      map.set(emp.id, getContractStatus(emp.contractEnd));
+    }
+    return map;
+  }, [data]);
+
+  const onProgressSet = useMemo(() => {
+    return new Set(data.filter(isOnProgress).map((e) => e.id));
+  }, [data]);
+
+  // Scorecard counts
+  const activeEmployees = useMemo(
+    () =>
+      data.filter(
+        (e) => contractStatusMap.get(e.id)?.type === "ACTIVE"
+      ),
+    [data, contractStatusMap]
+  );
+  const expiringEmployees = useMemo(
+    () =>
+      data.filter(
+        (e) => contractStatusMap.get(e.id)?.type === "EXPIRING"
+      ),
+    [data, contractStatusMap]
+  );
+  const onProgressEmployees = useMemo(
+    () => data.filter((e) => onProgressSet.has(e.id)),
+    [data, onProgressSet]
+  );
+  const completedEmployees = useMemo(
+    () =>
+      data.filter(
+        (e) => contractStatusMap.get(e.id)?.type === "COMPLETED"
+      ),
+    [data, contractStatusMap]
+  );
+
+  // Filter options
+  const genderOptions = useMemo(
+    () => [
+      { value: "L", label: "Laki-laki" },
+      { value: "P", label: "Perempuan" },
+    ],
+    []
+  );
+
+  const filteredSections = useMemo(() => {
+    if (!formData.departmentId) return filterOptions.sections;
+    const deptId = Number(formData.departmentId);
+    return filterOptions.sections.filter(
+      (s) => s.departmentId == null || s.departmentId === deptId
+    );
+  }, [formData.departmentId, filterOptions.sections]);
+
+  /* ─── Scorecards ───────────────────────────────────────────────────── */
+
+  const scorecards: EnterpriseScorecardItem[] = useMemo(
+    () => [
+      {
+        label: "Kontrak Aktif",
+        value: activeEmployees.length,
+        description: `${activeEmployees.filter((e) => isMale(e.genderCode)).length} L / ${activeEmployees.filter((e) => isFemale(e.genderCode)).length} P`,
+        icon: <UserCheck className="size-5 text-emerald-600" />,
+        tone: "success",
+      },
+      {
+        label: "Akan Berakhir",
+        value: expiringEmployees.length,
+        description: `${expiringEmployees.filter((e) => isMale(e.genderCode)).length} L / ${expiringEmployees.filter((e) => isFemale(e.genderCode)).length} P`,
+        icon: <AlertTriangle className="size-5 text-amber-600" />,
+        tone: "warning",
+      },
+      {
+        label: "On Progress",
+        value: onProgressEmployees.length,
+        description: `Karyawan baru (≤90 hari)`,
+        icon: <Clock className="size-5 text-sky-600" />,
+        tone: "info",
+      },
+      {
+        label: "Kontrak Selesai",
+        value: completedEmployees.length,
+        description: `${completedEmployees.filter((e) => isMale(e.genderCode)).length} L / ${completedEmployees.filter((e) => isFemale(e.genderCode)).length} P`,
+        icon: <CheckCircle2 className="size-5 text-rose-600" />,
+        tone: "danger",
+      },
+    ],
+    [activeEmployees, expiringEmployees, onProgressEmployees, completedEmployees]
+  );
+
+  /* ─── Handlers ─────────────────────────────────────────────────────── */
+
+  function handleOpenAdd() {
+    setEditingEmployee(null);
+    setFormData(emptyFormData());
+    setFormOpen(true);
+  }
+
+  function handleOpenEdit(emp: Employee) {
+    setEditingEmployee(emp);
+    setFormData(employeeToFormData(emp));
+    setFormOpen(true);
+  }
+
+  function handleOpenView(emp: Employee) {
+    setViewingEmployee(emp);
+    setViewOpen(true);
+  }
+
+  function handleOpenDelete(emp: Employee) {
+    setDeletingEmployee(emp);
+    setDeleteOpen(true);
+  }
+
+  function updateFormField(field: keyof EmployeeFormData, value: string) {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formData.employeeId.trim() || !formData.fullName.trim()) {
+      toast.error("NIK dan Nama wajib diisi.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        employeeId: formData.employeeId.trim(),
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim() || undefined,
+        genderCode: formData.genderCode || undefined,
+        departmentId: formData.departmentId ? Number(formData.departmentId) : undefined,
+        sectionId: formData.sectionId ? Number(formData.sectionId) : undefined,
+        siteId: formData.siteId ? Number(formData.siteId) : undefined,
+        workLocationId: formData.workLocationId ? Number(formData.workLocationId) : undefined,
+        positionId: formData.positionId ? Number(formData.positionId) : undefined,
+        joinDate: formData.joinDate || undefined,
+        contractStart: formData.contractStart || undefined,
+        contractEnd: formData.contractEnd || undefined,
+        birthDate: formData.birthDate || undefined,
+      };
+
+      if (editingEmployee) {
+        const updated = await updateEmployee(editingEmployee.id, payload);
+        setData((prev) =>
+          prev.map((d) =>
+            d.id === editingEmployee.id
+              ? { ...d, ...payload, id: d.id, accountStatus: d.accountStatus }
+              : d
+          )
+        );
+        toast.success(`Data ${updated.fullName ?? formData.fullName} berhasil diperbarui.`);
+      } else {
+        const created = await createEmployee(payload);
+        if (created) {
+          const newEmployee: Employee = {
+            id: created.id,
+            employeeId: created.employeeId,
+            fullName: created.fullName,
+            email: created.email ?? null,
+            joinDate: created.joinDate ?? null,
+            contractStart: created.contractStart ?? null,
+            contractEnd: created.contractEnd ?? null,
+            birthDate: created.birthDate ?? null,
+            accountStatus: created.accountStatus ?? "active",
+            genderCode: created.genderCode ?? null,
+            jobTitle: null,
+            levelName: null,
+            departmentName: filterOptions.departments.find(
+              (d) => d.id === Number(formData.departmentId)
+            )?.name ?? null,
+            sectionName: filterOptions.sections.find(
+              (s) => s.id === Number(formData.sectionId)
+            )?.name ?? null,
+            siteName: null,
+            location: filterOptions.locations.find(
+              (l) => l.id === Number(formData.workLocationId)
+            )?.name ?? null,
+            departmentId: formData.departmentId ? Number(formData.departmentId) : null,
+            sectionId: formData.sectionId ? Number(formData.sectionId) : null,
+            workLocationId: formData.workLocationId ? Number(formData.workLocationId) : null,
+            positionId: formData.positionId ? Number(formData.positionId) : null,
+          };
+          setData((prev) => [newEmployee, ...prev]);
+        }
+        toast.success(`Karyawan ${formData.fullName} berhasil ditambahkan.`);
+      }
+      setFormOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Terjadi kesalahan. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deletingEmployee) return;
+
+    setIsSubmitting(true);
+    try {
+      await deleteEmployee(deletingEmployee.id);
+      setData((prev) => prev.filter((d) => d.id !== deletingEmployee.id));
+      toast.success(`Data ${deletingEmployee.fullName} berhasil dihapus.`);
+      setDeleteOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal menghapus data. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  /* ─── Render ───────────────────────────────────────────────────────── */
+
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4">
-        <h1 className="text-2xl font-semibold text-[#1e3a5f]">Contract Employee Dashboard</h1>
-        <div className="text-sm text-muted-foreground mt-2 md:mt-0 flex gap-2">
-          <span className="text-primary hover:underline cursor-pointer">Dashboard</span> / 
-          <span className="text-primary hover:underline cursor-pointer">Dashboard</span> / 
-          <span>Demographics Dashboard</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row justify-between text-sm text-muted-foreground">
-        <div>Join Date: {joinDateRange}</div>
-        <div>{dateString}</div>
-      </div>
-
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Contract Active" total={activeEmployees.length} male={activeMale} female={activeFemale} />
-        <StatCard title="Will Expired" total={expiringEmployees.length} male={expiringMale} female={expiringFemale} />
-        <StatCard title="On Progress" total={onProgressCount} male={0} female={0} />
-        <StatCard title="Contract Completed" total={completedEmployees.length} male={completedMale} female={completedFemale} />
-      </div>
-
-      {/* Posts Timeline */}
-      <div className="pt-6">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-6 h-2 bg-[#183d6a] rounded-sm"></div>
-          <h2 className="text-lg font-semibold text-slate-800">Posts</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-6">You can manage all posts, such as editing, deleting and more.</p>
-        
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 text-sm font-medium border-b pb-6">
-          {months.map((m) => {
-            const count = getCountForMonth(m.num);
-            const isActive = selectedMonth === m.num;
-            return (
-              <div 
-                key={m.num}
-                onClick={() => setSelectedMonth(isActive ? null : m.num)}
-                className={`flex items-center gap-1.5 cursor-pointer transition-all ${
-                  isActive ? "bg-[#183d6a] text-white px-3 py-1.5 rounded-full" : "text-[#183d6a] hover:opacity-80"
-                }`}
-              >
-                <span>{m.name}</span>
-                <span className={`flex items-center justify-center min-w-5 h-5 rounded-full text-[10px] font-bold px-1.5 ${
-                  isActive ? "bg-white text-[#183d6a]" : "bg-[#183d6a] text-white"
-                }`}>
-                  {count}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Table Section */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>Show</span>
-            <select 
-              className="border rounded p-1"
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-            <span>entries</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted-foreground font-normal whitespace-nowrap">Search:</Label>
-            <Input 
-              className="w-[200px] h-8 bg-slate-50 border-slate-200"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+    <AdminPageShell
+      eyebrow="HC - Employee"
+      title="Data Karyawan"
+      description="Kelola data karyawan, kontrak, dan informasi demografi secara terpusat."
+      actions={
+        <Button
+          onClick={handleOpenAdd}
+          className="gap-2 bg-[#183d6a] hover:bg-[#183d6a]/90"
+        >
+          <Plus className="size-4" />
+          Tambah Karyawan
+        </Button>
+      }
+    >
+      <MinimalTableShell
+        label="karyawan"
+        fileName="Data_Karyawan"
+        searchPlaceholder="Cari nama, NIK, atau departemen..."
+        scorecards={scorecards}
+        access={access}
+        dateFilter={false}
+        filters={
+          <>
+            <TableMultiFilter
+              label="Departemen"
+              filterKey="department"
+              options={filterOptions.departments.map((d) => ({
+                value: d.name,
+                label: d.name,
+              }))}
+              widthClassName="w-[180px]"
             />
-          </div>
-        </div>
+            <TableMultiFilter
+              label="Section"
+              filterKey="section"
+              options={filterOptions.sections.map((s) => ({
+                value: s.name,
+                label: s.name,
+              }))}
+              widthClassName="w-[180px]"
+            />
+            <TableMultiFilter
+              label="Lokasi"
+              filterKey="location"
+              options={filterOptions.locations.map((l) => ({
+                value: l.name,
+                label: l.name,
+              }))}
+              widthClassName="w-[180px]"
+            />
+            <TableMultiFilter
+              label="Jenis Kelamin"
+              filterKey="gender"
+              options={genderOptions}
+              widthClassName="w-[160px]"
+            />
+          </>
+        }
+      >
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-14 text-center">No</TableHead>
+              <TableHead>NIK</TableHead>
+              <TableHead>Nama</TableHead>
+              <TableHead>Departemen</TableHead>
+              <TableHead>Section</TableHead>
+              <TableHead>Jabatan</TableHead>
+              <TableHead>Lokasi</TableHead>
+              <TableHead className="text-center">Tgl Masuk</TableHead>
+              <TableHead className="text-center">Kontrak Mulai</TableHead>
+              <TableHead className="text-center">Kontrak Selesai</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={12}
+                  className="py-12 text-center text-muted-foreground"
+                >
+                  <Users className="mx-auto mb-3 size-10 opacity-20" />
+                  <p className="text-sm">Belum ada data karyawan.</p>
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.map((emp, index) => {
+                const status = contractStatusMap.get(emp.id) ?? {
+                  label: "-",
+                  type: "NO_CONTRACT" as const,
+                };
+                const isOnProg = onProgressSet.has(emp.id);
 
-        <div className="border rounded-md w-full overflow-x-auto bg-white shadow-sm">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-[#183d6a] text-white">
-              <tr className="whitespace-nowrap">
-                <th className="px-3 py-3 font-medium text-center w-12">No. ↑↓</th>
-                <th className="px-3 py-3 font-medium text-center">S/N ↑↓</th>
-                <th className="px-3 py-3 font-medium">Name</th>
-                <th className="px-3 py-3 font-medium text-center">Join Date</th>
-                <th className="px-3 py-3 font-medium text-center">Job Title ↑↓</th>
-                <th className="px-3 py-3 font-medium text-center">Contract Start ↑↓</th>
-                <th className="px-3 py-3 font-medium text-center">Contract End ↑↓</th>
-                <th className="px-3 py-3 font-medium text-center">Location ↑↓</th>
-                <th className="px-3 py-3 font-medium text-center">Status ↑↓</th>
-                <th className="px-3 py-3 font-medium text-center">Aksi ↑↓</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedData.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
-                    No data available in table
-                  </td>
-                </tr>
-              ) : (
-                paginatedData.map((emp, idx) => {
-                  const no = (currentPage - 1) * pageSize + idx + 1;
-                  const status = getContractStatus(emp.contractEnd);
-                  
-                  // Matching the green highlight from mockup for contract dates
-                  const isContractActive = status.type === "ACTIVE" || status.type === "EXPIRING";
-                  const dateBgClass = isContractActive ? "bg-[#e8faeb] text-slate-800" : ""; // using a softer green
-                  
-                  return (
-                    <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-3 py-3 text-center whitespace-nowrap">{no}</td>
-                      <td className="px-3 py-3 text-center text-[#1e9b89] font-medium whitespace-nowrap">{emp.employeeId}</td>
-                      <td className="px-3 py-3 text-[#183d6a] font-medium min-w-[150px]">{emp.fullName}</td>
-                      <td className="px-3 py-3 text-center text-[#1e9b89] whitespace-nowrap">{emp.joinDate ? new Date(emp.joinDate).toLocaleDateString('en-GB') : '-'}</td>
-                      <td className="px-3 py-3 text-center text-muted-foreground min-w-[120px]">{emp.jobTitle || '-'}</td>
-                      <td className={`px-3 py-3 text-center text-[#1e9b89] whitespace-nowrap ${dateBgClass}`}>
-                        {emp.contractStart ? new Date(emp.contractStart).toLocaleDateString('en-GB') : '-'}
-                      </td>
-                      <td className={`px-3 py-3 text-center text-[#1e9b89] whitespace-nowrap ${dateBgClass}`}>
-                        {emp.contractEnd ? new Date(emp.contractEnd).toLocaleDateString('en-GB') : '-'}
-                      </td>
-                      <td className="px-3 py-3 text-center text-muted-foreground min-w-[150px]">{emp.location || '-'}</td>
-                      <td className="px-3 py-3 text-center whitespace-nowrap">
-                        <Badge className="bg-[#183d6a] hover:bg-[#183d6a]/90 text-white border-0 font-normal rounded-full px-3 text-[10px] uppercase tracking-wide">
+                return (
+                  <TableRow
+                    key={emp.id}
+                    data-filter-department={emp.departmentName ?? ""}
+                    data-filter-section={emp.sectionName ?? ""}
+                    data-filter-location={emp.location ?? ""}
+                    data-filter-gender={emp.genderCode ?? ""}
+                    className="transition-colors hover:bg-muted/35"
+                  >
+                    <TableCell className="text-center text-muted-foreground">
+                      {index + 1}
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono text-xs font-medium text-[#183d6a]">
+                        {emp.employeeId}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium text-foreground">
+                        {emp.fullName}
+                      </div>
+                      {emp.email && (
+                        <div className="text-xs text-muted-foreground">
+                          {emp.email}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.departmentName ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.sectionName ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.jobTitle ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {emp.location ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-center text-muted-foreground">
+                      {formatDate(emp.joinDate)}
+                    </TableCell>
+                    <TableCell className="text-center text-muted-foreground">
+                      {formatDate(emp.contractStart)}
+                    </TableCell>
+                    <TableCell className="text-center text-muted-foreground">
+                      {formatDate(emp.contractEnd)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge
+                          variant={statusBadgeVariant(status.type)}
+                          className={cn(
+                            "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                            status.type === "ACTIVE" &&
+                              "bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
+                            status.type === "EXPIRING" &&
+                              "bg-amber-100 text-amber-700 hover:bg-amber-100",
+                            status.type === "COMPLETED" &&
+                              "bg-rose-100 text-rose-700 hover:bg-rose-100",
+                            status.type === "NO_CONTRACT" &&
+                              "bg-slate-100 text-slate-600 hover:bg-slate-100"
+                          )}
+                        >
                           {status.label}
                         </Badge>
-                      </td>
-                      <td className="px-3 py-3 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-2">
-                          <button 
-                            className="flex items-center justify-center w-7 h-7 rounded bg-[#183d6a] text-white hover:bg-[#183d6a]/80 transition-colors"
-                            onClick={() => handleOpenView(emp)}
+                        {isOnProg && (
+                          <Badge
+                            variant="outline"
+                            className="rounded-full border-sky-200 bg-sky-50 px-2 py-0 text-[9px] font-medium text-sky-600"
                           >
-                            <Eye className="size-3.5" />
-                          </button>
-                          <button 
-                            className="flex items-center justify-center w-7 h-7 rounded bg-amber-400 text-white hover:bg-amber-500 transition-colors"
-                            onClick={() => handleOpenEdit(emp)}
-                          >
-                            <Pencil className="size-3.5" />
-                          </button>
-                          <button 
-                            className="flex items-center justify-center w-7 h-7 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
-                            onClick={() => handleOpenDelete(emp)}
-                          >
-                            <Trash className="size-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                            Baru
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <EnterpriseActionButtons
+                        access={access}
+                        onView={() => handleOpenView(emp)}
+                        onEdit={() => handleOpenEdit(emp)}
+                        onDelete={() => handleOpenDelete(emp)}
+                        labels={{
+                          view: "Detail karyawan",
+                          edit: "Ubah data",
+                          delete: "Hapus karyawan",
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </MinimalTableShell>
 
-        {/* Pagination Info */}
-        <div className="flex flex-col sm:flex-row justify-between items-center text-sm text-muted-foreground pt-2">
-          <div>
-            Showing {filteredData.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length} entries
-          </div>
-          <div className="flex gap-1 mt-4 sm:mt-0">
-            <Button 
-              variant="outline" 
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+      {/* ─── Add / Edit Dialog ──────────────────────────────────────────── */}
+      <EnterpriseRecordDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        title={editingEmployee ? "Ubah Data Karyawan" : "Tambah Karyawan Baru"}
+        description={
+          editingEmployee
+            ? `Perbarui informasi untuk ${editingEmployee.fullName}.`
+            : "Lengkapi formulir berikut untuk menambahkan karyawan baru."
+        }
+        mode="form"
+        footer={
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFormOpen(false)}
+              disabled={isSubmitting}
             >
-              Previous
+              Batal
             </Button>
-            <div className="flex items-center px-2">
-              <span className="bg-[#183d6a] text-white px-3 py-1 rounded">{currentPage}</span>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              disabled={currentPage === totalPages || totalPages === 0}
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            <Button
+              type="submit"
+              form="employee-form"
+              className="bg-[#183d6a] hover:bg-[#183d6a]/90"
+              disabled={isSubmitting}
             >
-              Next
+              {isSubmitting
+                ? "Menyimpan..."
+                : editingEmployee
+                  ? "Simpan Perubahan"
+                  : "Tambah Karyawan"}
             </Button>
           </div>
-        </div>
-      </div>
-
-      {/* Edit Dialog */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Update Data Kontrak</DialogTitle>
-          </DialogHeader>
-          <div className="py-2 pb-4">
-            <h3 className="font-semibold">{editingItem?.fullName}</h3>
-            <p className="text-sm text-muted-foreground">S/N: {editingItem?.employeeId}</p>
-          </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Join Date</Label>
-              <Input 
-                type="date" 
-                value={joinDate ? new Date(joinDate).toISOString().split('T')[0] : ''} 
-                onChange={(e) => setJoinDate(e.target.value)} 
+        }
+      >
+        <form id="employee-form" onSubmit={handleSubmit}>
+          <EnterpriseFormGrid>
+            {/* Row 1: ID & Name */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                NIK <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.employeeId}
+                onChange={(e) => updateFormField("employeeId", e.target.value)}
+                placeholder="contoh: EMP-001"
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-              <div className="space-y-2">
-                <Label>Contract Start</Label>
-                <Input 
-                  type="date" 
-                  value={contractStart ? new Date(contractStart).toISOString().split('T')[0] : ''} 
-                  onChange={(e) => setContractStart(e.target.value)} 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Contract End</Label>
-                <Input 
-                  type="date" 
-                  value={contractEnd ? new Date(contractEnd).toISOString().split('T')[0] : ''} 
-                  onChange={(e) => setContractEnd(e.target.value)} 
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Nama Lengkap <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.fullName}
+                onChange={(e) => updateFormField("fullName", e.target.value)}
+                placeholder="Nama lengkap karyawan"
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
             </div>
-            
-            <DialogFooter className="mt-6">
-              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#183d6a] hover:bg-[#183d6a]/90 text-white" disabled={isLoading}>
-                {isLoading ? "Saving..." : "Save Changes"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Detail Kontrak Karyawan</DialogTitle>
-          </DialogHeader>
-          {viewingItem && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-sm font-medium text-muted-foreground">S/N</span>
-                <span className="col-span-2 text-sm font-semibold">{viewingItem.employeeId}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Name</span>
-                <span className="col-span-2 text-sm font-semibold">{viewingItem.fullName}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Job Title</span>
-                <span className="col-span-2 text-sm">{viewingItem.jobTitle || '-'}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Location</span>
-                <span className="col-span-2 text-sm">{viewingItem.location || '-'}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Join Date</span>
-                <span className="col-span-2 text-sm">
-                  {viewingItem.joinDate ? new Date(viewingItem.joinDate).toLocaleDateString('en-GB') : '-'}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Contract Start</span>
-                <span className="col-span-2 text-sm">
-                  {viewingItem.contractStart ? new Date(viewingItem.contractStart).toLocaleDateString('en-GB') : '-'}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Contract End</span>
-                <span className="col-span-2 text-sm">
-                  {viewingItem.contractEnd ? new Date(viewingItem.contractEnd).toLocaleDateString('en-GB') : '-'}
-                </span>
-              </div>
+            {/* Row 2: Email & Gender */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Email
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => updateFormField("email", e.target.value)}
+                placeholder="email@contoh.com"
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
             </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setIsViewModalOpen(false)} className="bg-[#183d6a] hover:bg-[#183d6a]/90 text-white">Tutup</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Jenis Kelamin
+              </label>
+              <select
+                value={formData.genderCode}
+                onChange={(e) => updateFormField("genderCode", e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">-- Pilih --</option>
+                <option value="L">Laki-laki</option>
+                <option value="P">Perempuan</option>
+              </select>
+            </div>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Konfirmasi Hapus</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin menghapus data kontrak karyawan ini? Data yang dihapus tidak dapat dikembalikan.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm font-medium">S/N: {deletingItem?.employeeId}</p>
-            <p className="text-sm font-semibold text-red-600">{deletingItem?.fullName}</p>
+            {/* Row 3: Department & Section */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Departemen
+              </label>
+              <select
+                value={formData.departmentId}
+                onChange={(e) => {
+                  updateFormField("departmentId", e.target.value);
+                  updateFormField("sectionId", "");
+                }}
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">-- Pilih Departemen --</option>
+                {filterOptions.departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Section
+              </label>
+              <select
+                value={formData.sectionId}
+                onChange={(e) => updateFormField("sectionId", e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">-- Pilih Section --</option>
+                {filteredSections.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Row 4: Site & Location */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Lokasi Kerja
+              </label>
+              <select
+                value={formData.workLocationId}
+                onChange={(e) =>
+                  updateFormField("workLocationId", e.target.value)
+                }
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="">-- Pilih Lokasi --</option>
+                {filterOptions.locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Posisi / Jabatan
+              </label>
+              <input
+                type="text"
+                value={formData.positionId}
+                onChange={(e) => updateFormField("positionId", e.target.value)}
+                placeholder="ID Posisi (opsional)"
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+
+            {/* Row 5: Join Date & Birth Date */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Tanggal Masuk
+              </label>
+              <input
+                type="date"
+                value={formData.joinDate}
+                onChange={(e) => updateFormField("joinDate", e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Tanggal Lahir
+              </label>
+              <input
+                type="date"
+                value={formData.birthDate}
+                onChange={(e) => updateFormField("birthDate", e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+
+            {/* Row 6: Contract Start & End */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Kontrak Mulai
+              </label>
+              <input
+                type="date"
+                value={formData.contractStart}
+                onChange={(e) =>
+                  updateFormField("contractStart", e.target.value)
+                }
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Kontrak Selesai
+              </label>
+              <input
+                type="date"
+                value={formData.contractEnd}
+                onChange={(e) =>
+                  updateFormField("contractEnd", e.target.value)
+                }
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+          </EnterpriseFormGrid>
+        </form>
+      </EnterpriseRecordDialog>
+
+      {/* ─── View Dialog ────────────────────────────────────────────────── */}
+      <EnterpriseRecordDialog
+        open={viewOpen}
+        onOpenChange={setViewOpen}
+        title="Detail Karyawan"
+        description={viewingEmployee?.fullName}
+        mode="view"
+        footer={
+          <Button
+            onClick={() => setViewOpen(false)}
+            className="bg-[#183d6a] hover:bg-[#183d6a]/90"
+          >
+            Tutup
+          </Button>
+        }
+      >
+        {viewingEmployee && (
+          <div className="space-y-4">
+            <div className="grid gap-3 rounded-[1rem] border border-border/70 bg-muted/20 p-4 sm:grid-cols-2">
+              <DetailRow label="NIK" value={viewingEmployee.employeeId} />
+              <DetailRow label="Nama" value={viewingEmployee.fullName} />
+              <DetailRow label="Email" value={viewingEmployee.email} />
+              <DetailRow
+                label="Jenis Kelamin"
+                value={
+                  viewingEmployee.genderCode === "L"
+                    ? "Laki-laki"
+                    : viewingEmployee.genderCode === "P"
+                      ? "Perempuan"
+                      : viewingEmployee.genderCode
+                }
+              />
+              <DetailRow
+                label="Departemen"
+                value={viewingEmployee.departmentName}
+              />
+              <DetailRow label="Section" value={viewingEmployee.sectionName} />
+              <DetailRow label="Jabatan" value={viewingEmployee.jobTitle} />
+              <DetailRow label="Level" value={viewingEmployee.levelName} />
+              <DetailRow label="Lokasi Kerja" value={viewingEmployee.location} />
+              <DetailRow label="Site" value={viewingEmployee.siteName} />
+              <DetailRow
+                label="Tanggal Masuk"
+                value={formatDate(viewingEmployee.joinDate)}
+              />
+              <DetailRow
+                label="Tanggal Lahir"
+                value={formatDate(viewingEmployee.birthDate)}
+              />
+              <DetailRow
+                label="Kontrak Mulai"
+                value={formatDate(viewingEmployee.contractStart)}
+              />
+              <DetailRow
+                label="Kontrak Selesai"
+                value={formatDate(viewingEmployee.contractEnd)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">
+                Status Kontrak:
+              </span>
+              <Badge
+                variant={statusBadgeVariant(
+                  contractStatusMap.get(viewingEmployee.id)?.type ??
+                    "NO_CONTRACT"
+                )}
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                  (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
+                    "ACTIVE" &&
+                    "bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
+                  (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
+                    "EXPIRING" &&
+                    "bg-amber-100 text-amber-700 hover:bg-amber-100",
+                  (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
+                    "COMPLETED" &&
+                    "bg-rose-100 text-rose-700 hover:bg-rose-100",
+                  (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
+                    "NO_CONTRACT" &&
+                    "bg-slate-100 text-slate-600 hover:bg-slate-100"
+                )}
+              >
+                {contractStatusMap.get(viewingEmployee.id)?.label ?? "Tanpa Kontrak"}
+              </Badge>
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>Batal</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isLoading}>
-              {isLoading ? "Menghapus..." : "Ya, Hapus"}
+        )}
+      </EnterpriseRecordDialog>
+
+      {/* ─── Delete Confirmation Dialog ─────────────────────────────────── */}
+      <EnterpriseRecordDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Konfirmasi Hapus"
+        description="Tindakan ini tidak dapat dibatalkan."
+        mode="delete"
+        footer={
+          <div className="flex w-full items-center justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={isSubmitting}
+            >
+              Batal
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Menghapus..." : "Ya, Hapus"}
+            </Button>
+          </div>
+        }
+      >
+        {deletingEmployee && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Apakah Anda yakin ingin menghapus data karyawan berikut?
+            </p>
+            <div className="rounded-[1rem] border border-destructive/20 bg-destructive/5 p-4">
+              <div className="text-sm font-medium text-foreground">
+                {deletingEmployee.fullName}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                NIK: {deletingEmployee.employeeId} &middot;{" "}
+                {deletingEmployee.departmentName ?? "-"}
+              </div>
+            </div>
+          </div>
+        )}
+      </EnterpriseRecordDialog>
+    </AdminPageShell>
   );
 }
 
+/* ─── Detail Row (View Dialog) ──────────────────────────────────────── */
+
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span className="text-sm font-medium text-foreground">
+        {value || "-"}
+      </span>
+    </div>
+  );
+}

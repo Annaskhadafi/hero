@@ -381,7 +381,7 @@ export function ApprovalMatrixManager({
         <div>
           <CardTitle className="text-lg font-semibold text-[#1e293b]">Jalur Approval</CardTitle>
           <CardDescription className="text-sm text-[#64748b]">
-            Tentukan alur pemeriksaan berdasarkan struktur, pemohon, lokasi, dan jenis aktivitas.
+            Resolver approver berdasarkan org/site/role/overtime. Template lifecycle, notification, reminder, dan condition dikelola di Approval Workflow Builder.
           </CardDescription>
         </div>
         <Button onClick={handleNewMatrix} className="bg-[#0f766e] hover:bg-[#115e59]">
@@ -393,7 +393,7 @@ export function ApprovalMatrixManager({
         <Alert className="mb-4 border-[#d1fae5] bg-[#ecfdf5]">
           <AlertCircle className="size-4 text-[#047857]" />
           <AlertDescription className="text-[#065f46]">
-            Pisahkan struktur organisasi dan jalur approval. Struktur menjawab posisi dan area kerja, jalur approval menjawab siapa yang perlu memeriksa pengajuan.
+            Approval Matrix menjawab siapa approver yang terpilih. Approval Workflow Builder menjawab kapan step berjalan, notifikasi dikirim, reminder dibuat, dan condition lifecycle dipakai.
           </AlertDescription>
         </Alert>
 

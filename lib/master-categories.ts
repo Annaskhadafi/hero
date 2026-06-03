@@ -6,7 +6,7 @@ import { masterCategoryOptions } from "@/db/schema/hero";
 export const MASTER_CATEGORY_TYPES = [
   {
     type: "activity_category",
-    label: "Activity Library",
+    label: "Kamus Aktivitas",
     description: "Kategori aktivitas pada Activity Hub dan library pekerjaan.",
   },
   {

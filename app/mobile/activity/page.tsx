@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { MobileActivityLog } from "@/components/mobile/mobile-activity-log";
 import { getServerSession } from "@/lib/auth-session";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 
 function formatTime(value?: Date | null) {
@@ -63,16 +64,17 @@ export default async function MobileActivityPage() {
       : data.activities.length > 0
         ? 100
         : 0;
+  const pagePurpose = getActivityPagePurpose("input");
 
   return (
     <div className="space-y-5">
       <section className="space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Daily Checklist</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Checklist & Activity</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Aktivitas Harian</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">{pagePurpose.title}</h1>
             <p className="mt-2 text-sm font-medium leading-6 text-[#486275]">
-              Lihat route checklist section, queue kerja, lalu kirim aktivitas harian langsung dari HP.
+              {pagePurpose.description} Lihat route checklist section dan queue kerja langsung dari HP.
             </p>
           </div>
           <Link
@@ -102,7 +104,7 @@ export default async function MobileActivityPage() {
               href="/mobile/activity/input"
               className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-white px-4 text-xs font-black uppercase tracking-[0.14em] text-[#003f78] active:scale-[0.98]"
             >
-              Add
+              Input
               <ArrowRight className="size-3.5" />
             </Link>
           </div>
@@ -144,7 +146,7 @@ export default async function MobileActivityPage() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Assignment Queue</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Job List Aktual</p>
           <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
             {data.assignments.length} item
           </Badge>
@@ -162,7 +164,7 @@ export default async function MobileActivityPage() {
                     {assignment.activityCode ?? "Custom Job"}
                   </p>
                   <h2 className="mt-1 text-base font-black leading-tight text-[#082033]">
-                    {assignment.customJobName || assignment.activityName || "Assignment Lapangan"}
+                    {assignment.customJobName || assignment.activityName || "Pekerjaan Aktual"}
                   </h2>
                   <p className="mt-2 text-xs font-semibold text-[#486275]">
                     {assignment.assignedByName} • {assignment.durationLabel}

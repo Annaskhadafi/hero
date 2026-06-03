@@ -217,7 +217,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
   return (
     <div className="space-y-5">
       <section className="space-y-1">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Approval Center</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Approval Inbox</p>
         <h1 className="text-2xl font-black tracking-tight text-[#003461]">Approval</h1>
         <p className="text-sm font-semibold text-[#486275]">
           Inbox grouped per user dan history hasil approval activity Anda.

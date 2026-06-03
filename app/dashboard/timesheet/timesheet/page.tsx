@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -77,7 +77,7 @@ export default function TimesheetPage() {
   return (
     <div className="container mx-auto py-8 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Timesheet Management</h1>
+        <h1 className="text-3xl font-bold">Timesheet Realisasi</h1>
         <p className="text-muted-foreground">Import OT & SPL records, generate Summary Lemburan</p>
       </div>
 
@@ -91,7 +91,7 @@ export default function TimesheetPage() {
         <TabsContent value="import" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Import Timesheet Files</CardTitle>
+              <CardTitle>Import Data Timesheet Realisasi</CardTitle>
               <CardDescription>
                 Upload OT Record or SPL (Form Tunjangan) Excel files from sites
               </CardDescription>
@@ -275,7 +275,7 @@ export default function TimesheetPage() {
         <TabsContent value="review" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Review Timesheet Data</CardTitle>
+              <CardTitle>Review Timesheet Realisasi</CardTitle>
               <CardDescription>
                 View imported data and validation warnings
               </CardDescription>

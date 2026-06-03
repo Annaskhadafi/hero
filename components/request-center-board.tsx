@@ -30,8 +30,8 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
   return (
     <AdminPageShell
       eyebrow="Pusat Pengajuan"
-      title={data.scopeLabel}
-      description="Pantau draft, pengajuan yang sedang berjalan, dan bottleneck approval dari satu daftar operasional."
+      title="Request Center"
+      description="Request yang saya buat dan status pengajuan saya. Tugas yang harus saya approve tetap ada di Approval Inbox."
     >
       <AdminMetricGrid
         mode="compact"

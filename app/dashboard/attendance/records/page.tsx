@@ -307,8 +307,8 @@ export default function AttendanceRecordsPage() {
   return (
     <div className="space-y-6 p-6 lg:p-8">
       <div>
-        <p className="industrial-label">Attendance Ledger</p>
-        <h1 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-foreground">Attendance Records</h1>
+        <p className="industrial-label">Attendance Module</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-foreground">Records</h1>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">

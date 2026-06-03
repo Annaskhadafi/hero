@@ -586,8 +586,8 @@ export default function AttendancePage() {
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col overflow-hidden bg-surface-container-lowest md:min-h-0 md:rounded-[1.25rem] md:ring-1 md:ring-border/60">
         <div className="flex items-center justify-between bg-surface-container-low px-5 py-4 md:px-6 md:py-5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Field Attendance</p>
-            <h1 className="mt-1 text-xl font-semibold text-slate-950 md:text-2xl">Mobile Clock In/Out</h1>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Attendance Module</p>
+            <h1 className="mt-1 text-xl font-semibold text-slate-950 md:text-2xl">Live / Import</h1>
           </div>
           <div className={`rounded-2xl px-4 py-3 text-right ${canSubmit ? "bg-emerald-50" : "bg-amber-50"}`}>
             <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${canSubmit ? "text-emerald-600" : "text-amber-600"}`}>Status</p>

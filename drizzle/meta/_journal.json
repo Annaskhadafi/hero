@@ -225,6 +225,13 @@
       "when": 1780372246903,
       "tag": "0031_yielding_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1780390442918,
+      "tag": "0032_short_namorita",
+      "breakpoints": true
     }
   ]
 }

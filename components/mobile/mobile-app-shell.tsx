@@ -11,7 +11,6 @@ import {
   Dumbbell,
   FileText,
   FileSignature,
-  Grid3X3,
   Home,
   Menu,
   Package,
@@ -33,6 +32,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { LogoutButton } from '@/components/logout-button'
+import { mobileActivityDrawerItem } from '@/lib/activity-navigation'
 import { cn } from '@/lib/utils'
 
 type NotificationCountResponse = {
@@ -48,11 +48,11 @@ const bottomNavItems = [
 
 const drawerItems = [
   { label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
-  { label: 'Daily Activity', href: '/mobile/activity', icon: ClipboardList },
+  { label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },
+  { ...mobileActivityDrawerItem, icon: ClipboardList },
   { label: 'Absensi Wajah', href: '/mobile/attendance/face', icon: ScanFace },
   { label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
   { label: 'Overtime', href: '/mobile/overtime', icon: FileSignature },
-  { label: 'Input Aktivitas', href: '/mobile/activity/input', icon: Grid3X3 },
   { label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
   { label: 'Daily Report', href: '/mobile/reports', icon: FileText },
   { label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },

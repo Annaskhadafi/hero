@@ -183,7 +183,7 @@ export function ActivityLibraryRowActions({
         </DialogTrigger>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Edit Activity Library</DialogTitle>
+            <DialogTitle>Edit Kamus Aktivitas</DialogTitle>
             <DialogDescription>
               Update identitas activity, scoring, validasi bukti, dan perilaku approval.
             </DialogDescription>

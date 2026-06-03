@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityConfigurationData } from "@/lib/daily-activity";
 
@@ -38,6 +39,7 @@ export default async function DailyActivityConfigurationPage() {
   }
 
   const data = await getDailyActivityConfigurationData(session.user.email);
+  const pagePurpose = getActivityPagePurpose("configuration");
 
   return (
     <div className="space-y-6">
@@ -50,7 +52,7 @@ export default async function DailyActivityConfigurationPage() {
 
       <Tabs defaultValue="settings" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="settings">Rule Global</TabsTrigger>
           <TabsTrigger value="modifiers">Activity Modifiers</TabsTrigger>
           <TabsTrigger value="penalties">Penalty Events</TabsTrigger>
           <TabsTrigger value="disputes">Point Disputes</TabsTrigger>
@@ -61,10 +63,10 @@ export default async function DailyActivityConfigurationPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Gauge className="size-5 text-primary" />
-              Reward, Penalty, dan Site Settings
+              {pagePurpose.title}
             </CardTitle>
             <CardDescription>
-              Konfigurasi nilai default reward/penalty, batas poin harian, dan parameter validasi site.
+              {pagePurpose.description}
             </CardDescription>
           </CardHeader>
           <CardContent>

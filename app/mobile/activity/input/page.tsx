@@ -4,6 +4,7 @@ import { ArrowLeft, Clock3, MapPinned, UserRound } from "lucide-react";
 
 import { MobileDailyActivityForm } from "@/components/mobile/mobile-daily-activity-form";
 import { Badge } from "@/components/ui/badge";
+import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 
@@ -30,6 +31,7 @@ export default async function MobileActivityInputPage() {
 
   const now = new Date();
   const defaultDateTime = dateTimeLocalValue(now);
+  const pagePurpose = getActivityPagePurpose("input");
 
   return (
     <div className="space-y-5">
@@ -40,12 +42,13 @@ export default async function MobileActivityInputPage() {
           className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#486275]"
         >
           <ArrowLeft className="size-4" />
-          Back to activity list
+          Kembali ke aktivitas harian
         </Link>
 
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Recording Checklist</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Input Daily Checklist</h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Aktivitas Harian</p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">{pagePurpose.title}</h1>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">{pagePurpose.description}</p>
         </div>
       </section>
 
@@ -118,7 +121,7 @@ export default async function MobileActivityInputPage() {
         <section className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Active SPL Checklist</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Checklist SPL Aktif</p>
               <p className="mt-1 text-base font-black text-[#082033]">{data.standaloneOvertimeChecklist.title}</p>
               <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
                 {data.standaloneOvertimeChecklist.splNumber} • {data.standaloneOvertimeChecklist.lineCount} line

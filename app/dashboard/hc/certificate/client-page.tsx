@@ -1,264 +1,282 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
+import { AlertTriangle, CheckCircle2, FileText, LinkIcon, Plus, ShieldCheck } from "lucide-react";
+
+import { createCertificate, deleteCertificate, updateCertificate, type CertificateStatus } from "@/app/actions/certificate";
 import { AdminPageShell } from "@/components/admin-page-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog, type EnterpriseScorecardItem } from "@/components/ui/enterprise-table-kit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Trash2, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { createCertificate, deleteCertificate, updateCertificate } from "@/app/actions/certificate";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 
-type Certificate = {
+const ACCESS = { canView: true, canEdit: true, canDelete: true };
+const STATUS_LABELS: Record<CertificateStatus, string> = { Active: "Aktif", Expiring: "Akan Habis", Expired: "Kedaluwarsa" };
+
+export type CertificateRow = {
   id: number;
   employeeId: number | null;
   employeeName: string;
+  employeeCode?: string | null;
+  departmentName?: string | null;
   certificateType: string;
   licenseNumber: string;
-  issuedDate: Date;
-  expiryDate: Date;
-  status: string;
+  issuedDate: Date | string;
+  expiryDate: Date | string;
+  documentUrl: string;
+  daysLeft: number;
+  expiryStatus: CertificateStatus;
 };
 
-type EmployeeOption = {
-  id: number;
-  name: string;
+type EmployeeOption = { id: number; name: string; employeeCode?: string | null; departmentName?: string | null };
+type CertificateStats = { active: number; expiring30: number; expired: number; complianceRate: number };
+type DialogMode = "create" | "edit" | "view";
+type CertificateForm = { employeeId: string; certificateType: string; licenseNumber: string; issuedDate: string; expiryDate: string; documentUrl: string };
+
+type CertificateClientPageProps = {
+  certificates: CertificateRow[];
+  stats: CertificateStats;
+  certificateTypes: string[];
+  employees: EmployeeOption[];
 };
 
-export function CertificateClientPage({ 
-  certificates: initialData, 
-  employees 
-}: { 
-  certificates: Certificate[],
-  employees: EmployeeOption[]
-}) {
-  const [data, setData] = useState<Certificate[]>(initialData);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Certificate | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+export function CertificateClientPage(props: CertificateClientPageProps) {
+  const [rows, setRows] = React.useState(props.certificates);
+  const [selected, setSelected] = React.useState<CertificateRow | null>(null);
+  const [mode, setMode] = React.useState<DialogMode>("create");
+  const [open, setOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [form, setForm] = React.useState<CertificateForm>(getEmptyForm(props.certificateTypes));
 
-  // Form states
-  const [employeeId, setEmployeeId] = useState("");
-  const [certificateType, setCertificateType] = useState("SIO");
-  const [licenseNumber, setLicenseNumber] = useState("");
-  const [issuedDate, setIssuedDate] = useState("");
-  const [expiryDate, setExpiryDate] = useState("");
-  const [status, setStatus] = useState("Active");
+  const scorecards = React.useMemo(() => buildScorecards(props.stats), [props.stats]);
+  const filters = <CertificateFilters rows={rows} certificateTypes={props.certificateTypes} />;
 
-  const resetForm = () => {
-    setEmployeeId("");
-    setCertificateType("SIO");
-    setLicenseNumber("");
-    setIssuedDate("");
-    setExpiryDate("");
-    setStatus("Active");
-    setEditingItem(null);
+  const openCreate = () => {
+    setSelected(null);
+    setMode("create");
+    setForm(getEmptyForm(props.certificateTypes));
+    setOpen(true);
   };
 
-  const handleOpenAdd = () => {
-    resetForm();
-    setIsModalOpen(true);
+  const openEdit = (row: CertificateRow) => {
+    setSelected(row);
+    setMode("edit");
+    setForm(toForm(row));
+    setOpen(true);
   };
 
-  const handleOpenEdit = (item: Certificate) => {
-    setEditingItem(item);
-    setEmployeeId(item.employeeId ? item.employeeId.toString() : "");
-    setCertificateType(item.certificateType);
-    setLicenseNumber(item.licenseNumber);
-    setIssuedDate(new Date(item.issuedDate).toISOString().split('T')[0]);
-    setExpiryDate(new Date(item.expiryDate).toISOString().split('T')[0]);
-    setStatus(item.status);
-    setIsModalOpen(true);
+  const openView = (row: CertificateRow) => {
+    setSelected(row);
+    setMode("view");
+    setOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const selectedEmp = employees.find(emp => emp.id.toString() === employeeId);
-      const payload = {
-        employeeId,
-        employeeName: selectedEmp?.name || "Unknown",
-        certificateType,
-        licenseNumber,
-        issuedDate,
-        expiryDate,
-        status,
-      };
-
-      if (editingItem) {
-        const updated = await updateCertificate(editingItem.id, payload);
-        setData(data.map(d => d.id === editingItem.id ? updated : d));
-      } else {
-        const created = await createCertificate(payload);
-        setData([...data, created].sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()));
-      }
-      setIsModalOpen(false);
-      resetForm();
-    } catch (error) {
-      console.error(error);
-      alert("Terjadi kesalahan.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (confirm("Apakah Anda yakin ingin menghapus data sertifikat ini?")) {
-      await deleteCertificate(id);
-      setData(data.filter((r) => r.id !== id));
-    }
-  };
-
-  const getExpiryStatus = (date: Date) => {
-    const today = new Date();
-    const expiry = new Date(date);
-    const diffTime = expiry.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 0) return { label: "Expired", color: "text-red-600", bg: "bg-red-100", icon: AlertTriangle };
-    if (diffDays <= 60) return { label: "Expiring soon (" + diffDays + " days)", color: "text-amber-600", bg: "bg-amber-100", icon: AlertTriangle };
-    return { label: "Valid", color: "text-emerald-600", bg: "bg-emerald-100", icon: CheckCircle2 };
+  const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await saveCertificate(mode, selected, form, props.employees, setRows, setSaving, setOpen);
   };
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Certificates"
-      title="Sertifikat SIO & POP"
-      description="Kelola dan pantau masa berlaku lisensi operasional karyawan (SIO/POP)."
-    >
-      <div className="flex justify-end mb-4">
-        <Button onClick={handleOpenAdd}>
-          <Plus className="size-4 mr-2" />
-          Tambah Sertifikat
-        </Button>
-      </div>
+    <AdminPageShell eyebrow="HC • Certificate" title="Manajemen Sertifikat HC" description="Pantau masa berlaku sertifikasi karyawan, dokumen lisensi, dan status kepatuhan HERO HC.">
+      <MinimalTableShell
+        label="sertifikat"
+        title="Daftar Sertifikat Karyawan"
+        description="Gunakan pencarian, filter tipe sertifikat, filter status, ekspor Excel, dan impor data untuk administrasi sertifikat."
+        searchPlaceholder="Cari karyawan, nomor lisensi, departemen..."
+        fileName="sertifikat-hc"
+        filters={filters}
+        scorecards={scorecards}
+        access={ACCESS}
+        primaryAction={<Button onClick={openCreate}><Plus className="size-4" />Tambah Sertifikat</Button>}
+        columnOptions={COLUMN_OPTIONS}
+        tableViewportClassName="max-h-[72vh]"
+      >
+        <CertificateTable rows={rows} onView={openView} onEdit={openEdit} onDelete={(row) => removeCertificate(row, setRows)} />
+      </MinimalTableShell>
 
-      <div className="grid gap-4">
-        {data.length === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed text-muted-foreground">
-            Belum ada data sertifikat.
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {data.map((cert) => {
-              const expStatus = getExpiryStatus(cert.expiryDate);
-              const Icon = expStatus.icon;
-              return (
-                <Card key={cert.id} className="relative overflow-hidden">
-                  <div className={"absolute top-0 left-0 w-1 h-full " + expStatus.bg.replace('bg-', 'bg-').replace('100', '500')} />
-                  <CardContent className="p-5 pl-6 flex flex-col gap-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <Badge variant="secondary" className="mb-2">{cert.certificateType}</Badge>
-                        <h3 className="font-semibold">{cert.employeeName}</h3>
-                        <p className="text-sm text-muted-foreground font-mono mt-1">{cert.licenseNumber}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" onClick={() => handleOpenEdit(cert)}>
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(cert.id)}>
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    <div className="pt-4 border-t space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Masa Berlaku</span>
-                        <span className="font-medium">{new Date(cert.expiryDate).toLocaleDateString('id-ID')}</span>
-                      </div>
-                      <div className={"flex items-center gap-1.5 " + expStatus.color + " font-medium"}>
-                        <Icon className="size-4" />
-                        <span>{expStatus.label}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingItem ? "Ubah Sertifikat" : "Tambah Sertifikat Baru"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Karyawan</Label>
-              <select 
-                required
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                value={employeeId} 
-                onChange={(e) => setEmployeeId(e.target.value)}
-              >
-                <option value="">-- Pilih Karyawan --</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Jenis Sertifikat</Label>
-                <select 
-                  required
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={certificateType} 
-                  onChange={(e) => setCertificateType(e.target.value)}
-                >
-                  <option value="SIO">SIO</option>
-                  <option value="POP">POP</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Nomor Lisensi</Label>
-                <Input 
-                  required 
-                  value={licenseNumber} 
-                  onChange={(e) => setLicenseNumber(e.target.value)} 
-                  placeholder="Contoh: SIO-12345" 
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Tanggal Terbit</Label>
-                <Input 
-                  required 
-                  type="date" 
-                  value={issuedDate} 
-                  onChange={(e) => setIssuedDate(e.target.value)} 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Masa Berlaku (Expiry)</Label>
-                <Input 
-                  required 
-                  type="date" 
-                  value={expiryDate} 
-                  onChange={(e) => setExpiryDate(e.target.value)} 
-                />
-              </div>
-            </div>
-            
-            <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Batal</Button>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Menyimpan..." : "Simpan Data"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CertificateDialog
+        mode={mode}
+        open={open}
+        saving={saving}
+        form={form}
+        selected={selected}
+        employees={props.employees}
+        certificateTypes={props.certificateTypes}
+        onFormChange={setForm}
+        onOpenChange={setOpen}
+        onSubmit={submitForm}
+      />
     </AdminPageShell>
   );
+}
+
+function CertificateFilters({ rows, certificateTypes }: { rows: CertificateRow[]; certificateTypes: string[] }) {
+  const typeOptions = certificateTypes.map((type) => ({ value: type, label: type }));
+  const statusOptions = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
+
+  return (
+    <>
+      <TableMultiFilter label="Jenis Sertifikat" filterKey="certificate-type" options={typeOptions} />
+      <TableMultiFilter label="Status" filterKey="status" options={statusOptions} widthClassName="w-[190px]" />
+      <Badge variant="outline" className="h-9 rounded-lg border-border/70 bg-white px-3 text-[13px]">{rows.length} data</Badge>
+    </>
+  );
+}
+
+function CertificateTable({ rows, onView, onEdit, onDelete }: { rows: CertificateRow[]; onView: (row: CertificateRow) => void; onEdit: (row: CertificateRow) => void; onDelete: (row: CertificateRow) => void }) {
+  return (
+    <table className="min-w-[1120px] border-separate border-spacing-0 overflow-hidden rounded-[1.1rem] bg-white text-sm shadow-sm">
+      <thead className="sticky top-0 z-10 bg-surface-container-low text-left text-xs uppercase tracking-[0.08em] text-muted-foreground">
+        <tr>{TABLE_HEADERS.map((header) => <th key={header} className="border-b px-4 py-3 font-semibold">{header}</th>)}</tr>
+      </thead>
+      <tbody>{rows.length ? rows.map((row, index) => <CertificateTableRow key={row.id} row={row} index={index} onView={onView} onEdit={onEdit} onDelete={onDelete} />) : <EmptyRow />}</tbody>
+    </table>
+  );
+}
+
+function CertificateTableRow({ row, index, onView, onEdit, onDelete }: { row: CertificateRow; index: number; onView: (row: CertificateRow) => void; onEdit: (row: CertificateRow) => void; onDelete: (row: CertificateRow) => void }) {
+  return (
+    <tr data-filter-certificate-type={row.certificateType} data-filter-status={row.expiryStatus} data-date-value={toInputDate(row.expiryDate)} className="border-b transition-colors hover:bg-muted/30">
+      <td className="border-b px-4 py-3 tabular-nums text-muted-foreground">{index + 1}</td>
+      <td className="border-b px-4 py-3"><EmployeeCell row={row} /></td>
+      <td className="border-b px-4 py-3"><Badge variant="secondary">{row.certificateType}</Badge></td>
+      <td className="border-b px-4 py-3 font-mono text-xs">{row.licenseNumber}</td>
+      <td className="border-b px-4 py-3" data-date-value={toInputDate(row.issuedDate)}>{formatDate(row.issuedDate)}</td>
+      <td className="border-b px-4 py-3" data-date-value={toInputDate(row.expiryDate)}>{formatDate(row.expiryDate)}</td>
+      <td className="border-b px-4 py-3 tabular-nums">{formatDaysLeft(row.daysLeft)}</td>
+      <td className="border-b px-4 py-3"><DocumentLink url={row.documentUrl} compact /></td>
+      <td className="border-b px-4 py-3"><StatusBadge status={row.expiryStatus} /></td>
+      <td className="border-b px-4 py-3 text-right"><EnterpriseActionButtons access={ACCESS} onView={() => onView(row)} onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} labels={{ view: "Lihat", edit: "Ubah", delete: "Hapus" }} /></td>
+    </tr>
+  );
+}
+
+function CertificateDialog(props: { mode: DialogMode; open: boolean; saving: boolean; form: CertificateForm; selected: CertificateRow | null; employees: EmployeeOption[]; certificateTypes: string[]; onFormChange: (form: CertificateForm) => void; onOpenChange: (open: boolean) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) {
+  const isView = props.mode === "view";
+  const title = props.mode === "create" ? "Tambah Sertifikat" : props.mode === "edit" ? "Ubah Sertifikat" : "Detail Sertifikat";
+
+  return (
+    <EnterpriseRecordDialog title={title} description="Lengkapi data sertifikat dan tautan dokumen pendukung." mode={isView ? "view" : "form"} open={props.open} onOpenChange={props.onOpenChange} access={ACCESS} footer={isView ? <Button variant="outline" onClick={() => props.onOpenChange(false)}>Tutup</Button> : null}>
+      {isView && props.selected ? <CertificateDetail row={props.selected} /> : <CertificateFormView {...props} />}
+    </EnterpriseRecordDialog>
+  );
+}
+
+function CertificateFormView(props: { saving: boolean; form: CertificateForm; employees: EmployeeOption[]; certificateTypes: string[]; onFormChange: (form: CertificateForm) => void; onOpenChange: (open: boolean) => void; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void }) {
+  const setField = (field: keyof CertificateForm, value: string) => props.onFormChange({ ...props.form, [field]: value });
+
+  return (
+    <form onSubmit={props.onSubmit} className="space-y-4">
+      <EnterpriseFormGrid>
+        <SelectField label="Karyawan" value={props.form.employeeId} onChange={(value) => setField("employeeId", value)} required options={props.employees.map((employee) => ({ value: `${employee.id}`, label: formatEmployeeOption(employee) }))} />
+        <SelectField label="Jenis Sertifikat" value={props.form.certificateType} onChange={(value) => setField("certificateType", value)} required options={props.certificateTypes.map((type) => ({ value: type, label: type }))} />
+        <TextField label="Nomor Lisensi" value={props.form.licenseNumber} onChange={(value) => setField("licenseNumber", value)} required placeholder="Contoh: SIO-12345" />
+        <TextField label="URL Dokumen" value={props.form.documentUrl} onChange={(value) => setField("documentUrl", value)} placeholder="https://..." />
+        <TextField label="Tanggal Terbit" type="date" value={props.form.issuedDate} onChange={(value) => setField("issuedDate", value)} required />
+        <TextField label="Tanggal Kedaluwarsa" type="date" value={props.form.expiryDate} onChange={(value) => setField("expiryDate", value)} required />
+      </EnterpriseFormGrid>
+      <div className="flex justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>Batal</Button><Button type="submit" disabled={props.saving}>{props.saving ? "Menyimpan..." : "Simpan"}</Button></div>
+    </form>
+  );
+}
+
+function CertificateDetail({ row }: { row: CertificateRow }) {
+  const details = [["Karyawan", row.employeeName], ["NIK", row.employeeCode ?? "-"], ["Departemen", row.departmentName ?? "-"], ["Jenis Sertifikat", row.certificateType], ["Nomor Lisensi", row.licenseNumber], ["Tanggal Terbit", formatDate(row.issuedDate)], ["Tanggal Kedaluwarsa", formatDate(row.expiryDate)], ["Sisa Hari", formatDaysLeft(row.daysLeft)]];
+
+  return <div className="space-y-4"><EnterpriseFormGrid>{details.map(([label, value]) => <ReadOnlyField key={label} label={label} value={value} />)}</EnterpriseFormGrid><div className="rounded-xl border p-4"><Label>Dokumen</Label><div className="mt-2"><DocumentLink url={row.documentUrl} /></div></div><StatusBadge status={row.expiryStatus} /></div>;
+}
+
+function SelectField({ label, value, options, required, onChange }: { label: string; value: string; options: Array<{ value: string; label: string }>; required?: boolean; onChange: (value: string) => void }) {
+  return <div className="space-y-2"><Label>{label}</Label><select required={required} value={value} onChange={(event) => onChange(event.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">-- Pilih {label} --</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>;
+}
+
+function TextField({ label, value, onChange, required, placeholder, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; placeholder?: string; type?: string }) {
+  return <div className="space-y-2"><Label>{label}</Label><Input type={type} required={required} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>;
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border bg-muted/20 p-3"><p className="text-xs font-medium uppercase text-muted-foreground">{label}</p><p className="mt-1 font-medium">{value}</p></div>;
+}
+
+function StatusBadge({ status }: { status: CertificateStatus }) {
+  const variants = { Active: "bg-emerald-50 text-emerald-700", Expiring: "bg-amber-50 text-amber-700", Expired: "bg-rose-50 text-rose-700" };
+  return <Badge variant="outline" className={`${variants[status]} border-0`}>{STATUS_LABELS[status]}</Badge>;
+}
+
+function DocumentLink({ url, compact = false }: { url: string; compact?: boolean }) {
+  if (!url) return <span className="text-muted-foreground">Tidak ada</span>;
+  return <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline"><LinkIcon className="size-4" />{compact ? "Buka" : url}</a>;
+}
+
+async function saveCertificate(mode: DialogMode, selected: CertificateRow | null, form: CertificateForm, employees: EmployeeOption[], setRows: React.Dispatch<React.SetStateAction<CertificateRow[]>>, setSaving: (saving: boolean) => void, setOpen: (open: boolean) => void) {
+  setSaving(true);
+  try {
+    const payload = { ...form, employeeName: employees.find((employee) => `${employee.id}` === form.employeeId)?.name };
+    const saved = mode === "edit" && selected ? await updateCertificate(selected.id, payload) : await createCertificate(payload);
+    setRows((current) => upsertRow(current, saved as CertificateRow));
+    setOpen(false);
+  } finally {
+    setSaving(false);
+  }
+}
+
+async function removeCertificate(row: CertificateRow, setRows: React.Dispatch<React.SetStateAction<CertificateRow[]>>) {
+  if (!window.confirm(`Hapus sertifikat ${row.certificateType} milik ${row.employeeName}?`)) return;
+  await deleteCertificate(row.id);
+  setRows((current) => current.filter((item) => item.id !== row.id));
+}
+
+function upsertRow(rows: CertificateRow[], row: CertificateRow) {
+  const exists = rows.some((item) => item.id === row.id);
+  const nextRows = exists ? rows.map((item) => item.id === row.id ? row : item) : [...rows, row];
+  return nextRows.sort((left, right) => new Date(left.expiryDate).getTime() - new Date(right.expiryDate).getTime());
+}
+
+function buildScorecards(stats: CertificateStats): EnterpriseScorecardItem[] {
+  return [
+    { label: "Aktif", value: stats.active, description: "Sertifikat masih berlaku", tone: "success", icon: <CheckCircle2 className="size-5" /> },
+    { label: "Akan Habis 30 Hari", value: stats.expiring30, description: "Perlu perpanjangan segera", tone: "warning", icon: <AlertTriangle className="size-5" /> },
+    { label: "Kedaluwarsa", value: stats.expired, description: "Tidak memenuhi kepatuhan", tone: "danger", icon: <FileText className="size-5" /> },
+    { label: "Compliance Rate", value: `${stats.complianceRate}%`, description: "Rasio sertifikat valid", tone: "info", icon: <ShieldCheck className="size-5" /> },
+  ];
+}
+
+function getEmptyForm(types: string[]): CertificateForm {
+  return { employeeId: "", certificateType: types[0] ?? "SIO", licenseNumber: "", issuedDate: "", expiryDate: "", documentUrl: "" };
+}
+
+function toForm(row: CertificateRow): CertificateForm {
+  return { employeeId: row.employeeId ? `${row.employeeId}` : "", certificateType: row.certificateType, licenseNumber: row.licenseNumber, issuedDate: toInputDate(row.issuedDate), expiryDate: toInputDate(row.expiryDate), documentUrl: row.documentUrl ?? "" };
+}
+
+function formatEmployeeOption(employee: EmployeeOption) {
+  return [employee.name, employee.employeeCode, employee.departmentName].filter(Boolean).join(" • ");
+}
+
+function EmployeeCell({ row }: { row: CertificateRow }) {
+  return <div><p className="font-medium">{row.employeeName}</p><p className="text-xs text-muted-foreground">{[row.employeeCode, row.departmentName].filter(Boolean).join(" • ") || "-"}</p></div>;
+}
+
+function formatDate(value: Date | string) {
+  return new Date(value).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function toInputDate(value: Date | string) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function formatDaysLeft(days: number) {
+  if (days < 0) return `${Math.abs(days)} hari lewat`;
+  if (days === 0) return "Hari ini";
+  return `${days} hari`;
+}
+
+const TABLE_HEADERS = ["No", "Karyawan", "Jenis Sertifikat", "Nomor Lisensi", "Tanggal Terbit", "Tanggal Kedaluwarsa", "Sisa Hari", "Dokumen", "Status", "Aksi"];
+const COLUMN_OPTIONS = TABLE_HEADERS.map((label) => ({ key: label.toLowerCase().replace(/\s+/g, "-"), label, required: label === "Aksi" || label === "Karyawan" }));
+
+function EmptyRow() {
+  return <tr><td colSpan={TABLE_HEADERS.length} className="px-4 py-10 text-center text-muted-foreground">Belum ada data sertifikat.</td></tr>;
 }

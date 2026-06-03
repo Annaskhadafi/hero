@@ -342,11 +342,11 @@ export function HeaderThemeControls({
               <CommandGroup heading="Aktivitas Harian">
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/my-day"))}>
                   <IconChecklist className="mr-2 h-4 w-4" />
-                  <span>My Day</span>
+                  <span>Input Aktivitas Harian</span>
                 </CommandItem>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/library"))}>
                   <IconDatabase className="mr-2 h-4 w-4" />
-                  <span>Activity Library</span>
+                  <span>Kamus Aktivitas</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />

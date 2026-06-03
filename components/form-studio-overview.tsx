@@ -54,8 +54,8 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
   return (
     <AdminPageShell
       eyebrow="Approval Forms"
-      title="Form Studio"
-      description="Katalog form approval untuk menyiapkan formulir baru dengan alur yang lebih mudah dikelola admin."
+      title="Form Builder"
+      description="Satu tempat untuk semua field form dan template pengajuan, termasuk Daily Activity. Rule Aktivitas Global hanya untuk business rule Daily Activity."
     >
       <AdminMetricGrid
         items={[
@@ -120,7 +120,7 @@ export function FormStudioOverview({ data }: { data: FormStudioOverviewData }) {
               </CardDescription>
             </div>
             <Button asChild variant="outline" className="rounded-full">
-              <Link href="/dashboard/workflow-studio">Open Workflow Studio</Link>
+              <Link href="/dashboard/workflow-studio">Open Approval Workflow Builder</Link>
             </Button>
           </div>
         </CardHeader>

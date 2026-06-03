@@ -1,12 +1,12 @@
 export const activityHubViews = [
   {
-    label: "My Day",
-    description: "View teknisi untuk check-in, update progres, dan submit shift.",
+    label: "Input Aktivitas Harian",
+    description: "View teknisi untuk cek route, update progres, dan input aktivitas harian.",
     href: "/dashboard/activity-hub/my-day",
   },
   {
-    label: "Team Board",
-    description: "View foreman untuk pantau tim, approval, dan job site hari ini.",
+    label: "Monitoring Tim & SPL",
+    description: "View foreman untuk pantau tim dan SPL; keputusan resmi tetap di Approval Inbox.",
     href: "/dashboard/activity-hub/team-board",
   },
 ] as const;

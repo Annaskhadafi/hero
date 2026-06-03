@@ -1355,8 +1355,8 @@ export async function importActivityLibraryAction(
       status: "success",
       message:
         duplicateCodeCount > 0
-          ? `Import Activity Library selesai. ${duplicateCodeCount} baris duplicate activityCode digabung, pakai baris terakhir.`
-          : "Import Activity Library selesai.",
+          ? `Import Kamus Aktivitas selesai. ${duplicateCodeCount} baris duplicate activityCode digabung, pakai baris terakhir.`
+          : "Import Kamus Aktivitas selesai.",
       importedCount,
       updatedCount,
       skippedCount,
@@ -1364,7 +1364,7 @@ export async function importActivityLibraryAction(
   } catch (error) {
     return {
       status: "error",
-      message: error instanceof Error ? error.message : "Import Activity Library gagal.",
+      message: error instanceof Error ? error.message : "Import Kamus Aktivitas gagal.",
     };
   }
 }
@@ -1377,7 +1377,7 @@ export async function manageJobAssignmentAction(formData: FormData) {
 
   if (payload.intent === "delete") {
     if (!payload.id) {
-      throw new Error("Assignment tidak valid.");
+      throw new Error("Pekerjaan aktual tidak valid.");
     }
 
     await db.delete(jobAssignments).where(eq(jobAssignments.id, payload.id));
@@ -1387,7 +1387,7 @@ export async function manageJobAssignmentAction(formData: FormData) {
 
   if (payload.intent === "update-status") {
     if (!payload.id) {
-      throw new Error("Assignment tidak valid.");
+      throw new Error("Pekerjaan aktual tidak valid.");
     }
 
     await db
@@ -1403,7 +1403,7 @@ export async function manageJobAssignmentAction(formData: FormData) {
   }
 
   if (!payload.assignedByEmployeeId || !payload.assignedToEmployeeId || !payload.siteId) {
-    throw new Error("Assignment harus memiliki assigner, assignee, dan site.");
+    throw new Error("Pekerjaan aktual harus memiliki pemberi tugas, penerima tugas, dan site.");
   }
 
   const managedEmployeeIds = await getManagedEmployeeIdsForLead(currentEmployee.id);
@@ -1843,7 +1843,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       .limit(1);
 
     if (assignmentActivity) {
-      throw new Error("Assignment ini sudah pernah disubmit.");
+      throw new Error("Pekerjaan aktual ini sudah pernah disubmit.");
     }
   }
 
@@ -1863,11 +1863,11 @@ export async function submitDailyActivityAction(formData: FormData) {
           .limit(1);
 
   if (payload.sourceMode === "assigned" && !selectedAssignment) {
-    throw new Error("Assignment belum dipilih.");
+    throw new Error("Pekerjaan aktual belum dipilih.");
   }
 
   if (selectedAssignment && selectedAssignment.assignedToEmployeeId !== employeeId) {
-    throw new Error("Assignment does not match logged-in employee.");
+    throw new Error("Pekerjaan aktual tidak sesuai dengan karyawan login.");
   }
 
   const effectiveLibraryActivityId =
@@ -1895,7 +1895,7 @@ export async function submitDailyActivityAction(formData: FormData) {
   }
 
   if (payload.sourceMode === "assigned" && !library && !selectedAssignment?.customJobName.trim()) {
-    throw new Error("Assignment belum punya activity library atau custom job.");
+    throw new Error("Pekerjaan aktual belum punya activity library atau custom job.");
   }
 
   if (library?.siteId && library.siteId !== employee.siteId) {

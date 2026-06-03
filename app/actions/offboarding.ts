@@ -1,0 +1,439 @@
+"use server";
+
+import { db } from "@/db";
+import {
+  hcOffboardingRequests,
+  hcClearanceItems,
+  hrEmployees,
+  hrDepartments,
+  hrPositions,
+} from "@/db/schema/hero";
+import { eq, desc, and, sql, count } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+// ─── Default Clearance Checklist Items ────────────────────────────────────────
+
+const DEFAULT_CLEARANCE_ITEMS = [
+  {
+    category: "IT",
+    title: "Kembalikan Laptop & Aksesoris",
+    description: "Kembalikan laptop, charger, mouse, dan aksesoris IT lainnya",
+    assignedTo: "IT",
+  },
+  {
+    category: "IT",
+    title: "Nonaktifkan Akun Sistem",
+    description: "Nonaktifkan email, VPN, dan akses sistem lainnya",
+    assignedTo: "IT",
+  },
+  {
+    category: "Finance",
+    title: "Lunasi Klaim yang Tertunda",
+    description: "Selesaikan semua klaim pengeluaran dan pinjaman karyawan",
+    assignedTo: "Finance",
+  },
+  {
+    category: "Finance",
+    title: "Perhitungan Gaji Terakhir",
+    description: "Hitung gaji terakhir, pesangon, dan kompensasi lainnya",
+    assignedTo: "Finance",
+  },
+  {
+    category: "HR",
+    title: "Kembalikan Kartu Karyawan",
+    description: "Kembalikan ID card dan kartu akses karyawan",
+    assignedTo: "HR",
+  },
+  {
+    category: "HR",
+    title: "Kembalikan Kartu Parkir",
+    description: "Kembalikan kartu parkir dan akses kendaraan",
+    assignedTo: "HR",
+  },
+  {
+    category: "HSE",
+    title: "Kembalikan Peralatan Keselamatan",
+    description: "Kembalikan helm, sepatu safety, rompi, dan APD lainnya",
+    assignedTo: "HSE",
+  },
+  {
+    category: "Warehouse",
+    title: "Kembalikan Alat & Peralatan",
+    description: "Kembalikan semua peralatan dan inventaris gudang yang dipinjam",
+    assignedTo: "Warehouse",
+  },
+  {
+    category: "Department",
+    title: "Dokumentasi Transfer Pengetahuan",
+    description: "Dokumentasikan proses kerja, SOP, dan pengetahuan penting",
+    assignedTo: "Department",
+  },
+  {
+    category: "Department",
+    title: "Serah Terima Proyek",
+    description: "Serahkan semua proyek dan tanggung jawab yang sedang berjalan",
+    assignedTo: "Department",
+  },
+];
+
+// ─── Get Offboarding Records ─────────────────────────────────────────────────
+
+export async function getOffboardingRecords(filters?: {
+  status?: string;
+  requestType?: string;
+}) {
+  const conditions = [];
+
+  if (filters?.status) {
+    conditions.push(eq(hcOffboardingRequests.status, filters.status));
+  }
+  if (filters?.requestType) {
+    conditions.push(eq(hcOffboardingRequests.requestType, filters.requestType));
+  }
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const rows = await db
+    .select({
+      id: hcOffboardingRequests.id,
+      employeeId: hcOffboardingRequests.employeeId,
+      employeeCode: hrEmployees.employeeId,
+      employeeName: hrEmployees.fullName,
+      departmentName: hrDepartments.name,
+      positionName: hrPositions.rankName,
+      requestType: hcOffboardingRequests.requestType,
+      reason: hcOffboardingRequests.reason,
+      requestedLastWorkingDay: hcOffboardingRequests.requestedLastWorkingDay,
+      actualLastWorkingDay: hcOffboardingRequests.actualLastWorkingDay,
+      status: hcOffboardingRequests.status,
+      approvedBy: hcOffboardingRequests.approvedBy,
+      approvedAt: hcOffboardingRequests.approvedAt,
+      exitInterviewNotes: hcOffboardingRequests.exitInterviewNotes,
+      exitInterviewDate: hcOffboardingRequests.exitInterviewDate,
+      exitInterviewBy: hcOffboardingRequests.exitInterviewBy,
+      createdAt: hcOffboardingRequests.createdAt,
+      updatedAt: hcOffboardingRequests.updatedAt,
+    })
+    .from(hcOffboardingRequests)
+    .leftJoin(hrEmployees, eq(hcOffboardingRequests.employeeId, hrEmployees.id))
+    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .where(where)
+    .orderBy(desc(hcOffboardingRequests.createdAt));
+
+  // Attach clearance progress to each row
+  const result = await Promise.all(
+    rows.map(async (row) => {
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(hcClearanceItems)
+        .where(eq(hcClearanceItems.offboardingId, row.id));
+
+      const [{ completed }] = await db
+        .select({ completed: count() })
+        .from(hcClearanceItems)
+        .where(
+          and(
+            eq(hcClearanceItems.offboardingId, row.id),
+            eq(hcClearanceItems.isCompleted, true)
+          )
+        );
+
+      return {
+        ...row,
+        clearanceTotal: Number(total),
+        clearanceCompleted: Number(completed),
+      };
+    })
+  );
+
+  return result;
+}
+
+// ─── Get Offboarding Stats ───────────────────────────────────────────────────
+
+export async function getOffboardingStats() {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+  const [pending] = await db
+    .select({ cnt: count() })
+    .from(hcOffboardingRequests)
+    .where(eq(hcOffboardingRequests.status, "pending"));
+
+  const [inClearance] = await db
+    .select({ cnt: count() })
+    .from(hcOffboardingRequests)
+    .where(eq(hcOffboardingRequests.status, "in_clearance"));
+
+  const [completedThisMonth] = await db
+    .select({ cnt: count() })
+    .from(hcOffboardingRequests)
+    .where(
+      and(
+        eq(hcOffboardingRequests.status, "completed"),
+        sql`${hcOffboardingRequests.updatedAt} >= ${monthStart}`
+      )
+    );
+
+  const [total] = await db
+    .select({ cnt: count() })
+    .from(hcOffboardingRequests);
+
+  return {
+    pending: Number(pending.cnt),
+    inClearance: Number(inClearance.cnt),
+    completedThisMonth: Number(completedThisMonth.cnt),
+    total: Number(total.cnt),
+  };
+}
+
+// ─── Get Offboarding by ID ───────────────────────────────────────────────────
+
+export async function getOffboardingById(id: number) {
+  const [record] = await db
+    .select({
+      id: hcOffboardingRequests.id,
+      employeeId: hcOffboardingRequests.employeeId,
+      employeeCode: hrEmployees.employeeId,
+      employeeName: hrEmployees.fullName,
+      departmentName: hrDepartments.name,
+      positionName: hrPositions.rankName,
+      requestType: hcOffboardingRequests.requestType,
+      reason: hcOffboardingRequests.reason,
+      requestedLastWorkingDay: hcOffboardingRequests.requestedLastWorkingDay,
+      actualLastWorkingDay: hcOffboardingRequests.actualLastWorkingDay,
+      status: hcOffboardingRequests.status,
+      approvedBy: hcOffboardingRequests.approvedBy,
+      approvedAt: hcOffboardingRequests.approvedAt,
+      exitInterviewNotes: hcOffboardingRequests.exitInterviewNotes,
+      exitInterviewDate: hcOffboardingRequests.exitInterviewDate,
+      exitInterviewBy: hcOffboardingRequests.exitInterviewBy,
+      createdAt: hcOffboardingRequests.createdAt,
+      updatedAt: hcOffboardingRequests.updatedAt,
+    })
+    .from(hcOffboardingRequests)
+    .leftJoin(hrEmployees, eq(hcOffboardingRequests.employeeId, hrEmployees.id))
+    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .where(eq(hcOffboardingRequests.id, id));
+
+  if (!record) return null;
+
+  const clearanceItems = await db
+    .select()
+    .from(hcClearanceItems)
+    .where(eq(hcClearanceItems.offboardingId, id))
+    .orderBy(hcClearanceItems.sortOrder);
+
+  return { ...record, clearanceItems };
+}
+
+// ─── Create Offboarding Request ──────────────────────────────────────────────
+
+export async function createOffboardingRequest(data: {
+  employeeId: string;
+  requestType: string;
+  reason: string;
+  requestedLastWorkingDay: string;
+}) {
+  const empId = parseInt(data.employeeId, 10);
+
+  const [record] = await db
+    .insert(hcOffboardingRequests)
+    .values({
+      employeeId: empId,
+      requestType: data.requestType,
+      reason: data.reason,
+      requestedLastWorkingDay: data.requestedLastWorkingDay,
+      status: "pending",
+    })
+    .returning();
+
+  // Auto-generate default clearance checklist
+  const clearanceToInsert = DEFAULT_CLEARANCE_ITEMS.map((item, index) => ({
+    offboardingId: record.id,
+    sortOrder: index + 1,
+    category: item.category,
+    title: item.title,
+    description: item.description,
+    assignedTo: item.assignedTo,
+    isCompleted: false,
+    completedBy: "",
+    notes: "",
+  }));
+
+  await db.insert(hcClearanceItems).values(clearanceToInsert);
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return record;
+}
+
+// ─── Update Offboarding Request ──────────────────────────────────────────────
+
+export async function updateOffboardingRequest(
+  id: number,
+  data: {
+    requestType?: string;
+    reason?: string;
+    requestedLastWorkingDay?: string;
+    actualLastWorkingDay?: string;
+    status?: string;
+    approvedBy?: string;
+  }
+) {
+  const [updated] = await db
+    .update(hcOffboardingRequests)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
+    .where(eq(hcOffboardingRequests.id, id))
+    .returning();
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return updated;
+}
+
+// ─── Approve Offboarding ─────────────────────────────────────────────────────
+
+export async function approveOffboarding(id: number, approvedBy: string) {
+  const [updated] = await db
+    .update(hcOffboardingRequests)
+    .set({
+      status: "in_clearance",
+      approvedBy,
+      approvedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(hcOffboardingRequests.id, id))
+    .returning();
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return updated;
+}
+
+// ─── Complete Clearance Item ─────────────────────────────────────────────────
+
+export async function completeClearanceItem(
+  itemId: number,
+  completedBy: string,
+  notes?: string
+) {
+  const [updated] = await db
+    .update(hcClearanceItems)
+    .set({
+      isCompleted: true,
+      completedAt: new Date(),
+      completedBy,
+      notes: notes || "",
+    })
+    .where(eq(hcClearanceItems.id, itemId))
+    .returning();
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return updated;
+}
+
+// ─── Uncomplete Clearance Item ───────────────────────────────────────────────
+
+export async function uncompleteClearanceItem(itemId: number) {
+  const [updated] = await db
+    .update(hcClearanceItems)
+    .set({
+      isCompleted: false,
+      completedAt: null,
+      completedBy: "",
+      notes: "",
+    })
+    .where(eq(hcClearanceItems.id, itemId))
+    .returning();
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return updated;
+}
+
+// ─── Complete Offboarding ────────────────────────────────────────────────────
+
+export async function completeOffboarding(id: number) {
+  const [record] = await db
+    .select({ employeeId: hcOffboardingRequests.employeeId })
+    .from(hcOffboardingRequests)
+    .where(eq(hcOffboardingRequests.id, id));
+
+  if (!record) throw new Error("Offboarding record not found");
+
+  const [updated] = await db
+    .update(hcOffboardingRequests)
+    .set({
+      status: "completed",
+      actualLastWorkingDay: new Date().toISOString().split("T")[0],
+      updatedAt: new Date(),
+    })
+    .where(eq(hcOffboardingRequests.id, id))
+    .returning();
+
+  // Deactivate the employee
+  await db
+    .update(hrEmployees)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(eq(hrEmployees.id, record.employeeId));
+
+  revalidatePath("/dashboard/hc/offboarding");
+  revalidatePath("/dashboard/hc/employee");
+  return updated;
+}
+
+// ─── Delete Offboarding ──────────────────────────────────────────────────────
+
+export async function deleteOffboarding(id: number) {
+  // Clearance items are cascade-deleted by FK constraint
+  await db
+    .delete(hcOffboardingRequests)
+    .where(eq(hcOffboardingRequests.id, id));
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return { success: true };
+}
+
+// ─── Update Exit Interview ───────────────────────────────────────────────────
+
+export async function updateExitInterview(
+  id: number,
+  data: {
+    exitInterviewDate?: string;
+    exitInterviewBy?: string;
+    exitInterviewNotes?: string;
+  }
+) {
+  const [updated] = await db
+    .update(hcOffboardingRequests)
+    .set({
+      ...data,
+      updatedAt: new Date(),
+    })
+    .where(eq(hcOffboardingRequests.id, id))
+    .returning();
+
+  revalidatePath("/dashboard/hc/offboarding");
+  return updated;
+}
+
+// ─── Get Active Employees ────────────────────────────────────────────────────
+
+export async function getActiveEmployees() {
+  return await db
+    .select({
+      id: hrEmployees.id,
+      employeeId: hrEmployees.employeeId,
+      fullName: hrEmployees.fullName,
+      departmentId: hrEmployees.departmentId,
+      departmentName: hrDepartments.name,
+      positionName: hrPositions.rankName,
+    })
+    .from(hrEmployees)
+    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .where(eq(hrEmployees.isActive, true))
+    .orderBy(hrEmployees.fullName);
+}

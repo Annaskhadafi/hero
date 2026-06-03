@@ -2275,7 +2275,293 @@ export const hcCertificates = pgTable('hero_hc_certificates', {
   licenseNumber: text('license_number').notNull(),
   issuedDate: timestamp('issued_date').notNull().defaultNow(),
   expiryDate: timestamp('expiry_date').notNull(),
+  documentUrl: text('document_url').notNull().default(''),
   status: text('status').notNull().default('Active'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Leave Management ──────────────────────────────────────────────────
+
+export const hcLeaveTypes = pgTable('hero_hc_leave_types', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  defaultDaysPerYear: integer('default_days_per_year').notNull().default(0),
+  isPaid: boolean('is_paid').notNull().default(true),
+  requiresApproval: boolean('requires_approval').notNull().default(true),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcLeaveBalances = pgTable('hero_hc_leave_balances', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  leaveTypeId: integer('leave_type_id').notNull().references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
+  year: integer('year').notNull(),
+  totalDays: integer('total_days').notNull().default(0),
+  usedDays: integer('used_days').notNull().default(0),
+  carryOverDays: integer('carry_over_days').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  uniqueEmployeeTypeYear: uniqueIndex('unique_leave_balance_emp_type_year').on(t.employeeId, t.leaveTypeId, t.year),
+}))
+
+export const hcLeaveRequests = pgTable('hero_hc_leave_requests', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  leaveTypeId: integer('leave_type_id').notNull().references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  totalDays: integer('total_days').notNull().default(1),
+  reason: text('reason').notNull().default(''),
+  attachmentUrl: text('attachment_url').notNull().default(''),
+  status: text('status').notNull().default('pending'), // pending, approved, rejected, cancelled
+  approvedBy: text('approved_by').notNull().default(''),
+  approvedAt: timestamp('approved_at'),
+  rejectionReason: text('rejection_reason').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Onboarding ────────────────────────────────────────────────────────
+
+export const hcOnboardingTemplates = pgTable('hero_hc_onboarding_templates', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  departmentId: integer('department_id').references(() => hrDepartments.id, { onDelete: 'set null' }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcOnboardingTemplateTasks = pgTable('hero_hc_onboarding_template_tasks', {
+  id: serial('id').primaryKey(),
+  templateId: integer('template_id').notNull().references(() => hcOnboardingTemplates.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  assignedToDepartment: text('assigned_to_department').notNull().default(''), // HR, IT, HSE, etc.
+  dueDays: integer('due_days').notNull().default(7), // days after onboarding start
+  isRequired: boolean('is_required').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcOnboardingRecords = pgTable('hero_hc_onboarding_records', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  templateId: integer('template_id').references(() => hcOnboardingTemplates.id, { onDelete: 'set null' }),
+  startDate: date('start_date').notNull(),
+  probationEndDate: date('probation_end_date'),
+  status: text('status').notNull().default('in_progress'), // in_progress, completed, extended, terminated
+  overallProgress: integer('overall_progress').notNull().default(0), // 0-100
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcOnboardingTasks = pgTable('hero_hc_onboarding_tasks', {
+  id: serial('id').primaryKey(),
+  recordId: integer('record_id').notNull().references(() => hcOnboardingRecords.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  assignedToDepartment: text('assigned_to_department').notNull().default(''),
+  dueDate: date('due_date'),
+  isCompleted: boolean('is_completed').notNull().default(false),
+  completedAt: timestamp('completed_at'),
+  completedBy: text('completed_by').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+// ─── HC Recruitment (enhanced) ────────────────────────────────────────────
+
+export const hcCandidates = pgTable('hero_hc_candidates', {
+  id: serial('id').primaryKey(),
+  recruitmentId: integer('recruitment_id').references(() => hcRecruitments.id, { onDelete: 'set null' }),
+  fullName: text('full_name').notNull(),
+  email: text('email').notNull().default(''),
+  phone: text('phone').notNull().default(''),
+  source: text('source').notNull().default(''), // Job Portal, Referral, Walk-in, etc.
+  cvUrl: text('cv_url').notNull().default(''),
+  currentStage: text('current_stage').notNull().default('Sourcing'), // Sourcing, Screening, Psikotes, Interview, Offering, MCU, Hired, Rejected
+  rating: integer('rating'), // 1-5
+  notes: text('notes').notNull().default(''),
+  rejectionReason: text('rejection_reason').notNull().default(''),
+  rejectedAtStage: text('rejected_at_stage').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcCandidateStages = pgTable('hero_hc_candidate_stages', {
+  id: serial('id').primaryKey(),
+  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  stage: text('stage').notNull(),
+  enteredAt: timestamp('entered_at').notNull().defaultNow(),
+  exitedAt: timestamp('exited_at'),
+  result: text('result').notNull().default(''), // pass, fail, pending
+  evaluator: text('evaluator').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  score: integer('score'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+// ─── HC Offboarding ───────────────────────────────────────────────────────
+
+export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  requestType: text('request_type').notNull().default('resignation'), // resignation, termination, retirement, end_of_contract
+  reason: text('reason').notNull().default(''),
+  requestedLastWorkingDay: date('requested_last_working_day').notNull(),
+  actualLastWorkingDay: date('actual_last_working_day'),
+  status: text('status').notNull().default('pending'), // pending, approved, in_clearance, completed, cancelled
+  approvedBy: text('approved_by').notNull().default(''),
+  approvedAt: timestamp('approved_at'),
+  exitInterviewNotes: text('exit_interview_notes').notNull().default(''),
+  exitInterviewDate: date('exit_interview_date'),
+  exitInterviewBy: text('exit_interview_by').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcClearanceItems = pgTable('hero_hc_clearance_items', {
+  id: serial('id').primaryKey(),
+  offboardingId: integer('offboarding_id').notNull().references(() => hcOffboardingRequests.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  category: text('category').notNull(), // IT, Finance, Warehouse, HR, HSE, Department
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  assignedTo: text('assigned_to').notNull().default(''),
+  isCompleted: boolean('is_completed').notNull().default(false),
+  completedAt: timestamp('completed_at'),
+  completedBy: text('completed_by').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+// ─── HC Letters (archive) ─────────────────────────────────────────────────
+
+export const hcLetters = pgTable('hero_hc_letters', {
+  id: serial('id').primaryKey(),
+  letterType: text('letter_type').notNull(), // surat_keterangan, surat_tugas, surat_peringatan, surat_kontrak
+  letterNumber: text('letter_number').notNull().unique(),
+  employeeId: integer('employee_id').references(() => hrEmployees.id, { onDelete: 'set null' }),
+  employeeName: text('employee_name').notNull().default(''),
+  subject: text('subject').notNull().default(''),
+  content: text('content').notNull().default(''), // HTML content
+  destination: text('destination').notNull().default(''), // for surat tugas
+  purpose: text('purpose').notNull().default(''),
+  departureDate: date('departure_date'),
+  returnDate: date('return_date'),
+  issuedDate: date('issued_date').notNull(),
+  issuedPlace: text('issued_place').notNull().default('Balikpapan'),
+  signatoryName: text('signatory_name').notNull().default(''),
+  signatoryTitle: text('signatory_title').notNull().default(''),
+  status: text('status').notNull().default('draft'), // draft, approved, printed, archived
+  approvedBy: text('approved_by').notNull().default(''),
+  approvedAt: timestamp('approved_at'),
+  pdfUrl: text('pdf_url').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcLetterSequences = pgTable('hero_hc_letter_sequences', {
+  id: serial('id').primaryKey(),
+  letterType: text('letter_type').notNull(),
+  year: integer('year').notNull(),
+  month: integer('month').notNull(),
+  lastSequence: integer('last_sequence').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  uniqueTypeYearMonth: uniqueIndex('unique_letter_seq_type_year_month').on(t.letterType, t.year, t.month),
+}))
+
+// ─── HC Performance Management ────────────────────────────────────────────
+
+export const hcPerformanceCycles = pgTable('hero_hc_performance_cycles', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  cycleType: text('cycle_type').notNull(), // annual, semi_annual, quarterly
+  year: integer('year').notNull(),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  status: text('status').notNull().default('draft'), // draft, active, review, closed
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcPerformanceReviews = pgTable('hero_hc_performance_reviews', {
+  id: serial('id').primaryKey(),
+  cycleId: integer('cycle_id').notNull().references(() => hcPerformanceCycles.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  reviewerId: integer('reviewer_id').references(() => hrEmployees.id, { onDelete: 'set null' }),
+  overallScore: decimal('overall_score', { precision: 5, scale: 2 }),
+  overallRating: text('overall_rating').notNull().default(''), // Exceeds, Meets, Below, Unsatisfactory
+  strengths: text('strengths').notNull().default(''),
+  improvements: text('improvements').notNull().default(''),
+  comments: text('comments').notNull().default(''),
+  employeeComments: text('employee_comments').notNull().default(''),
+  status: text('status').notNull().default('draft'), // draft, submitted, reviewed, acknowledged
+  submittedAt: timestamp('submitted_at'),
+  reviewedAt: timestamp('reviewed_at'),
+  acknowledgedAt: timestamp('acknowledged_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  uniqueCycleEmployee: uniqueIndex('unique_perf_review_cycle_emp').on(t.cycleId, t.employeeId),
+}))
+
+export const hcPerformanceKpis = pgTable('hero_hc_performance_kpis', {
+  id: serial('id').primaryKey(),
+  reviewId: integer('review_id').notNull().references(() => hcPerformanceReviews.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  kpiName: text('kpi_name').notNull(),
+  kpiDescription: text('kpi_description').notNull().default(''),
+  targetValue: text('target_value').notNull().default(''),
+  actualValue: text('actual_value').notNull().default(''),
+  weight: integer('weight').notNull().default(0), // percentage, total across review = 100
+  score: decimal('score', { precision: 5, scale: 2 }),
+  comments: text('comments').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Disciplinary Actions ──────────────────────────────────────────────
+
+export const hcViolationCategories = pgTable('hero_hc_violation_categories', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  severity: text('severity').notNull().default('minor'), // minor, moderate, major, critical
+  defaultSpLevel: integer('default_sp_level').notNull().default(1), // 1, 2, 3
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  violationCategoryId: integer('violation_category_id').references(() => hcViolationCategories.id, { onDelete: 'set null' }),
+  spLevel: integer('sp_level').notNull().default(1), // 1=SP1, 2=SP2, 3=SP3
+  letterNumber: text('letter_number').notNull().default(''),
+  violationDate: date('violation_date').notNull(),
+  violationDescription: text('violation_description').notNull().default(''),
+  actionTaken: text('action_taken').notNull().default(''),
+  effectiveDate: date('effective_date').notNull(),
+  expiryDate: date('expiry_date'), // SP expiry (e.g., SP1 valid 6 months)
+  issuedBy: text('issued_by').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  attachmentUrl: text('attachment_url').notNull().default(''),
+  status: text('status').notNull().default('active'), // active, expired, escalated, revoked
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
