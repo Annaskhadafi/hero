@@ -3117,34 +3117,31 @@ export async function getSchedulingTimesheetOptions() {
   ] = await Promise.all([
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        email: hrEmployees.email,
-        employeeSn: hrEmployees.employeeId,
-        role: hrPositions.rankName,
-        jobTitle: hrPositions.rankName,
-        department: hrDepartments.name,
-        section: hrSections.name,
-        siteId: hrEmployees.siteId,
-        siteName: hrSites.name,
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        role: employees.role,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        section: employees.section,
+        siteId: employees.siteId,
+        siteName: sites.name,
       })
-      .from(hrEmployees)
-      .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
-      .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-      .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .where(eq(hrEmployees.isActive, true))
-      .orderBy(asc(hrEmployees.fullName))
+      .from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
       .catch(() => []),
     db
       .select({
-        id: hrSites.id,
-        name: hrSites.name,
-        customerName: hrSites.name,
+        id: sites.id,
+        name: sites.name,
+        customerName: sites.customerName,
       })
-      .from(hrSites)
-      .where(eq(hrSites.isActive, true))
-      .orderBy(asc(hrSites.name))
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name))
       .catch(() => []),
     db
       .select()

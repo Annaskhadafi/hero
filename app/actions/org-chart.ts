@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations } from "@/db/schema/hero";
+import { employees, hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations, sites } from "@/db/schema/hero";
 import { user } from "@/db/schema/auth";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, inArray, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export type OrgChartNode = Awaited<ReturnType<typeof getOrgChartData>>[number];
@@ -298,27 +298,192 @@ export async function deleteOrgNode(id: number) {
 
 export async function updateOrgChartEmployeeAssignment(employeeId: number, orgNodeId: number) {
   try {
-    const [node] = await db
-      .select({ id: hrOrgNodes.id })
-      .from(hrOrgNodes)
-      .where(eq(hrOrgNodes.id, orgNodeId))
-      .limit(1);
+    const nodeDefaults = await getOrgNodeEmployeeDefaults(orgNodeId);
 
-    if (!node) {
+    if (!nodeDefaults) {
       return { success: false, message: "Node tujuan tidak ditemukan." };
     }
 
-    await db
+    const [updatedEmployee] = await db
       .update(hrEmployees)
-      .set({ orgNodeId, updatedAt: new Date() })
-      .where(eq(hrEmployees.id, employeeId));
+      .set({
+        orgNodeId,
+        departmentId: nodeDefaults.departmentId,
+        sectionId: nodeDefaults.sectionId,
+        siteId: nodeDefaults.siteId,
+        workLocationId: nodeDefaults.workLocationId,
+        updatedAt: new Date(),
+      })
+      .where(eq(hrEmployees.id, employeeId))
+      .returning({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+        departmentId: hrEmployees.departmentId,
+        sectionId: hrEmployees.sectionId,
+        siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
+        positionId: hrEmployees.positionId,
+        orgNodeId: hrEmployees.orgNodeId,
+      });
 
-    revalidatePath("/dashboard/hc/org-chart");
-    return { success: true, message: "Karyawan berhasil dipindahkan." };
+    if (!updatedEmployee) {
+      return { success: false, message: "Karyawan tidak ditemukan." };
+    }
+
+    await syncOrgChartEmployeeToOperationalEmployee(updatedEmployee);
+
+    revalidateOrgChartEmployeeSurfaces();
+    return { success: true, message: "Karyawan berhasil dipindahkan dan metadata attendance disync." };
   } catch (error) {
     console.error("updateOrgChartEmployeeAssignment error:", error);
     return { success: false, message: "Gagal memindahkan karyawan." };
   }
+}
+
+async function getOrgNodeEmployeeDefaults(orgNodeId: number) {
+  const [targetNode] = await db
+    .select({ id: hrOrgNodes.id, pathText: hrOrgNodes.pathText })
+    .from(hrOrgNodes)
+    .where(eq(hrOrgNodes.id, orgNodeId))
+    .limit(1);
+
+  if (!targetNode) return null;
+
+  const pathIds = targetNode.pathText
+    .split("/")
+    .map((part) => Number(part))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  const scopedIds = pathIds.includes(orgNodeId) ? pathIds : [...pathIds, orgNodeId];
+  const pathNodes = scopedIds.length
+    ? await db
+        .select({
+          id: hrOrgNodes.id,
+          departmentId: hrOrgNodes.departmentId,
+          sectionId: hrOrgNodes.sectionId,
+          siteId: hrOrgNodes.siteId,
+          workLocationId: hrOrgNodes.workLocationId,
+        })
+        .from(hrOrgNodes)
+        .where(inArray(hrOrgNodes.id, scopedIds))
+    : [];
+
+  const nodeById = new Map(pathNodes.map((node) => [node.id, node]));
+  return scopedIds.reduce(
+    (defaults, nodeId) => {
+      const node = nodeById.get(nodeId);
+      if (!node) return defaults;
+      return {
+        departmentId: node.departmentId ?? defaults.departmentId,
+        sectionId: node.sectionId ?? defaults.sectionId,
+        siteId: node.siteId ?? defaults.siteId,
+        workLocationId: node.workLocationId ?? defaults.workLocationId,
+      };
+    },
+    {
+      departmentId: null as number | null,
+      sectionId: null as number | null,
+      siteId: null as number | null,
+      workLocationId: null as number | null,
+    }
+  );
+}
+
+type SyncedOrgChartEmployee = {
+  authUserId: string | null;
+  employeeId: string;
+  fullName: string;
+  email: string | null;
+  departmentId: number | null;
+  sectionId: number | null;
+  siteId: number | null;
+  workLocationId?: number | null;
+  positionId: number | null;
+  orgNodeId: number | null;
+};
+
+async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChartEmployee) {
+  const [[department], [section], [position], [hrSite], [workLocation]] = await Promise.all([
+    employee.departmentId
+      ? db.select({ name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.id, employee.departmentId)).limit(1)
+      : Promise.resolve([]),
+    employee.sectionId
+      ? db.select({ name: hrSections.name }).from(hrSections).where(eq(hrSections.id, employee.sectionId)).limit(1)
+      : Promise.resolve([]),
+    employee.positionId
+      ? db.select({ rankName: hrPositions.rankName, levelName: hrPositions.levelName }).from(hrPositions).where(eq(hrPositions.id, employee.positionId)).limit(1)
+      : Promise.resolve([]),
+    employee.siteId
+      ? db.select({ name: hrSites.name }).from(hrSites).where(eq(hrSites.id, employee.siteId)).limit(1)
+      : Promise.resolve([]),
+    employee.workLocationId
+      ? db.select({ name: hrWorkLocations.name }).from(hrWorkLocations).where(eq(hrWorkLocations.id, employee.workLocationId)).limit(1)
+      : Promise.resolve([]),
+  ]);
+
+  const [legacySite] = hrSite?.name
+    ? await db.select({ id: sites.id }).from(sites).where(eq(sites.name, hrSite.name)).limit(1).catch(() => [])
+    : [];
+
+  const roleName = position?.rankName ?? "";
+  const legacyUpdate = {
+    name: employee.fullName,
+    email: employee.email ?? "",
+    employeeSn: employee.employeeId,
+    departmentId: employee.departmentId,
+    sectionId: employee.sectionId,
+    positionId: employee.positionId,
+    orgNodeId: employee.orgNodeId,
+    department: department?.name ?? "",
+    section: section?.name ?? "",
+    role: roleName,
+    jobTitle: roleName,
+    workLocation: workLocation?.name ?? hrSite?.name ?? "",
+    ...(legacySite?.id ? { siteId: legacySite.id } : {}),
+  };
+
+  if (employee.authUserId) {
+    await db
+      .update(user)
+      .set({ name: employee.fullName, email: employee.email ?? "", updatedAt: new Date() })
+      .where(eq(user.id, employee.authUserId));
+
+    await db
+      .update(employees)
+      .set(legacyUpdate)
+      .where(
+        employee.email
+          ? or(
+              eq(employees.authUserId, employee.authUserId),
+              eq(employees.employeeSn, employee.employeeId),
+              eq(employees.email, employee.email)
+            )
+          : or(eq(employees.authUserId, employee.authUserId), eq(employees.employeeSn, employee.employeeId))
+      );
+    return;
+  }
+
+  await db
+    .update(employees)
+    .set(legacyUpdate)
+    .where(
+      employee.email
+        ? or(eq(employees.employeeSn, employee.employeeId), eq(employees.email, employee.email))
+        : eq(employees.employeeSn, employee.employeeId)
+    );
+}
+
+function revalidateOrgChartEmployeeSurfaces() {
+  revalidatePath("/dashboard/hc/org-chart");
+  revalidatePath("/dashboard/hc/employee");
+  revalidatePath("/dashboard/security/users");
+  revalidatePath("/dashboard/scheduling-timesheet");
+  revalidatePath("/dashboard/scheduling-timesheet/attendance");
+  revalidatePath("/dashboard/scheduling-timesheet/schedule");
+  revalidatePath("/dashboard/scheduling-timesheet/payroll");
 }
 
 export async function updateOrgChartEmployeeProfile(
@@ -352,38 +517,17 @@ export async function updateOrgChartEmployeeProfile(
         departmentId: hrEmployees.departmentId,
         sectionId: hrEmployees.sectionId,
         siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
         positionId: hrEmployees.positionId,
         orgNodeId: hrEmployees.orgNodeId,
       });
 
-    if (updatedEmployee?.authUserId) {
-      await db
-        .update(user)
-        .set({
-          name: updatedEmployee.fullName,
-          email: updatedEmployee.email ?? "",
-          updatedAt: new Date(),
-        })
-        .where(eq(user.id, updatedEmployee.authUserId));
-
-      await db
-        .update(employees)
-        .set({
-          name: updatedEmployee.fullName,
-          email: updatedEmployee.email ?? "",
-          employeeSn: updatedEmployee.employeeId,
-          departmentId: updatedEmployee.departmentId,
-          sectionId: updatedEmployee.sectionId,
-          ...(updatedEmployee.siteId ? { siteId: updatedEmployee.siteId } : {}),
-          positionId: updatedEmployee.positionId,
-          orgNodeId: updatedEmployee.orgNodeId,
-        })
-        .where(eq(employees.authUserId, updatedEmployee.authUserId));
+    if (!updatedEmployee) {
+      return { success: false, message: "Karyawan tidak ditemukan." };
     }
 
-    revalidatePath("/dashboard/hc/org-chart");
-    revalidatePath("/dashboard/hc/employee");
-    revalidatePath("/dashboard/security/users");
+    await syncOrgChartEmployeeToOperationalEmployee(updatedEmployee);
+    revalidateOrgChartEmployeeSurfaces();
     return { success: true, message: "Profil karyawan berhasil diupdate dan disync ke User Management." };
   } catch (error) {
     console.error("updateOrgChartEmployeeProfile error:", error);
