@@ -41,9 +41,13 @@ export async function getOrgChartData() {
       fullName: hrEmployees.fullName,
       orgNodeId: hrEmployees.orgNodeId,
       positionName: hrPositions.rankName,
+      siteName: hrSites.name,
+      workLocationName: hrWorkLocations.name,
     })
     .from(hrEmployees)
     .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
+    .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
     .where(eq(hrEmployees.isActive, true));
 
   const employeesByNode = new Map<number, typeof employees>();

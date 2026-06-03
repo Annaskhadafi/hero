@@ -35,7 +35,14 @@ type OrgNode = {
   sectionId?: number | null;
   siteId?: number | null;
   employeeCount: number;
-  employees: Array<{ id: number; employeeId: string; fullName: string; positionName: string | null }>;
+  employees: Array<{
+    id: number;
+    employeeId: string;
+    fullName: string;
+    positionName: string | null;
+    siteName: string | null;
+    workLocationName: string | null;
+  }>;
 };
 
 type OrgTreeNode = OrgNode & { children: OrgTreeNode[] };
@@ -54,135 +61,182 @@ function buildTree(nodes: OrgNode[]): OrgTreeNode[] {
   return roots.sort((a, b) => a.hierarchyLevel - b.hierarchyLevel || a.name.localeCompare(b.name));
 }
 
+function getNodeContext(node: OrgTreeNode) {
+  const nodeName = node.name.trim().toLocaleLowerCase("id-ID");
+  const context = [node.departmentName, node.sectionName]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.trim())
+    .filter((value) => value.toLocaleLowerCase("id-ID") !== nodeName);
+
+  return Array.from(new Set(context)).join(" • ");
+}
+
 // Draggable + Droppable Tree Node Component
-function InteractiveTreeNode({ 
-  node, 
-  onEdit, 
-  onDelete, 
-  onAddChild 
-}: { 
-  node: OrgTreeNode; 
-  onEdit: (node: OrgTreeNode) => void; 
+function getNodeTone(nodeType: string, hierarchyLevel: number) {
+  const normalized = nodeType.toLowerCase();
+  if (normalized.includes("bod") || normalized.includes("executive") || normalized === "company") {
+    return {
+      label: "BOD / EXECUTIVE",
+      card: "border-slate-400 bg-slate-900 text-white shadow-slate-300/60",
+      badge: "bg-white/15 text-white ring-white/20",
+      text: "text-slate-200",
+      connector: "bg-slate-400",
+    };
+  }
+  if (normalized.includes("manager") || normalized === "department" || hierarchyLevel <= 1) {
+    return {
+      label: "MANAGERIAL",
+      card: "border-sky-200 bg-sky-50 text-slate-950 shadow-sky-100/80",
+      badge: "bg-sky-100 text-sky-800 ring-sky-200",
+      text: "text-slate-600",
+      connector: "bg-sky-300",
+    };
+  }
+  if (normalized.includes("supervisor") || normalized === "section" || hierarchyLevel === 2) {
+    return {
+      label: "SUPERVISORY",
+      card: "border-emerald-200 bg-emerald-50 text-slate-950 shadow-emerald-100/80",
+      badge: "bg-emerald-100 text-emerald-800 ring-emerald-200",
+      text: "text-slate-600",
+      connector: "bg-emerald-300",
+    };
+  }
+  return {
+    label: nodeType.toUpperCase(),
+    card: "border-amber-200 bg-amber-50 text-slate-950 shadow-amber-100/80",
+    badge: "bg-amber-100 text-amber-800 ring-amber-200",
+    text: "text-slate-600",
+    connector: "bg-amber-300",
+  };
+}
+
+function OrgEmployeePreview({ employee }: { employee: OrgNode["employees"][number] }) {
+  return (
+    <div className="rounded-lg border border-slate-200/80 bg-white/80 p-2 text-left shadow-sm">
+      <div className="flex items-start gap-2">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
+          {employee.fullName.charAt(0)}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-slate-900">{employee.fullName}</p>
+          <p className="truncate text-[10px] text-slate-500">{employee.employeeId} • {employee.positionName ?? "-"}</p>
+          <p className="truncate text-[10px] text-slate-400">Lokasi: {[employee.siteName, employee.workLocationName].filter(Boolean).join(" • ") || "-"}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InteractiveTreeNode({
+  node,
+  onEdit,
+  onDelete,
+  onAddChild,
+}: {
+  node: OrgTreeNode;
+  onEdit: (node: OrgTreeNode) => void;
   onDelete: (node: OrgTreeNode) => void;
   onAddChild: (parentId: number) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
-  
-  // Setup draggable (node as item being dragged)
+  const tone = getNodeTone(node.nodeType, node.hierarchyLevel);
+  const nodeContext = getNodeContext(node);
+
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
-    id: `node-${node.id}`,
+    id: "node-" + node.id,
     data: { type: "org-node", node },
   });
-  
-  // Setup droppable (node as target for dropped items)
+
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `node-${node.id}`,
+    id: "node-" + node.id,
     data: { type: "org-node", node },
   });
-  
-  // Combine refs (simple approach for div that is both draggable and droppable)
+
   const setRefs = (element: HTMLElement | null) => {
     setDragRef(element);
     setDropRef(element);
   };
 
   return (
-    <div className="space-y-3 relative">
-      <div 
+    <div className="flex flex-col items-center text-center">
+      <div
         ref={setRefs}
-        className={`rounded-xl border bg-white p-4 shadow-sm transition-all duration-200
-          ${isDragging ? "opacity-40 ring-2 ring-primary scale-[0.98]" : ""}
-          ${isOver && !isDragging ? "ring-2 ring-green-500 bg-green-50/50 scale-[1.01] shadow-md" : ""}
-          hover:border-primary/30
-        `} 
-        style={{ marginLeft: `${Math.min(node.hierarchyLevel, 6) * 28}px` }}
+        className={"group relative w-[260px] rounded-2xl border p-3 shadow-sm transition-all duration-200 " + tone.card +
+          (isDragging ? " scale-95 opacity-40 ring-2 ring-primary" : "") +
+          (isOver && !isDragging ? " scale-[1.02] ring-2 ring-emerald-500" : "")
+        }
       >
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="flex items-start gap-3 flex-1">
-            <div 
-              {...listeners} 
-              {...attributes} 
-              className="mt-1 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100"
-              title="Drag untuk memindahkan node ini"
-            >
-              <GripVertical className="size-4" />
-            </div>
-            
-            <div className="space-y-1 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-semibold text-slate-900 cursor-pointer hover:text-primary" onClick={() => setIsExpanded(!isExpanded)}>
-                  {node.name}
-                  {node.children.length > 0 && (
-                    <span className="ml-2 text-xs text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded">
-                      {isExpanded ? '▼' : '▶'} {node.children.length}
-                    </span>
-                  )}
-                </h3>
-                <Badge variant="secondary" className="text-[10px] uppercase px-1.5 py-0">{node.nodeType}</Badge>
-                <Badge variant="outline" className="text-[10px] uppercase px-1.5 py-0">Lvl {node.hierarchyLevel}</Badge>
-              </div>
-              <p className="text-xs text-slate-500">
-                {[node.departmentName, node.sectionName, node.siteName, node.workLocationName].filter(Boolean).join(" • ") || node.code}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-              <UserRound className="size-3" />
-              {node.employeeCount} assigned
-            </div>
-            
-            <div className="flex items-center gap-1 border-l pl-2 ml-1">
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:text-green-600 hover:bg-green-50" onClick={() => onAddChild(node.id)} title="Tambah Child Node">
-                <Plus className="size-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:text-blue-600 hover:bg-blue-50" onClick={() => onEdit(node)} title="Edit Node">
-                <Edit className="size-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50" onClick={() => onDelete(node)} title="Hapus Node">
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          </div>
+        <div className="absolute left-2 top-2">
+          <button
+            {...listeners}
+            {...attributes}
+            className="rounded-md p-1 text-current/45 transition hover:bg-white/40 hover:text-current active:cursor-grabbing"
+            title="Drag untuk memindahkan node ini"
+            type="button"
+          >
+            <GripVertical className="size-4" />
+          </button>
         </div>
-        
-        {/* Employees list (collapsed by default if many) */}
+
+        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+          <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-emerald-700" onClick={() => onAddChild(node.id)} title="Tambah Child Node">
+            <Plus className="size-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-blue-700" onClick={() => onEdit(node)} title="Edit Node">
+            <Edit className="size-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-red-700" onClick={() => onDelete(node)} title="Hapus Node">
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+
+        <button className="mx-auto block max-w-[190px] text-balance pt-3 text-sm font-bold leading-tight hover:underline" onClick={() => setIsExpanded(!isExpanded)} type="button">
+          {node.name}
+        </button>
+
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 " + tone.badge}>{tone.label}</span>
+          <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 " + tone.badge}>LVL {node.hierarchyLevel}</span>
+          {node.children.length > 0 && (
+            <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 " + tone.badge}>
+              {isExpanded ? "−" : "+"} {node.children.length}
+            </span>
+          )}
+        </div>
+
+        <p className={"mx-auto mt-2 max-w-[220px] truncate text-[11px] " + tone.text}>{nodeContext || node.code}</p>
+
+        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200/80">
+          <UserRound className="size-3" />
+          {node.employeeCount} assigned
+        </div>
+
         {node.employees.length > 0 && isExpanded && (
-          <div className="mt-3 pl-8 grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-            {node.employees.slice(0, 6).map((employee) => (
-              <div key={employee.id} className="rounded-lg border bg-slate-50/50 p-2 text-xs flex items-center gap-2">
-                <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-medium">
-                  {employee.fullName.charAt(0)}
-                </div>
-                <div className="overflow-hidden">
-                  <p className="font-medium truncate">{employee.fullName}</p>
-                  <p className="text-[10px] text-slate-500 truncate">{employee.employeeId} • {employee.positionName ?? "-"}</p>
-                </div>
-              </div>
+          <div className="mt-3 grid gap-2">
+            {node.employees.slice(0, 3).map((employee) => (
+              <OrgEmployeePreview key={employee.id} employee={employee} />
             ))}
-            {node.employees.length > 6 && (
-              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/30 p-2 text-xs flex items-center justify-center text-slate-500">
-                + {node.employees.length - 6} lainnya
+            {node.employees.length > 3 && (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-2 text-xs font-medium text-slate-500">
+                + {node.employees.length - 3} lainnya
               </div>
             )}
           </div>
         )}
       </div>
-      
-      {/* Render children */}
+
       {isExpanded && node.children.length > 0 && (
-        <div className="space-y-3 mt-3 relative before:absolute before:left-4 before:top-[-12px] before:bottom-6 before:w-px before:bg-slate-200">
-          {node.children.map((child) => (
-            <div key={child.id} className="relative before:absolute before:left-[-12px] before:top-8 before:w-3 before:h-px before:bg-slate-200">
-              <InteractiveTreeNode 
-                node={child} 
-                onEdit={onEdit} 
-                onDelete={onDelete} 
-                onAddChild={onAddChild} 
-              />
-            </div>
-          ))}
+        <div className="flex flex-col items-center">
+          <div className={"h-8 w-px " + tone.connector} />
+          <div className="relative flex items-start justify-center gap-6 px-4 pt-8">
+            <div className={"absolute left-4 right-4 top-0 h-px " + tone.connector} />
+            {node.children.map((child) => (
+              <div key={child.id} className="relative flex flex-col items-center">
+                <div className={"absolute -top-8 h-8 w-px " + tone.connector} />
+                <InteractiveTreeNode node={child} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -389,15 +443,15 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
   ];
 
   return (
-    <AdminPageShell eyebrow="HC • Org Chart" title="Interactive Org Chart" description="Visualisasi interaktif struktur organisasi. Drag & drop node untuk memindahkan posisinya (reparenting).">
+    <AdminPageShell eyebrow="HC • Org Chart" title="PDF-Style Organization Chart" description="Visualisasi struktur organisasi bergaya PDF, tetap editable dengan action node dan drag & drop reparenting.">
       <div className="space-y-6">
         <EnterpriseScorecards items={scorecards} />
         
-        <Card className="border-slate-200/60 shadow-sm overflow-hidden">
-          <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between bg-slate-50/50 border-b pb-4">
+        <Card className="overflow-hidden border-slate-200/60 shadow-sm">
+          <CardHeader className="gap-4 border-b bg-white pb-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <CardTitle className="text-lg">Struktur Organisasi (Editable Canvas)</CardTitle>
-              <CardDescription>Drag icon <GripVertical className="inline size-3 mx-1" /> untuk memindahkan node. Edit properties untuk merubah departemen.</CardDescription>
+              <CardTitle className="text-lg">Struktur Organisasi (PDF-Style Editable)</CardTitle>
+              <CardDescription>Root di atas, child berjajar horizontal seperti PDF. Lokasi tampil sebagai keterangan di tiap user.</CardDescription>
             </div>
             <div className="flex items-center gap-3 w-full md:w-auto">
               <div className="relative w-full md:w-64">
@@ -411,57 +465,65 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
           </CardHeader>
           
           <CardContent className="p-0">
-            <div className="overflow-x-auto bg-[#f8fafc] min-h-[500px]">
-              <div className="min-w-[800px] p-6 space-y-4">
+            <div className="relative max-h-[72vh] min-h-[560px] overflow-auto bg-[#f8fafc]">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.08)_1px,transparent_0)] [background-size:24px_24px]" />
+              <div className="relative min-w-[1200px] p-8">
                 {isPending && (
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-primary/20 overflow-hidden">
-                    <div className="h-full bg-primary w-1/3 animate-pulse"></div>
+                  <div className="sticky left-0 top-0 z-20 h-1 overflow-hidden bg-primary/20">
+                    <div className="h-full w-1/3 animate-pulse bg-primary" />
                   </div>
                 )}
-                
+
+                <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm backdrop-blur">
+                  <span className="font-semibold text-slate-900">Legend:</span>
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">BOD / EXECUTIVE</span>
+                  <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">MANAGERIAL</span>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SUPERVISORY</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">STAFF / UNIT</span>
+                  <span className="ml-auto hidden text-slate-500 lg:inline">Hover node untuk action. Drag grip untuk pindah parent.</span>
+                </div>
+
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                   {filteredTree.length > 0 ? (
-                    <div className="space-y-4">
+                    <div className="flex min-h-[420px] items-start justify-center gap-12 pb-10">
                       {filteredTree.map((node) => (
-                        <InteractiveTreeNode 
-                          key={node.id} 
-                          node={node} 
+                        <InteractiveTreeNode
+                          key={node.id}
+                          node={node}
                           onEdit={handleEditClick}
                           onDelete={handleDeleteClick}
                           onAddChild={handleCreateClick}
                         />
                       ))}
-                      
-                      {/* Root Dropzone - visible when dragging to move node to root level */}
-                      <div 
-                        ref={setRootDropRef}
-                        className={`h-24 rounded-xl border-2 border-dashed flex items-center justify-center text-sm transition-colors mt-8
-                          ${isRootOver ? "border-green-500 bg-green-50 text-green-700 font-medium" : "border-slate-300 bg-slate-50 text-slate-500"}
-                          ${activeDragNode ? "opacity-100" : "opacity-0 h-0 mt-0 overflow-hidden"}
-                        `}
-                      >
-                        Drop di sini untuk jadikan Root Node (Level 0)
-                      </div>
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500 shadow-sm">
-                      <GitBranch className="size-10 mx-auto text-slate-300 mb-3" />
+                      <GitBranch className="mx-auto mb-3 size-10 text-slate-300" />
                       <p className="font-medium text-slate-700">Belum ada struktur organisasi</p>
-                      <p className="text-sm mt-1 mb-4">Mulai dengan membuat root node pertama Anda</p>
+                      <p className="mb-4 mt-1 text-sm">Mulai dengan membuat root node pertama Anda</p>
                       <Button onClick={() => handleCreateClick(null)} variant="outline" className="shadow-sm">
-                        <Plus className="size-4 mr-2" /> Buat Root Node
+                        <Plus className="mr-2 size-4" /> Buat Root Node
                       </Button>
                     </div>
                   )}
 
-                  {/* Drag Overlay (Visual representation of node being dragged) */}
-                  <DragOverlay dropAnimation={{ duration: 250, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+                  <div
+                    ref={setRootDropRef}
+                    className={"mx-auto mt-6 flex h-20 max-w-xl items-center justify-center rounded-2xl border-2 border-dashed text-sm transition-all " +
+                      (isRootOver ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-white/70 text-slate-500") +
+                      (activeDragNode ? " opacity-100" : " pointer-events-none h-0 overflow-hidden border-0 opacity-0")
+                    }
+                  >
+                    Drop di sini untuk jadikan Root Node (Level 0)
+                  </div>
+
+                  <DragOverlay dropAnimation={{ duration: 250, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
                     {activeDragNode ? (
-                      <div className="rounded-xl border border-primary/50 bg-white/95 p-3 shadow-xl backdrop-blur-sm scale-105 rotate-2 cursor-grabbing w-[300px]">
+                      <div className="w-[260px] rotate-2 rounded-2xl border border-primary/50 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
                         <div className="flex items-center gap-2">
                           <GripVertical className="size-4 text-primary" />
                           <h3 className="font-semibold text-slate-900">{activeDragNode.name}</h3>
-                          <Badge variant="secondary" className="text-[10px] ml-auto">{activeDragNode.nodeType}</Badge>
+                          <Badge variant="secondary" className="ml-auto text-[10px]">{activeDragNode.nodeType}</Badge>
                         </div>
                       </div>
                     ) : null}
@@ -505,7 +567,7 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-4 pt-2 border-t">
+            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
               <div className="space-y-2">
                 <Label>Dept ID</Label>
                 <Input type="number" value={formData.departmentId || ''} onChange={(e) => setFormData({...formData, departmentId: e.target.value})} placeholder="Opsional" />
@@ -514,16 +576,12 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
                 <Label>Section ID</Label>
                 <Input type="number" value={formData.sectionId || ''} onChange={(e) => setFormData({...formData, sectionId: e.target.value})} placeholder="Opsional" />
               </div>
-              <div className="space-y-2">
-                <Label>Site ID</Label>
-                <Input type="number" value={formData.siteId || ''} onChange={(e) => setFormData({...formData, siteId: e.target.value})} placeholder="Opsional" />
-              </div>
             </div>
             
             <Alert className="col-span-1 bg-amber-50 text-amber-800 border-amber-200 mt-2">
               <AlertTriangle className="size-4 text-amber-600" />
               <AlertDescription className="text-xs">
-                Perubahan pada Department, Section, atau Site akan diaplikasikan juga ke semua karyawan yang ditugaskan pada node ini (Cascade Update).
+                Perubahan pada Department atau Section akan diaplikasikan juga ke semua karyawan yang ditugaskan pada node ini (Cascade Update). Lokasi tetap ditampilkan sebagai keterangan karyawan.
               </AlertDescription>
             </Alert>
           </div>

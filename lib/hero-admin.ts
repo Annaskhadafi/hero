@@ -672,17 +672,6 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HR',
-    title: 'Offboarding',
-    url: '/dashboard/hc/offboarding',
-    iconName: 'log-out',
-    resource: 'hc_offboarding',
-    sortOrder: 10,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HR',
     title: 'Surat Archive',
     url: '/dashboard/hc/surat/archive',
     iconName: 'archive',
