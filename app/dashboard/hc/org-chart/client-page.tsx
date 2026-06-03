@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Import actions (using relative path to ensure resolution)
-import { updateOrgNodeParent, updateOrgNode, createOrgNode, deleteOrgNode } from "@/app/actions/org-chart";
+import { updateOrgNodeParent, updateOrgNode, createOrgNode, deleteOrgNode, updateOrgChartEmployeeAssignment, updateOrgChartEmployeeProfile } from "@/app/actions/org-chart";
 
 type OrgNode = {
   id: number;
@@ -40,14 +40,35 @@ type OrgNode = {
     employeeId: string;
     fullName: string;
     positionName: string | null;
+    email: string | null;
+    departmentId: number | null;
+    sectionId: number | null;
+    siteId: number | null;
+    workLocationId: number | null;
+    positionId: number | null;
     siteName: string | null;
     workLocationName: string | null;
   }>;
 };
 
-type OrgTreeNode = OrgNode & { children: OrgTreeNode[] };
+type OrgTreeNode = OrgNode & {
+  children: OrgTreeNode[];
+  isVirtual?: boolean;
+  virtualParentNodeId?: number;
+  virtualWorkLocationId?: number | null;
+};
 
 type Stats = { totalNodes: number; totalEmployeesAssigned: number; departments: number; rootNodes: number };
+
+type ReferenceData = {
+  departments: Array<{ id: number; name: string }>;
+  sections: Array<{ id: number; name: string; departmentId: number | null }>;
+  sites: Array<{ id: number; name: string }>;
+  workLocations: Array<{ id: number; name: string }>;
+  positions: Array<{ id: number; rankName: string; levelName: string }>;
+};
+
+type OrgEmployee = OrgNode["employees"][number];
 
 // Helper to build tree
 function getNodeOrder(node: OrgNode) {
@@ -76,6 +97,21 @@ function normalizeOrgLabel(value: string) {
 function isLocationNode(node: OrgNode) {
   const normalized = node.nodeType.toLowerCase().replace(/[\s_-]+/g, "_");
   return normalized.includes("work_location") || normalized.includes("worklocation") || normalized.includes("site");
+}
+
+function isDepartmentNode(node: OrgNode) {
+  const normalized = node.nodeType.toLowerCase().replace(/[\s_-]+/g, "_");
+  return normalized.includes("department");
+}
+
+function getEmployeeWorkLocationLabel(employee: OrgEmployee) {
+  return employee.workLocationName || employee.siteName || "Lokasi Belum Diisi";
+}
+
+function getVirtualLocationNodeId(parentNodeId: number, locationKey: string) {
+  let hash = 0;
+  for (const char of locationKey) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return -Math.abs(parentNodeId * 100000 + (hash % 99999));
 }
 
 function extractEmployeesDeep(node: OrgTreeNode): OrgNode["employees"] {
@@ -188,6 +224,57 @@ function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
   };
 }
 
+function groupOrgUnitEmployeesByWorkLocation(node: OrgTreeNode): OrgTreeNode {
+  const children = node.children.map(groupOrgUnitEmployeesByWorkLocation);
+
+  if (!isDepartmentNode(node) && getNodeOrder(node) !== 2) {
+    return { ...node, children };
+  }
+
+  const departmentEmployees: OrgEmployee[] = [];
+  const groupedEmployees = new Map<string, OrgEmployee[]>();
+
+  for (const employee of node.employees) {
+    if (getEmployeeRoleGroup(employee).order < 3) {
+      departmentEmployees.push(employee);
+      continue;
+    }
+
+    const locationLabel = getEmployeeWorkLocationLabel(employee);
+    const locationKey = normalizeOrgLabel(locationLabel);
+    groupedEmployees.set(locationKey, [...(groupedEmployees.get(locationKey) ?? []), employee]);
+  }
+
+  const virtualLocationNodes: OrgTreeNode[] = Array.from(groupedEmployees.entries()).map(([locationKey, employees]) => ({
+    id: getVirtualLocationNodeId(node.id, locationKey),
+    code: `AUTO_LOC_${node.id}_${locationKey.replace(/[^a-z0-9]+/g, "_")}`,
+    parentNodeId: node.id,
+    nodeType: "work_location_virtual",
+    name: employees[0] ? getEmployeeWorkLocationLabel(employees[0]) : "Lokasi Belum Diisi",
+    hierarchyLevel: node.hierarchyLevel + 1,
+    departmentName: node.departmentName,
+    sectionName: node.sectionName,
+    siteName: employees[0]?.siteName ?? null,
+    workLocationName: employees[0]?.workLocationName ?? null,
+    departmentId: node.departmentId,
+    sectionId: node.sectionId,
+    siteId: node.siteId,
+    employeeCount: employees.length,
+    employees,
+    children: [],
+    isVirtual: true,
+    virtualParentNodeId: node.id,
+    virtualWorkLocationId: employees[0]?.workLocationId ?? null,
+  }));
+
+  return {
+    ...node,
+    employees: departmentEmployees,
+    employeeCount: departmentEmployees.length,
+    children: [...children, ...virtualLocationNodes],
+  };
+}
+
 function pruneEmptyLeaves(nodes: OrgTreeNode[]): OrgTreeNode[] {
   return nodes
     .map((node) => {
@@ -223,7 +310,7 @@ function buildTree(nodes: OrgNode[]): OrgTreeNode[] {
     processedRoots = nonLocRoots;
   }
   
-  processedRoots = processedRoots.map(hoistManagersToDepartment);
+  processedRoots = processedRoots.map(hoistManagersToDepartment).map(groupOrgUnitEmployeesByWorkLocation);
   
   // Prune "dead leaves" (kotak tanpa orang dan tanpa child)
   processedRoots = pruneEmptyLeaves(processedRoots);
@@ -290,18 +377,65 @@ function getNodeTone(nodeType: string, hierarchyLevel: number) {
   };
 }
 
-function OrgEmployeePreview({ employee }: { employee: OrgNode["employees"][number] }) {
+function getEmployeeRoleGroup(employee: OrgEmployee) {
+  const position = (employee.positionName ?? "").toLocaleLowerCase("id-ID");
+
+  if (/(manager|mgr|kepala departemen|department head)/i.test(position)) {
+    return { key: "manager", label: "MANAGER", order: 0, className: "bg-sky-100 text-sky-800 ring-sky-200" };
+  }
+  if (/(supervisor|spv|supervisi)/i.test(position)) {
+    return { key: "spv", label: "SPV / SUPERVISOR", order: 1, className: "bg-emerald-100 text-emerald-800 ring-emerald-200" };
+  }
+  if (/(leader|lead|coordinator|koordinator|head|foreman|chief)/i.test(position)) {
+    return { key: "leader", label: "LEADER / KOORDINATOR", order: 2, className: "bg-violet-100 text-violet-800 ring-violet-200" };
+  }
+  return { key: "staff", label: "STAFF", order: 3, className: "bg-slate-100 text-slate-700 ring-slate-200" };
+}
+
+function groupEmployeesByRole(employees: OrgEmployee[]) {
+  const groups = new Map<string, { label: string; order: number; className: string; employees: OrgEmployee[] }>();
+
+  for (const employee of employees) {
+    const role = getEmployeeRoleGroup(employee);
+    const group = groups.get(role.key) ?? { label: role.label, order: role.order, className: role.className, employees: [] };
+    group.employees.push(employee);
+    groups.set(role.key, group);
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      employees: group.employees.sort((a, b) => (a.positionName ?? "").localeCompare(b.positionName ?? "", "id-ID") || a.fullName.localeCompare(b.fullName, "id-ID")),
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+function flattenTreeNodes(nodes: OrgTreeNode[]): OrgTreeNode[] {
+  return nodes.flatMap((node) => [node, ...flattenTreeNodes(node.children)]);
+}
+
+function OrgEmployeePreview({ employee, onEditEmployee }: { employee: OrgEmployee; onEditEmployee: (employee: OrgEmployee) => void }) {
+  const role = getEmployeeRoleGroup(employee);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: "employee-" + employee.id,
+    data: { type: "employee", employee },
+  });
+
   return (
-    <div className="rounded-lg border border-slate-200/80 bg-white/80 p-2 text-left shadow-sm">
-      <div className="flex items-start gap-2">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
-          {employee.fullName.charAt(0)}
-        </div>
-        <div className="min-w-0">
+    <div ref={setNodeRef} className={"w-full min-w-0 overflow-hidden rounded-lg border border-slate-200/80 bg-white/90 p-2 text-left shadow-sm transition " + (isDragging ? "scale-95 opacity-40 ring-2 ring-blue-400" : "")}>
+      <div className="flex min-w-0 items-start gap-2">
+        <button {...listeners} {...attributes} className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600 hover:bg-slate-200 active:cursor-grabbing" title="Drag orang">
+          <GripVertical className="size-3" />
+        </button>
+        <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold text-slate-900">{employee.fullName}</p>
           <p className="truncate text-[10px] text-slate-500">{employee.employeeId} • {employee.positionName ?? "-"}</p>
           <p className="truncate text-[10px] text-slate-400">Lokasi: {[employee.siteName, employee.workLocationName].filter(Boolean).join(" • ") || "-"}</p>
+          <span className={"mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ring-1 " + role.className}>{role.label}</span>
         </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-slate-500 hover:bg-slate-100 hover:text-blue-700" onClick={() => onEditEmployee(employee)} title="Edit profil orang">
+          <Edit className="size-3.5" />
+        </Button>
       </div>
     </div>
   );
@@ -312,15 +446,18 @@ function InteractiveTreeNode({
   onEdit,
   onDelete,
   onAddChild,
+  onEditEmployee,
 }: {
   node: OrgTreeNode;
   onEdit: (node: OrgTreeNode) => void;
   onDelete: (node: OrgTreeNode) => void;
   onAddChild: (parentId: number) => void;
+  onEditEmployee: (employee: OrgEmployee, node: OrgTreeNode) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const tone = getNodeTone(node.nodeType, node.hierarchyLevel);
   const nodeContext = getNodeContext(node);
+  const employeeGroups = groupEmployeesByRole(node.employees);
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: "node-" + node.id,
@@ -341,34 +478,38 @@ function InteractiveTreeNode({
     <div className="flex flex-col items-center text-center">
       <div
         ref={setRefs}
-        className={"group relative w-[260px] rounded-2xl border p-3 shadow-sm transition-all duration-200 " + tone.card +
+        className={"group relative w-[380px] rounded-2xl border p-3 shadow-sm transition-all duration-200 " + tone.card +
           (isDragging ? " scale-95 opacity-40 ring-2 ring-primary" : "") +
           (isOver && !isDragging ? " scale-[1.02] ring-2 ring-emerald-500" : "")
         }
       >
-        <div className="absolute left-2 top-2">
-          <button
-            {...listeners}
-            {...attributes}
-            className="rounded-md p-1 text-current/45 transition hover:bg-white/40 hover:text-current active:cursor-grabbing"
-            title="Drag untuk memindahkan node ini"
-            type="button"
-          >
-            <GripVertical className="size-4" />
-          </button>
-        </div>
+        {!node.isVirtual && (
+          <div className="absolute left-2 top-2">
+            <button
+              {...listeners}
+              {...attributes}
+              className="rounded-md p-1 text-current/45 transition hover:bg-white/40 hover:text-current active:cursor-grabbing"
+              title="Drag untuk memindahkan node ini"
+              type="button"
+            >
+              <GripVertical className="size-4" />
+            </button>
+          </div>
+        )}
 
-        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-          <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-emerald-700" onClick={() => onAddChild(node.id)} title="Tambah Child Node">
-            <Plus className="size-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-blue-700" onClick={() => onEdit(node)} title="Edit Node">
-            <Edit className="size-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-red-700" onClick={() => onDelete(node)} title="Hapus Node">
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
+        {!node.isVirtual && (
+          <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+            <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-emerald-700" onClick={() => onAddChild(node.id)} title="Tambah Child Node">
+              <Plus className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-blue-700" onClick={() => onEdit(node)} title="Edit Node">
+              <Edit className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-red-700" onClick={() => onDelete(node)} title="Hapus Node">
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        )}
 
         <button className="mx-auto block max-w-[190px] text-balance pt-3 text-sm font-bold leading-tight hover:underline" onClick={() => setIsExpanded(!isExpanded)} type="button">
           {node.name}
@@ -392,9 +533,17 @@ function InteractiveTreeNode({
         </div>
 
         {node.employees.length > 0 && isExpanded && (
-          <div className="mt-3 grid gap-2">
-            {node.employees.map((employee) => (
-              <OrgEmployeePreview key={employee.id} employee={employee} />
+          <div className="mt-3 grid gap-2 text-left">
+            {employeeGroups.map((group) => (
+              <div key={group.label} className="grid gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 " + group.className}>{group.label}</span>
+                  <span className="text-[9px] font-semibold text-slate-400">{group.employees.length} orang</span>
+                </div>
+                {group.employees.map((employee) => (
+                  <OrgEmployeePreview key={employee.id} employee={employee} onEditEmployee={(selectedEmployee) => onEditEmployee(selectedEmployee, node)} />
+                ))}
+              </div>
             ))}
           </div>
         )}
@@ -403,12 +552,12 @@ function InteractiveTreeNode({
       {isExpanded && node.children.length > 0 && (
         <div className="flex flex-col items-center">
           <div className={"h-8 w-px " + tone.connector} />
-          <div className="relative flex items-start justify-center gap-6 px-4 pt-8">
+          <div className="relative flex items-start justify-start gap-12 px-8 pt-8">
             <div className={"absolute left-4 right-4 top-0 h-px " + tone.connector} />
             {node.children.map((child) => (
               <div key={child.id} className="relative flex flex-col items-center">
                 <div className={"absolute -top-8 h-8 w-px " + tone.connector} />
-                <InteractiveTreeNode node={child} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} />
+                <InteractiveTreeNode node={child} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} onEditEmployee={onEditEmployee} />
               </div>
             ))}
           </div>
@@ -418,11 +567,12 @@ function InteractiveTreeNode({
   );
 }
 
-export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: Stats }) {
+export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: OrgNode[]; stats: Stats; referenceData: ReferenceData }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [isPending, startTransition] = useTransition();
   const [activeDragNode, setActiveDragNode] = useState<OrgTreeNode | null>(null);
+  const [activeDragEmployee, setActiveDragEmployee] = useState<OrgEmployee | null>(null);
   
   // Dialog states
   const [editingNode, setEditingNode] = useState<OrgTreeNode | null>(null);
@@ -433,6 +583,20 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
   
   const [creatingParentId, setCreatingParentId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+
+  const [editingEmployee, setEditingEmployee] = useState<{ employee: OrgEmployee; currentNode: OrgTreeNode } | null>(null);
+  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
+  const [employeeFormData, setEmployeeFormData] = useState({
+    employeeId: "",
+    fullName: "",
+    email: "",
+    departmentId: "",
+    sectionId: "",
+    siteId: "",
+    workLocationId: "",
+    positionId: "",
+    orgNodeId: "",
+  });
   
   // Form states
   const [formData, setFormData] = useState({
@@ -446,6 +610,24 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
 
   // Derived data
   const tree = useMemo(() => buildTree(nodes), [nodes]);
+  const selectableNodes = useMemo(() => flattenTreeNodes(tree).filter((node) => !node.isVirtual), [tree]);
+  const allTreeNodes = useMemo(() => flattenTreeNodes(tree), [tree]);
+  const selectedEmployeeTargetNode = useMemo(
+    () => allTreeNodes.find((node) => node.id.toString() === employeeFormData.orgNodeId) ?? editingEmployee?.currentNode ?? null,
+    [allTreeNodes, employeeFormData.orgNodeId, editingEmployee],
+  );
+  const directSupervisor = useMemo(() => {
+    if (!editingEmployee || !selectedEmployeeTargetNode) return null;
+    let node: OrgTreeNode | undefined = selectedEmployeeTargetNode;
+    while (node) {
+      const leader = groupEmployeesByRole(node.employees)
+        .flatMap((group) => group.employees)
+        .find((employee) => employee.id !== editingEmployee.employee.id && getEmployeeRoleGroup(employee).order < 3);
+      if (leader) return leader;
+      node = selectableNodes.find((candidate) => candidate.id === node?.parentNodeId);
+    }
+    return null;
+  }, [editingEmployee, selectedEmployeeTargetNode, selectableNodes]);
   
   const filteredTree = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -471,31 +653,61 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
   // Handlers
   const handleDragStart = (event: any) => {
     const { active } = event;
-    const nodeId = parseInt(active.id.toString().replace('node-', ''));
+    const activeId = active.id.toString();
+
+    if (activeId.startsWith("employee-")) {
+      const employeeId = parseInt(activeId.replace("employee-", ""));
+      const employee = nodes.flatMap((node) => node.employees).find((item) => item.id === employeeId) ?? null;
+      setActiveDragEmployee(employee);
+      return;
+    }
+
+    const nodeId = parseInt(activeId.replace('node-', ''));
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
-      // Cast to OrgTreeNode for active drag overlay
       setActiveDragNode({ ...node, children: [] } as OrgTreeNode);
     }
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveDragNode(null);
+    setActiveDragEmployee(null);
     const { active, over } = event;
     
     if (!over) return;
     if (active.id === over.id) return;
+
+    const activeId = active.id.toString();
+    const overId = over.id.toString();
+
+    if (activeId.startsWith("employee-") && overId.startsWith("node-")) {
+      const employeeId = parseInt(activeId.replace("employee-", ""));
+      const targetNodeId = parseInt(overId.replace("node-", ""));
+      const targetNode = allTreeNodes.find((node) => node.id === targetNodeId);
+      startTransition(async () => {
+        const result = targetNode?.isVirtual
+          ? await updateOrgChartEmployeeProfile(employeeId, {
+              orgNodeId: targetNode.virtualParentNodeId ?? null,
+              workLocationId: targetNode.virtualWorkLocationId ?? null,
+            })
+          : await updateOrgChartEmployeeAssignment(employeeId, targetNodeId);
+        if (result?.success) {
+          toast.success("Orang berhasil dipindahkan");
+          router.refresh();
+        } else {
+          toast.error(result?.message || "Gagal memindahkan orang");
+        }
+      });
+      return;
+    }
     
-    const nodeId = parseInt(active.id.toString().replace('node-', ''));
+    const nodeId = parseInt(activeId.replace('node-', ''));
     let newParentId: number | null = null;
     
     if (over.id !== 'root-dropzone') {
-      newParentId = parseInt(over.id.toString().replace('node-', ''));
+      newParentId = parseInt(overId.replace('node-', ''));
     }
     
-    // Optimistic UI could be implemented here
-    
-    // Server action
     startTransition(async () => {
       const result = await updateOrgNodeParent(nodeId, newParentId);
       if (result?.success) {
@@ -536,6 +748,22 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
   const handleDeleteClick = (node: OrgTreeNode) => {
     setDeletingNode(node);
     setIsDeleteDialogOpen(true);
+  };
+
+  const handleEmployeeEditClick = (employee: OrgEmployee, currentNode: OrgTreeNode) => {
+    setEditingEmployee({ employee, currentNode });
+    setEmployeeFormData({
+      employeeId: employee.employeeId,
+      fullName: employee.fullName,
+      email: employee.email ?? "",
+      departmentId: employee.departmentId?.toString() ?? "",
+      sectionId: employee.sectionId?.toString() ?? "",
+      siteId: employee.siteId?.toString() ?? "",
+      workLocationId: employee.workLocationId?.toString() ?? "",
+      positionId: employee.positionId?.toString() ?? "",
+      orgNodeId: currentNode.id.toString(),
+    });
+    setIsEmployeeDialogOpen(true);
   };
 
   // Submit handlers
@@ -604,6 +832,31 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
       }
     });
   };
+
+  const onSaveEmployeeProfile = async () => {
+    if (!editingEmployee || !employeeFormData.employeeId || !employeeFormData.fullName) return;
+
+    startTransition(async () => {
+      const result = await updateOrgChartEmployeeProfile(editingEmployee.employee.id, {
+        employeeId: employeeFormData.employeeId,
+        fullName: employeeFormData.fullName,
+        email: employeeFormData.email || null,
+        departmentId: employeeFormData.departmentId ? parseInt(employeeFormData.departmentId) : null,
+        sectionId: employeeFormData.sectionId ? parseInt(employeeFormData.sectionId) : null,
+        siteId: employeeFormData.siteId ? parseInt(employeeFormData.siteId) : null,
+        workLocationId: employeeFormData.workLocationId ? parseInt(employeeFormData.workLocationId) : null,
+        positionId: employeeFormData.positionId ? parseInt(employeeFormData.positionId) : null,
+        orgNodeId: employeeFormData.orgNodeId ? parseInt(employeeFormData.orgNodeId) : null,
+      });
+      if (result?.success) {
+        toast.success(result.message || "Profil karyawan berhasil disimpan");
+        setIsEmployeeDialogOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result?.message || "Gagal menyimpan profil karyawan");
+      }
+    });
+  };
   
   // Root droppable zone setup
   const { setNodeRef: setRootDropRef, isOver: isRootOver } = useDroppable({
@@ -642,7 +895,7 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
           <CardContent className="p-0">
             <div className="relative max-h-[72vh] min-h-[560px] overflow-auto bg-[#f8fafc]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.08)_1px,transparent_0)] [background-size:24px_24px]" />
-              <div className="relative min-w-[1200px] p-8">
+              <div className="relative min-w-max p-8 pl-24 pr-24">
                 {isPending && (
                   <div className="sticky left-0 top-0 z-20 h-1 overflow-hidden bg-primary/20">
                     <div className="h-full w-1/3 animate-pulse bg-primary" />
@@ -661,7 +914,7 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                   {filteredTree.length > 0 ? (
-                    <div className="flex min-h-[420px] items-start justify-center gap-12 pb-10">
+                    <div className="flex min-h-[420px] items-start justify-start gap-20 pb-10">
                       {filteredTree.map((node) => (
                         <InteractiveTreeNode
                           key={node.id}
@@ -669,6 +922,7 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
                           onEdit={handleEditClick}
                           onDelete={handleDeleteClick}
                           onAddChild={handleCreateClick}
+                          onEditEmployee={handleEmployeeEditClick}
                         />
                       ))}
                     </div>
@@ -695,12 +949,17 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
 
                   <DragOverlay dropAnimation={{ duration: 250, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
                     {activeDragNode ? (
-                      <div className="w-[260px] rotate-2 rounded-2xl border border-primary/50 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
+                      <div className="w-[380px] rotate-2 rounded-2xl border border-primary/50 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
                         <div className="flex items-center gap-2">
                           <GripVertical className="size-4 text-primary" />
                           <h3 className="font-semibold text-slate-900">{activeDragNode.name}</h3>
                           <Badge variant="secondary" className="ml-auto text-[10px]">{activeDragNode.nodeType}</Badge>
                         </div>
+                      </div>
+                    ) : activeDragEmployee ? (
+                      <div className="w-[320px] rotate-2 rounded-xl border border-blue-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
+                        <p className="truncate text-sm font-semibold text-slate-900">{activeDragEmployee.fullName}</p>
+                        <p className="truncate text-xs text-slate-500">{activeDragEmployee.employeeId} • {activeDragEmployee.positionName ?? "-"}</p>
                       </div>
                     ) : null}
                   </DragOverlay>
@@ -710,6 +969,128 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
           </CardContent>
         </Card>
       </div>
+
+      {/* EMPLOYEE PROFILE DIALOG */}
+      <Dialog open={isEmployeeDialogOpen} onOpenChange={setIsEmployeeDialogOpen}>
+        <DialogContent className="sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Edit Profil Orang</DialogTitle>
+            <DialogDescription>Ubah profil, jabatan, lokasi, dan kotak struktur. Atasan langsung otomatis dibaca dari struktur organisasi.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+              <div>
+                <Label className="text-xs text-slate-500">Atasan Langsung Otomatis</Label>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{directSupervisor?.fullName ?? "Belum ada di struktur"}</p>
+                <p className="text-xs text-slate-500">{directSupervisor?.positionName ?? "Tambahkan Manager/SPV/Leader di parent/section terkait"}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-slate-500">Kotak Saat Ini</Label>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{editingEmployee?.currentNode.name ?? "-"}</p>
+                <p className="text-xs text-slate-500">Drag kartu user ke kotak lain untuk pindah cepat.</p>
+              </div>
+              <div>
+                <Label className="text-xs text-slate-500">Role Terdeteksi</Label>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{editingEmployee ? getEmployeeRoleGroup(editingEmployee.employee).label : "-"}</p>
+                <p className="text-xs text-slate-500">Berdasarkan nama jabatan.</p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Employee ID</Label>
+                <Input value={employeeFormData.employeeId} onChange={(event) => setEmployeeFormData({ ...employeeFormData, employeeId: event.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Nama Lengkap</Label>
+                <Input value={employeeFormData.fullName} onChange={(event) => setEmployeeFormData({ ...employeeFormData, fullName: event.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input type="email" value={employeeFormData.email} onChange={(event) => setEmployeeFormData({ ...employeeFormData, email: event.target.value })} placeholder="email@company.com" />
+              </div>
+              <div className="space-y-2">
+                <Label>Jabatan</Label>
+                <Select value={employeeFormData.positionId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, positionId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Pilih jabatan" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa jabatan</SelectItem>
+                    {referenceData.positions.map((position) => (
+                      <SelectItem key={position.id} value={position.id.toString()}>{position.levelName} • {position.rankName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={employeeFormData.departmentId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, departmentId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Pilih department" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa department</SelectItem>
+                    {referenceData.departments.map((department) => (
+                      <SelectItem key={department.id} value={department.id.toString()}>{department.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Section</Label>
+                <Select value={employeeFormData.sectionId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, sectionId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Pilih section" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa section</SelectItem>
+                    {referenceData.sections.map((section) => (
+                      <SelectItem key={section.id} value={section.id.toString()}>{section.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Site</Label>
+                <Select value={employeeFormData.siteId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, siteId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Pilih site" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa site</SelectItem>
+                    {referenceData.sites.map((site) => (
+                      <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Work Location</Label>
+                <Select value={employeeFormData.workLocationId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, workLocationId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Pilih lokasi kerja" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa lokasi kerja</SelectItem>
+                    {referenceData.workLocations.map((location) => (
+                      <SelectItem key={location.id} value={location.id.toString()}>{location.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Kotak Struktur</Label>
+                <Select value={employeeFormData.orgNodeId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, orgNodeId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Pilih kotak struktur" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa kotak struktur</SelectItem>
+                    {selectableNodes.map((node) => (
+                      <SelectItem key={node.id} value={node.id.toString()}>{"—".repeat(Math.max(0, node.hierarchyLevel))} {node.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEmployeeDialogOpen(false)} disabled={isPending}>Batal</Button>
+            <Button onClick={onSaveEmployeeProfile} disabled={isPending || !employeeFormData.employeeId || !employeeFormData.fullName}>
+              {isPending ? "Menyimpan..." : "Simpan Profil"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* EDIT DIALOG */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -850,6 +1231,13 @@ export function OrgChartClientPage({ nodes, stats }: { nodes: OrgNode[]; stats: 
     </AdminPageShell>
   );
 }
+
+
+
+
+
+
+
 
 
 

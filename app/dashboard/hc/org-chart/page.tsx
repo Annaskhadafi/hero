@@ -1,4 +1,4 @@
-import { getOrgChartData, getOrgChartStats } from "@/app/actions/org-chart";
+import { getOrgChartData, getOrgChartStats, getOrgNodeReferenceData } from "@/app/actions/org-chart";
 import { OrgChartClientPage } from "./client-page";
 
 export const metadata = {
@@ -6,6 +6,7 @@ export const metadata = {
 };
 
 export default async function OrgChartPage() {
-  const [nodes, stats] = await Promise.all([getOrgChartData(), getOrgChartStats()]);
-  return <OrgChartClientPage nodes={nodes} stats={stats} />;
+  const [nodes, stats, referenceData] = await Promise.all([getOrgChartData(), getOrgChartStats(), getOrgNodeReferenceData()]);
+  return <OrgChartClientPage nodes={nodes} stats={stats} referenceData={referenceData} />;
 }
+

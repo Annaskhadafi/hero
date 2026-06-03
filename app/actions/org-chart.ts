@@ -1,7 +1,8 @@
 "use server";
 
 import { db } from "@/db";
-import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations } from "@/db/schema/hero";
+import { employees, hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations } from "@/db/schema/hero";
+import { user } from "@/db/schema/auth";
 import { asc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -41,6 +42,12 @@ export async function getOrgChartData() {
       fullName: hrEmployees.fullName,
       orgNodeId: hrEmployees.orgNodeId,
       positionName: hrPositions.rankName,
+      email: hrEmployees.email,
+      departmentId: hrEmployees.departmentId,
+      sectionId: hrEmployees.sectionId,
+      siteId: hrEmployees.siteId,
+      workLocationId: hrEmployees.workLocationId,
+      positionId: hrEmployees.positionId,
       siteName: hrSites.name,
       workLocationName: hrWorkLocations.name,
     })
@@ -285,13 +292,113 @@ export async function deleteOrgNode(id: number) {
   }
 }
 
+export async function updateOrgChartEmployeeAssignment(employeeId: number, orgNodeId: number) {
+  try {
+    const [node] = await db
+      .select({ id: hrOrgNodes.id })
+      .from(hrOrgNodes)
+      .where(eq(hrOrgNodes.id, orgNodeId))
+      .limit(1);
+
+    if (!node) {
+      return { success: false, message: "Node tujuan tidak ditemukan." };
+    }
+
+    await db
+      .update(hrEmployees)
+      .set({ orgNodeId, updatedAt: new Date() })
+      .where(eq(hrEmployees.id, employeeId));
+
+    revalidatePath("/dashboard/hc/org-chart");
+    return { success: true, message: "Karyawan berhasil dipindahkan." };
+  } catch (error) {
+    console.error("updateOrgChartEmployeeAssignment error:", error);
+    return { success: false, message: "Gagal memindahkan karyawan." };
+  }
+}
+
+export async function updateOrgChartEmployeeProfile(
+  employeeId: number,
+  data: {
+    employeeId?: string;
+    fullName?: string;
+    email?: string | null;
+    departmentId?: number | null;
+    sectionId?: number | null;
+    siteId?: number | null;
+    workLocationId?: number | null;
+    positionId?: number | null;
+    orgNodeId?: number | null;
+  }
+) {
+  try {
+    const [updatedEmployee] = await db
+      .update(hrEmployees)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(hrEmployees.id, employeeId))
+      .returning({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+        departmentId: hrEmployees.departmentId,
+        sectionId: hrEmployees.sectionId,
+        siteId: hrEmployees.siteId,
+        positionId: hrEmployees.positionId,
+        orgNodeId: hrEmployees.orgNodeId,
+      });
+
+    if (updatedEmployee?.authUserId) {
+      await db
+        .update(user)
+        .set({
+          name: updatedEmployee.fullName,
+          email: updatedEmployee.email ?? "",
+          updatedAt: new Date(),
+        })
+        .where(eq(user.id, updatedEmployee.authUserId));
+
+      await db
+        .update(employees)
+        .set({
+          name: updatedEmployee.fullName,
+          email: updatedEmployee.email ?? "",
+          employeeSn: updatedEmployee.employeeId,
+          departmentId: updatedEmployee.departmentId,
+          sectionId: updatedEmployee.sectionId,
+          ...(updatedEmployee.siteId ? { siteId: updatedEmployee.siteId } : {}),
+          positionId: updatedEmployee.positionId,
+          orgNodeId: updatedEmployee.orgNodeId,
+        })
+        .where(eq(employees.authUserId, updatedEmployee.authUserId));
+    }
+
+    revalidatePath("/dashboard/hc/org-chart");
+    revalidatePath("/dashboard/hc/employee");
+    revalidatePath("/dashboard/security/users");
+    return { success: true, message: "Profil karyawan berhasil diupdate dan disync ke User Management." };
+  } catch (error) {
+    console.error("updateOrgChartEmployeeProfile error:", error);
+    return { success: false, message: "Gagal mengupdate profil karyawan." };
+  }
+}
 // Get departments, sections, sites for dropdowns
 export async function getOrgNodeReferenceData() {
-  const [departments, sections, sites] = await Promise.all([
-    db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.isActive, true)),
-    db.select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId }).from(hrSections).where(eq(hrSections.isActive, true)),
-    db.select({ id: hrSites.id, name: hrSites.name }).from(hrSites).where(eq(hrSites.isActive, true)),
+  const [departments, sections, sites, workLocations, positions] = await Promise.all([
+    db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.isActive, true)).orderBy(asc(hrDepartments.name)),
+    db.select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId }).from(hrSections).where(eq(hrSections.isActive, true)).orderBy(asc(hrSections.name)),
+    db.select({ id: hrSites.id, name: hrSites.name }).from(hrSites).where(eq(hrSites.isActive, true)).orderBy(asc(hrSites.name)),
+    db.select({ id: hrWorkLocations.id, name: hrWorkLocations.name }).from(hrWorkLocations).where(eq(hrWorkLocations.isActive, true)).orderBy(asc(hrWorkLocations.name)),
+    db.select({ id: hrPositions.id, rankName: hrPositions.rankName, levelName: hrPositions.levelName }).from(hrPositions).where(eq(hrPositions.isActive, true)).orderBy(asc(hrPositions.levelName), asc(hrPositions.rankName)),
   ]);
 
-  return { departments, sections, sites };
+  return { departments, sections, sites, workLocations, positions };
 }
+
+
+
+
