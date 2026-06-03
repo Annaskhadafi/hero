@@ -46,22 +46,22 @@ import {
 type OffboardingRecord = {
   id: number;
   employeeId: number;
-  employeeCode: string;
-  employeeName: string;
+  employeeCode: string | null;
+  employeeName: string | null;
   departmentName: string | null;
   positionName: string | null;
   requestType: string;
   reason: string;
-  requestedLastWorkingDay: string;
-  actualLastWorkingDay: string | null;
+  requestedLastWorkingDay: string | Date;
+  actualLastWorkingDay: string | Date | null;
   status: string;
   approvedBy: string;
-  approvedAt: string | null;
+  approvedAt: string | Date | null;
   exitInterviewNotes: string;
-  exitInterviewDate: string | null;
+  exitInterviewDate: string | Date | null;
   exitInterviewBy: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string | Date;
+  updatedAt: string | Date;
   clearanceTotal: number;
   clearanceCompleted: number;
 };
@@ -119,13 +119,18 @@ const REQUEST_TYPE_OPTIONS = [
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string | null) {
+function formatDate(dateStr: string | Date | null) {
   if (!dateStr) return "-";
   return new Date(dateStr).toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
+}
+
+function dateInputValue(date: string | Date | null) {
+  if (!date) return "";
+  return new Date(date).toISOString().slice(0, 10);
 }
 
 function statusBadge(status: string) {
@@ -314,9 +319,15 @@ export function OffboardingClientPage({
   const handleView = useCallback(async (rec: OffboardingRecord) => {
     const full = await getOffboardingById(rec.id);
     if (full) {
-      setViewDetail(full as OffboardingDetail);
-      setViewClearance(full.clearanceItems);
-      setEiDate(full.exitInterviewDate || "");
+      const clearanceItems = full.clearanceItems as unknown as ClearanceItem[];
+      setViewDetail({
+        ...(full as unknown as OffboardingRecord),
+        clearanceItems,
+        clearanceTotal: clearanceItems.length,
+        clearanceCompleted: clearanceItems.filter((item) => item.isCompleted).length,
+      });
+      setViewClearance(clearanceItems);
+      setEiDate(dateInputValue(full.exitInterviewDate));
       setEiBy(full.exitInterviewBy || "");
       setEiNotes(full.exitInterviewNotes || "");
       setIsEditingEI(false);
@@ -922,7 +933,7 @@ export function OffboardingClientPage({
                         size="sm"
                         onClick={() => {
                           setIsEditingEI(false);
-                          setEiDate(viewDetail.exitInterviewDate || "");
+                          setEiDate(dateInputValue(viewDetail.exitInterviewDate));
                           setEiBy(viewDetail.exitInterviewBy || "");
                           setEiNotes(viewDetail.exitInterviewNotes || "");
                         }}

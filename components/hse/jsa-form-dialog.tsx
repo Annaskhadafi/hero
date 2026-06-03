@@ -107,6 +107,7 @@ const jsaSchema = z.object({
 })
 
 type JsaFormValues = z.infer<typeof jsaSchema>
+type JsaFormInput = z.input<typeof jsaSchema>
 
 interface JsaFormDialogProps {
   open: boolean
@@ -122,7 +123,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
   const [customPermit, setCustomPermit] = React.useState('')
   const [customPpe, setCustomPpe] = React.useState('')
   
-  const form = useForm<JsaFormValues>({
+  const form = useForm<JsaFormInput, unknown, JsaFormValues>({
     resolver: zodResolver(jsaSchema),
     defaultValues: {
       jsaNumber: initialData?.jsaNumber ?? '',

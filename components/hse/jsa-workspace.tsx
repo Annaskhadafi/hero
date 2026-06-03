@@ -19,20 +19,11 @@ interface JsaWorkspaceProps {
 }
 
 export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
-  const [search, setSearch] = React.useState('')
   const [formOpen, setFormOpen] = React.useState(false)
   const [printOpen, setPrintOpen] = React.useState(false)
   const [selectedJsa, setSelectedJsa] = React.useState<any>(null)
   const [isLoadingJsa, setIsLoadingJsa] = React.useState(false)
   const router = useRouter()
-
-  const filteredJsaList = React.useMemo(() => {
-    return jsaList.filter(jsa => 
-      (jsa.jsaNumber?.toLowerCase() || '').includes(search.toLowerCase()) ||
-      (jsa.jobDescription?.toLowerCase() || '').includes(search.toLowerCase()) ||
-      (jsa.equipmentNumber?.toLowerCase() || '').includes(search.toLowerCase())
-    )
-  }, [jsaList, search])
 
   const handleCreate = () => {
     setSelectedJsa(null)
@@ -84,11 +75,10 @@ export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
   return (
     <>
       <MinimalTableShell
+        label="JSA"
         title="Daftar JSA"
         description="Kelola formulir Job Safety Analysis"
         searchPlaceholder="Cari JSA..."
-        searchValue={search}
-        onSearchChange={setSearch}
         primaryAction={
           <Button onClick={handleCreate}>
             <Plus className="w-4 h-4 mr-2" />
@@ -108,14 +98,14 @@ export function JsaWorkspace({ jsaList }: JsaWorkspaceProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredJsaList.length === 0 ? (
+            {jsaList.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
                   Belum ada data JSA
                 </TableCell>
               </TableRow>
             ) : (
-              filteredJsaList.map((jsa) => (
+              jsaList.map((jsa) => (
                 <TableRow key={jsa.id}>
                   <TableCell className="font-medium">{jsa.jsaNumber || '-'}</TableCell>
                   <TableCell>{new Date(jsa.createdAt).toLocaleString('id-ID')}</TableCell>

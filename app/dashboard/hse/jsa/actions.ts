@@ -35,16 +35,18 @@ export async function saveJsa(
   if (!session?.user) throw new Error('Unauthorized')
 
   if (id) {
+    const jsaId = id
+
     // Update existing
-    await db.update(heroJsas).set({ ...data, updatedAt: new Date() }).where(eq(heroJsas.id, id))
+    await db.update(heroJsas).set({ ...data, updatedAt: new Date() }).where(eq(heroJsas.id, jsaId))
     
     // Delete old steps and insert new ones
-    await db.delete(heroJsaSteps).where(eq(heroJsaSteps.jsaId, id))
+    await db.delete(heroJsaSteps).where(eq(heroJsaSteps.jsaId, jsaId))
     if (steps.length > 0) {
       await db.insert(heroJsaSteps).values(
         steps.map((step) => ({
           ...step,
-          jsaId: id,
+          jsaId,
         }))
       )
     }

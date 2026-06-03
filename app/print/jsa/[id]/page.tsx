@@ -10,6 +10,17 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
   if (!data) return notFound()
 
   const { steps = [] } = data
+  const executorName = data.teamMembers?.split(',')[0]?.trim() || 'Operator'
+  const equipmentUsed = Array.isArray(data.equipmentUsed) ? data.equipmentUsed : []
+  const requirements = Array.isArray(data.requirements) ? data.requirements : []
+  const permits = Array.isArray(data.permits) ? data.permits : []
+  const ppeRequirements = Array.isArray(data.ppeRequirements) ? data.ppeRequirements : []
+  const signatures = data.signatures as Partial<{
+    executorUrl: string
+    executorDate: string
+    verifierName: string
+    verifierDate: string
+  }>
   const getCheckmark = (condition: boolean) => (condition ? '✓' : '')
 
   return (
@@ -48,7 +59,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
             <tbody>
               <tr>
                 <td className="border border-black p-1 font-semibold w-1/3">Dibuat oleh</td>
-                <td className="border border-black p-1">{data.executorName || 'Operator'}</td>
+                <td className="border border-black p-1">{executorName}</td>
               </tr>
               <tr>
                 <td className="border border-black p-1 font-semibold">Tanggal</td>
@@ -89,7 +100,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
                 {['Hand Tool Only', 'Dioperasikan dgn Batere/listrik', 'Power Tool', 'Oxy Set', 'Pengelasan', 'Pemotongan/Penggerindaan', 'Pisau/alat tajam', 'Gunting Pencabut', 'Forklift Truck man Cage', 'Scafolding', 'Tangga', 'Tangga Portable', 'Forklift', 'Crane', 'Genset Portable', 'Pompa Portable', 'Air Bertekanan', 'Lain-Lain'].map(item => (
                   <tr key={item}>
                     <td className="py-0.5">{item}</td>
-                    <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.equipmentUsed?.includes(item))}</td>
+                    <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(equipmentUsed.includes(item))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -105,7 +116,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
                   {['Jumlah Pekerja', 'Pemutusan Listrik', 'Pemutusan Instrument', 'Bypass trip/alarm sistem', 'Modifikasi'].map(item => (
                     <tr key={item}>
                       <td className="py-0.5">{item}</td>
-                      <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.requirements?.includes(item))}</td>
+                      <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(requirements.includes(item))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -118,7 +129,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
                   {['Permit Hot Work', 'Permit Cold Work', 'Permit Confined Space', 'Permit Excavation', 'Permit electrical/machanical', 'Lain-lainnya'].map(item => (
                     <tr key={item}>
                       <td className="py-0.5">{item}</td>
-                      <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.permits?.includes(item))}</td>
+                      <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(permits.includes(item))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -135,7 +146,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
                   {['Sarung Tangan', 'Goggle', 'Pelindung Muka', 'Proteksi Pendengaran', 'Masker', 'Safety Harness', 'PPE Pengelasan', 'Alat Bantu Pernafasan', 'Jas PVC', 'Sepatu Karet', 'Helm', 'Lainnya'].map(item => (
                     <tr key={item}>
                       <td className="py-0.5">{item}</td>
-                      <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.ppeRequirements?.includes(item))}</td>
+                      <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(ppeRequirements.includes(item))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -220,22 +231,22 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
             <div className="flex items-center gap-4 mb-2">
               <span className="w-4">1.</span>
               <div className="flex-1 flex flex-col items-center">
-                {data.signatures?.executorUrl ? (
+                {signatures.executorUrl ? (
                   <div className="h-16 w-32 relative">
-                    <img src={data.signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" />
+                    <img src={signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" />
                   </div>
                 ) : (
                   <div className="h-16 border-b border-dotted border-black w-full" />
                 )}
               </div>
-              <span className="w-24 border-b border-dotted border-black h-8 leading-8 text-center">{data.signatures?.executorDate ? new Date(data.signatures.executorDate).toLocaleDateString() : ''}</span>
+              <span className="w-24 border-b border-dotted border-black h-8 leading-8 text-center">{signatures.executorDate ? new Date(signatures.executorDate).toLocaleDateString() : ''}</span>
             </div>
           </div>
           <div className="border border-black p-4 w-1/2 min-h-[160px]">
             <p className="font-semibold underline mb-8">Verifikasi ( Departement HSE )</p>
             <div className="mt-16">
-              <p className="mb-1">Nama : {data.signatures?.verifierName || '_________________________'}</p>
-              <p>Tanggal : {data.signatures?.verifierDate ? new Date(data.signatures.verifierDate).toLocaleDateString() : '_________________________'}</p>
+              <p className="mb-1">Nama : {signatures.verifierName || '_________________________'}</p>
+              <p>Tanggal : {signatures.verifierDate ? new Date(signatures.verifierDate).toLocaleDateString() : '_________________________'}</p>
             </div>
           </div>
         </div>

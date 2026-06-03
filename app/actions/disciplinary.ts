@@ -59,6 +59,10 @@ function toDate(value: string | Date) {
   return date;
 }
 
+function toDateString(value: string | Date) {
+  return toDate(value).toISOString().slice(0, 10);
+}
+
 function toOptionalDate(value?: string | Date | null) {
   if (!value) return null;
   return toDate(value);
@@ -86,11 +90,11 @@ function disciplinaryValues(data: DisciplinaryActionInput) {
     violationCategoryId: toId(data.categoryId),
     spLevel: Number(String(data.spLevel).replace(/\D/g, "")) || 1,
     letterNumber: normalizeText(data.letterNumber),
-    violationDate: toDate(data.violationDate),
+    violationDate: toDateString(data.violationDate),
     violationDescription: normalizeText(data.description),
     actionTaken: normalizeText(data.actionTaken),
-    effectiveDate: toDate(data.effectiveDate),
-    expiryDate: toOptionalDate(data.expiryDate),
+    effectiveDate: toDateString(data.effectiveDate),
+    expiryDate: data.expiryDate ? toDateString(data.expiryDate) : null,
     issuedBy: normalizeText(data.issuedBy),
     notes: normalizeText(data.notes),
     status: normalizeText(data.status) || "active",
@@ -236,11 +240,11 @@ export async function getDisciplinaryStats() {
   };
 }
 
-function isActiveRecord(status: string, expiryDate: Date | null) {
+function isActiveRecord(status: string, expiryDate: string | Date | null) {
   return ["active", "Active"].includes(status) && (!expiryDate || new Date(expiryDate) >= new Date());
 }
 
-function isExpiredRecord(status: string, expiryDate: Date | null) {
+function isExpiredRecord(status: string, expiryDate: string | Date | null) {
   return ["expired", "Expired"].includes(status) || Boolean(expiryDate && new Date(expiryDate) < new Date());
 }
 

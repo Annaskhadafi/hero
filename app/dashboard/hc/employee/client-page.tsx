@@ -377,7 +377,21 @@ export function EmployeeClientPage({
         setData((prev) =>
           prev.map((d) =>
             d.id === editingEmployee.id
-              ? { ...d, ...payload, id: d.id, accountStatus: d.accountStatus }
+              ? {
+                  ...d,
+                  employeeId: payload.employeeId,
+                  fullName: payload.fullName,
+                  email: payload.email ?? null,
+                  genderCode: payload.genderCode ?? null,
+                  departmentId: payload.departmentId ?? null,
+                  sectionId: payload.sectionId ?? null,
+                  workLocationId: payload.workLocationId ?? null,
+                  positionId: payload.positionId ?? null,
+                  joinDate: payload.joinDate ?? null,
+                  contractStart: payload.contractStart ?? null,
+                  contractEnd: payload.contractEnd ?? null,
+                  birthDate: payload.birthDate ?? null,
+                }
               : d
           )
         );

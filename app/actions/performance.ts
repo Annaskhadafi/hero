@@ -55,8 +55,10 @@ export type PerformanceReviewData = {
   kpis?: PerformanceKpiData[];
 };
 
-function toDate(value: string): Date {
-  return new Date(value);
+function toDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error("Tanggal tidak valid.");
+  return date.toISOString().slice(0, 10);
 }
 
 function toDecimal(value?: number | string | null): string | null | undefined {
