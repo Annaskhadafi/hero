@@ -46,7 +46,7 @@ export function SuratPengalamanKerjaClient({
     const d = new Date(dateStr)
     if (isNaN(d.getTime())) return dateStr // fallback
     const day = d.getDate()
-    const nth = (d) => {
+    const nth = (d: number) => {
       if (d > 3 && d < 21) return 'th'
       switch (d % 10) {
         case 1:  return 'st'
