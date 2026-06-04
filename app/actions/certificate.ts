@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { hcCertificates, hrDepartments, hrEmployees } from "@/db/schema/hero";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const CERTIFICATE_PATH = "/dashboard/hc/certificate";
@@ -24,7 +24,7 @@ export async function getCertificates() {
   const rows = await db
     .select({
       id: hcCertificates.id,
-      employeeId: hcCertificates.employeeId,
+      employeeId: sql<number | null>`coalesce(${hcCertificates.employeeId}, ${hrEmployees.id})`,
       employeeName: hcCertificates.employeeName,
       certificateType: hcCertificates.certificateType,
       licenseNumber: hcCertificates.licenseNumber,
@@ -40,11 +40,17 @@ export async function getCertificates() {
       departmentName: hrDepartments.name,
     })
     .from(hcCertificates)
-    .leftJoin(hrEmployees, eq(hcCertificates.employeeId, hrEmployees.id))
+    .leftJoin(
+      hrEmployees,
+      or(
+        eq(hcCertificates.employeeId, hrEmployees.id),
+        eq(hcCertificates.employeeName, hrEmployees.employeeId)
+      )
+    )
     .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
     .orderBy(asc(hcCertificates.expiryDate));
 
-  return rows.map((row) => enrichCertificate(row));
+  return rows.filter(isUsableCertificateRow).map((row) => enrichCertificate(row));
 }
 
 export async function getCertificateStats() {
@@ -101,7 +107,7 @@ export async function getExpiringCertificates(days = 30) {
     .where(and(gte(hcCertificates.expiryDate, today), lte(hcCertificates.expiryDate, targetDate)))
     .orderBy(asc(hcCertificates.expiryDate));
 
-  return rows.map((row) => enrichCertificate(row));
+  return rows.filter(isUsableCertificateRow).map((row) => enrichCertificate(row));
 }
 
 export async function updateDocumentUrl(id: number, documentUrl: string) {
@@ -117,11 +123,33 @@ export async function updateDocumentUrl(id: number, documentUrl: string) {
   return enrichCertificate(updated);
 }
 
-function enrichCertificate<T extends { expiryDate: Date; employeeName: string; employeeFullName?: string | null }>(row: T) {
+function enrichCertificate<T extends { expiryDate: Date; employeeName: string; employeeFullName?: string | null; employeeCode?: string | null }>(row: T) {
   const daysLeft = getDaysLeft(row.expiryDate);
   const expiryStatus = getExpiryStatus(daysLeft);
+  const fallbackEmployeeCode = row.employeeCode ?? (isEmployeeSn(row.employeeName) ? row.employeeName : null);
+  const fallbackEmployeeName = isEmployeeSn(row.employeeName) ? `SN ${row.employeeName}` : row.employeeName;
 
-  return { ...row, employeeName: row.employeeFullName ?? row.employeeName, daysLeft, expiryStatus, status: expiryStatus };
+  return {
+    ...row,
+    employeeCode: fallbackEmployeeCode,
+    employeeName: row.employeeFullName ?? fallbackEmployeeName,
+    daysLeft,
+    expiryStatus,
+    status: expiryStatus,
+  };
+}
+
+function isUsableCertificateRow(row: { employeeName: string; licenseNumber: string; certificateType: string }) {
+  return ![row.employeeName, row.licenseNumber, row.certificateType].some(isImportHeaderToken);
+}
+
+function isImportHeaderToken(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.startsWith("`") && trimmed.endsWith("`");
+}
+
+function isEmployeeSn(value: string | null | undefined) {
+  return /^\d{4,}$/.test(value?.trim() ?? "");
 }
 
 async function toCertificatePayload(data: CertificateInput) {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcTableRowClassName } from "@/components/hc/hc-workspace-banner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,17 @@ export function TechnicalEngineerClientPage({ employees }: { employees: Engineer
       title="Data Technical Engineer"
       description="Daftar khusus untuk memantau data karyawan departemen Repair/Maintenance."
     >
-      <div className="flex flex-col sm:flex-row justify-between mb-4 gap-4">
+      <HcWorkspaceBanner
+        title="Technical Engineer Roster"
+        description="Roster teknisi Repair/Maintenance dibuat fokus: pencarian cepat, lokasi kerja, dan status aktif dalam satu tampilan ringan."
+        items={[
+          { label: "Total", value: employees.length, tone: "slate" },
+          { label: "On-site", value: employees.filter((employee) => (employee.workLocation || employee.site || "").toLowerCase().includes("site")).length, tone: "emerald" },
+          { label: "HO", value: employees.filter((employee) => (employee.workLocation || employee.site || "").toLowerCase().includes("ho")).length, tone: "sky" },
+        ]}
+      />
+
+      <div className="mb-4 flex flex-col justify-between gap-4 rounded-[1.1rem] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10)] sm:flex-row">
         <div className="flex gap-4 items-center flex-1">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -93,7 +104,7 @@ export function TechnicalEngineerClientPage({ employees }: { employees: Engineer
               </thead>
               <tbody className="divide-y">
                 {filteredData.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-muted/50 transition-colors">
+                  <tr key={emp.id} className={hcTableRowClassName}>
                     <td className="px-4 py-3">
                       <div className="font-medium">{emp.fullName}</div>
                       <div className="text-xs text-muted-foreground font-mono">{emp.employeeId}</div>

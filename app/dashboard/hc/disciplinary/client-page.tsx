@@ -14,6 +14,7 @@ import {
   type ViolationCategoryInput,
 } from "@/app/actions/disciplinary";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog } from "@/components/ui/enterprise-table-kit";
@@ -79,12 +80,22 @@ export function DisciplinaryClientPage({ actions, categories, stats, employees }
 
   return (
     <AdminPageShell eyebrow="HC • Disiplin" title="Tindakan Disiplin" description="Kelola surat peringatan, tindakan pembinaan, dan kategori pelanggaran karyawan.">
+      <HcWorkspaceBanner
+        title="Disciplinary Case Desk"
+        description="Kasus, level SP, kategori, dan masa berlaku tindakan dibaca sebagai antrian kerja HC yang rapi dan rendah noise."
+        items={[
+          { label: "Kasus", value: actionRows.length, tone: "slate" },
+          { label: "Kategori", value: categoryRows.length, tone: "sky" },
+          { label: "Aktif", value: stats.activeSp, tone: "amber" },
+        ]}
+      />
+
       <div className="grid gap-8">
-        <MinimalTableShell label="tindakan disiplin" title="Tindakan Disiplin" description="Daftar SP dan tindakan disiplin karyawan." fileName="tindakan-disiplin-hc" searchPlaceholder="Cari karyawan, nomor surat, kategori..." scorecards={scorecards} access={access} filters={<ActionFilters categories={categoryRows} />} primaryAction={<Button onClick={() => setDialog({ type: "action" })}><Plus className="size-4" />Tambah Tindakan</Button>} columnOptions={actionColumns}>
+        <MinimalTableShell label="tindakan disiplin" title="Tindakan Disiplin" description="Daftar SP dan tindakan disiplin karyawan." fileName="tindakan-disiplin-hc" searchPlaceholder="Cari karyawan, nomor surat, kategori..." scorecards={scorecards} access={access} filters={<ActionFilters categories={categoryRows} />} primaryAction={<Button onClick={() => setDialog({ type: "action" })} className={hcPrimaryActionClassName}><Plus className="size-4" />Tambah Tindakan</Button>} columnOptions={actionColumns}>
           <ActionTable rows={actionRows} onView={(record) => setDialog({ type: "view-action", record })} onEdit={(record) => setDialog({ type: "action", record })} onDelete={(record) => removeAction(record.id, setActionRows)} />
         </MinimalTableShell>
 
-        <MinimalTableShell label="kategori pelanggaran" title="Kategori Pelanggaran" description="Master kategori pelanggaran dan default level SP." fileName="kategori-pelanggaran-hc" searchPlaceholder="Cari kode atau nama kategori..." access={access} filters={<CategoryFilters />} primaryAction={<Button onClick={() => setDialog({ type: "category" })}><Plus className="size-4" />Tambah Kategori</Button>} columnOptions={categoryColumns}>
+        <MinimalTableShell label="kategori pelanggaran" title="Kategori Pelanggaran" description="Master kategori pelanggaran dan default level SP." fileName="kategori-pelanggaran-hc" searchPlaceholder="Cari kode atau nama kategori..." access={access} filters={<CategoryFilters />} primaryAction={<Button onClick={() => setDialog({ type: "category" })} variant="outline"><Plus className="size-4" />Tambah Kategori</Button>} columnOptions={categoryColumns}>
           <CategoryTable rows={categoryRows} onView={(record) => setDialog({ type: "view-category", record })} onEdit={(record) => setDialog({ type: "category", record })} onDelete={(record) => removeCategory(record.id, setCategoryRows)} />
         </MinimalTableShell>
       </div>

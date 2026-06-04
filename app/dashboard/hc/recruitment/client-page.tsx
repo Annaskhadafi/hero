@@ -35,6 +35,7 @@ import {
 } from "@/app/actions/recruitment";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
   EnterpriseScorecards,
@@ -679,8 +680,18 @@ export function RecruitmentClientPage({
       title="Recruitment"
       description="Kelola Man Power Request dan kandidat rekrutmen."
     >
+      <HcWorkspaceBanner
+        title="Recruitment Pipeline Desk"
+        description="MPR dan kandidat dipisah rapi, tapi tetap terasa satu alur kerja: kebutuhan tenaga kerja, pipeline, stage, dan keputusan."
+        items={[
+          { label: "MPR", value: recruitments.length, tone: "slate" },
+          { label: "Kandidat", value: candidates.length, tone: "sky" },
+          { label: "Aktif", value: candidates.filter((candidate) => candidate.currentStage !== "Rejected" && candidate.currentStage !== "Hired").length, tone: "emerald" },
+        ]}
+      />
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 h-auto w-full justify-start overflow-x-auto rounded-2xl bg-slate-100/80 p-1">
           <TabsTrigger value="mpr">Man Power Request</TabsTrigger>
           <TabsTrigger value="candidates">Kandidat</TabsTrigger>
         </TabsList>
@@ -694,7 +705,7 @@ export function RecruitmentClientPage({
             fileName="Data-MPR"
             searchPlaceholder="Cari MPR..."
             primaryAction={
-              <Button onClick={handleOpenAddMpr}>
+              <Button onClick={handleOpenAddMpr} className={hcPrimaryActionClassName}>
                 <IconPlus className="size-4 mr-2" />
                 Tambah MPR
               </Button>

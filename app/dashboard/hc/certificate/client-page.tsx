@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, FileText, LinkIcon, Plus, ShieldCheck } fr
 
 import { createCertificate, deleteCertificate, updateCertificate, type CertificateStatus } from "@/app/actions/certificate";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog, type EnterpriseScorecardItem } from "@/components/ui/enterprise-table-kit";
@@ -81,6 +82,16 @@ export function CertificateClientPage(props: CertificateClientPageProps) {
 
   return (
     <AdminPageShell eyebrow="HC • Certificate" title="Manajemen Sertifikat HC" description="Pantau masa berlaku sertifikasi karyawan, dokumen lisensi, dan status kepatuhan HERO HC.">
+      <HcWorkspaceBanner
+        title="Certificate Compliance Desk"
+        description="Sertifikat aktif, hampir habis, dan kedaluwarsa dibuat jelas agar HC bisa menjaga kepatuhan tanpa membuka banyak filter dulu."
+        items={[
+          { label: "Aktif", value: props.stats.active, tone: "emerald" },
+          { label: "30 hari", value: props.stats.expiring30, tone: "amber" },
+          { label: "Expired", value: props.stats.expired, tone: "rose" },
+        ]}
+      />
+
       <MinimalTableShell
         label="sertifikat"
         title="Daftar Sertifikat Karyawan"
@@ -90,7 +101,7 @@ export function CertificateClientPage(props: CertificateClientPageProps) {
         filters={filters}
         scorecards={scorecards}
         access={ACCESS}
-        primaryAction={<Button onClick={openCreate}><Plus className="size-4" />Tambah Sertifikat</Button>}
+        primaryAction={<Button onClick={openCreate} className={hcPrimaryActionClassName}><Plus className="size-4" />Tambah Sertifikat</Button>}
         columnOptions={COLUMN_OPTIONS}
         tableViewportClassName="max-h-[72vh]"
       >

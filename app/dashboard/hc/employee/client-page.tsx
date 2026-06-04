@@ -29,6 +29,7 @@ import {
   deleteEmployee,
 } from "@/app/actions/employee";
 import { toast } from "sonner";
+import { HcWorkspaceBanner, hcPrimaryActionClassName, hcTableRowClassName } from "@/components/hc/hc-workspace-banner";
 import { cn } from "@/lib/utils";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
@@ -467,13 +468,23 @@ export function EmployeeClientPage({
       actions={
         <Button
           onClick={handleOpenAdd}
-          className="gap-2 bg-[#183d6a] hover:bg-[#183d6a]/90"
+          className={hcPrimaryActionClassName}
         >
           <Plus className="size-4" />
           Tambah Karyawan
         </Button>
       }
     >
+      <HcWorkspaceBanner
+        title="Employee Control Room"
+        description="Data karyawan dibuat lebih cepat dipindai: kontrak, status akun, lokasi kerja, dan kebutuhan follow-up ada dalam satu ritme table-first."
+        items={[
+          { label: "Total", value: data.length, tone: "slate" },
+          { label: "Aktif", value: activeEmployees.length, tone: "emerald" },
+          { label: "Kontrak kritis", value: expiringEmployees.length, tone: "amber" },
+        ]}
+      />
+
       <MinimalTableShell
         label="karyawan"
         fileName="Data_Karyawan"
@@ -562,7 +573,7 @@ export function EmployeeClientPage({
                     data-filter-section={emp.sectionName ?? ""}
                     data-filter-location={emp.location ?? ""}
                     data-filter-gender={emp.genderCode ?? ""}
-                    className="transition-colors hover:bg-muted/35"
+                    className={hcTableRowClassName}
                   >
                     <TableCell className="text-center text-muted-foreground">
                       {index + 1}
@@ -676,7 +687,7 @@ export function EmployeeClientPage({
             <Button
               type="submit"
               form="employee-form"
-              className="bg-[#183d6a] hover:bg-[#183d6a]/90"
+              className={hcPrimaryActionClassName}
               disabled={isSubmitting}
             >
               {isSubmitting
@@ -883,7 +894,7 @@ export function EmployeeClientPage({
         footer={
           <Button
             onClick={() => setViewOpen(false)}
-            className="bg-[#183d6a] hover:bg-[#183d6a]/90"
+            className={hcPrimaryActionClassName}
           >
             Tutup
           </Button>

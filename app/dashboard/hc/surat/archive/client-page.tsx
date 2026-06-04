@@ -25,6 +25,7 @@ import {
 } from "@/app/actions/surat";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcTableRowClassName } from "@/components/hc/hc-workspace-banner";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
   EnterpriseScorecards,
@@ -302,6 +303,16 @@ export function SuratArchiveClient({
       title="Arsip Surat"
       description="Kelola arsip surat keterangan dan surat tugas karyawan."
     >
+      <HcWorkspaceBanner
+        title="Letter Archive Desk"
+        description="Arsip surat keterangan dan surat tugas dibuat lebih mudah dilacak melalui nomor, tipe, pemilik dokumen, status, dan tanggal terbit."
+        items={[
+          { label: "Total", value: letters.length, tone: "slate" },
+          { label: "Keterangan", value: stats.totalSuratKeterangan, tone: "sky" },
+          { label: "Tugas", value: stats.totalSuratTugas, tone: "emerald" },
+        ]}
+      />
+
       <MinimalTableShell
         label="Data Arsip Surat"
         fileName="Data-Arsip-Surat"
@@ -354,7 +365,7 @@ export function SuratArchiveClient({
                   data-filter-letter-type={letter.letterType}
                   data-filter-status={letter.status}
                   data-date-value={letter.issuedDate}
-                  className="group"
+                  className={hcTableRowClassName}
                 >
                   <TableCell className="text-center text-[13px] tabular-nums">
                     {index + 1}

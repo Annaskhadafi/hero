@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner } from "@/components/hc/hc-workspace-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -96,6 +97,10 @@ function sortOrgNodes(nodes: OrgTreeNode[]) {
 
 function normalizeOrgLabel(value: string) {
   return value.trim().toLocaleLowerCase("id-ID").replace(/[\s_-]+/g, " ");
+}
+
+function getDepartmentFilterLabel(name: string) {
+  return normalizeOrgLabel(name) === "bi & marketing" ? "Finance Business Partner" : name;
 }
 
 function isLocationNode(node: OrgNode) {
@@ -1194,6 +1199,15 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
 
   return (
     <AdminPageShell eyebrow="HC • Org Chart" title="PDF-Style Organization Chart" description="Visualisasi struktur organisasi bergaya PDF, tetap editable dengan action node dan drag & drop reparenting.">
+      <HcWorkspaceBanner
+        title="Organization Structure Studio"
+        description="Struktur organisasi dan site dibuat seperti kanvas kerja HC: filter jelas, kontrol node ringkas, dan visual tetap bersih untuk review pimpinan."
+        items={[
+          { label: "Node", value: stats.totalNodes, tone: "slate" },
+          { label: "Departemen", value: referenceData.departments.length, tone: "sky" },
+          { label: "Site", value: referenceData.sites.length, tone: "emerald" },
+        ]}
+      />
       <div className="space-y-6">
         <EnterpriseScorecards items={scorecards} />
 
@@ -1215,7 +1229,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                     <SelectContent>
                       <SelectItem value="all">Semua Department</SelectItem>
                       {referenceData.departments.map((department) => (
-                        <SelectItem key={department.id} value={department.id.toString()}>{department.name}</SelectItem>
+                        <SelectItem key={department.id} value={department.id.toString()}>{getDepartmentFilterLabel(department.name)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

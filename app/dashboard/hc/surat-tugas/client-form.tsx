@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcMutedPanelClassName, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
 import { getNextLetterNumber, saveLetter } from "@/app/actions/surat";
 import { Archive, Printer } from "lucide-react";
 import Link from "next/link";
@@ -113,9 +114,19 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
       title="Generate Surat Tugas"
       description="Buat dan cetak surat penugasan kerja untuk karyawan."
     >
+      <HcWorkspaceBanner
+        title="Assignment Letter Composer"
+        description="Form penugasan dibuat lebih fokus: identitas, tujuan, keperluan, periode, lalu preview surat yang siap cetak dan arsip."
+        items={[
+          { label: "Karyawan", value: employees.length, tone: "slate" },
+          { label: "Dipilih", value: selectedEmp ? "Siap" : "Belum", tone: selectedEmp ? "emerald" : "amber" },
+          { label: "Tujuan", value: tujuan ? "Terisi" : "Kosong", tone: tujuan ? "sky" : "amber" },
+        ]}
+      />
+
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         <div className="flex flex-col gap-4 print:hidden">
-          <Card className="p-4 space-y-4 shadow-none">
+          <Card className={`space-y-4 p-4 ${hcMutedPanelClassName}`}>
             <div>
               <Label className="mb-2 block">Karyawan</Label>
               <select
@@ -189,14 +200,14 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
           </Card>
 
           <div className="flex flex-col gap-2">
-            <Button onClick={handlePrint} className="w-full gap-2">
+            <Button onClick={handlePrint} className={`w-full ${hcPrimaryActionClassName}`}>
               <Printer className="size-4" />
               Print Surat
             </Button>
             <Button
               onClick={handleSaveToArchive}
               variant="outline"
-              className="w-full gap-2"
+              className="w-full gap-2 rounded-xl"
               disabled={saving}
             >
               <Archive className="size-4" />
@@ -223,7 +234,7 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
         </div>
 
         {/* Print Preview Area */}
-        <div className="rounded-xl border bg-white p-8 shadow-sm print:m-0 print:border-none print:bg-transparent print:p-0 print:shadow-none min-h-[800px]">
+        <div className="min-h-[800px] rounded-[1.1rem] bg-white p-8 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:border-none print:bg-transparent print:p-0 print:shadow-none">
           <div className="pdf-wrapper">
             <div
               contentEditable

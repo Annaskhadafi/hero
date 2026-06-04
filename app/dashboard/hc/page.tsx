@@ -2,6 +2,7 @@ import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
+import { HcWorkspaceBanner } from "@/components/hc/hc-workspace-banner";
 import { TableFilterPresets } from "@/components/table-filter-presets";
 import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import {
@@ -32,6 +33,16 @@ export default async function HcPage() {
       title="HC & Workforce Desk"
       description="Tampilan backend web untuk attendance review, training expiry, dan wellness status karyawan."
     >
+      <HcWorkspaceBanner
+        title="Workforce Operations Hub"
+        description="Attendance, training, dan wellness diringkas sebagai ruang kerja HC yang table-first: cepat filter, cepat validasi, cepat tindak lanjut."
+        items={[
+          { label: "Attendance", value: attendance.length, tone: "slate" },
+          { label: "Training", value: trainings.length, tone: "sky" },
+          { label: "Wellness", value: wellness.length, tone: "emerald" },
+        ]}
+      />
+
       <AdminMetricGrid
         mode="compact"
         items={[
@@ -42,7 +53,7 @@ export default async function HcPage() {
       />
 
       <Tabs defaultValue="attendance" className="space-y-4">
-        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
+        <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-2xl bg-slate-100/80 p-1">
           <TabsTrigger value="attendance">Review attendance</TabsTrigger>
           <TabsTrigger value="training">Status training</TabsTrigger>
           <TabsTrigger value="wellness">Status wellness</TabsTrigger>

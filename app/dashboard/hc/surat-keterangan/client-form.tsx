@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { HcWorkspaceBanner, hcMutedPanelClassName, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
 import { getNextLetterNumber, saveLetter } from "@/app/actions/surat";
 import { Archive, Printer } from "lucide-react";
 import Link from "next/link";
@@ -102,9 +103,19 @@ export function SuratKeteranganClient({ employees }: { employees: EmployeeForLet
       title="Generate Surat Keterangan"
       description="Buat dan cetak surat keterangan bekerja untuk karyawan."
     >
+      <HcWorkspaceBanner
+        title="Employment Letter Composer"
+        description="Kontrol surat dipisah dari preview dokumen agar HC bisa pilih karyawan, cek autofill, cetak, dan arsip tanpa visual ramai."
+        items={[
+          { label: "Karyawan", value: employees.length, tone: "slate" },
+          { label: "Dipilih", value: selectedEmp ? "Siap" : "Belum", tone: selectedEmp ? "emerald" : "amber" },
+          { label: "Nomor", value: noSurat ? "Auto" : "Manual", tone: "sky" },
+        ]}
+      />
+
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         <div className="flex flex-col gap-4 print:hidden">
-          <Card className="p-4 space-y-4 shadow-none">
+          <Card className={`space-y-4 p-4 ${hcMutedPanelClassName}`}>
             <div>
               <Label className="mb-2 block">Karyawan</Label>
               <select
@@ -137,7 +148,7 @@ export function SuratKeteranganClient({ employees }: { employees: EmployeeForLet
             </div>
           </Card>
 
-          <Card className="p-4 space-y-4 shadow-none bg-primary/5 border-primary/20">
+          <Card className={`space-y-4 border-amber-200/60 bg-amber-50/70 p-4 ${hcMutedPanelClassName}`}>
             <h3 className="font-semibold text-sm">Data Autofill</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -160,14 +171,14 @@ export function SuratKeteranganClient({ employees }: { employees: EmployeeForLet
           </Card>
 
           <div className="flex flex-col gap-2">
-            <Button onClick={handlePrint} className="w-full gap-2">
+            <Button onClick={handlePrint} className={`w-full ${hcPrimaryActionClassName}`}>
               <Printer className="size-4" />
               Print Surat
             </Button>
             <Button
               onClick={handleSaveToArchive}
               variant="outline"
-              className="w-full gap-2"
+              className="w-full gap-2 rounded-xl"
               disabled={saving}
             >
               <Archive className="size-4" />
@@ -194,7 +205,7 @@ export function SuratKeteranganClient({ employees }: { employees: EmployeeForLet
         </div>
 
         {/* Print Preview Area */}
-        <div className="rounded-xl border bg-white p-8 shadow-sm print:m-0 print:border-none print:bg-transparent print:p-0 print:shadow-none min-h-[800px]">
+        <div className="min-h-[800px] rounded-[1.1rem] bg-white p-8 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:border-none print:bg-transparent print:p-0 print:shadow-none">
           <div className="pdf-wrapper">
             <div
               contentEditable
