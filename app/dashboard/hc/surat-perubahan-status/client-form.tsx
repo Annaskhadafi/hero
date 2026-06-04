@@ -197,6 +197,9 @@ export function SuratPerubahanStatusClient({
                 width: 210mm;
                 height: 297mm;
               }
+              body * {
+                visibility: visible !important;
+              }
             }
           </style>
         </head>

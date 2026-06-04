@@ -200,6 +200,9 @@ export function SuratPengalamanKerjaClient({
                 width: 210mm;
                 height: 297mm;
               }
+              body * {
+                visibility: visible !important;
+              }
             }
           </style>
         </head>
