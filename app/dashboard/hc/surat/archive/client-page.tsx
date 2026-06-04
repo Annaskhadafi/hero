@@ -473,7 +473,18 @@ export function SuratArchiveClient({
         footer={
           <>
           <Button onClick={() => setViewItem(null)}>Tutup</Button>
-          <Button variant="outline" onClick={() => { setStatusItem(viewItem); setNewStatus(viewItem.status); setApprovedByName(viewItem.approvedBy); }}>Ubah Status</Button>
+          <Button
+            variant="outline"
+            disabled={!viewItem}
+            onClick={() => {
+              if (!viewItem) return;
+              setStatusItem(viewItem);
+              setNewStatus(viewItem.status);
+              setApprovedByName(viewItem.approvedBy);
+            }}
+          >
+            Ubah Status
+          </Button>
           </>
         }
       >

@@ -143,7 +143,7 @@ export function SuratMcuClient({
   }
 
   const handlePrint = () => {
-    const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
+    const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
     const letterheadUrl = new URL(LETTERHEAD_BACKGROUND_URL, window.location.origin).toString()
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
 
@@ -165,15 +165,11 @@ export function SuratMcuClient({
               width: 210mm;
               min-height: 297mm;
               margin: 0 auto;
-              padding: 45mm 25mm 30mm;
               background-image: url("${letterheadUrl}");
               background-size: 210mm 297mm;
               background-position: center top;
               background-repeat: no-repeat;
               color: black;
-              font-family: Arial, sans-serif;
-              font-size: 11pt;
-              line-height: 1.5;
             }
             table { width: 100%; border-collapse: collapse; }
             .text-center { text-align: center; }
@@ -459,7 +455,7 @@ export function SuratMcuClient({
 
         <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:bg-transparent print:p-0 print:shadow-none">
           <div
-            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-cover bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
+            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-[length:210mm_297mm] bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
             style={{ backgroundImage: `url(${LETTERHEAD_BACKGROUND_URL})` }}
           >
             <div
@@ -468,91 +464,91 @@ export function SuratMcuClient({
               className="pdf-wrapper-content relative z-10 outline-none"
               style={{
                 fontFamily: 'Arial, sans-serif',
-                fontSize: '11pt',
-                lineHeight: '1.5',
+                fontSize: '9.5pt',
+                lineHeight: '1.3',
                 color: 'black',
                 paddingTop: '45mm',
-                paddingBottom: '30mm',
-                paddingLeft: '25mm',
-                paddingRight: '25mm',
+                paddingBottom: '20mm',
+                paddingLeft: '22mm',
+                paddingRight: '22mm',
                 minHeight: '297mm',
               }}
             >
-              <table className="mb-8 w-full">
+              <table className="mb-3 w-full">
                 <tbody>
                   <tr>
-                    <td className="w-32 py-1 align-top">No</td>
-                    <td className="w-4 py-1 align-top">:</td>
-                    <td className="py-1 align-top">{noSurat || '______________________'}</td>
+                    <td className="w-32 align-top">No</td>
+                    <td className="w-4 align-top">:</td>
+                    <td className="align-top">{noSurat || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="w-32 py-1 align-top">Perihal</td>
-                    <td className="w-4 py-1 align-top">:</td>
-                    <td className="py-1 align-top">Surat Pengantar Medical Check Up Karyawan</td>
+                    <td className="w-32 align-top">Perihal</td>
+                    <td className="w-4 align-top">:</td>
+                    <td className="align-top">Surat Pengantar Medical Check Up Karyawan</td>
                   </tr>
                 </tbody>
               </table>
 
-              <div className="mb-6">
+              <div className="mb-3">
                 <p>Kepada Yth.</p>
                 <p className="font-bold">{klinik || '______________________'}</p>
                 <p className="font-bold">{kota || '______________________'}</p>
               </div>
 
-              <p className="mb-4">Dengan Hormat,</p>
+              <p className="mb-2">Dengan Hormat,</p>
 
-              <p className="mb-4">Kami memberitahukan bahwa nama dibawah ini adalah karyawan dari kami :</p>
+              <p className="mb-2">Kami memberitahukan bahwa nama dibawah ini adalah karyawan dari kami :</p>
 
-              <table className="mb-6 ml-6 w-full">
+              <table className="mb-3 ml-6 w-full">
                 <tbody>
                   <tr>
-                    <td className="w-48 py-1">Nama</td>
-                    <td className="w-4">:</td>
-                    <td className="font-bold">{selectedEmp?.name || '______________________'}</td>
+                    <td className="w-40 pb-1">Nama</td>
+                    <td className="w-4 pb-1">:</td>
+                    <td className="font-bold pb-1">{selectedEmp?.name || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">SN</td>
-                    <td>:</td>
-                    <td className="font-bold">{selectedEmp?.employeeSn || '______________________'}</td>
+                    <td className="pb-1">SN</td>
+                    <td className="pb-1">:</td>
+                    <td className="font-bold pb-1">{selectedEmp?.employeeSn || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Section</td>
-                    <td>:</td>
-                    <td className="font-bold">{selectedEmp?.section || '______________________'}</td>
+                    <td className="pb-1">Section</td>
+                    <td className="pb-1">:</td>
+                    <td className="font-bold pb-1">{selectedEmp?.section || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Paket MCU</td>
-                    <td>:</td>
-                    <td className="font-bold">{paketMcu || '______________________'}</td>
+                    <td className="pb-1">Paket MCU</td>
+                    <td className="pb-1">:</td>
+                    <td className="font-bold pb-1">{paketMcu || '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
 
-              <p className="mb-4 text-justify">
+              <p className="mb-3 text-justify">
                 Kami mohon bantuannya untuk melakukan <span className="font-bold underline">Medical Check Up</span> atas nama pasien diatas. Segala biaya yang timbul menjadi tanggungan PT Chitra Paratama (a Member of Mahadasha Group) dengan melampirkan Surat Jaminan ini.
               </p>
 
-              <div className="mb-6">
+              <div className="mb-3">
                 <p>Mohon tagihan dikirimkan kepada:</p>
                 <p className="font-bold">PT Chitra Paratama (a Member of Mahadasha Group)</p>
                 <p className="font-bold">Jl AMD RT 46 No 69 Kelurahan Graha Indah, Balikpapan.</p>
                 <p className="font-bold">Attn : Muhammad Iqbal</p>
               </div>
 
-              <p className="mb-12">Atas kerja sama yang baik kami ucapkan terima kasih.</p>
+              <p className="mb-4">Atas kerja sama yang baik kami ucapkan terima kasih.</p>
 
-              <div className="mt-8 flex justify-start">
+              <div className="mt-4 flex justify-start">
                 <div>
                   <p className="mb-1">Balikpapan , {tanggal || '_________________'}</p>
                   {selectedSignatureUrl ? (
                     <img
                       src={selectedSignatureUrl}
                       alt={`TTD ${selectedHrSigner?.name || 'HR'}`}
-                      className="mb-2 object-contain"
-                      style={{ height: '80px', width: '160px', objectPosition: 'left' }}
+                      className="mb-1 object-contain"
+                      style={{ height: '60px', width: '160px', objectPosition: 'left' }}
                     />
                   ) : (
-                    <div className="mb-2" style={{ height: '80px', width: '160px' }} />
+                    <div className="mb-1" style={{ height: '60px', width: '160px' }} />
                   )}
                   
                   <p className="font-bold underline">
@@ -562,26 +558,26 @@ export function SuratMcuClient({
                 </div>
               </div>
 
-              <div className="mt-12 text-[8pt] italic">
+              <div className="mt-4 text-[8pt] italic">
                 <table className="w-full">
                   <tbody>
                     <tr>
-                      <td className="w-12 py-1 align-top italic">PIC</td>
-                      <td className="w-4 py-1 align-top italic">:</td>
-                      <td className="w-4 py-1 align-top italic">-</td>
-                      <td className="py-1 align-top italic">Muhammad Iqbal : 0812-53369994</td>
+                      <td className="w-12 align-top italic">PIC</td>
+                      <td className="w-4 align-top italic">:</td>
+                      <td className="w-4 align-top italic">-</td>
+                      <td className="align-top italic">Muhammad Iqbal : 0812-53369994</td>
                     </tr>
                     <tr>
-                      <td className="py-1"></td>
-                      <td className="py-1"></td>
-                      <td className="py-1 align-top italic">-</td>
-                      <td className="py-1 align-top italic">Adila Tri Arizona : 0897-9767997</td>
+                      <td></td>
+                      <td></td>
+                      <td className="align-top italic">-</td>
+                      <td className="align-top italic">Adila Tri Arizona : 0897-9767997</td>
                     </tr>
                     <tr>
-                      <td className="py-1"></td>
-                      <td className="py-1"></td>
-                      <td className="py-1 align-top italic">-</td>
-                      <td className="py-1 align-top italic">Kesuma Bagaskara : 0896-86176545</td>
+                      <td></td>
+                      <td></td>
+                      <td className="align-top italic">-</td>
+                      <td className="align-top italic">Kesuma Bagaskara : 0896-86176545</td>
                     </tr>
                   </tbody>
                 </table>

@@ -12,7 +12,8 @@ import {
   hcMutedPanelClassName,
   hcPrimaryActionClassName,
 } from '@/components/hc/hc-workspace-banner'
-import { getNextLetterNumber, saveLetter } from '@/app/actions/surat'
+import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/surat'
+import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 import { Textarea } from '@/components/ui/textarea'
@@ -147,7 +148,7 @@ export function SuratPerubahanStatusClient({
   }
 
   const handlePrint = () => {
-    const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
+    const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
     const letterheadUrl = new URL(LETTERHEAD_BACKGROUND_URL, window.location.origin).toString()
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
 
@@ -179,24 +180,13 @@ export function SuratPerubahanStatusClient({
               width: 210mm;
               min-height: 297mm;
               background-image: url('${letterheadUrl}');
-              background-size: cover;
-              background-position: center;
+              background-size: 210mm 297mm;
+              background-position: center top;
               background-repeat: no-repeat;
               overflow: hidden;
-            }
-            .content-area {
-              position: absolute;
-              top: 48mm;
-              left: 20mm;
-              right: 20mm;
-              bottom: 25mm;
-              font-size: 10pt;
-              line-height: 1.5;
-              color: #000;
-              background: transparent;
+              margin: 0 auto;
             }
             @media print {
-              .no-print { display: none !important; }
               html, body {
                 width: 210mm;
                 height: 297mm;
@@ -206,9 +196,7 @@ export function SuratPerubahanStatusClient({
         </head>
         <body>
           <div class="page-container">
-            <div class="content-area">
-              ${contentHtml}
-            </div>
+            ${contentHtml}
           </div>
           <script>
             window.onload = () => {
@@ -278,38 +266,72 @@ export function SuratPerubahanStatusClient({
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <div className="flex w-full flex-col gap-4 lg:w-[400px] lg:shrink-0">
-        <HcWorkspaceBanner
-          title="Surat Perubahan Status"
-          subtitle="Isi form untuk mencetak Surat Perubahan Status."
-        />
+    <div className="space-y-4">
+      <HcWorkspaceBanner
+        title="Surat Perubahan Status"
+        description="Isi form untuk mencetak Surat Perubahan Status."
+        items={[
+          { label: 'Karyawan', value: employees.length, tone: 'slate' },
+          {
+            label: 'Dipilih',
+            value: selectedEmp ? 'Siap' : 'Belum',
+            tone: selectedEmp ? 'emerald' : 'amber',
+          },
+        ]}
+      />
 
-        <Card className={hcMutedPanelClassName}>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold uppercase text-slate-500">
-                Pilih Karyawan
-              </Label>
-              <Combobox
-                value={selectedEmpId}
-                onValueChange={(val) => {
-                  setSelectedEmpId(val)
-                  setEmployeeSearch('')
+      <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
+        <div className="flex flex-col gap-4 print:hidden">
+          <Card className={`space-y-4 p-4 ${hcMutedPanelClassName}`}>
+            <div>
+              <Label className="mb-2 block">Karyawan</Label>
+              <Input
+                value={employeeSearch}
+                onChange={(e) => {
+                  setEmployeeSearch(e.target.value)
+                  setSelectedEmpId('')
                 }}
-                searchValue={employeeSearch}
-                onSearchChange={setEmployeeSearch}
-                options={visibleEmployeeResults.map((emp) => ({
-                  value: emp.id.toString(),
-                  label: \`\${emp.name} (\${emp.employeeSn})\`,
-                  description: \`\${emp.jobTitle} - \${emp.section}\`,
-                }))}
-                placeholder="Cari nama atau SN..."
-                emptyText="Karyawan tidak ditemukan"
+                placeholder="Ketik nama, NIK, jabatan, section..."
               />
+              <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                {visibleEmployeeResults.length > 0 ? (
+                  visibleEmployeeResults.map((emp) => {
+                    const isSelected = emp.id.toString() === selectedEmpId
+                    return (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        className={`w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 ${
+                          isSelected ? 'text-primary bg-slate-100 font-semibold' : 'text-slate-700'
+                        }`}
+                        onClick={() => {
+                          setSelectedEmpId(emp.id.toString())
+                          setEmployeeSearch(`${emp.employeeSn} ${emp.name}`)
+                          setJabatanBaru(emp.jobTitle || '')
+                          setLevelBaru(emp.levelName || '')
+                          setSectionBaru(emp.section || '')
+                          setStatusKaryawanBaru(emp.employeeStatusType || '')
+                        }}
+                      >
+                        <span className="block font-medium">
+                          {emp.employeeSn} - {emp.name}
+                        </span>
+                        <span className="text-muted-foreground text-xs">
+                          {emp.jobTitle} • {emp.section}
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="text-muted-foreground px-3 py-2 text-sm">
+                    Karyawan tidak ditemukan
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2">
+
+            <div className="space-y-4 border-t border-slate-100 pt-4">
               <Label className="text-xs font-semibold uppercase text-slate-500">Nomor Surat</Label>
               <Input
                 value={noSurat}
@@ -319,68 +341,68 @@ export function SuratPerubahanStatusClient({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-4">
               <Label className="text-xs font-semibold uppercase text-slate-500">Ditetapkan Menjadi</Label>
               
-              <div className="space-y-3 mt-2">
+              <div className="space-y-4 mt-2">
                 <div>
-                  <Label className="text-xs text-slate-500 mb-1 block">Jabatan Baru</Label>
+                  <Label className="text-xs text-slate-500 mb-2 block">Jabatan Baru</Label>
                   <Input 
                     value={jabatanBaru} 
                     onChange={e => setJabatanBaru(e.target.value)} 
                     placeholder="Contoh: Repairman" 
-                    className="bg-white text-sm" 
+                    className="bg-white text-sm h-10" 
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-slate-500 mb-1 block">Level Baru</Label>
+                  <Label className="text-xs text-slate-500 mb-2 block">Level Baru</Label>
                   <Input 
                     value={levelBaru} 
                     onChange={e => setLevelBaru(e.target.value)} 
                     placeholder="Contoh: Non Staff" 
-                    className="bg-white text-sm" 
+                    className="bg-white text-sm h-10" 
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-slate-500 mb-1 block">Section Baru</Label>
+                  <Label className="text-xs text-slate-500 mb-2 block">Section Baru</Label>
                   <Input 
                     value={sectionBaru} 
                     onChange={e => setSectionBaru(e.target.value)} 
                     placeholder="Contoh: Repair / Retread Operation" 
-                    className="bg-white text-sm" 
+                    className="bg-white text-sm h-10" 
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-slate-500 mb-1 block">Status Karyawan Baru</Label>
+                  <Label className="text-xs text-slate-500 mb-2 block">Status Karyawan Baru</Label>
                   <Input 
                     value={statusKaryawanBaru} 
                     onChange={e => setStatusKaryawanBaru(e.target.value)} 
                     placeholder="Contoh: Kontrak" 
-                    className="bg-white text-sm" 
+                    className="bg-white text-sm h-10" 
                   />
                 </div>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-slate-200">
+            <div className="space-y-4 pt-4 border-t border-slate-200">
               <Label className="text-xs font-semibold uppercase text-slate-500">Lain-lain</Label>
-              <div className="space-y-3 mt-2">
+              <div className="space-y-4 mt-2">
                 <div>
-                  <Label className="text-xs text-slate-500 mb-1 block">Tanggal Berlaku</Label>
+                  <Label className="text-xs text-slate-500 mb-2 block">Tanggal Berlaku</Label>
                   <Input 
                     value={tanggalBerlaku} 
                     onChange={e => setTanggalBerlaku(e.target.value)} 
                     placeholder="Contoh: 01 Juni 2026" 
-                    className="bg-white text-sm" 
+                    className="bg-white text-sm h-10" 
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-slate-500 mb-1 block">Tembusan (pisahkan dgn enter)</Label>
+                  <Label className="text-xs text-slate-500 mb-2 block">Tembusan (pisahkan dgn enter)</Label>
                   <Textarea 
                     value={tembusan} 
                     onChange={e => setTembusan(e.target.value)} 
                     placeholder="Contoh: 1. Departemen/Section Terkait." 
-                    className="bg-white text-sm min-h-[60px]" 
+                    className="bg-white text-sm min-h-[80px]" 
                   />
                 </div>
               </div>
@@ -397,17 +419,18 @@ export function SuratPerubahanStatusClient({
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase text-slate-500">Penandatangan</Label>
-              <Combobox
+              <select
+                className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
                 value={selectedHrSignerId}
-                onValueChange={setSelectedHrSignerId}
-                options={hrSigners.map((s) => ({
-                  value: s.id.toString(),
-                  label: s.name,
-                  description: s.jobTitle,
-                }))}
-                placeholder="Pilih Penandatangan..."
-                emptyText="Penandatangan tidak ditemukan"
-              />
+                onChange={(e) => setSelectedHrSignerId(e.target.value)}
+              >
+                <option value="">-- Pilih Penandatangan --</option>
+                {hrSigners.map((signer) => (
+                  <option key={signer.id} value={signer.id}>
+                    {signer.name} ({signer.jobTitle})
+                  </option>
+                ))}
+              </select>
               
               {selectedHrSigner && (
                 <div className="mt-2 text-xs">
@@ -452,9 +475,9 @@ export function SuratPerubahanStatusClient({
               </Button>
               {saveMessage && (
                 <p
-                  className={\`text-center text-sm font-medium \${
+                  className={`text-center text-sm font-medium ${
                     saveMessage.includes('berhasil') ? 'text-emerald-600' : 'text-red-600'
-                  }\`}
+                  }`}
                 >
                   {saveMessage}
                 </p>
@@ -464,75 +487,93 @@ export function SuratPerubahanStatusClient({
             <p className="text-center text-xs text-slate-400">
               Pastikan Anda mencetak surat terlebih dahulu sebelum menyimpannya ke arsip.
             </p>
-          </div>
         </Card>
       </div>
 
-      <Card className="min-h-[800px] flex-1 overflow-hidden rounded-[1rem] bg-[#f8fafc] p-6 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-        <div className="pdf-wrapper-content mx-auto w-full max-w-[800px] bg-white p-12 text-[10pt] text-black shadow-sm font-arial">
+      <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:bg-transparent print:p-0 print:shadow-none">
+        <div
+          className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-[length:210mm_297mm] bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
+          style={{ backgroundImage: `url('${LETTERHEAD_BACKGROUND_URL}')` }}
+        >
+          <div
+            contentEditable
+            suppressContentEditableWarning
+            className="pdf-wrapper-content relative z-10 outline-none"
+            style={{
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '8.5pt',
+              lineHeight: '1.25',
+              color: 'black',
+              paddingTop: '38mm',
+              paddingBottom: '20mm',
+              paddingLeft: '22mm',
+              paddingRight: '22mm',
+              minHeight: '297mm',
+            }}
+          >
           {/* Header/Title */}
-          <div className="text-center mb-8">
-            <h1 className="font-bold uppercase underline underline-offset-4 text-[12pt] tracking-wider mb-1">
+          <div className="text-center mb-4">
+            <h1 className="font-bold uppercase underline underline-offset-4 text-[11pt] tracking-wider mb-1">
               SURAT KEPUTUSAN
             </h1>
             <p className="font-bold">
               No. {noSurat || '_______/HR- CHITRA/___/____'}
             </p>
-            <p className="font-bold mt-4 uppercase">
+            <p className="font-bold mt-3 uppercase">
               TENTANG
             </p>
-            <p className="font-bold uppercase mt-1">
+            <p className="font-bold uppercase mt-0.5">
               PERUBAHAN STATUS KARYAWAN
             </p>
           </div>
 
-          <table className="w-full mb-6 border-collapse">
+          <table className="w-full mb-3 border-collapse">
             <tbody>
               <tr>
-                <td className="w-32 align-top font-bold pb-2">Menimbang</td>
-                <td className="w-4 align-top pb-2">:</td>
-                <td className="w-6 align-top pb-2">1.</td>
-                <td className="align-top pb-2 text-justify">
+                <td className="w-28 align-top font-bold pb-1">Menimbang</td>
+                <td className="w-3 align-top pb-1">:</td>
+                <td className="w-5 align-top pb-1">1.</td>
+                <td className="align-top pb-1 text-justify">
                   Bahwa dalam rangka memperlancar kegiatan operasional perusahaan, dipandang perlu untuk melakukan perubahan status karyawan.
                 </td>
               </tr>
               <tr>
                 <td></td>
                 <td></td>
-                <td className="align-top pb-2">2.</td>
-                <td className="align-top pb-2 text-justify">
+                <td className="align-top pb-1">2.</td>
+                <td className="align-top pb-1 text-justify">
                   Bahwa dalam rangka tertib administrasi, maka perubahan status tersebut perlu dituangkan dalam Surat Keputusan Direksi PT. Chitra Paratama.
                 </td>
               </tr>
 
               <tr>
-                <td className="align-top font-bold pb-2 pt-2">Mengingat</td>
-                <td className="align-top pb-2 pt-2">:</td>
-                <td className="align-top pb-2 pt-2">1.</td>
-                <td className="align-top pb-2 pt-2">
+                <td className="align-top font-bold pb-1 pt-1">Mengingat</td>
+                <td className="align-top pb-1 pt-1">:</td>
+                <td className="align-top pb-1 pt-1">1.</td>
+                <td className="align-top pb-1 pt-1">
                   Kebijakan dan Prosedur Promosi / Transfer.
                 </td>
               </tr>
               <tr>
                 <td></td>
                 <td></td>
-                <td className="align-top pb-2">2.</td>
-                <td className="align-top pb-2">
+                <td className="align-top pb-1">2.</td>
+                <td className="align-top pb-1">
                   Struktur Organisasi dan Standard Tenaga Kerja.
                 </td>
               </tr>
             </tbody>
           </table>
 
-          <div className="text-center font-bold mb-6 mt-4 uppercase">
+          <div className="text-center font-bold mb-3 mt-3 uppercase">
             MEMUTUSKAN
           </div>
 
-          <table className="w-full mb-4 border-collapse">
+          <table className="w-full mb-3 border-collapse">
             <tbody>
               <tr>
-                <td className="w-32 align-top font-bold pb-4">Menetapkan</td>
-                <td className="w-4 align-top pb-4">:</td>
+                <td className="w-28 align-top font-bold pb-2">Menetapkan</td>
+                <td className="w-3 align-top pb-2">:</td>
                 <td colSpan={2}></td>
               </tr>
               
@@ -540,7 +581,7 @@ export function SuratPerubahanStatusClient({
               <tr>
                 <td className="align-top font-bold">Pertama</td>
                 <td className="align-top">:</td>
-                <td className="w-40 align-top">Nama</td>
+                <td className="w-32 align-top">Nama</td>
                 <td className="align-top">: <span className="font-bold">{selectedEmp?.name || '______________________'}</span></td>
               </tr>
               <tr>
@@ -552,8 +593,8 @@ export function SuratPerubahanStatusClient({
               <tr>
                 <td></td>
                 <td></td>
-                <td className="align-top">Jabatan lama</td>
-                <td className="align-top">: {selectedEmp?.jobTitle || '___________________'}</td>
+                <td className="align-top">Jabatan</td>
+                <td className="align-top">: {selectedEmp ? formatJabatan(selectedEmp.section, selectedEmp.jobTitle) : '___________________'}</td>
               </tr>
               <tr>
                 <td></td>
@@ -570,15 +611,15 @@ export function SuratPerubahanStatusClient({
               <tr>
                 <td></td>
                 <td></td>
-                <td className="align-top pb-4">Status Karyawan</td>
-                <td className="align-top pb-4">: {selectedEmp?.employeeStatusType || '___________________'}</td>
+                <td className="align-top pb-2">Status Karyawan</td>
+                <td className="align-top pb-2">: {selectedEmp?.employeeStatusType || '___________________'}</td>
               </tr>
 
               {/* DITETAPKAN MENJADI */}
               <tr>
                 <td></td>
                 <td></td>
-                <td colSpan={2} className="align-top pb-4">
+                <td colSpan={2} className="align-top pb-1">
                   <span className="font-bold underline">Ditetapkan</span> menjadi,
                 </td>
               </tr>
@@ -604,51 +645,51 @@ export function SuratPerubahanStatusClient({
               <tr>
                 <td></td>
                 <td></td>
-                <td className="align-top pb-6">Status Karyawan</td>
-                <td className="align-top pb-6">: {statusKaryawanBaru || '___________________'}</td>
+                <td className="align-top pb-3">Status Karyawan</td>
+                <td className="align-top pb-3">: {statusKaryawanBaru || '___________________'}</td>
               </tr>
 
               {/* KEDUA */}
               <tr>
-                <td className="align-top font-bold pb-2">Kedua</td>
-                <td className="align-top pb-2">:</td>
-                <td colSpan={2} className="align-top pb-2 text-justify">
+                <td className="align-top font-bold pb-1.5">Kedua</td>
+                <td className="align-top pb-1.5">:</td>
+                <td colSpan={2} className="align-top pb-1.5 text-justify">
                   Dalam melaksanakan tugas sehari-hari yang bersangkutan bertanggung jawab kepada <span className="font-bold">Leader {sectionBaru || '___________________'}.</span>
                 </td>
               </tr>
 
               {/* KETIGA */}
               <tr>
-                <td className="align-top font-bold pb-2">Ketiga</td>
-                <td className="align-top pb-2">:</td>
-                <td colSpan={2} className="align-top pb-2 text-justify">
+                <td className="align-top font-bold pb-1.5">Ketiga</td>
+                <td className="align-top pb-1.5">:</td>
+                <td colSpan={2} className="align-top pb-1.5 text-justify">
                   Yang bersangkutan diharapkan untuk dapat berkoordinasi dan bekerja sama dengan bagian lainnya agar pelaksanaan pekerjaan dapat berjalan lancar.
                 </td>
               </tr>
 
               {/* KEEMPAT */}
               <tr>
-                <td className="align-top font-bold pb-2">Keempat</td>
-                <td className="align-top pb-2">:</td>
-                <td colSpan={2} className="align-top pb-2 text-justify">
+                <td className="align-top font-bold pb-1.5">Keempat</td>
+                <td className="align-top pb-1.5">:</td>
+                <td colSpan={2} className="align-top pb-1.5 text-justify">
                   Semua surat keputusan yang pernah dikeluarkan sebelum ini dan bertentangan dengan isi surat keputusan ini, dinyatakan tidak berlaku lagi.
                 </td>
               </tr>
 
               {/* KELIMA */}
               <tr>
-                <td className="align-top font-bold pb-2">Kelima</td>
-                <td className="align-top pb-2">:</td>
-                <td colSpan={2} className="align-top pb-2 text-justify">
+                <td className="align-top font-bold pb-1.5">Kelima</td>
+                <td className="align-top pb-1.5">:</td>
+                <td colSpan={2} className="align-top pb-1.5 text-justify">
                   Jika dikemudian hari ternyata terdapat kekeliruan atau perubahan materi dalam Surat Keputusan ini, akan diperbaiki sebagaimana mestinya.
                 </td>
               </tr>
 
               {/* KEENAM */}
               <tr>
-                <td className="align-top font-bold pb-6">Keenam</td>
-                <td className="align-top pb-6">:</td>
-                <td colSpan={2} className="align-top pb-6 text-justify">
+                <td className="align-top font-bold pb-3">Keenam</td>
+                <td className="align-top pb-3">:</td>
+                <td colSpan={2} className="align-top pb-3 text-justify">
                   Surat keputusan ini mulai berlaku pada tanggal <span className="font-bold">{tanggalBerlaku || '___________________'}</span>.
                 </td>
               </tr>
@@ -656,11 +697,11 @@ export function SuratPerubahanStatusClient({
           </table>
 
           <div className="flex justify-start w-full">
-            <table className="mb-8">
+            <table className="mb-4">
               <tbody>
                 <tr>
-                  <td className="w-32 align-top">Ditetapkan di</td>
-                  <td className="w-4 align-top">:</td>
+                  <td className="w-28 align-top">Ditetapkan di</td>
+                  <td className="w-3 align-top">:</td>
                   <td className="align-top">Balikpapan</td>
                 </tr>
                 <tr>
@@ -672,9 +713,9 @@ export function SuratPerubahanStatusClient({
             </table>
           </div>
 
-          <div className="mb-12">
+          <div className="mb-4">
             {selectedSignatureUrl && (
-              <div className="mb-2 h-16 opacity-90">
+              <div className="mb-1 h-14 opacity-90">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={selectedSignatureUrl}
@@ -683,19 +724,22 @@ export function SuratPerubahanStatusClient({
                 />
               </div>
             )}
-            {!selectedSignatureUrl && <div className="h-20" />}
+            {!selectedSignatureUrl && <div className="h-14" />}
             <p className="font-bold underline underline-offset-2">
               {selectedHrSigner?.name || '_____________________'}
             </p>
             <p>{selectedHrSigner?.jobTitle || 'Human Capital Manager'}</p>
           </div>
 
-          <div className="text-[9pt]">
-            <p className="font-bold underline mb-1">Salinan dari SK ini disampaikan kepada :</p>
+          <div className="text-[8pt]">
+            <p className="font-bold underline mb-0.5">Salinan dari SK ini disampaikan kepada :</p>
             <div className="whitespace-pre-wrap leading-tight">{tembusan || '1. Departemen/Section Terkait.'}</div>
           </div>
+          </div>
         </div>
-      </Card>
+      </div>
+    </div>
     </div>
   )
 }
+

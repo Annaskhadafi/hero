@@ -12,10 +12,20 @@ import {
   hcPrimaryActionClassName,
 } from '@/components/hc/hc-workspace-banner'
 import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/surat'
+import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
+
+type EmployeeForLetter = {
+  id: number
+  name: string
+  employeeSn: string
+  joinYear: number
+  section: string
+  jobTitle: string
+}
 
 type HrSigner = {
   id: number
@@ -26,8 +36,10 @@ type HrSigner = {
 }
 
 export function SuratPerintahKerjaClient({
+  employees,
   hrSigners,
 }: {
+  employees: EmployeeForLetter[]
   hrSigners: HrSigner[]
 }) {
   const [selectedHrSignerId, setSelectedHrSignerId] = useState<string>(
@@ -44,7 +56,8 @@ export function SuratPerintahKerjaClient({
   })
 
   // Custom inputs for Surat Perintah Kerja
-  const [vendorName, setVendorName] = useState('')
+  const [selectedEmpId, setSelectedEmpId] = useState<string>('')
+  const [employeeSearch, setEmployeeSearch] = useState('')
   const [jobDescription, setJobDescription] = useState('')
   const [jobDate, setJobDate] = useState('')
 
@@ -55,6 +68,27 @@ export function SuratPerintahKerjaClient({
   const selectedHrSigner = hrSigners.find((signer) => signer.id.toString() === selectedHrSignerId)
   const selectedSignatureUrl = selectedHrSigner
     ? uploadedSignatures[selectedHrSigner.name] || selectedHrSigner.signatureUrl
+    : ''
+
+  const normalizedEmployeeSearch = employeeSearch.trim().toLowerCase()
+  const filteredEmployees = normalizedEmployeeSearch
+    ? employees.filter((employee) =>
+        [employee.employeeSn, employee.name, employee.jobTitle, employee.section]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedEmployeeSearch)
+      )
+    : employees
+  const visibleEmployeeResults = filteredEmployees.slice(0, 8)
+  const selectedEmp = employees.find((e) => e.id.toString() === selectedEmpId)
+
+  const formattedJobDate = jobDate
+    ? new Date(jobDate).toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
     : ''
 
   useEffect(() => {
@@ -106,7 +140,7 @@ export function SuratPerintahKerjaClient({
   }
 
   const handlePrint = () => {
-    const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
+    const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
     const letterheadUrl = new URL(LETTERHEAD_BACKGROUND_URL, window.location.origin).toString()
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
 
@@ -128,15 +162,11 @@ export function SuratPerintahKerjaClient({
               width: 210mm;
               min-height: 297mm;
               margin: 0 auto;
-              padding: 45mm 25mm 30mm;
               background-image: url("${letterheadUrl}");
               background-size: 210mm 297mm;
               background-position: center top;
               background-repeat: no-repeat;
               color: black;
-              font-family: Arial, sans-serif;
-              font-size: 11pt;
-              line-height: 1.5;
             }
             table { width: 100%; border-collapse: collapse; }
             td { vertical-align: top; }
@@ -166,7 +196,7 @@ export function SuratPerintahKerjaClient({
           </style>
         </head>
         <body>
-          <main class="page">\${contentHtml}</main>
+          <main class="page">${contentHtml}</main>
           <script>
             const closeAfterPrint = () => setTimeout(() => window.close(), 250);
             window.addEventListener("afterprint", closeAfterPrint);
@@ -184,8 +214,8 @@ export function SuratPerintahKerjaClient({
   }
 
   const handleSaveToArchive = useCallback(async () => {
-    if (!vendorName) {
-      setSaveMessage('Isi nama vendor (Pihak Kedua) terlebih dahulu.')
+    if (!selectedEmp && !employeeSearch) {
+      setSaveMessage('Isi nama penerima perintah terlebih dahulu.')
       return
     }
 
@@ -195,11 +225,13 @@ export function SuratPerintahKerjaClient({
     try {
       const today = new Date().toISOString().split('T')[0]
       const contentHtml = document.querySelector('.pdf-wrapper')?.innerHTML || ''
+      const finalName = selectedEmp ? selectedEmp.name : employeeSearch
 
       const result = await saveLetter({
         letterType: 'surat_perintah_kerja',
         letterNumber: noSurat,
-        employeeName: vendorName,
+        employeeId: selectedEmp?.id,
+        employeeName: finalName,
         subject: jobDescription || 'Surat Perintah Kerja',
         content: contentHtml,
         purpose: jobDescription,
@@ -223,7 +255,7 @@ export function SuratPerintahKerjaClient({
     } finally {
       setSaving(false)
     }
-  }, [vendorName, noSurat, jobDescription, selectedHrSigner])
+  }, [selectedEmp, employeeSearch, noSurat, jobDescription, selectedHrSigner])
 
   return (
     <AdminPageShell
@@ -235,7 +267,8 @@ export function SuratPerintahKerjaClient({
         title="SPK Composer"
         description="Lengkapi detail surat perintah kerja, lalu cek preview dokumen yang siap dicetak."
         items={[
-          { label: 'Vendor', value: vendorName ? 'Terisi' : 'Kosong', tone: vendorName ? 'emerald' : 'amber' },
+          { label: 'Karyawan', value: employees.length, tone: 'slate' },
+          { label: 'Penerima', value: selectedEmp || employeeSearch ? 'Terisi' : 'Kosong', tone: selectedEmp || employeeSearch ? 'emerald' : 'amber' },
           { label: 'Pekerjaan', value: jobDescription ? 'Terisi' : 'Kosong', tone: jobDescription ? 'sky' : 'amber' },
           { label: 'HR Signer', value: selectedHrSigner ? 'Siap' : 'Belum', tone: selectedHrSigner ? 'emerald' : 'amber' },
         ]}
@@ -243,7 +276,7 @@ export function SuratPerintahKerjaClient({
 
       <div className="grid gap-6 lg:grid-cols-[350px_1fr]">
         <div className="flex flex-col gap-4 print:hidden">
-          <Card className={\`space-y-4 p-4 \${hcMutedPanelClassName}\`}>
+          <Card className={`space-y-4 p-4 ${hcMutedPanelClassName}`}>
             <div>
               <Label className="mb-2 block">No Surat</Label>
               <Input
@@ -296,12 +329,46 @@ export function SuratPerintahKerjaClient({
               <h4 className="mb-3 text-sm font-semibold">Penerima Perintah (Pihak Kedua)</h4>
               <div className="space-y-4">
                 <div>
-                  <Label className="mb-2 block">Nama Vendor / Perusahaan</Label>
+                  <Label className="mb-2 block">Karyawan / Nama Pihak Kedua</Label>
                   <Input
-                    value={vendorName}
-                    onChange={(e) => setVendorName(e.target.value)}
-                    placeholder="Contoh: PT Bairuha Iman Gemilang"
+                    value={employeeSearch}
+                    onChange={(e) => {
+                      setEmployeeSearch(e.target.value)
+                      setSelectedEmpId('')
+                    }}
+                    placeholder="Ketik nama, NIK, jabatan..."
                   />
+                  <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {visibleEmployeeResults.length > 0 ? (
+                      visibleEmployeeResults.map((emp) => {
+                        const isSelected = emp.id.toString() === selectedEmpId
+                        return (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            className={`w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 ${
+                              isSelected ? 'text-primary bg-slate-100 font-semibold' : 'text-slate-700'
+                            }`}
+                            onClick={() => {
+                              setSelectedEmpId(emp.id.toString())
+                              setEmployeeSearch(`${emp.name}`)
+                            }}
+                          >
+                            <span className="block font-medium">
+                              {emp.employeeSn} - {emp.name}
+                            </span>
+                            <span className="text-muted-foreground text-xs">
+                              {emp.jobTitle} • {emp.section}
+                            </span>
+                          </button>
+                        )
+                      })
+                    ) : (
+                      <div className="text-muted-foreground px-3 py-2 text-sm">
+                        Ketik manual jika bukan karyawan
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <Label className="mb-2 block">Untuk Mengerjakan</Label>
@@ -314,10 +381,9 @@ export function SuratPerintahKerjaClient({
                 <div>
                   <Label className="mb-2 block">Waktu Pengerjaan</Label>
                   <Input
-                    type="text"
+                    type="date"
                     value={jobDate}
                     onChange={(e) => setJobDate(e.target.value)}
-                    placeholder="Contoh: 07 April 2026"
                   />
                 </div>
               </div>
@@ -325,7 +391,7 @@ export function SuratPerintahKerjaClient({
           </Card>
 
           <div className="flex flex-col gap-2">
-            <Button onClick={handlePrint} className={\`w-full \${hcPrimaryActionClassName}\`}>
+            <Button onClick={handlePrint} className={`w-full ${hcPrimaryActionClassName}`}>
               <Printer className="size-4" />
               Print Surat
             </Button>
@@ -340,9 +406,9 @@ export function SuratPerintahKerjaClient({
             </Button>
             {saveMessage && (
               <p
-                className={\`text-center text-xs \${
+                className={`text-center text-xs ${
                   saveMessage.includes('berhasil') ? 'text-emerald-600' : 'text-destructive'
-                }\`}
+                }`}
               >
                 {saveMessage}
               </p>
@@ -358,8 +424,8 @@ export function SuratPerintahKerjaClient({
 
         <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:bg-transparent print:p-0 print:shadow-none">
           <div
-            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-cover bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
-            style={{ backgroundImage: \`url(\${LETTERHEAD_BACKGROUND_URL})\` }}
+            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-[length:210mm_297mm] bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
+            style={{ backgroundImage: `url(${LETTERHEAD_BACKGROUND_URL})` }}
           >
             <div
               contentEditable
@@ -367,81 +433,95 @@ export function SuratPerintahKerjaClient({
               className="pdf-wrapper-content relative z-10 outline-none"
               style={{
                 fontFamily: 'Arial, sans-serif',
-                fontSize: '11pt',
-                lineHeight: '1.5',
+                fontSize: '9.5pt',
+                lineHeight: '1.3',
                 color: 'black',
-                paddingTop: '45mm',
-                paddingBottom: '30mm',
-                paddingLeft: '25mm',
-                paddingRight: '25mm',
+                paddingTop: '38mm',
+                paddingBottom: '20mm',
+                paddingLeft: '22mm',
+                paddingRight: '22mm',
                 minHeight: '297mm',
               }}
             >
-              <div className="mb-12 text-center">
+              <div className="mb-6 text-center">
                 <h1 className="mb-0 text-xl font-bold uppercase underline">Surat Perintah Kerja</h1>
                 <p>No. {noSurat || '______________________'}</p>
               </div>
 
-              <p className="mb-4 font-bold">Yang bertanda tangan dibawah ini :</p>
+              <p className="mb-2 font-bold">Yang bertanda tangan dibawah ini :</p>
 
-              <table className="mb-8 ml-4 w-full">
+              <table className="mb-4 ml-4 w-full">
                 <tbody>
                   <tr>
-                    <td className="w-48 py-1">Nama</td>
-                    <td className="w-4">:</td>
-                    <td>{selectedHrSigner?.name || '______________________'}</td>
+                    <td className="w-40 pb-1">Nama</td>
+                    <td className="w-4 pb-1">:</td>
+                    <td className="pb-1">{selectedHrSigner?.name || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Jabatan</td>
-                    <td>:</td>
-                    <td>{selectedHrSigner?.jobTitle || '______________________'}</td>
+                    <td className="pb-1">Jabatan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{selectedHrSigner?.jobTitle || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Perusahaan</td>
-                    <td>:</td>
-                    <td>PT Chitra Paratama</td>
+                    <td className="pb-1">Perusahaan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">PT Chitra Paratama</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Alamat</td>
-                    <td>:</td>
-                    <td>Jl. AMD No.69 RT 46 Kel Graha Indah Balikpapan</td>
+                    <td className="pb-1">Alamat</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">Jl. AMD No.69 RT 46 Kel Graha Indah Balikpapan</td>
                   </tr>
                 </tbody>
               </table>
 
-              <p className="mb-4 font-bold">Dengan ini memberikan perintah kerja kepada :</p>
+              <p className="mb-2 font-bold">Dengan ini memberikan perintah kerja kepada :</p>
 
-              <table className="mb-12 ml-4 w-full">
+              <table className="mb-6 ml-4 w-full">
                 <tbody>
                   <tr>
-                    <td className="w-48 py-1">Nama</td>
-                    <td className="w-4">:</td>
-                    <td>{vendorName || '______________________'}</td>
+                    <td className="w-40 pb-1">Nama</td>
+                    <td className="w-4 pb-1">:</td>
+                    <td className="font-bold pb-1">{selectedEmp?.name || employeeSearch || '______________________'}</td>
+                  </tr>
+                  {selectedEmp && (
+                    <>
+                      <tr>
+                        <td className="pb-1">NIK</td>
+                        <td className="pb-1">:</td>
+                        <td className="pb-1">{selectedEmp.employeeSn}</td>
+                      </tr>
+                      <tr>
+                        <td className="pb-1">Jabatan</td>
+                        <td className="pb-1">:</td>
+                        <td className="pb-1">{formatJabatan(selectedEmp.section, selectedEmp.jobTitle)}</td>
+                      </tr>
+                    </>
+                  )}
+                  <tr>
+                    <td className="pb-1">Untuk Mengerjakan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{jobDescription || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Untuk Mengerjakan</td>
-                    <td>:</td>
-                    <td>{jobDescription || '______________________'}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1">Waktu Pengerjaan</td>
-                    <td>:</td>
-                    <td>{jobDate || '______________________'}</td>
+                    <td className="pb-1">Waktu Pengerjaan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{formattedJobDate || '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
 
-              <p className="mb-12 text-justify">
+              <p className="mb-6 text-justify">
                 Demikian surat perintah kerja ini dibuat untuk dipergunakan sebagaimana mestinya.
               </p>
 
-              <div className="mt-12 flex justify-start">
+              <div className="mt-6 flex justify-start">
                 <div>
                   <p className="mb-1">Balikpapan, {tanggal || '_________________'}</p>
-                  <p className="mb-4">Hormat Kami,</p>
+                  <p className="mb-2">Hormat Kami,</p>
                   
                   {/* TTD + Stempel area */}
-                  <div className="relative mb-2 w-48">
+                  <div className="relative mb-1 w-48">
                     {/* Stempel image placed behind signature */}
                     <div className="absolute top-1/2 left-0 -translate-y-1/2 opacity-70" style={{ pointerEvents: 'none' }}>
                        {/* You can add a company stamp image here if available, currently mimicking the layout */}
@@ -450,12 +530,12 @@ export function SuratPerintahKerjaClient({
                     {selectedSignatureUrl ? (
                       <img
                         src={selectedSignatureUrl}
-                        alt={\`TTD \${selectedHrSigner?.name || 'HR'}\`}
+                        alt={`TTD ${selectedHrSigner?.name || 'HR'}`}
                         className="relative z-10 mb-1 object-contain"
-                        style={{ height: '70px', width: 'auto', minWidth: '120px' }}
+                        style={{ height: '60px', width: 'auto', minWidth: '120px' }}
                       />
                     ) : (
-                      <div className="mb-1" style={{ height: '70px', width: '120px' }} />
+                      <div className="mb-1" style={{ height: '60px', width: '120px' }} />
                     )}
                   </div>
 
@@ -471,7 +551,7 @@ export function SuratPerintahKerjaClient({
       </div>
       <style
         dangerouslySetInnerHTML={{
-          __html: \`
+          __html: `
           @media print {
             @page { size: A4; margin: 0; }
             body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -479,7 +559,7 @@ export function SuratPerintahKerjaClient({
             .pdf-wrapper, .pdf-wrapper * { visibility: visible; }
             .pdf-wrapper { position: fixed; inset: 0; background-size: 210mm 297mm !important; }
           }
-        \`,
+        `,
         }}
       />
     </AdminPageShell>

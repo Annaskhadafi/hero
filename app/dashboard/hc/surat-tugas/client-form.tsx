@@ -12,6 +12,7 @@ import {
   hcPrimaryActionClassName,
 } from '@/components/hc/hc-workspace-banner'
 import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/surat'
+import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 
@@ -130,7 +131,7 @@ export function SuratTugasClient({
     })
   }
   const handlePrint = () => {
-    const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
+    const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
     const letterheadUrl = new URL(LETTERHEAD_BACKGROUND_URL, window.location.origin).toString()
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
 
@@ -152,15 +153,11 @@ export function SuratTugasClient({
               width: 210mm;
               min-height: 297mm;
               margin: 0 auto;
-              padding: 45mm 25mm 30mm;
               background-image: url("${letterheadUrl}");
               background-size: 210mm 297mm;
               background-position: center top;
               background-repeat: no-repeat;
               color: black;
-              font-family: Arial, sans-serif;
-              font-size: 12pt;
-              line-height: 1.5;
             }
             table { width: 100%; border-collapse: collapse; }
             .text-center { text-align: center; }
@@ -443,7 +440,7 @@ export function SuratTugasClient({
 
         <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:bg-transparent print:p-0 print:shadow-none">
           <div
-            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-cover bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
+            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-[length:210mm_297mm] bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
             style={{ backgroundImage: `url(${LETTERHEAD_BACKGROUND_URL})` }}
           >
             <div
@@ -452,94 +449,94 @@ export function SuratTugasClient({
               className="pdf-wrapper-content relative z-10 outline-none"
               style={{
                 fontFamily: 'Arial, sans-serif',
-                fontSize: '12pt',
-                lineHeight: '1.5',
+                fontSize: '9.5pt',
+                lineHeight: '1.3',
                 color: 'black',
-                paddingTop: '45mm',
-                paddingBottom: '30mm',
-                paddingLeft: '25mm',
-                paddingRight: '25mm',
+                paddingTop: '38mm',
+                paddingBottom: '20mm',
+                paddingLeft: '22mm',
+                paddingRight: '22mm',
                 minHeight: '297mm',
               }}
             >
-              <div className="mb-8 text-center">
+              <div className="mb-4 text-center">
                 <h1 className="mb-1 text-xl font-bold uppercase underline">Surat Tugas</h1>
                 <p>No: {noSurat || '______________________'}</p>
               </div>
 
-              <p className="mb-6 text-justify">
+              <p className="mb-3 text-justify">
                 Yang bertanda tangan di bawah ini, selaku pimpinan perusahaan PT Chitra Paratama,
                 memberikan tugas kepada:
               </p>
 
-              <table className="mb-6 ml-6 w-full">
+              <table className="mb-3 ml-6 w-full">
                 <tbody>
                   <tr>
-                    <td className="w-48 py-1">Nama</td>
-                    <td className="w-4">:</td>
-                    <td className="font-bold">{selectedEmp?.name || '______________________'}</td>
+                    <td className="w-40 pb-1">Nama</td>
+                    <td className="w-4 pb-1">:</td>
+                    <td className="font-bold pb-1">{selectedEmp?.name || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">NIK</td>
-                    <td>:</td>
-                    <td>{selectedEmp?.employeeSn || '______________________'}</td>
+                    <td className="pb-1">NIK</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{selectedEmp?.employeeSn || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Jabatan</td>
-                    <td>:</td>
-                    <td>{selectedEmp?.jobTitle || '______________________'}</td>
+                    <td className="pb-1">Jabatan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{selectedEmp ? formatJabatan(selectedEmp.section, selectedEmp.jobTitle) : '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Departemen / Section</td>
-                    <td>:</td>
-                    <td>{selectedEmp?.section || '______________________'}</td>
+                    <td className="pb-1">Departemen / Section</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{selectedEmp?.section || '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
 
-              <p className="mb-4">Untuk melaksanakan pekerjaan / penugasan sebagai berikut:</p>
+              <p className="mb-2">Untuk melaksanakan pekerjaan / penugasan sebagai berikut:</p>
 
-              <table className="mb-6 ml-6 w-full">
+              <table className="mb-3 ml-6 w-full">
                 <tbody>
                   <tr>
-                    <td className="w-48 py-1">Tempat / Tujuan</td>
-                    <td className="w-4">:</td>
-                    <td className="font-semibold">{tujuan || '______________________'}</td>
+                    <td className="w-40 pb-1">Tempat / Tujuan</td>
+                    <td className="w-4 pb-1">:</td>
+                    <td className="font-semibold pb-1">{tujuan || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Keperluan</td>
-                    <td>:</td>
-                    <td>{keperluan || '______________________'}</td>
+                    <td className="pb-1">Keperluan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">{keperluan || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Waktu Pelaksanaan</td>
-                    <td>:</td>
-                    <td>
+                    <td className="pb-1">Waktu Pelaksanaan</td>
+                    <td className="pb-1">:</td>
+                    <td className="pb-1">
                       {tglBerangkat || '________'} s/d {tglKembali || '________'}
                     </td>
                   </tr>
                 </tbody>
               </table>
 
-              <p className="mb-12 text-justify">
+              <p className="mb-6 text-justify">
                 Demikian surat tugas ini diberikan agar dapat dilaksanakan dengan penuh tanggung
                 jawab. Setelah selesai melaksanakan tugas, harap segera memberikan laporan kepada
                 atasan.
               </p>
 
-              <div className="mt-16 flex justify-end text-center">
+              <div className="mt-8 flex justify-end text-center">
                 <div>
                   <p className="mb-1">Balikpapan, {tanggal || '_________________'}</p>
-                  <p className="mb-8 font-bold">PT Chitra Paratama</p>
+                  <p className="mb-4 font-bold">PT Chitra Paratama</p>
                   {selectedSignatureUrl ? (
                     <img
                       src={selectedSignatureUrl}
                       alt={`TTD ${selectedHrSigner?.name || 'HR'}`}
-                      className="mx-auto mb-2 object-contain"
-                      style={{ height: '80px', width: '160px' }}
+                      className="mx-auto mb-1 object-contain"
+                      style={{ height: '60px', width: '160px' }}
                     />
                   ) : (
-                    <div className="mx-auto mb-2" style={{ height: '80px', width: '160px' }} />
+                    <div className="mx-auto mb-1" style={{ height: '60px', width: '160px' }} />
                   )}
 
                   <p className="font-bold underline">

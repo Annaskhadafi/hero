@@ -12,6 +12,7 @@ import {
   hcPrimaryActionClassName,
 } from '@/components/hc/hc-workspace-banner'
 import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/surat'
+import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 
@@ -461,7 +462,7 @@ export function SuratKeteranganClient({
                     <td className="py-1">Jabatan / Section</td>
                     <td>:</td>
                     <td>
-                      {selectedEmp?.jobTitle || '________________'} /{' '}
+                      {selectedEmp ? formatJabatan(selectedEmp.section, selectedEmp.jobTitle) : '________________'} /{' '}
                       {selectedEmp?.section || '________________'}
                     </td>
                   </tr>

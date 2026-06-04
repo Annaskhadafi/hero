@@ -1,4 +1,5 @@
 'use client'
+'use client'
 
 import { useState } from 'react'
 import { FileCheck2, FileText, Archive, FileSignature } from 'lucide-react'
@@ -6,6 +7,7 @@ import { FileCheck2, FileText, Archive, FileSignature } from 'lucide-react'
 import { SuratKeteranganClient } from '@/app/dashboard/hc/surat-keterangan/client-form'
 import { SuratTugasClient } from '@/app/dashboard/hc/surat-tugas/client-form'
 import { SuratMcuClient } from '@/app/dashboard/hc/surat-mcu/client-form'
+import { SuratPerintahKerjaClient } from '@/app/dashboard/hc/surat-perintah-kerja/client-form'
 import { SuratPerubahanStatusClient } from '@/app/dashboard/hc/surat-perubahan-status/client-form'
 import { SuratArchiveClient } from '@/app/dashboard/hc/surat/archive/client-page'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -61,6 +63,9 @@ export function SuratWorkspaceClient({
             <TabsTrigger value="mcu" className="gap-2">
               <FileCheck2 className="size-4" /> Surat MCU
             </TabsTrigger>
+            <TabsTrigger value="perintah-kerja" className="gap-2">
+              <FileText className="size-4" /> Perintah Kerja
+            </TabsTrigger>
             <TabsTrigger value="perubahan-status" className="gap-2">
               <FileSignature className="size-4" /> Perubahan Status
             </TabsTrigger>
@@ -76,6 +81,7 @@ export function SuratWorkspaceClient({
       )}
       {tab === 'tugas' && <SuratTugasClient employees={employees} hrSigners={hrSigners} />}
       {tab === 'mcu' && <SuratMcuClient employees={employees} hrSigners={hrSigners} />}
+      {tab === 'perintah-kerja' && <SuratPerintahKerjaClient employees={employees} hrSigners={hrSigners} />}
       {tab === 'perubahan-status' && <SuratPerubahanStatusClient employees={employees} hrSigners={hrSigners} />}
       {tab === 'archive' && <SuratArchiveClient letters={letters} stats={stats} />}
     </div>

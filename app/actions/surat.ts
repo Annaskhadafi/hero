@@ -233,8 +233,8 @@ export async function getLetterArchives(filters?: {
 export async function getLetterStats(): Promise<{
   totalSuratKeterangan: number
   totalSuratTugas: number
-  totalSuratMcu?: number
-  totalPerubahanStatus?: number
+  totalSuratMcu: number
+  totalPerubahanStatus: number
   totalThisMonth: number
   totalArchive: number
 }> {
