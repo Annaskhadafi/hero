@@ -25,7 +25,7 @@ import {
   deleteLetter,
 } from "@/app/actions/surat";
 
-import { AdminPageShell } from "@/components/admin-page-shell";
+
 import { HcWorkspaceBanner, hcTableRowClassName } from "@/components/hc/hc-workspace-banner";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
@@ -350,11 +350,7 @@ export function SuratArchiveClient({
   // ── Render ──
 
   return (
-    <AdminPageShell
-      eyebrow="HC - Arsip Surat"
-      title="Arsip Surat"
-      description="Kelola arsip surat keterangan dan surat tugas karyawan."
-    >
+    <div className="space-y-4">
       <HcWorkspaceBanner
         title="Letter Archive Desk"
         description="Arsip surat keterangan dan surat tugas dibuat lebih mudah dilacak melalui nomor, tipe, pemilik dokumen, status, dan tanggal terbit."
@@ -573,6 +569,7 @@ export function SuratArchiveClient({
                             <p>Level: {data.levelBaru}</p>
                             <p>Section: {data.sectionBaru}</p>
                             <p>Status: {data.statusKaryawanBaru}</p>
+                            {data.atasan && <p>Atasan: {data.atasan}</p>}
                           </div>
                         </div>
                         <div className="mt-3 text-sm">
@@ -834,6 +831,6 @@ export function SuratArchiveClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AdminPageShell>
+    </div>
   );
 }

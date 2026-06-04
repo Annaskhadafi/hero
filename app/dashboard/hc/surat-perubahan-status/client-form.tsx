@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
-import { AdminPageShell } from '@/components/admin-page-shell'
 import {
   HcWorkspaceBanner,
   hcMutedPanelClassName,
@@ -66,6 +65,7 @@ export function SuratPerubahanStatusClient({
   const [levelBaru, setLevelBaru] = useState('')
   const [sectionBaru, setSectionBaru] = useState('')
   const [statusKaryawanBaru, setStatusKaryawanBaru] = useState('')
+  const [atasan, setAtasan] = useState('Leader')
   const [tembusan, setTembusan] = useState('1. Departemen/Section Terkait.')
   const [tanggalBerlaku, setTanggalBerlaku] = useState(() => {
     const nextMonth = new Date()
@@ -232,6 +232,7 @@ export function SuratPerubahanStatusClient({
       levelBaru: levelBaru,
       sectionBaru: sectionBaru,
       statusKaryawanBaru: statusKaryawanBaru,
+      atasan: atasan,
       tanggalBerlaku: tanggalBerlaku,
       tembusan: tembusan,
     }
@@ -380,6 +381,21 @@ export function SuratPerubahanStatusClient({
                     placeholder="Contoh: Kontrak" 
                     className="bg-white text-sm h-10" 
                   />
+                </div>
+                <div>
+                  <Label className="text-xs text-slate-500 mb-2 block">Atasan Langsung</Label>
+                  <select 
+                    value={atasan}
+                    onChange={e => setAtasan(e.target.value)}
+                    className="border-input bg-white text-sm h-10 w-full rounded-md border px-3"
+                  >
+                    <option value="Leader">Leader</option>
+                    <option value="Sub Leader">Sub Leader</option>
+                    <option value="Supervisor">Supervisor</option>
+                    <option value="Manager">Manager</option>
+                    <option value="Group Leader">Group Leader</option>
+                    <option value="Site Manager">Site Manager</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -654,7 +670,7 @@ export function SuratPerubahanStatusClient({
                 <td className="align-top font-bold pb-1.5">Kedua</td>
                 <td className="align-top pb-1.5">:</td>
                 <td colSpan={2} className="align-top pb-1.5 text-justify">
-                  Dalam melaksanakan tugas sehari-hari yang bersangkutan bertanggung jawab kepada <span className="font-bold">Leader {sectionBaru || '___________________'}.</span>
+                  Dalam melaksanakan tugas sehari-hari yang bersangkutan bertanggung jawab kepada <span className="font-bold">{atasan || 'Leader'} {sectionBaru || '___________________'}.</span>
                 </td>
               </tr>
 

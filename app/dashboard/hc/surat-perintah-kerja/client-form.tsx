@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AdminPageShell } from '@/components/admin-page-shell'
 import {
   HcWorkspaceBanner,
   hcMutedPanelClassName,
@@ -258,11 +257,7 @@ export function SuratPerintahKerjaClient({
   }, [selectedEmp, employeeSearch, noSurat, jobDescription, selectedHrSigner])
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Surat Perintah Kerja"
-      title="Generate Surat Perintah Kerja"
-      description="Buat dan cetak surat perintah kerja untuk vendor atau pihak eksternal."
-    >
+    <div className="space-y-4">
       <HcWorkspaceBanner
         title="SPK Composer"
         description="Lengkapi detail surat perintah kerja, lalu cek preview dokumen yang siap dicetak."
@@ -562,6 +557,6 @@ export function SuratPerintahKerjaClient({
         `,
         }}
       />
-    </AdminPageShell>
+    </div>
   )
 }

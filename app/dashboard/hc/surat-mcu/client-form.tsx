@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
-import { AdminPageShell } from '@/components/admin-page-shell'
 import {
   HcWorkspaceBanner,
   hcMutedPanelClassName,

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AdminPageShell } from '@/components/admin-page-shell'
 import {
   HcWorkspaceBanner,
   hcMutedPanelClassName,
@@ -249,11 +248,7 @@ export function SuratTugasClient({
   }, [selectedEmp, noSurat, tujuan, keperluan, tglBerangkat, tglKembali])
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Surat Tugas"
-      title="Generate Surat Tugas"
-      description="Buat dan cetak surat penugasan kerja untuk karyawan."
-    >
+    <div className="space-y-4">
       <HcWorkspaceBanner
         title="Assignment Letter Composer"
         description="Form penugasan dibuat lebih fokus: identitas, tujuan, keperluan, periode, lalu preview surat yang siap cetak dan arsip."
@@ -562,6 +557,6 @@ export function SuratTugasClient({
         `,
         }}
       />
-    </AdminPageShell>
+    </div>
   )
 }

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AdminPageShell } from '@/components/admin-page-shell'
 import {
   HcWorkspaceBanner,
   hcMutedPanelClassName,
@@ -241,11 +240,7 @@ export function SuratKeteranganClient({
   }, [selectedEmp, noSurat, selectedHrSigner])
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Surat Keterangan Kerja"
-      title="Generate Surat Keterangan"
-      description="Buat dan cetak surat keterangan bekerja untuk karyawan."
-    >
+    <div className="space-y-4">
       <HcWorkspaceBanner
         title="Employment Letter Composer"
         description="Kontrol surat dipisah dari preview dokumen agar HC bisa pilih karyawan, cek autofill, cetak, dan arsip tanpa visual ramai."
@@ -523,6 +518,6 @@ export function SuratKeteranganClient({
       `,
         }}
       />
-    </AdminPageShell>
+    </div>
   )
 }
