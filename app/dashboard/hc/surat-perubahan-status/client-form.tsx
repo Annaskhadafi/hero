@@ -45,6 +45,7 @@ export function SuratPerubahanStatusClient({
   employees: EmployeeForLetter[]
   hrSigners: HrSigner[]
 }) {
+  console.log('SPST loaded - v3');
   const [selectedEmpId, setSelectedEmpId] = useState<string>('')
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [selectedHrSignerId, setSelectedHrSignerId] = useState<string>(
@@ -157,11 +158,16 @@ export function SuratPerubahanStatusClient({
       return
     }
 
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(node => node.outerHTML)
+      .join('\n');
+
     const printDocument = `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Cetak Surat Perubahan Status</title>
+          ${styles}
           <style>
             @page {
               size: A4;
@@ -199,11 +205,14 @@ export function SuratPerubahanStatusClient({
             ${contentHtml}
           </div>
           <script>
-            window.onload = () => {
-              setTimeout(() => {
-                window.print();
-              }, 500);
-            }
+            const closeAfterPrint = () => setTimeout(() => window.close(), 250);
+            window.addEventListener("afterprint", closeAfterPrint);
+            window.addEventListener("load", () => {
+              const backgroundImage = new Image();
+              backgroundImage.onload = () => setTimeout(() => window.print(), 150);
+              backgroundImage.onerror = () => setTimeout(() => window.print(), 150);
+              backgroundImage.src = "${letterheadUrl}";
+            });
           </script>
         </body>
       </html>
@@ -755,7 +764,13 @@ export function SuratPerubahanStatusClient({
         </div>
       </div>
     </div>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: '@media print { @page { size: A4; margin: 0; } body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; } body * { visibility: hidden; } .pdf-wrapper, .pdf-wrapper * { visibility: visible; } .pdf-wrapper { position: fixed; inset: 0; margin: 0; padding: 0; background-size: 210mm 297mm !important; } }'
+        }}
+      />
     </div>
   )
 }
+// trigger rebuild
 

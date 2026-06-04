@@ -97,7 +97,9 @@ const LETTER_TYPE_LABELS: Record<string, string> = {
   surat_keterangan: "Surat Keterangan",
   surat_tugas: "Surat Tugas",
   surat_mcu: "Surat Pengantar MCU",
+  surat_perintah_kerja: "Surat Perintah Kerja",
   surat_perubahan_status: "Surat Perubahan Status",
+  surat_pengalaman_kerja: "Surat Pengalaman Kerja",
 };
 
 function formatDate(dateStr: string | Date | null): string {
@@ -575,6 +577,25 @@ export function SuratArchiveClient({
                         <div className="mt-3 text-sm">
                           <p><span className="font-medium">Tgl Berlaku:</span> {data.tanggalBerlaku}</p>
                         </div>
+                      </div>
+                    );
+                  } catch (e) {
+                    return null;
+                  }
+                })()}
+              </>
+            )}
+            
+            {viewItem.letterType === "surat_pengalaman_kerja" && (
+              <>
+                {(() => {
+                  try {
+                    const data = JSON.parse(viewItem.content || "{}");
+                    return (
+                      <div className="col-span-3 rounded-lg border border-border/50 bg-muted/20 p-4 mt-2 text-sm">
+                        <p className="mb-2 font-medium text-muted-foreground">Detail Surat</p>
+                        <p><span className="font-semibold">Masa Kerja:</span> {data.tanggalMulai} - {data.tanggalSelesai}</p>
+                        <p><span className="font-semibold">Alasan Keluar:</span> {data.alasanKeluar}</p>
                       </div>
                     );
                   } catch (e) {

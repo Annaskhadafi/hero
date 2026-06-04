@@ -38,7 +38,8 @@ export default async function SuratPage(props: {
   const resolvedSearchParams = await props.searchParams
   const rawTab = resolvedSearchParams?.tab
   const requestedTab = typeof rawTab === 'string' ? rawTab : undefined
-  const initialTab = ['keterangan', 'tugas', 'mcu', 'archive', 'perubahan-status'].includes(requestedTab || '')
+  const validTabs = ['keterangan', 'tugas', 'mcu', 'archive', 'perintah-kerja', 'perubahan-status', 'pengalaman-kerja']
+  const initialTab = validTabs.includes(requestedTab || '')
     ? requestedTab || 'keterangan'
     : 'keterangan'
   const [employeesData, hrSignersData, letters, stats] = await Promise.all([

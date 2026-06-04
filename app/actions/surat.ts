@@ -56,6 +56,7 @@ function formatLetterNumber(
   else if (letterType === 'surat_mcu') prefix = 'MCU'
   else if (letterType === 'surat_perintah_kerja') prefix = 'GA-CHITRABPN'
   else if (letterType === 'surat_perubahan_status') prefix = 'HR- CHITRA'
+  else if (letterType === 'surat_pengalaman_kerja') prefix = 'HR-CHITRA'
 
   const seqStr = String(sequence).padStart(3, '0')
   const romanMonth = ROMAN_MONTHS[month]
@@ -168,6 +169,7 @@ export async function saveLetter(data: {
     revalidatePath('/dashboard/hc/surat/archive')
     revalidatePath('/dashboard/hc/surat-keterangan')
     revalidatePath('/dashboard/hc/surat-tugas')
+    revalidatePath('/dashboard/hc/surat-pengalaman-kerja')
 
     return { success: true, id: inserted.id }
   } catch (error) {
@@ -235,6 +237,7 @@ export async function getLetterStats(): Promise<{
   totalSuratTugas: number
   totalSuratMcu: number
   totalPerubahanStatus: number
+  totalSuratPengalamanKerja: number
   totalThisMonth: number
   totalArchive: number
 }> {
@@ -266,6 +269,11 @@ export async function getLetterStats(): Promise<{
     .from(hcLetters)
     .where(eq(hcLetters.letterType, 'surat_perubahan_status'))
 
+  const [totalPengalamanKerja] = await db
+    .select({ cnt: count() })
+    .from(hcLetters)
+    .where(eq(hcLetters.letterType, 'surat_pengalaman_kerja'))
+
   const [thisMonth] = await db
     .select({ cnt: count() })
     .from(hcLetters)
@@ -280,6 +288,7 @@ export async function getLetterStats(): Promise<{
     totalSuratTugas: totalTugas?.cnt ?? 0,
     totalSuratMcu: totalMcu?.cnt ?? 0,
     totalPerubahanStatus: totalPerubahanStatus?.cnt ?? 0,
+    totalSuratPengalamanKerja: totalPengalamanKerja?.cnt ?? 0,
     totalThisMonth: thisMonth?.cnt ?? 0,
     totalArchive: totalAll?.cnt ?? 0,
   }
