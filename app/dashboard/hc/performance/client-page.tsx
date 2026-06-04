@@ -144,15 +144,7 @@ export function PerformanceClientPage({ cycles, reviews, stats, employees }: { c
   }, []);
 
   return <AdminPageShell eyebrow="HC - Performance" title="Performance Management" description="Kelola review kinerja, KPI, dan siklus penilaian karyawan.">
-    <HcWorkspaceBanner
-      title="Performance Review Desk"
-      description="Review, KPI, cycle, dan status persetujuan dibuat seperti workspace evaluasi: ringkas, terarah, dan mudah dipindai."
-      items={[
-        { label: "Review", value: reviewRows.length, tone: "slate" },
-        { label: "Cycle", value: cycleRows.length, tone: "sky" },
-        { label: "Pending", value: statRows.pendingReviews, tone: "amber" },
-      ]}
-    />
+
     <Tabs value={tab} onValueChange={setTab}>
       <TabsList className="mb-4 h-auto w-full justify-start overflow-x-auto rounded-2xl bg-slate-100/80 p-1"><TabsTrigger value="reviews">Performance Reviews</TabsTrigger><TabsTrigger value="cycles">Review Cycles</TabsTrigger></TabsList>
       <TabsContent value="reviews" className="space-y-5"><EnterpriseScorecards items={scorecards} />
