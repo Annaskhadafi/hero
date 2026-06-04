@@ -3601,9 +3601,17 @@ export async function getSecurityUsersData() {
     )
     .orderBy(hrEmployees.fullName)
 
-  const employeeNameById = new Map(rows.map((row) => [row.id, row.name]))
+  const uniqueRowsMap = new Map()
+  for (const row of rows) {
+    if (!uniqueRowsMap.has(row.id)) {
+      uniqueRowsMap.set(row.id, row)
+    }
+  }
+  const uniqueRows = Array.from(uniqueRowsMap.values())
 
-  return rows.map<SecurityUserRecord>((row: any) => ({
+  const employeeNameById = new Map(uniqueRows.map((row) => [row.id, row.name]))
+
+  return uniqueRows.map<SecurityUserRecord>((row: any) => ({
     id: row.id,
     siteId: row.siteId,
     employeeSn: row.employeeSn,
