@@ -54,6 +54,8 @@ function formatLetterNumber(
   let prefix = 'SK'
   if (letterType === 'surat_tugas') prefix = 'ST'
   else if (letterType === 'surat_mcu') prefix = 'MCU'
+  else if (letterType === 'surat_perintah_kerja') prefix = 'GA-CHITRABPN'
+  else if (letterType === 'surat_perubahan_status') prefix = 'HR- CHITRA'
 
   const seqStr = String(sequence).padStart(3, '0')
   const romanMonth = ROMAN_MONTHS[month]
@@ -231,6 +233,8 @@ export async function getLetterArchives(filters?: {
 export async function getLetterStats(): Promise<{
   totalSuratKeterangan: number
   totalSuratTugas: number
+  totalSuratMcu?: number
+  totalPerubahanStatus?: number
   totalThisMonth: number
   totalArchive: number
 }> {
@@ -257,6 +261,11 @@ export async function getLetterStats(): Promise<{
     .from(hcLetters)
     .where(eq(hcLetters.letterType, 'surat_mcu'))
 
+  const [totalPerubahanStatus] = await db
+    .select({ cnt: count() })
+    .from(hcLetters)
+    .where(eq(hcLetters.letterType, 'surat_perubahan_status'))
+
   const [thisMonth] = await db
     .select({ cnt: count() })
     .from(hcLetters)
@@ -270,6 +279,7 @@ export async function getLetterStats(): Promise<{
     totalSuratKeterangan: totalKeterangan?.cnt ?? 0,
     totalSuratTugas: totalTugas?.cnt ?? 0,
     totalSuratMcu: totalMcu?.cnt ?? 0,
+    totalPerubahanStatus: totalPerubahanStatus?.cnt ?? 0,
     totalThisMonth: thisMonth?.cnt ?? 0,
     totalArchive: totalAll?.cnt ?? 0,
   }

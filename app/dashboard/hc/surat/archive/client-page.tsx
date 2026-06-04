@@ -86,6 +86,7 @@ type LetterStats = {
   totalSuratKeterangan: number;
   totalSuratTugas: number;
   totalSuratMcu: number;
+  totalPerubahanStatus: number;
   totalThisMonth: number;
   totalArchive: number;
 };
@@ -96,6 +97,7 @@ const LETTER_TYPE_LABELS: Record<string, string> = {
   surat_keterangan: "Surat Keterangan",
   surat_tugas: "Surat Tugas",
   surat_mcu: "Surat Pengantar MCU",
+  surat_perubahan_status: "Surat Perubahan Status",
 };
 
 function formatDate(dateStr: string | Date | null): string {
@@ -202,6 +204,7 @@ export function SuratArchiveClient({
       { value: "surat_keterangan", label: "Surat Keterangan" },
       { value: "surat_tugas", label: "Surat Tugas" },
       { value: "surat_mcu", label: "Surat Pengantar MCU" },
+      { value: "surat_perubahan_status", label: "Surat Perubahan Status" },
     ],
     [],
   );
@@ -235,6 +238,12 @@ export function SuratArchiveClient({
         value: stats.totalSuratMcu,
         icon: <IconFileCheck className="size-5 text-blue-600" />,
         tone: "info" as const,
+      },
+      {
+        label: "Perubahan Status",
+        value: stats.totalPerubahanStatus,
+        icon: <IconFileDescription className="size-5 text-amber-600" />,
+        tone: "warning" as const,
       },
       {
         label: "Total Arsip",
@@ -531,6 +540,42 @@ export function SuratArchiveClient({
               </>
             )}
 
+            {viewItem.letterType === "surat_perubahan_status" && (
+              <>
+                {(() => {
+                  try {
+                    const data = JSON.parse(viewItem.content || "{}");
+                    return (
+                      <div className="col-span-3 rounded-lg border border-border/50 bg-muted/20 p-4 mt-2">
+                        <p className="mb-2 text-sm font-medium text-muted-foreground">Detail Perubahan</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="font-semibold text-slate-700 mb-1">Status Lama</p>
+                            <p>Jabatan: {data.jabatanLama}</p>
+                            <p>Level: {data.levelLama}</p>
+                            <p>Section: {data.sectionLama}</p>
+                            <p>Status: {data.statusLama}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-700 mb-1">Status Baru</p>
+                            <p>Jabatan: {data.jabatanBaru}</p>
+                            <p>Level: {data.levelBaru}</p>
+                            <p>Section: {data.sectionBaru}</p>
+                            <p>Status: {data.statusKaryawanBaru}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 text-sm">
+                          <p><span className="font-medium">Tgl Berlaku:</span> {data.tanggalBerlaku}</p>
+                        </div>
+                      </div>
+                    );
+                  } catch (e) {
+                    return null;
+                  }
+                })()}
+              </>
+            )}
+
             <div className="grid grid-cols-3 gap-2 border-b border-border/50 py-2">
               <span className="text-sm font-medium text-muted-foreground">Penandatangan</span>
               <span className="col-span-2 text-sm">
@@ -551,7 +596,7 @@ export function SuratArchiveClient({
               </div>
             ) : null}
 
-            {viewItem.content ? (
+            {viewItem.content && viewItem.letterType !== "surat_perubahan_status" ? (
               <div className="mt-4 rounded-lg border border-border/50 bg-muted/20 p-4">
                 <p className="mb-2 text-sm font-medium text-muted-foreground">Konten Surat</p>
                 <div

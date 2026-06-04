@@ -1,6 +1,6 @@
 import { getLetterArchives, getLetterStats } from '@/app/actions/surat'
 import { db } from '@/db'
-import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections } from '@/db/schema/hero'
+import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrEmployeeStatuses } from '@/db/schema/hero'
 import { and, asc, eq, ilike, or } from 'drizzle-orm'
 import { SuratWorkspaceClient } from './client-page'
 
@@ -32,14 +32,13 @@ const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: str
   },
 }
 
-export default async function SuratPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ tab?: string }> | { tab?: string }
+export default async function SuratPage(props: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
-  const resolvedSearchParams = await searchParams
-  const requestedTab = resolvedSearchParams?.tab
-  const initialTab = ['keterangan', 'tugas', 'mcu', 'archive'].includes(requestedTab || '')
+  const resolvedSearchParams = await props.searchParams
+  const rawTab = resolvedSearchParams?.tab
+  const requestedTab = typeof rawTab === 'string' ? rawTab : undefined
+  const initialTab = ['keterangan', 'tugas', 'mcu', 'archive', 'perubahan-status'].includes(requestedTab || '')
     ? requestedTab || 'keterangan'
     : 'keterangan'
   const [employeesData, hrSignersData, letters, stats] = await Promise.all([
@@ -51,10 +50,13 @@ export default async function SuratPage({
         joinYear: hrEmployees.joinDate,
         section: hrSections.name,
         jobTitle: hrPositions.rankName,
+        levelName: hrPositions.levelName,
+        employeeStatusType: hrEmployeeStatuses.name,
       })
       .from(hrEmployees)
       .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
       .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+      .leftJoin(hrEmployeeStatuses, eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code))
       .where(eq(hrEmployees.isActive, true))
       .orderBy(asc(hrEmployees.fullName)),
     db
