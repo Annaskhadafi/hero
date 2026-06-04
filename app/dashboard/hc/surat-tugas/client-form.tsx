@@ -1,112 +1,255 @@
-"use client";
+'use client'
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { AdminPageShell } from "@/components/admin-page-shell";
-import { HcWorkspaceBanner, hcMutedPanelClassName, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
-import { getNextLetterNumber, saveLetter } from "@/app/actions/surat";
-import { Archive, Printer } from "lucide-react";
-import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AdminPageShell } from '@/components/admin-page-shell'
+import {
+  HcWorkspaceBanner,
+  hcMutedPanelClassName,
+  hcPrimaryActionClassName,
+} from '@/components/hc/hc-workspace-banner'
+import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/surat'
+import { Archive, Printer } from 'lucide-react'
+import Link from 'next/link'
+
+const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
 
 type EmployeeForLetter = {
-  id: number;
-  name: string;
-  employeeSn: string;
-  joinYear: number;
-  section: string;
-  jobTitle: string;
-};
+  id: number
+  name: string
+  employeeSn: string
+  joinYear: number
+  section: string
+  jobTitle: string
+}
 
-export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[] }) {
-  const [selectedEmpId, setSelectedEmpId] = useState<string>("");
-  const [noSurat, setNoSurat] = useState("");
+type HrSigner = {
+  id: number
+  name: string
+  employeeSn: string
+  jobTitle: string
+  signatureUrl: string
+}
+
+export function SuratTugasClient({
+  employees,
+  hrSigners,
+}: {
+  employees: EmployeeForLetter[]
+  hrSigners: HrSigner[]
+}) {
+  const [selectedEmpId, setSelectedEmpId] = useState<string>('')
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [selectedHrSignerId, setSelectedHrSignerId] = useState<string>(
+    () => hrSigners[0]?.id.toString() ?? ''
+  )
+  const [uploadedSignatures, setUploadedSignatures] = useState<Record<string, string>>({})
+  const [noSurat, setNoSurat] = useState('')
   const [tanggal, setTanggal] = useState(() => {
-    return new Date().toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  });
+    return new Date().toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })
+  })
 
   // Custom inputs for Surat Tugas
-  const [tujuan, setTujuan] = useState("");
-  const [keperluan, setKeperluan] = useState("");
-  const [tglBerangkat, setTglBerangkat] = useState("");
-  const [tglKembali, setTglKembali] = useState("");
+  const [tujuan, setTujuan] = useState('')
+  const [keperluan, setKeperluan] = useState('')
+  const [tglBerangkat, setTglBerangkat] = useState('')
+  const [tglKembali, setTglKembali] = useState('')
 
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState("");
-  const letterNumberFetched = useRef(false);
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
+  const letterNumberFetched = useRef(false)
 
-  const selectedEmp = employees.find((e) => e.id.toString() === selectedEmpId);
+  const normalizedEmployeeSearch = employeeSearch.trim().toLowerCase()
+  const filteredEmployees = normalizedEmployeeSearch
+    ? employees.filter((employee) =>
+        [employee.employeeSn, employee.name, employee.jobTitle, employee.section]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedEmployeeSearch)
+      )
+    : employees
+  const visibleEmployeeResults = filteredEmployees.slice(0, 8)
+  const selectedEmp = employees.find((e) => e.id.toString() === selectedEmpId)
+  const selectedHrSigner = hrSigners.find((signer) => signer.id.toString() === selectedHrSignerId)
+  const selectedSignatureUrl = selectedHrSigner
+    ? uploadedSignatures[selectedHrSigner.name] || selectedHrSigner.signatureUrl
+    : ''
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('hero-hr-signatures')
+      if (raw) setUploadedSignatures(JSON.parse(raw) as Record<string, string>)
+    } catch (error) {
+      console.error('Failed to load HR signatures:', error)
+    }
+  }, [])
+
+  const handleSignatureUpload = (file: File | undefined) => {
+    if (!file || !selectedHrSigner) return
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const signatureDataUrl = String(reader.result || '')
+      setUploadedSignatures((current) => {
+        const next = { ...current, [selectedHrSigner.name]: signatureDataUrl }
+        window.localStorage.setItem('hero-hr-signatures', JSON.stringify(next))
+        return next
+      })
+    }
+    reader.readAsDataURL(file)
+  }
   // Auto-generate letter number on mount
   useEffect(() => {
-    if (letterNumberFetched.current) return;
-    letterNumberFetched.current = true;
+    if (letterNumberFetched.current) return
+    letterNumberFetched.current = true
 
-    getNextLetterNumber("surat_tugas")
+    getNextLetterNumber('surat_tugas')
       .then((num) => {
-        setNoSurat(num);
+        setNoSurat(num)
       })
       .catch((err) => {
-        console.error("Failed to generate letter number:", err);
-      });
-  }, []);
+        console.error('Failed to generate letter number:', err)
+      })
+  }, [])
 
+  const handleSignatureDelete = () => {
+    if (!selectedHrSigner) return
+
+    setUploadedSignatures((current) => {
+      const next = { ...current }
+      delete next[selectedHrSigner.name]
+      window.localStorage.setItem('hero-hr-signatures', JSON.stringify(next))
+      return next
+    })
+  }
   const handlePrint = () => {
-    window.print();
-  };
+    const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
+    const letterheadUrl = new URL(LETTERHEAD_BACKGROUND_URL, window.location.origin).toString()
+    const printWindow = window.open('', '_blank', 'width=900,height=1200')
+
+    if (!printWindow) {
+      window.print()
+      return
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Surat Tugas</title>
+          <style>
+            @page { size: A4; margin: 0; }
+            * { box-sizing: border-box; }
+            body { margin: 0; background: #f5f7fb; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page {
+              width: 210mm;
+              min-height: 297mm;
+              margin: 0 auto;
+              padding: 45mm 25mm 30mm;
+              background-image: url("${letterheadUrl}");
+              background-size: 210mm 297mm;
+              background-position: center top;
+              background-repeat: no-repeat;
+              color: black;
+              font-family: Arial, sans-serif;
+              font-size: 12pt;
+              line-height: 1.5;
+            }
+            table { width: 100%; border-collapse: collapse; }
+            .text-center { text-align: center; }
+            .text-justify { text-align: justify; }
+            .font-bold { font-weight: 700; }
+            .font-semibold { font-weight: 600; }
+            .underline { text-decoration: underline; }
+            .uppercase { text-transform: uppercase; }
+            .mb-1 { margin-bottom: 0.25rem; }
+            .mb-4 { margin-bottom: 1rem; }
+            .mb-6 { margin-bottom: 1.5rem; }
+            .mb-8 { margin-bottom: 2rem; }
+            .mb-12 { margin-bottom: 3rem; }
+            .mb-20 { margin-bottom: 5rem; }
+            .mt-16 { margin-top: 4rem; }
+            .ml-6 { margin-left: 1.5rem; }
+            .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+            .w-4 { width: 1rem; }
+            .w-48 { width: 12rem; }
+            .flex { display: flex; }
+            .justify-end { justify-content: flex-end; }
+            h1 { font-size: 1.25rem; line-height: 1.75rem; margin: 0; }
+            p { margin-top: 0; }
+          </style>
+        </head>
+        <body>
+          <main class="page">${contentHtml}</main>
+          <script>
+            const closeAfterPrint = () => setTimeout(() => window.close(), 250);
+            window.addEventListener("afterprint", closeAfterPrint);
+            window.addEventListener("load", () => {
+              const backgroundImage = new Image();
+              backgroundImage.onload = () => setTimeout(() => window.print(), 150);
+              backgroundImage.onerror = () => setTimeout(() => window.print(), 150);
+              backgroundImage.src = "${letterheadUrl}";
+            });
+          <\/script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
 
   const handleSaveToArchive = useCallback(async () => {
     if (!selectedEmp) {
-      setSaveMessage("Pilih karyawan terlebih dahulu.");
-      return;
+      setSaveMessage('Pilih karyawan terlebih dahulu.')
+      return
     }
 
-    setSaving(true);
-    setSaveMessage("");
+    setSaving(true)
+    setSaveMessage('')
 
     try {
-      const today = new Date().toISOString().split("T")[0];
-      const contentHtml = document.querySelector(".pdf-wrapper")?.innerHTML || "";
+      const today = new Date().toISOString().split('T')[0]
+      const contentHtml = document.querySelector('.pdf-wrapper')?.innerHTML || ''
 
       const result = await saveLetter({
-        letterType: "surat_tugas",
+        letterType: 'surat_tugas',
         letterNumber: noSurat,
         employeeId: selectedEmp.id,
         employeeName: selectedEmp.name,
-        subject: keperluan || "Surat Tugas",
+        subject: keperluan || 'Surat Tugas',
         content: contentHtml,
         destination: tujuan,
         purpose: keperluan,
         departureDate: tglBerangkat || undefined,
         returnDate: tglKembali || undefined,
         issuedDate: today,
-        issuedPlace: "Balikpapan",
-        signatoryName: "",
-        signatoryTitle: "Direktur / HR Manager",
-        status: "draft",
-      });
+        issuedPlace: 'Balikpapan',
+        signatoryName: selectedHrSigner?.name || '',
+        signatoryTitle: selectedHrSigner?.jobTitle || 'Direktur / HR Manager',
+        status: 'draft',
+      })
 
       if (result.success) {
-        setSaveMessage("Surat berhasil disimpan ke arsip.");
+        setSaveMessage('Surat berhasil disimpan ke arsip.')
         // Refresh letter number for next use
-        const nextNum = await getNextLetterNumber("surat_tugas");
-        setNoSurat(nextNum);
+        const nextNum = await getNextLetterNumber('surat_tugas')
+        setNoSurat(nextNum)
       } else {
-        setSaveMessage(result.error || "Gagal menyimpan surat.");
+        setSaveMessage(result.error || 'Gagal menyimpan surat.')
       }
     } catch (error) {
-      console.error("Error saving letter:", error);
-      setSaveMessage("Terjadi kesalahan saat menyimpan.");
+      console.error('Error saving letter:', error)
+      setSaveMessage('Terjadi kesalahan saat menyimpan.')
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  }, [selectedEmp, noSurat, tujuan, keperluan, tglBerangkat, tglKembali]);
+  }, [selectedEmp, noSurat, tujuan, keperluan, tglBerangkat, tglKembali])
 
   return (
     <AdminPageShell
@@ -118,9 +261,18 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
         title="Assignment Letter Composer"
         description="Form penugasan dibuat lebih fokus: identitas, tujuan, keperluan, periode, lalu preview surat yang siap cetak dan arsip."
         items={[
-          { label: "Karyawan", value: employees.length, tone: "slate" },
-          { label: "Dipilih", value: selectedEmp ? "Siap" : "Belum", tone: selectedEmp ? "emerald" : "amber" },
-          { label: "Tujuan", value: tujuan ? "Terisi" : "Kosong", tone: tujuan ? "sky" : "amber" },
+          { label: 'Karyawan', value: employees.length, tone: 'slate' },
+          {
+            label: 'Dipilih',
+            value: selectedEmp ? 'Siap' : 'Belum',
+            tone: selectedEmp ? 'emerald' : 'amber',
+          },
+          {
+            label: 'HR Signer',
+            value: selectedHrSigner ? 'Siap' : 'Belum',
+            tone: selectedHrSigner ? 'emerald' : 'amber',
+          },
+          { label: 'Tujuan', value: tujuan ? 'Terisi' : 'Kosong', tone: tujuan ? 'sky' : 'amber' },
         ]}
       />
 
@@ -129,18 +281,45 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
           <Card className={`space-y-4 p-4 ${hcMutedPanelClassName}`}>
             <div>
               <Label className="mb-2 block">Karyawan</Label>
-              <select
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                value={selectedEmpId}
-                onChange={(e) => setSelectedEmpId(e.target.value)}
-              >
-                <option value="">-- Pilih Karyawan --</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.employeeSn} - {emp.name}
-                  </option>
-                ))}
-              </select>
+              <Input
+                value={employeeSearch}
+                onChange={(e) => {
+                  setEmployeeSearch(e.target.value)
+                  setSelectedEmpId('')
+                }}
+                placeholder="Ketik nama, NIK, jabatan, section..."
+              />
+              <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                {visibleEmployeeResults.length > 0 ? (
+                  visibleEmployeeResults.map((emp) => {
+                    const isSelected = emp.id.toString() === selectedEmpId
+                    return (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        className={`w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 ${
+                          isSelected ? 'text-primary bg-slate-100 font-semibold' : 'text-slate-700'
+                        }`}
+                        onClick={() => {
+                          setSelectedEmpId(emp.id.toString())
+                          setEmployeeSearch(`${emp.employeeSn} ${emp.name}`)
+                        }}
+                      >
+                        <span className="block font-medium">
+                          {emp.employeeSn} - {emp.name}
+                        </span>
+                        <span className="text-muted-foreground text-xs">
+                          {emp.jobTitle} • {emp.section}
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="text-muted-foreground px-3 py-2 text-sm">
+                    Tidak ada karyawan cocok
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <Label className="mb-2 block">No Surat</Label>
@@ -152,14 +331,45 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
             </div>
             <div>
               <Label className="mb-2 block">Tanggal Dibuat</Label>
-              <Input
-                value={tanggal}
-                onChange={(e) => setTanggal(e.target.value)}
-              />
+              <Input value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
             </div>
-
-            <div className="border-t pt-4 mt-2">
-              <h4 className="font-semibold text-sm mb-3">Detail Penugasan</h4>
+            <div>
+              <Label className="mb-2 block">HR Penandatangan</Label>
+              <select
+                className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
+                value={selectedHrSignerId}
+                onChange={(e) => setSelectedHrSignerId(e.target.value)}
+              >
+                <option value="">-- Pilih HR GA --</option>
+                {hrSigners.map((signer) => (
+                  <option key={signer.id} value={signer.id}>
+                    {signer.name} - {signer.jobTitle}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="mb-2 block">Upload TTD</Label>
+              <Input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => handleSignatureUpload(event.target.files?.[0])}
+              />
+              <p className="text-muted-foreground mt-1 text-xs">
+                Upload TTD disimpan ke public sesuai nama HR terpilih.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2 h-8 rounded-lg px-3 text-xs"
+                disabled={!selectedHrSigner || !uploadedSignatures[selectedHrSigner.name]}
+                onClick={handleSignatureDelete}
+              >
+                Hapus Upload TTD
+              </Button>
+            </div>
+            <div className="mt-2 border-t pt-4">
+              <h4 className="mb-3 text-sm font-semibold">Detail Penugasan</h4>
               <div className="space-y-4">
                 <div>
                   <Label className="mb-2 block">Tujuan / Lokasi</Label>
@@ -211,45 +421,50 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
               disabled={saving}
             >
               <Archive className="size-4" />
-              {saving ? "Menyimpan..." : "Simpan ke Arsip"}
+              {saving ? 'Menyimpan...' : 'Simpan ke Arsip'}
             </Button>
             {saveMessage && (
               <p
-                className={`text-xs text-center ${
-                  saveMessage.includes("berhasil")
-                    ? "text-emerald-600"
-                    : "text-destructive"
+                className={`text-center text-xs ${
+                  saveMessage.includes('berhasil') ? 'text-emerald-600' : 'text-destructive'
                 }`}
               >
                 {saveMessage}
               </p>
             )}
             <Link
-              href="/dashboard/hc/surat/archive"
-              className="text-center text-xs text-primary underline underline-offset-4 hover:text-primary/80"
+              href="/dashboard/hc/surat?tab=archive"
+              className="text-primary hover:text-primary/80 text-center text-xs underline underline-offset-4"
             >
               Lihat Arsip Surat
             </Link>
           </div>
         </div>
 
-        {/* Print Preview Area */}
-        <div className="min-h-[800px] rounded-[1.1rem] bg-white p-8 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:border-none print:bg-transparent print:p-0 print:shadow-none">
-          <div className="pdf-wrapper">
+        <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:m-0 print:bg-transparent print:p-0 print:shadow-none">
+          <div
+            className="pdf-wrapper relative mx-auto min-h-[297mm] w-[210mm] max-w-full overflow-hidden bg-white bg-cover bg-top bg-no-repeat shadow-sm print:m-0 print:h-[297mm] print:w-[210mm] print:max-w-none print:shadow-none"
+            style={{ backgroundImage: `url(${LETTERHEAD_BACKGROUND_URL})` }}
+          >
             <div
               contentEditable
               suppressContentEditableWarning
-              className="outline-none"
+              className="pdf-wrapper-content relative z-10 outline-none"
               style={{
-                fontFamily: "Arial, sans-serif",
-                fontSize: "12pt",
-                lineHeight: "1.5",
-                color: "black",
+                fontFamily: 'Arial, sans-serif',
+                fontSize: '12pt',
+                lineHeight: '1.5',
+                color: 'black',
+                paddingTop: '45mm',
+                paddingBottom: '30mm',
+                paddingLeft: '25mm',
+                paddingRight: '25mm',
+                minHeight: '297mm',
               }}
             >
-              <div className="text-center mb-8">
-                <h1 className="text-xl font-bold uppercase underline mb-1">Surat Tugas</h1>
-                <p>No: {noSurat || "______________________"}</p>
+              <div className="mb-8 text-center">
+                <h1 className="mb-1 text-xl font-bold uppercase underline">Surat Tugas</h1>
+                <p>No: {noSurat || '______________________'}</p>
               </div>
 
               <p className="mb-6 text-justify">
@@ -257,93 +472,99 @@ export function SuratTugasClient({ employees }: { employees: EmployeeForLetter[]
                 memberikan tugas kepada:
               </p>
 
-              <table className="w-full mb-6 ml-6">
+              <table className="mb-6 ml-6 w-full">
                 <tbody>
                   <tr>
                     <td className="w-48 py-1">Nama</td>
                     <td className="w-4">:</td>
-                    <td className="font-bold">{selectedEmp?.name || "______________________"}</td>
+                    <td className="font-bold">{selectedEmp?.name || '______________________'}</td>
                   </tr>
                   <tr>
                     <td className="py-1">NIK</td>
                     <td>:</td>
-                    <td>{selectedEmp?.employeeSn || "______________________"}</td>
+                    <td>{selectedEmp?.employeeSn || '______________________'}</td>
                   </tr>
                   <tr>
                     <td className="py-1">Jabatan</td>
                     <td>:</td>
-                    <td>{selectedEmp?.jobTitle || "______________________"}</td>
+                    <td>{selectedEmp?.jobTitle || '______________________'}</td>
                   </tr>
                   <tr>
                     <td className="py-1">Departemen / Section</td>
                     <td>:</td>
-                    <td>{selectedEmp?.section || "______________________"}</td>
+                    <td>{selectedEmp?.section || '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
 
               <p className="mb-4">Untuk melaksanakan pekerjaan / penugasan sebagai berikut:</p>
 
-              <table className="w-full mb-6 ml-6">
+              <table className="mb-6 ml-6 w-full">
                 <tbody>
                   <tr>
                     <td className="w-48 py-1">Tempat / Tujuan</td>
                     <td className="w-4">:</td>
-                    <td className="font-semibold">{tujuan || "______________________"}</td>
+                    <td className="font-semibold">{tujuan || '______________________'}</td>
                   </tr>
                   <tr>
                     <td className="py-1">Keperluan</td>
                     <td>:</td>
-                    <td>{keperluan || "______________________"}</td>
+                    <td>{keperluan || '______________________'}</td>
                   </tr>
                   <tr>
                     <td className="py-1">Waktu Pelaksanaan</td>
                     <td>:</td>
                     <td>
-                      {tglBerangkat || "________"} s/d {tglKembali || "________"}
+                      {tglBerangkat || '________'} s/d {tglKembali || '________'}
                     </td>
                   </tr>
                 </tbody>
               </table>
 
               <p className="mb-12 text-justify">
-                Demikian surat tugas ini diberikan agar dapat dilaksanakan dengan penuh tanggung jawab.
-                Setelah selesai melaksanakan tugas, harap segera memberikan laporan kepada atasan.
+                Demikian surat tugas ini diberikan agar dapat dilaksanakan dengan penuh tanggung
+                jawab. Setelah selesai melaksanakan tugas, harap segera memberikan laporan kepada
+                atasan.
               </p>
 
-              <div className="flex justify-end mt-16 text-center">
+              <div className="mt-16 flex justify-end text-center">
                 <div>
-                  <p className="mb-1">Balikpapan, {tanggal || "_________________"}</p>
-                  <p className="font-bold mb-20">PT Chitra Paratama</p>
+                  <p className="mb-1">Balikpapan, {tanggal || '_________________'}</p>
+                  <p className="mb-8 font-bold">PT Chitra Paratama</p>
+                  {selectedSignatureUrl ? (
+                    <img
+                      src={selectedSignatureUrl}
+                      alt={`TTD ${selectedHrSigner?.name || 'HR'}`}
+                      className="mx-auto mb-2 object-contain"
+                      style={{ height: '80px', width: '160px' }}
+                    />
+                  ) : (
+                    <div className="mx-auto mb-2" style={{ height: '80px', width: '160px' }} />
+                  )}
 
-                  <p className="font-bold underline">_________________________</p>
-                  <p>Direktur / HR Manager</p>
+                  <p className="font-bold underline">
+                    {selectedHrSigner?.name || '_________________________'}
+                  </p>
+                  <p>{selectedHrSigner?.jobTitle || 'Direktur / HR Manager'}</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <style dangerouslySetInnerHTML={{__html: `
-        @media print {
-          body * {
-            visibility: hidden;
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+          @media print {
+            @page { size: A4; margin: 0; }
+            body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body * { visibility: hidden; }
+            .pdf-wrapper, .pdf-wrapper * { visibility: visible; }
+            .pdf-wrapper { position: fixed; inset: 0; background-size: 210mm 297mm !important; }
           }
-          .pdf-wrapper, .pdf-wrapper * {
-            visibility: visible;
-          }
-          .pdf-wrapper {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-          }
-          @page {
-            size: A4;
-            margin: 20mm;
-          }
-        }
-      `}} />
+        `,
+        }}
+      />
     </AdminPageShell>
-  );
+  )
 }

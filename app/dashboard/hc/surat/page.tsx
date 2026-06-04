@@ -1,10 +1,11 @@
+import { getLetterArchives, getLetterStats } from '@/app/actions/surat'
 import { db } from '@/db'
 import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections } from '@/db/schema/hero'
 import { and, asc, eq, ilike, or } from 'drizzle-orm'
-import { SuratKeteranganClient } from './client-form'
+import { SuratWorkspaceClient } from './client-page'
 
 export const metadata = {
-  title: 'Surat Keterangan - HC',
+  title: 'Surat - HC',
 }
 
 const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: string }> = {
@@ -31,8 +32,17 @@ const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: str
   },
 }
 
-export default async function SuratKeteranganPage() {
-  const [employeesData, hrSignersData] = await Promise.all([
+export default async function SuratPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string }> | { tab?: string }
+}) {
+  const resolvedSearchParams = await searchParams
+  const requestedTab = resolvedSearchParams?.tab
+  const initialTab = ['keterangan', 'tugas', 'mcu', 'archive'].includes(requestedTab || '')
+    ? requestedTab || 'keterangan'
+    : 'keterangan'
+  const [employeesData, hrSignersData, letters, stats] = await Promise.all([
     db
       .select({
         id: hrEmployees.id,
@@ -71,13 +81,17 @@ export default async function SuratKeteranganPage() {
         )
       )
       .orderBy(asc(hrEmployees.fullName)),
+    getLetterArchives(),
+    getLetterStats(),
   ])
 
-  const formattedData = employeesData.map((e) => ({
-    ...e,
-    joinYear: e.joinYear ? new Date(e.joinYear).getFullYear() : new Date().getFullYear(),
-    section: e.section || '-',
-    jobTitle: e.jobTitle || '-',
+  const employees = employeesData.map((employee) => ({
+    ...employee,
+    joinYear: employee.joinYear
+      ? new Date(employee.joinYear).getFullYear()
+      : new Date().getFullYear(),
+    section: employee.section || '-',
+    jobTitle: employee.jobTitle || '-',
   }))
 
   const hrSigners = hrSignersData.map((signer) => {
@@ -89,5 +103,13 @@ export default async function SuratKeteranganPage() {
     }
   })
 
-  return <SuratKeteranganClient employees={formattedData} hrSigners={hrSigners} />
+  return (
+    <SuratWorkspaceClient
+      employees={employees}
+      hrSigners={hrSigners}
+      letters={letters}
+      stats={stats}
+      initialTab={initialTab}
+    />
+  )
 }

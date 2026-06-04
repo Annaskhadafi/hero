@@ -5,13 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Combobox } from '@/components/ui/combobox'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import {
   HcWorkspaceBanner,
   hcMutedPanelClassName,
   hcPrimaryActionClassName,
 } from '@/components/hc/hc-workspace-banner'
-import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/surat'
+import { getNextLetterNumber, saveLetter } from '@/app/actions/surat'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 
@@ -34,7 +35,7 @@ type HrSigner = {
   signatureUrl: string
 }
 
-export function SuratKeteranganClient({
+export function SuratMcuClient({
   employees,
   hrSigners,
 }: {
@@ -55,6 +56,16 @@ export function SuratKeteranganClient({
       year: 'numeric',
     })
   })
+
+  // Custom inputs for Surat MCU
+  const [klinik, setKlinik] = useState('')
+  const [kota, setKota] = useState('')
+  const [paketMcu, setPaketMcu] = useState('')
+
+  const [klinikHistory, setKlinikHistory] = useState<string[]>([])
+  const [kotaHistory, setKotaHistory] = useState<string[]>([])
+  const [paketHistory, setPaketHistory] = useState<string[]>([])
+
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const letterNumberFetched = useRef(false)
@@ -79,8 +90,15 @@ export function SuratKeteranganClient({
     try {
       const raw = window.localStorage.getItem('hero-hr-signatures')
       if (raw) setUploadedSignatures(JSON.parse(raw) as Record<string, string>)
+      
+      const k = window.localStorage.getItem('hero-mcu-klinik')
+      if (k) setKlinikHistory(JSON.parse(k))
+      const t = window.localStorage.getItem('hero-mcu-kota')
+      if (t) setKotaHistory(JSON.parse(t))
+      const p = window.localStorage.getItem('hero-mcu-paket')
+      if (p) setPaketHistory(JSON.parse(p))
     } catch (error) {
-      console.error('Failed to load HR signatures:', error)
+      console.error('Failed to load local storage data:', error)
     }
   }, [])
 
@@ -98,12 +116,13 @@ export function SuratKeteranganClient({
     }
     reader.readAsDataURL(file)
   }
+
   // Auto-generate letter number on mount
   useEffect(() => {
     if (letterNumberFetched.current) return
     letterNumberFetched.current = true
 
-    getNextLetterNumber('surat_keterangan')
+    getNextLetterNumber('surat_mcu')
       .then((num) => {
         setNoSurat(num)
       })
@@ -122,6 +141,7 @@ export function SuratKeteranganClient({
       return next
     })
   }
+
   const handlePrint = () => {
     const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
     const letterheadUrl = new URL(LETTERHEAD_BACKGROUND_URL, window.location.origin).toString()
@@ -136,7 +156,7 @@ export function SuratKeteranganClient({
       <!doctype html>
       <html>
         <head>
-          <title>Surat Keterangan Bekerja</title>
+          <title>Surat Pengantar MCU</title>
           <style>
             @page { size: A4; margin: 0; }
             * { box-sizing: border-box; }
@@ -152,30 +172,34 @@ export function SuratKeteranganClient({
               background-repeat: no-repeat;
               color: black;
               font-family: Arial, sans-serif;
-              font-size: 12pt;
+              font-size: 11pt;
               line-height: 1.5;
             }
             table { width: 100%; border-collapse: collapse; }
             .text-center { text-align: center; }
             .text-justify { text-align: justify; }
             .font-bold { font-weight: 700; }
-            .font-medium { font-weight: 500; }
+            .font-semibold { font-weight: 600; }
             .underline { text-decoration: underline; }
             .uppercase { text-transform: uppercase; }
             .mb-1 { margin-bottom: 0.25rem; }
+            .mb-2 { margin-bottom: 0.5rem; }
+            .mb-4 { margin-bottom: 1rem; }
             .mb-6 { margin-bottom: 1.5rem; }
             .mb-8 { margin-bottom: 2rem; }
             .mb-12 { margin-bottom: 3rem; }
-            .mb-20 { margin-bottom: 5rem; }
+            .mt-8 { margin-top: 2rem; }
             .mt-16 { margin-top: 4rem; }
             .ml-6 { margin-left: 1.5rem; }
             .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
             .w-4 { width: 1rem; }
+            .w-32 { width: 8rem; }
             .w-48 { width: 12rem; }
             .flex { display: flex; }
             .justify-end { justify-content: flex-end; }
             h1 { font-size: 1.25rem; line-height: 1.75rem; margin: 0; }
             p { margin-top: 0; }
+            .pic-list { margin-top: 3rem; font-size: 8pt; font-style: italic; }
           </style>
         </head>
         <body>
@@ -189,11 +213,18 @@ export function SuratKeteranganClient({
               backgroundImage.onerror = () => setTimeout(() => window.print(), 150);
               backgroundImage.src = "${letterheadUrl}";
             });
-          <\/script>
+          </script>
         </body>
       </html>
     `)
     printWindow.document.close()
+  }
+
+  const saveToHistory = (key: string, value: string, history: string[], setHistory: (v: string[]) => void) => {
+    if (!value) return
+    const newHistory = Array.from(new Set([value, ...history])).slice(0, 20)
+    setHistory(newHistory)
+    window.localStorage.setItem(key, JSON.stringify(newHistory))
   }
 
   const handleSaveToArchive = useCallback(async () => {
@@ -205,28 +236,34 @@ export function SuratKeteranganClient({
     setSaving(true)
     setSaveMessage('')
 
+    saveToHistory('hero-mcu-klinik', klinik, klinikHistory, setKlinikHistory)
+    saveToHistory('hero-mcu-kota', kota, kotaHistory, setKotaHistory)
+    saveToHistory('hero-mcu-paket', paketMcu, paketHistory, setPaketHistory)
+
     try {
       const today = new Date().toISOString().split('T')[0]
       const contentHtml = document.querySelector('.pdf-wrapper')?.innerHTML || ''
 
       const result = await saveLetter({
-        letterType: 'surat_keterangan',
+        letterType: 'surat_mcu',
         letterNumber: noSurat,
         employeeId: selectedEmp.id,
         employeeName: selectedEmp.name,
-        subject: 'Surat Keterangan Bekerja',
+        subject: 'Surat Pengantar Medical Check Up Karyawan',
         content: contentHtml,
+        destination: klinik,
+        purpose: paketMcu,
         issuedDate: today,
         issuedPlace: 'Balikpapan',
         signatoryName: selectedHrSigner?.name || '',
-        signatoryTitle: selectedHrSigner?.jobTitle || 'HR & GA Dept. Head',
+        signatoryTitle: selectedHrSigner?.jobTitle || 'HR-GA Admin',
         status: 'draft',
       })
 
       if (result.success) {
         setSaveMessage('Surat berhasil disimpan ke arsip.')
         // Refresh letter number for next use
-        const nextNum = await getNextLetterNumber('surat_keterangan')
+        const nextNum = await getNextLetterNumber('surat_mcu')
         setNoSurat(nextNum)
       } else {
         setSaveMessage(result.error || 'Gagal menyimpan surat.')
@@ -237,17 +274,13 @@ export function SuratKeteranganClient({
     } finally {
       setSaving(false)
     }
-  }, [selectedEmp, noSurat, selectedHrSigner])
+  }, [selectedEmp, noSurat, klinik, kota, paketMcu, klinikHistory, kotaHistory, paketHistory])
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Surat Keterangan Kerja"
-      title="Generate Surat Keterangan"
-      description="Buat dan cetak surat keterangan bekerja untuk karyawan."
-    >
+    <div className="space-y-4">
       <HcWorkspaceBanner
-        title="Employment Letter Composer"
-        description="Kontrol surat dipisah dari preview dokumen agar HC bisa pilih karyawan, cek autofill, cetak, dan arsip tanpa visual ramai."
+        title="Surat Pengantar MCU"
+        description="Formulir pembuatan Surat Pengantar Medical Check Up Karyawan."
         items={[
           { label: 'Karyawan', value: employees.length, tone: 'slate' },
           {
@@ -256,11 +289,10 @@ export function SuratKeteranganClient({
             tone: selectedEmp ? 'emerald' : 'amber',
           },
           {
-            label: 'HR Signer',
-            value: selectedHrSigner ? 'Siap' : 'Belum',
-            tone: selectedHrSigner ? 'emerald' : 'amber',
+            label: 'Klinik',
+            value: klinik ? 'Terisi' : 'Kosong',
+            tone: klinik ? 'sky' : 'amber',
           },
-          { label: 'Nomor', value: noSurat ? 'Auto' : 'Manual', tone: 'sky' },
         ]}
       />
 
@@ -314,14 +346,49 @@ export function SuratKeteranganClient({
               <Input
                 value={noSurat}
                 onChange={(e) => setNoSurat(e.target.value)}
-                placeholder="Contoh: 012/HR/VI/2026"
+                placeholder="Contoh: 001/HR-CPBPN/VI/2026"
               />
             </div>
             <div>
-              <Label className="mb-2 block">Tanggal</Label>
+              <Label className="mb-2 block">Tanggal Surat</Label>
               <Input value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
             </div>
-            <div>
+            <div className="mt-2 border-t pt-4">
+              <h4 className="mb-3 text-sm font-semibold">Detail MCU</h4>
+              <div className="space-y-4">
+                <div>
+                  <Label className="mb-2 block">Klinik</Label>
+                  <Combobox
+                    value={klinik}
+                    onChange={setKlinik}
+                    options={klinikHistory}
+                    placeholder="Contoh: Klinik Pramita"
+                    allowCustom={true}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Kota</Label>
+                  <Combobox
+                    value={kota}
+                    onChange={setKota}
+                    options={kotaHistory}
+                    placeholder="Contoh: Balikpapan"
+                    allowCustom={true}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Paket MCU</Label>
+                  <Combobox
+                    value={paketMcu}
+                    onChange={setPaketMcu}
+                    options={paketHistory}
+                    placeholder="Contoh: Paket Executive"
+                    allowCustom={true}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-2 border-t pt-4">
               <Label className="mb-2 block">HR Penandatangan</Label>
               <select
                 className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
@@ -336,7 +403,6 @@ export function SuratKeteranganClient({
                 ))}
               </select>
             </div>
-
             <div>
               <Label className="mb-2 block">Upload TTD</Label>
               <Input
@@ -356,30 +422,6 @@ export function SuratKeteranganClient({
               >
                 Hapus Upload TTD
               </Button>
-            </div>
-          </Card>
-
-          <Card
-            className={`space-y-4 border-amber-200/60 bg-amber-50/70 p-4 ${hcMutedPanelClassName}`}
-          >
-            <h3 className="text-sm font-semibold">Data Autofill</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">SN/NIK</span>
-                <span className="font-medium">{selectedEmp?.employeeSn || '-'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Nama</span>
-                <span className="font-medium">{selectedEmp?.name || '-'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Section</span>
-                <span className="font-medium">{selectedEmp?.section || '-'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Mulai Bekerja</span>
-                <span className="font-medium">{selectedEmp?.joinYear || '-'}</span>
-              </div>
             </div>
           </Card>
 
@@ -426,7 +468,7 @@ export function SuratKeteranganClient({
               className="pdf-wrapper-content relative z-10 outline-none"
               style={{
                 fontFamily: 'Arial, sans-serif',
-                fontSize: '12pt',
+                fontSize: '11pt',
                 lineHeight: '1.5',
                 color: 'black',
                 paddingTop: '45mm',
@@ -436,14 +478,30 @@ export function SuratKeteranganClient({
                 minHeight: '297mm',
               }}
             >
-              <div className="mb-8 text-center">
-                <h1 className="mb-1 text-xl font-bold uppercase underline">
-                  Surat Keterangan Bekerja
-                </h1>
-                <p>No: {noSurat || '______________________'}</p>
+              <table className="mb-8 w-full">
+                <tbody>
+                  <tr>
+                    <td className="w-32 py-1 align-top">No</td>
+                    <td className="w-4 py-1 align-top">:</td>
+                    <td className="py-1 align-top">{noSurat || '______________________'}</td>
+                  </tr>
+                  <tr>
+                    <td className="w-32 py-1 align-top">Perihal</td>
+                    <td className="w-4 py-1 align-top">:</td>
+                    <td className="py-1 align-top">Surat Pengantar Medical Check Up Karyawan</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="mb-6">
+                <p>Kepada Yth.</p>
+                <p className="font-bold">{klinik || '______________________'}</p>
+                <p className="font-bold">{kota || '______________________'}</p>
               </div>
 
-              <p className="mb-6">Yang bertanda tangan di bawah ini, menerangkan bahwa:</p>
+              <p className="mb-4">Dengan Hormat,</p>
+
+              <p className="mb-4">Kami memberitahukan bahwa nama dibawah ini adalah karyawan dari kami :</p>
 
               <table className="mb-6 ml-6 w-full">
                 <tbody>
@@ -453,58 +511,82 @@ export function SuratKeteranganClient({
                     <td className="font-bold">{selectedEmp?.name || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">NIK</td>
+                    <td className="py-1">SN</td>
                     <td>:</td>
-                    <td>{selectedEmp?.employeeSn || '______________________'}</td>
+                    <td className="font-bold">{selectedEmp?.employeeSn || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Jabatan / Section</td>
+                    <td className="py-1">Section</td>
                     <td>:</td>
-                    <td>
-                      {selectedEmp?.jobTitle || '________________'} /{' '}
-                      {selectedEmp?.section || '________________'}
-                    </td>
+                    <td className="font-bold">{selectedEmp?.section || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">Tahun Masuk</td>
+                    <td className="py-1">Paket MCU</td>
                     <td>:</td>
-                    <td>{selectedEmp?.joinYear || '______________________'}</td>
+                    <td className="font-bold">{paketMcu || '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
 
-              <p className="mb-6 text-justify">
-                Adalah benar karyawan kami dan masih aktif bekerja di PT Chitra Paratama terhitung
-                sejak tahun {selectedEmp?.joinYear || '____'} hingga surat ini dikeluarkan. Selama
-                bekerja yang bersangkutan menunjukkan dedikasi dan kinerja yang baik.
+              <p className="mb-4 text-justify">
+                Kami mohon bantuannya untuk melakukan <span className="font-bold underline">Medical Check Up</span> atas nama pasien diatas. Segala biaya yang timbul menjadi tanggungan PT Chitra Paratama (a Member of Mahadasha Group) dengan melampirkan Surat Jaminan ini.
               </p>
 
-              <p className="mb-12 text-justify">
-                Demikian surat keterangan kerja ini dibuat agar dapat dipergunakan sebagaimana
-                mestinya.
-              </p>
+              <div className="mb-6">
+                <p>Mohon tagihan dikirimkan kepada:</p>
+                <p className="font-bold">PT Chitra Paratama (a Member of Mahadasha Group)</p>
+                <p className="font-bold">Jl AMD RT 46 No 69 Kelurahan Graha Indah, Balikpapan.</p>
+                <p className="font-bold">Attn : Muhammad Iqbal</p>
+              </div>
 
-              <div className="mt-16 flex justify-end text-center">
+              <p className="mb-12">Atas kerja sama yang baik kami ucapkan terima kasih.</p>
+
+              <div className="mt-8 flex justify-start">
                 <div>
-                  <p className="mb-1">Balikpapan, {tanggal || '_________________'}</p>
-                  <p className="mb-8 font-bold">PT Chitra Paratama</p>
+                  <p className="mb-1">Balikpapan , {tanggal || '_________________'}</p>
                   {selectedSignatureUrl ? (
                     <img
                       src={selectedSignatureUrl}
                       alt={`TTD ${selectedHrSigner?.name || 'HR'}`}
-                      className="mx-auto mb-2 object-contain"
-                      style={{ height: '80px', width: '160px' }}
+                      className="mb-2 object-contain"
+                      style={{ height: '80px', width: '160px', objectPosition: 'left' }}
                     />
                   ) : (
-                    <div className="mx-auto mb-2" style={{ height: '80px', width: '160px' }} />
+                    <div className="mb-2" style={{ height: '80px', width: '160px' }} />
                   )}
-
+                  
                   <p className="font-bold underline">
                     {selectedHrSigner?.name || '_________________________'}
                   </p>
-                  <p>{selectedHrSigner?.jobTitle || 'HR & GA Dept. Head'}</p>
+                  <p className="font-bold">{selectedHrSigner?.jobTitle || 'HR-GA Admin'}</p>
                 </div>
               </div>
+
+              <div className="mt-12 text-[8pt] italic">
+                <table className="w-full">
+                  <tbody>
+                    <tr>
+                      <td className="w-12 py-1 align-top italic">PIC</td>
+                      <td className="w-4 py-1 align-top italic">:</td>
+                      <td className="w-4 py-1 align-top italic">-</td>
+                      <td className="py-1 align-top italic">Muhammad Iqbal : 0812-53369994</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1"></td>
+                      <td className="py-1"></td>
+                      <td className="py-1 align-top italic">-</td>
+                      <td className="py-1 align-top italic">Adila Tri Arizona : 0897-9767997</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1"></td>
+                      <td className="py-1"></td>
+                      <td className="py-1 align-top italic">-</td>
+                      <td className="py-1 align-top italic">Kesuma Bagaskara : 0896-86176545</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
             </div>
           </div>
         </div>
@@ -512,16 +594,16 @@ export function SuratKeteranganClient({
       <style
         dangerouslySetInnerHTML={{
           __html: `
-        @media print {
-          @page { size: A4; margin: 0; }
-          body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          body * { visibility: hidden; }
-          .pdf-wrapper, .pdf-wrapper * { visibility: visible; }
-          .pdf-wrapper { position: fixed; inset: 0; background-size: 210mm 297mm !important; }
-        }
-      `,
+          @media print {
+            @page { size: A4; margin: 0; }
+            body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body * { visibility: hidden; }
+            .pdf-wrapper, .pdf-wrapper * { visibility: visible; }
+            .pdf-wrapper { position: fixed; inset: 0; background-size: 210mm 297mm !important; }
+          }
+        `,
         }}
       />
-    </AdminPageShell>
+    </div>
   )
 }

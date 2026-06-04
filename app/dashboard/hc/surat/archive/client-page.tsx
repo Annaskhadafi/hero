@@ -21,6 +21,7 @@ import {
 import {
   getLetterArchives,
   updateLetterStatus,
+  updateLetterArchive,
   deleteLetter,
 } from "@/app/actions/surat";
 
@@ -84,6 +85,7 @@ type Letter = {
 type LetterStats = {
   totalSuratKeterangan: number;
   totalSuratTugas: number;
+  totalSuratMcu: number;
   totalThisMonth: number;
   totalArchive: number;
 };
@@ -93,6 +95,7 @@ type LetterStats = {
 const LETTER_TYPE_LABELS: Record<string, string> = {
   surat_keterangan: "Surat Keterangan",
   surat_tugas: "Surat Tugas",
+  surat_mcu: "Surat Pengantar MCU",
 };
 
 function formatDate(dateStr: string | Date | null): string {
@@ -186,12 +189,19 @@ export function SuratArchiveClient({
   const [deleteItem, setDeleteItem] = useState<Letter | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // ── Derived ──
+  // Edit dialog
+  const [editItem, setEditItem] = useState<Letter | null>(null);
+  const [editSubject, setEditSubject] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editSignatoryName, setEditSignatoryName] = useState("");
+  const [editSignatoryTitle, setEditSignatoryTitle] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
 
   const letterTypeOptions = useMemo(
     () => [
       { value: "surat_keterangan", label: "Surat Keterangan" },
       { value: "surat_tugas", label: "Surat Tugas" },
+      { value: "surat_mcu", label: "Surat Pengantar MCU" },
     ],
     [],
   );
@@ -221,10 +231,10 @@ export function SuratArchiveClient({
         tone: "info" as const,
       },
       {
-        label: "Total Bulan Ini",
-        value: stats.totalThisMonth,
-        icon: <IconCalendarEvent className="size-5 text-emerald-600" />,
-        tone: "success" as const,
+        label: "Surat MCU",
+        value: stats.totalSuratMcu,
+        icon: <IconFileCheck className="size-5 text-blue-600" />,
+        tone: "info" as const,
       },
       {
         label: "Total Arsip",
@@ -294,6 +304,39 @@ export function SuratArchiveClient({
       setDeleteLoading(false);
     }
   }, [deleteItem]);
+
+  const openEditDialog = useCallback((letter: Letter) => {
+    setEditItem(letter);
+    setEditSubject(letter.subject || '');
+    setEditContent(letter.content || '');
+    setEditSignatoryName(letter.signatoryName || '');
+    setEditSignatoryTitle(letter.signatoryTitle || '');
+  }, []);
+
+  const handleArchiveUpdate = useCallback(async () => {
+    if (!editItem) return;
+    setEditLoading(true);
+    try {
+      const result = await updateLetterArchive(editItem.id, {
+        subject: editSubject,
+        content: editContent,
+        signatoryName: editSignatoryName,
+        signatoryTitle: editSignatoryTitle,
+      });
+      if (result.success) {
+        setLetters((prev) => prev.map((letter) => letter.id === editItem.id ? { ...letter, subject: editSubject, content: editContent, signatoryName: editSignatoryName, signatoryTitle: editSignatoryTitle, updatedAt: new Date() } : letter));
+        setEditItem(null);
+      } else {
+        alert(result.error || 'Gagal memperbarui arsip surat.');
+      }
+    } catch (error) {
+      console.error('Error updating letter archive:', error);
+      alert('Terjadi kesalahan saat memperbarui arsip surat.');
+    } finally {
+      setEditLoading(false);
+    }
+  }, [editItem, editSubject, editContent, editSignatoryName, editSignatoryTitle]);
+
 
   // ── Render ──
 
@@ -394,15 +437,12 @@ export function SuratArchiveClient({
                   <TableCell className="text-right">
                     <EnterpriseActionButtons
                       onView={() => setViewItem(letter)}
-                      onEdit={() => {
-                        setStatusItem(letter);
-                        setNewStatus(letter.status);
-                        setApprovedByName(letter.approvedBy);
-                      }}
+                      onEdit={() => openEditDialog(letter)}
+                      access={{ canView: true, canEdit: true, canDelete: true }}
                       onDelete={() => setDeleteItem(letter)}
                       labels={{
                         view: "Lihat Detail",
-                        edit: "Ubah Status",
+                        edit: "Edit Surat",
                         delete: "Hapus",
                       }}
                     />
@@ -422,7 +462,10 @@ export function SuratArchiveClient({
         title="Detail Surat"
         mode="view"
         footer={
+          <>
           <Button onClick={() => setViewItem(null)}>Tutup</Button>
+          <Button variant="outline" onClick={() => { setStatusItem(viewItem); setNewStatus(viewItem.status); setApprovedByName(viewItem.approvedBy); }}>Ubah Status</Button>
+          </>
         }
       >
         {viewItem && (
@@ -475,6 +518,19 @@ export function SuratArchiveClient({
               </>
             )}
 
+            {viewItem.letterType === "surat_mcu" && (
+              <>
+                <div className="grid grid-cols-3 gap-2 border-b border-border/50 py-2">
+                  <span className="text-sm font-medium text-muted-foreground">Klinik Tujuan</span>
+                  <span className="col-span-2 text-sm">{viewItem.destination || "-"}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 border-b border-border/50 py-2">
+                  <span className="text-sm font-medium text-muted-foreground">Paket MCU</span>
+                  <span className="col-span-2 text-sm">{viewItem.purpose || "-"}</span>
+                </div>
+              </>
+            )}
+
             <div className="grid grid-cols-3 gap-2 border-b border-border/50 py-2">
               <span className="text-sm font-medium text-muted-foreground">Penandatangan</span>
               <span className="col-span-2 text-sm">
@@ -514,6 +570,86 @@ export function SuratArchiveClient({
           </div>
         )}
       </EnterpriseRecordDialog>
+
+      {/* ─── Edit Surat Dialog ─────────────────────────────────────────── */}
+
+      <Dialog
+        open={!!editItem}
+        onOpenChange={(open) => {
+          if (!open) setEditItem(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Surat</DialogTitle>
+            <DialogDescription>
+              Edit subjek, konten, dan penandatangan surat.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editItem && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg bg-muted/30 p-3">
+                <p className="text-sm font-semibold">{editItem.letterNumber}</p>
+                <p className="text-xs text-muted-foreground">
+                  {editItem.employeeName} - {LETTER_TYPE_LABELS[editItem.letterType] || editItem.letterType}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-subject">Subjek</Label>
+                <Input
+                  id="edit-subject"
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-signatory-name">Nama Penandatangan</Label>
+                <Input
+                  id="edit-signatory-name"
+                  value={editSignatoryName}
+                  onChange={(e) => setEditSignatoryName(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-signatory-title">Jabatan Penandatangan</Label>
+                <Input
+                  id="edit-signatory-title"
+                  value={editSignatoryTitle}
+                  onChange={(e) => setEditSignatoryTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Konten Surat</Label>
+                <div
+                  className="min-h-[200px] w-full rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  contentEditable
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: editContent }}
+                  onInput={(e) => setEditContent(e.currentTarget.innerHTML)}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditItem(null)}
+              disabled={editLoading}
+            >
+              Batal
+            </Button>
+            <Button onClick={handleArchiveUpdate} disabled={editLoading}>
+              {editLoading ? "Menyimpan..." : "Simpan Perubahan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Status Update Dialog ───────────────────────────────────────── */}
 

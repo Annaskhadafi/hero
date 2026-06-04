@@ -651,10 +651,10 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HR',
-    title: 'Surat Keterangan',
-    url: '/dashboard/hc/surat-keterangan',
+    title: 'Surat',
+    url: '/dashboard/hc/surat',
     iconName: 'file-word',
-    resource: 'hc_skk',
+    resource: 'hc_surat',
     sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
@@ -667,7 +667,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'envelope-open',
     resource: 'hc_st',
     sortOrder: 7,
-    isVisible: true,
+    isVisible: false,
     openInNewTab: false,
   },
   {
@@ -678,7 +678,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'archive',
     resource: 'hc_surat_archive',
     sortOrder: 11,
-    isVisible: true,
+    isVisible: false,
     openInNewTab: false,
   },
   {
@@ -1163,7 +1163,9 @@ const RAW_SIDEBAR_MENU_SEEDS = [
 ] as const
 
 const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems) => {
-  const firstResourceIndex = menuItems.findIndex((candidate) => candidate.resource === item.resource)
+  const firstResourceIndex = menuItems.findIndex(
+    (candidate) => candidate.resource === item.resource
+  )
   const firstUrlIndex = menuItems.findIndex((candidate) => candidate.url === item.url)
 
   return firstResourceIndex === index && firstUrlIndex === index
@@ -3560,9 +3562,10 @@ export async function getSecurityUsersData() {
       directManagerId: employees.directManagerId,
       section: hrSections.name,
       jobTitle: hrPositions.rankName,
-      workLocation: sql<string>`coalesce(${hrWorkLocations.name}, ${hrOrgNodes.name}, ${hrSites.name}, '')`.as(
-        'work_location'
-      ),
+      workLocation:
+        sql<string>`coalesce(${hrWorkLocations.name}, ${hrOrgNodes.name}, ${hrSites.name}, '')`.as(
+          'work_location'
+        ),
       phoneNumber: employees.phoneNumber,
       email: hrEmployees.email,
       employmentStatus: hrEmployeeStatuses.name,
@@ -3962,5 +3965,3 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
-
-
