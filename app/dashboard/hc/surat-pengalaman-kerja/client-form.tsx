@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -86,16 +86,14 @@ export function SuratPengalamanKerjaClient({
   const [saveMessage, setSaveMessage] = useState('')
   const letterNumberFetched = useRef(false)
 
-  const normalizedEmployeeSearch = employeeSearch.trim().toLowerCase()
-  const filteredEmployees = normalizedEmployeeSearch
-    ? employees.filter((employee) =>
-        [employee.employeeSn, employee.name, employee.jobTitle, employee.section]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedEmployeeSearch)
-      )
-    : employees
-  const visibleEmployeeResults = filteredEmployees.slice(0, 8)
+  const visibleEmployeeResults = useMemo(() => {
+    const normalized = employeeSearch.trim().toLowerCase();
+    if (!normalized) return employees.slice(0, 8);
+    return employees.filter(e => {
+      const vals = [e.name, e.employeeSn, e.jobTitle, e.section, (e as any).levelName, (e as any).employeeStatusType];
+      return vals.filter(Boolean).join(' ').toLowerCase().includes(normalized);
+    }).slice(0, 8);
+  }, [employees, employeeSearch]);
   const selectedEmp = employees.find((e) => e.id.toString() === selectedEmpId)
   const selectedHrSigner = hrSigners.find((signer) => signer.id.toString() === selectedHrSignerId)
   const selectedSignatureUrl = selectedHrSigner
