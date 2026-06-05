@@ -1905,7 +1905,7 @@ export const hrEmployees = pgTable('hero_hr_employees', {
 
 export const cargoManifests = pgTable('hero_cargo_manifests', {
   id: serial('id').primaryKey(),
-  manifestNumber: text('manifest_number').notNull().unique(),
+  manifestNumber: text('manifest_number').notNull(),
   date: date('date').notNull(),
   siteId: integer('site_id').references(() => cargoMasterSites.id, { onDelete: 'set null' }),
   sectionId: integer('section_id').references(() => masterSections.id, { onDelete: 'set null' }),

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
+import { generateOnboardingToken } from "@/app/actions/onboarding";
 
 export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }: { candidate: any, interviews: any[], mcuRecords: any[] }) {
   const router = useRouter();
@@ -120,6 +121,23 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
     }
   };
 
+  const handleGenerateOnboardingToken = async () => {
+    try {
+      const res = await generateOnboardingToken(candidate.id);
+      if (res.success) {
+        toast.success("Onboarding link generated successfully");
+      } else {
+        toast.error(res.error || "Failed to generate link");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Error generating link");
+    }
+  };
+
+  const onboardingUrl = candidate.onboardingToken 
+    ? `${window.location.origin}/onboarding/${candidate.onboardingToken}` 
+    : "";
+
   return (
     <>
       <AdminPageShell>
@@ -148,6 +166,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interviews">Interviews ({interviews.length})</TabsTrigger>
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
         </TabsList>
 
@@ -401,6 +420,91 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="onboarding">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Onboarding Data</h3>
+            {!candidate.onboardingToken ? (
+              <Button onClick={handleGenerateOnboardingToken}>
+                <IconLink className="w-4 h-4 mr-2" />
+                Generate Onboarding Link
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => {
+                  navigator.clipboard.writeText(onboardingUrl);
+                  toast.success("Link copied to clipboard");
+                }}>
+                  <IconCopy className="w-4 h-4 mr-2" />
+                  Copy Link
+                </Button>
+                <Button asChild variant="secondary">
+                  <a href={onboardingUrl} target="_blank" rel="noreferrer">
+                    <IconLink className="w-4 h-4 mr-2" />
+                    Open Form
+                  </a>
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Administrative Information</CardTitle>
+              <CardDescription>Data submitted by candidate via the onboarding link</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {candidate.nikKtp ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">NIK KTP</div>
+                      <div className="font-medium">{candidate.nikKtp || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">NPWP Number</div>
+                      <div className="font-medium">{candidate.npwpNumber || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Emergency Contact Name</div>
+                      <div className="font-medium">{candidate.emergencyContactName || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Emergency Contact Phone</div>
+                      <div className="font-medium">{candidate.emergencyContactPhone || "-"}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Bank Name</div>
+                      <div className="font-medium">{candidate.bankName || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Bank Account Number</div>
+                      <div className="font-medium">{candidate.bankAccountNumber || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">BPJS Kesehatan</div>
+                      <div className="font-medium">{candidate.bpjsKesehatan || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">BPJS Ketenagakerjaan</div>
+                      <div className="font-medium">{candidate.bpjsKetenagakerjaan || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                  <IconLink className="w-12 h-12 mb-4 opacity-20" />
+                  <p>Candidate has not submitted their onboarding data yet.</p>
+                  {!candidate.onboardingToken && (
+                    <p className="text-sm mt-1">Generate a link first to send to the candidate.</p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="history">
