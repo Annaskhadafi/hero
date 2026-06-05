@@ -66,6 +66,8 @@ type Recruitment = {
   jobDescription?: string;
   requirements?: string;
   qualifications?: string[] | null;
+  mandatoryFields?: string[] | null;
+  emailTemplateId?: number | null;
 };
 
 type Candidate = {

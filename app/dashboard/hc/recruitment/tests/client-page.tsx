@@ -81,13 +81,9 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
 
   return (
     <AdminPageShell
+      eyebrow="Human Capital"
       title="Online Tests"
       description="Create and manage online assessments for candidates."
-      breadcrumbs={[
-        { label: "Human Capital", href: "/dashboard/hc" },
-        { label: "Recruitment", href: "/dashboard/hc/recruitment" },
-        { label: "Online Tests", href: "/dashboard/hc/recruitment/tests" },
-      ]}
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-lg font-semibold">Test Banks</h2>
@@ -96,7 +92,7 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
         </Button>
       </div>
 
-      <MinimalTableShell>
+      <MinimalTableShell label="online tests" title="Test Banks">
         <Table>
           <TableHeader>
             <TableRow>

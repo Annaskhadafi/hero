@@ -52,13 +52,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       const data = new FormData();
       data.append("file", file);
       const res = await uploadFile(data);
-      if (res.success) {
+      if (res.success && res.url) {
+        const readableUrl = res.readableUrl || res.url;
         if (target === 'question') {
-          setFormData(prev => ({ ...prev, imageUrl: res.url, readableImageUrl: res.readableUrl || res.url }));
+          setFormData(prev => ({ ...prev, imageUrl: res.url, readableImageUrl: readableUrl }));
         } else {
           const newOpts = [...formData.options];
           newOpts[target as number].imageUrl = res.url;
-          newOpts[target as number].readableImageUrl = res.readableUrl || res.url;
+          newOpts[target as number].readableImageUrl = readableUrl;
           setFormData(prev => ({ ...prev, options: newOpts }));
         }
         toast.success("Image uploaded!");
@@ -160,14 +161,9 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
 
   return (
     <AdminPageShell
+      eyebrow="Human Capital"
       title={`Test Editor: ${test.title}`}
       description="Manage the questions and answers for this online test."
-      breadcrumbs={[
-        { label: "Human Capital", href: "/dashboard/hc" },
-        { label: "Recruitment", href: "/dashboard/hc/recruitment" },
-        { label: "Online Tests", href: "/dashboard/hc/recruitment/tests" },
-        { label: test.title, href: `/dashboard/hc/recruitment/tests/${test.id}` },
-      ]}
     >
       <div className="mb-4">
         <Button variant="ghost" asChild className="gap-2 text-muted-foreground hover:text-foreground -ml-4">
@@ -383,7 +379,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       </TabsContent>
 
       <TabsContent value="entries">
-        <MinimalTableShell>
+        <MinimalTableShell label="test entries" title="Test Entries">
           <Table>
             <TableHeader>
               <TableRow>
