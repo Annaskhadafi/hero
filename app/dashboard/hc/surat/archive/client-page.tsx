@@ -349,6 +349,86 @@ export function SuratArchiveClient({
   }, [editItem, editSubject, editContent, editSignatoryName, editSignatoryTitle]);
 
 
+  const handlePrintArchive = useCallback((letter: Letter) => {
+    if (!letter.content) {
+      alert("Surat ini tidak memiliki konten untuk dicetak.");
+      return;
+    }
+    
+    // Surat Perubahan Status does not use the standard PDF wrapper layout natively,
+    // but the others do. If it doesn't print well, it's because it wasn't saved with a pdf-wrapper.
+    const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
+    const printWindow = window.open('', '_blank', 'width=900,height=1200')
+
+    if (!printWindow) {
+      alert("Browser memblokir pop-up. Silakan izinkan pop-up untuk mencetak surat.")
+      return
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${letter.subject || 'Arsip Surat'}</title>
+          <style>
+            @page { size: A4; margin: 0; }
+            * { box-sizing: border-box; }
+            body { margin: 0; background: #f5f7fb; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page {
+              width: 210mm;
+              min-height: 297mm;
+              margin: 0 auto;
+              padding: 45mm 25mm 30mm;
+              background-image: url("${letterheadUrl}");
+              background-size: 210mm 297mm;
+              background-position: center top;
+              background-repeat: no-repeat;
+              color: black;
+              font-family: Arial, sans-serif;
+              font-size: 12pt;
+              line-height: 1.5;
+            }
+            table { width: 100%; border-collapse: collapse; }
+            .text-center { text-align: center; }
+            .text-justify { text-align: justify; }
+            .font-bold { font-weight: 700; }
+            .font-medium { font-weight: 500; }
+            .underline { text-decoration: underline; }
+            .uppercase { text-transform: uppercase; }
+            .mb-1 { margin-bottom: 0.25rem; }
+            .mb-6 { margin-bottom: 1.5rem; }
+            .mb-8 { margin-bottom: 2rem; }
+            .mb-12 { margin-bottom: 3rem; }
+            .mb-20 { margin-bottom: 5rem; }
+            .mt-16 { margin-top: 4rem; }
+            .ml-6 { margin-left: 1.5rem; }
+            .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+            .w-4 { width: 1rem; }
+            .w-48 { width: 12rem; }
+            .flex { display: flex; }
+            .justify-end { justify-content: flex-end; }
+            h1 { font-size: 1.25rem; line-height: 1.75rem; margin: 0; }
+            p { margin-top: 0; }
+          </style>
+        </head>
+        <body>
+          <main class="page">${letter.content}</main>
+          <script>
+            const closeAfterPrint = () => setTimeout(() => window.close(), 250);
+            window.addEventListener("afterprint", closeAfterPrint);
+            window.addEventListener("load", () => {
+              const backgroundImage = new Image();
+              backgroundImage.onload = () => setTimeout(() => window.print(), 150);
+              backgroundImage.onerror = () => setTimeout(() => window.print(), 150);
+              backgroundImage.src = "${letterheadUrl}";
+            });
+          </script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }, []);
+
   // ── Render ──
 
   return (
@@ -445,12 +525,14 @@ export function SuratArchiveClient({
                     <EnterpriseActionButtons
                       onView={() => setViewItem(letter)}
                       onEdit={() => openEditDialog(letter)}
+                      onPrint={() => handlePrintArchive(letter)}
                       access={{ canView: true, canEdit: true, canDelete: true }}
                       onDelete={() => setDeleteItem(letter)}
                       labels={{
                         view: "Lihat Detail",
                         edit: "Edit Surat",
                         delete: "Hapus",
+                        print: "Cetak / Download",
                       }}
                     />
                   </TableCell>

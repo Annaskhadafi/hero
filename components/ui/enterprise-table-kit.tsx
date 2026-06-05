@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Eye, FilePenLine, MoreHorizontal, Trash2 } from "lucide-react"
+import { Eye, FilePenLine, MoreHorizontal, Trash2, Printer } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -164,13 +164,15 @@ export function EnterpriseActionButtons({
   onView,
   onEdit,
   onDelete,
+  onPrint,
   labels = {},
 }: {
   access?: TableRbacAccess
   onView?: () => void
   onEdit?: () => void
   onDelete?: () => void
-  labels?: { view?: string; edit?: string; delete?: string }
+  onPrint?: () => void
+  labels?: { view?: string; edit?: string; delete?: string; print?: string }
 }) {
   const canView = access?.canView ?? true
   const canEdit = access?.canEdit ?? false
@@ -178,6 +180,11 @@ export function EnterpriseActionButtons({
 
   return (
     <div className="flex min-w-max items-center justify-end gap-1.5">
+      {onPrint ? (
+        <Button type="button" variant="ghost" size="denseIcon" onClick={onPrint} disabled={!canView} aria-label={labels.print ?? "Print data"}>
+          <Printer className="size-4" />
+        </Button>
+      ) : null}
       {onView ? (
         <Button type="button" variant="ghost" size="denseIcon" onClick={onView} disabled={!canView} aria-label={labels.view ?? "View detail"}>
           <Eye className="size-4" />
