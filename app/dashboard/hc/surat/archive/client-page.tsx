@@ -378,7 +378,6 @@ export function SuratArchiveClient({
               width: 210mm;
               min-height: 297mm;
               margin: 0 auto;
-              padding: 45mm 25mm 30mm;
               background-image: url("${letterheadUrl}");
               background-size: 210mm 297mm;
               background-position: center top;
