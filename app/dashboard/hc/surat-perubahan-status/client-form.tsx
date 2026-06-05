@@ -248,13 +248,15 @@ export function SuratPerubahanStatusClient({
     }
 
     try {
+      const contentHtml = document.querySelector('.pdf-wrapper')?.innerHTML || ''
+
       const result = await saveLetter({
         letterType: 'surat_perubahan_status',
         letterNumber: noSurat,
         employeeId: selectedEmp.id,
         employeeName: selectedEmp.name,
         subject: 'Perubahan Status Karyawan',
-        content: JSON.stringify(contentData),
+        content: contentHtml,
         issuedDate: new Date().toISOString(),
         issuedPlace: 'Balikpapan',
         signatoryName: selectedHrSigner?.name || '',

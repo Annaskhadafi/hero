@@ -245,13 +245,15 @@ export function SuratPengalamanKerjaClient({
         tanggalSelesai: tanggalSelesai,
       }
 
+      const contentHtml = document.querySelector('.pdf-wrapper')?.innerHTML || ''
+
       const result = await saveLetter({
         letterType: 'surat_pengalaman_kerja',
         letterNumber: noSurat,
         employeeId: selectedEmp.id,
         employeeName: selectedEmp.name,
         subject: 'Surat Pengalaman Kerja',
-        content: JSON.stringify(contentData),
+        content: contentHtml,
         issuedDate: today,
         issuedPlace: 'Balikpapan',
         signatoryName: selectedHrSigner?.name || '',
