@@ -490,11 +490,16 @@ export function RecruitmentClientPage({
                             ) : "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {candidate.cvUrl ? (
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                            <div className="flex justify-end gap-2">
+                              {candidate.cvUrl ? (
+                                <Button variant="outline" size="sm" asChild>
+                                  <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                                </Button>
+                              ) : null}
+                              <Button variant="default" size="sm" asChild>
+                                <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
                               </Button>
-                            ) : "-"}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -536,8 +541,10 @@ export function RecruitmentClientPage({
                                   <h4 className="font-semibold text-base mb-0.5">{candidate.fullName}</h4>
                                   <p className="text-xs text-muted-foreground font-medium">{candidate.jobTitle || "General Application"}</p>
                                 </div>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <IconEye className="w-4 h-4" />
+                                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" asChild>
+                                  <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>
+                                    <IconEye className="w-4 h-4" />
+                                  </Link>
                                 </Button>
                               </div>
 
