@@ -3,30 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { registerForPublicTest } from "@/app/actions/candidate-tests";
 import { toast } from "sonner";
 
 export function PublicTestRegistrationClient({ test }: { test: any }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    phone: "",
-  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleStartTest = async () => {
     setIsSubmitting(true);
     try {
-      const accessKey = await registerForPublicTest(test.id, formData);
-      toast.success("Registration successful!");
+      const accessKey = await registerForPublicTest(test.id);
+      toast.success("Test siap dimulai");
       router.push(`/test/${accessKey}`);
     } catch (error: any) {
-      toast.error(error.message || "Failed to register for test");
+      toast.error(error.message || "Gagal memulai test");
       setIsSubmitting(false);
     }
   };
@@ -38,57 +30,20 @@ export function PublicTestRegistrationClient({ test }: { test: any }) {
           <CardTitle className="text-2xl">{test.title}</CardTitle>
           <CardDescription className="mt-2">{test.description}</CardDescription>
         </CardHeader>
-        <CardContent className="pt-6">
-          <form id="registration-form" onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
-                required
-                placeholder="Enter your full name"
-                value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                required
-                placeholder="Enter your email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                type="tel"
-                required
-                placeholder="Enter your phone number"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
-            
-            <div className="pt-4">
-              <Button 
-                type="submit" 
-                className="w-full h-11" 
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Registering..." : "Continue to Test"}
-              </Button>
-            </div>
-          </form>
+        <CardContent className="space-y-5 pt-6">
+          <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+            <p className="mb-2 font-medium text-foreground">Link public langsung masuk ke test.</p>
+            <p>Tidak perlu mengisi nama, email, atau nomor telepon.</p>
+          </div>
+          <Button className="h-11 w-full" disabled={isSubmitting} onClick={handleStartTest}>
+            {isSubmitting ? "Menyiapkan Test..." : "Mulai Test"}
+          </Button>
         </CardContent>
       </Card>
       
       <div className="mt-8 text-center text-sm text-muted-foreground">
-        <p className="mb-1">Time Limit: <span className="font-medium text-foreground">{test.timeLimitMinutes} Minutes</span></p>
-        <p>Please ensure you have a stable internet connection before continuing.</p>
+        <p className="mb-1">Durasi: <span className="font-medium text-foreground">{test.timeLimitMinutes} Menit</span></p>
+        <p>Pastikan koneksi internet stabil sebelum mulai.</p>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { getTestWithQuestions, getTestEntries } from "@/app/actions/recruitment-tests";
+import { getRecruitmentTestCandidates, getTestWithQuestions, getTestEntries } from "@/app/actions/recruitment-tests";
 import { RecruitmentTestDetailsClientPage } from "./client-page";
 import { notFound } from "next/navigation";
 
@@ -15,6 +15,10 @@ export default async function TestDetailsPage({ params }: { params: Promise<{ id
   }
 
   const entries = await getTestEntries(data.test.id);
+  const candidates = await getRecruitmentTestCandidates();
 
-  return <RecruitmentTestDetailsClientPage initialTest={data.test} initialQuestions={data.questions} initialEntries={entries} />;
+  return <RecruitmentTestDetailsClientPage initialTest={data.test} initialQuestions={data.questions} initialEntries={entries} initialCandidates={candidates} />;
 }
+
+
+

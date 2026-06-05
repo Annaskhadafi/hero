@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import * as XLSX from "xlsx";
 import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { addTestQuestion, deleteTestQuestion } from "@/app/actions/recruitment-tests";
+import { addTestQuestion, assignTestToCandidate, deleteTestEntry, deleteTestQuestion, gradeTestAnswer, importTestQuestions, updateTestEntry, updateTestQuestion } from "@/app/actions/recruitment-tests";
 import { uploadFile } from "@/app/actions/upload";
 import { toast } from "sonner";
-import { IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft } from "@tabler/icons-react";
+import { IconDownload, IconEye, IconPencil, IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
@@ -19,15 +21,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format } from "date-fns";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 
-export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions, initialEntries = [] }: { initialTest: any, initialQuestions: any[], initialEntries?: any[] }) {
+export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions, initialEntries = [], initialCandidates = [] }: { initialTest: any, initialQuestions: any[], initialEntries?: any[], initialCandidates?: any[] }) {
   const [test, setTest] = useState(initialTest);
   const [questions, setQuestions] = useState(initialQuestions);
   const [entries, setEntries] = useState(initialEntries);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+  const [editingEntry, setEditingEntry] = useState<any | null>(null);
+  const [entryEditForm, setEntryEditForm] = useState({ status: "Pending", score: "" });
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [candidateId, setCandidateId] = useState("");
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [bulkQuestionText, setBulkQuestionText] = useState("");
   
-  const [formData, setFormData] = useState({
+  const defaultQuestionForm = () => ({
     questionType: "multiple_choice",
     questionText: "",
     imageUrl: "",
@@ -42,6 +52,52 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
     ],
     readableImageUrl: "",
   });
+  const [formData, setFormData] = useState(defaultQuestionForm());
+
+
+  const getDefaultOptionsForType = (type: string) => {
+    if (type === "true_false") return [{ id: "A", text: "Benar", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Salah", imageUrl: "", readableImageUrl: "" }];
+    if (normalizeQuestionType(type) === "checkbox") return [{ id: "A", text: "Pilihan A", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Pilihan B", imageUrl: "", readableImageUrl: "" }, { id: "C", text: "Pilihan C", imageUrl: "", readableImageUrl: "" }];
+    if (type === "dropdown") return [{ id: "A", text: "Opsi 1", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Opsi 2", imageUrl: "", readableImageUrl: "" }];
+    if (type === "rating") return [{ id: "1", text: "1", imageUrl: "", readableImageUrl: "" }, { id: "2", text: "2", imageUrl: "", readableImageUrl: "" }, { id: "3", text: "3", imageUrl: "", readableImageUrl: "" }, { id: "4", text: "4", imageUrl: "", readableImageUrl: "" }, { id: "5", text: "5", imageUrl: "", readableImageUrl: "" }];
+    if (type === "matching") return [{ id: "A", text: "Istilah A = Jawaban A", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Istilah B = Jawaban B", imageUrl: "", readableImageUrl: "" }];
+    if (type === "ordering") return [{ id: "1", text: "Langkah pertama", imageUrl: "", readableImageUrl: "" }, { id: "2", text: "Langkah kedua", imageUrl: "", readableImageUrl: "" }, { id: "3", text: "Langkah ketiga", imageUrl: "", readableImageUrl: "" }];
+    if (type === "psychometric_scale") return [{ id: "1", text: "Sangat Tidak Setuju", imageUrl: "", readableImageUrl: "" }, { id: "2", text: "Tidak Setuju", imageUrl: "", readableImageUrl: "" }, { id: "3", text: "Netral", imageUrl: "", readableImageUrl: "" }, { id: "4", text: "Setuju", imageUrl: "", readableImageUrl: "" }, { id: "5", text: "Sangat Setuju", imageUrl: "", readableImageUrl: "" }];
+    if (type === "personality") return [{ id: "A", text: "Sangat sesuai dengan saya", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Cukup sesuai", imageUrl: "", readableImageUrl: "" }, { id: "C", text: "Kurang sesuai", imageUrl: "", readableImageUrl: "" }, { id: "D", text: "Tidak sesuai", imageUrl: "", readableImageUrl: "" }];
+    if (type === "interest_aptitude") return [{ id: "A", text: "Administrasi", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Pelayanan lapangan", imageUrl: "", readableImageUrl: "" }, { id: "C", text: "Analitis", imageUrl: "", readableImageUrl: "" }, { id: "D", text: "Komunikasi", imageUrl: "", readableImageUrl: "" }];
+    if (type === "situational_judgement") return [{ id: "A", text: "Mengikuti SOP dan eskalasi ke atasan", imageUrl: "", readableImageUrl: "" }, { id: "B", text: "Mengambil keputusan sendiri", imageUrl: "", readableImageUrl: "" }, { id: "C", text: "Menunda sampai instruksi berikutnya", imageUrl: "", readableImageUrl: "" }];
+    return formData.options;
+  };
+  const handleQuestionTypeChange = (type: string) => {
+    const nextOptions = getDefaultOptionsForType(type);
+    setFormData((prev) => ({ ...prev, questionType: type, options: nextOptions, correctAnswer: nextOptions[0]?.id || prev.correctAnswer }));
+  };
+
+  const resetQuestionForm = () => {
+    setEditingQuestion(null);
+    setFormData({ ...defaultQuestionForm(), sortOrder: questions.length + 1 });
+  };
+
+  const openCreateQuestion = () => {
+    resetQuestionForm();
+    setIsCreateOpen(true);
+  };
+
+  const openEditQuestion = (question: any) => {
+    const options = Array.isArray(question.options) && question.options.length ? question.options : getDefaultOptionsForType(question.questionType);
+    setEditingQuestion(question);
+    setFormData({
+      questionType: question.questionType || "multiple_choice",
+      questionText: question.questionText || "",
+      imageUrl: question.imageUrl || "",
+      correctAnswer: question.correctAnswer || options[0]?.id || "A",
+      points: question.points || 10,
+      sortOrder: question.sortOrder || questions.findIndex((item: any) => item.id === question.id) + 1,
+      options: options.map((option: any, index: number) => ({ id: option.id || String.fromCharCode(65 + index), text: option.text || "", imageUrl: option.imageUrl || "", readableImageUrl: option.readableImageUrl || "" })),
+      readableImageUrl: question.readableImageUrl || "",
+    });
+    setIsCreateOpen(true);
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'question' | number) => {
     const file = e.target.files?.[0];
@@ -95,48 +151,36 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
     }));
   };
 
-  const handleCreate = async () => {
+  const handleSaveQuestion = async () => {
     setIsSubmitting(true);
     try {
       const payload = {
         questionType: formData.questionType,
         questionText: formData.questionText,
         imageUrl: formData.imageUrl,
-        options: formData.questionType === "multiple_choice" ? formData.options : null,
+        options: optionBasedTypes.includes(formData.questionType) ? formData.options.filter((option) => option.text.trim() || option.imageUrl) : null,
         correctAnswer: formData.correctAnswer,
         points: formData.points,
         sortOrder: formData.sortOrder,
       };
-      const newQuestion = await addTestQuestion(test.id, payload);
+      const savedQuestion = editingQuestion ? await updateTestQuestion(editingQuestion.id, payload) : await addTestQuestion(test.id, payload);
       
-      // Re-attach the readable image URLs from formData so the optimistic UI preview works immediately
       const optimisticQuestion = {
-        ...newQuestion,
-        imageUrl: formData.readableImageUrl || newQuestion.imageUrl,
-        options: newQuestion.options ? (newQuestion.options as any[]).map((opt, i) => ({
+        ...savedQuestion,
+        readableImageUrl: formData.readableImageUrl,
+        options: savedQuestion.options ? (savedQuestion.options as any[]).map((opt) => ({
           ...opt,
-          imageUrl: formData.options[i]?.readableImageUrl || opt.imageUrl
+          readableImageUrl: formData.options.find((option) => option.id === opt.id)?.readableImageUrl || ""
         })) : null
       };
 
-      setQuestions([...questions, optimisticQuestion as any]);
-      toast.success("Question added!");
+      setQuestions(editingQuestion ? questions.map((question: any) => question.id === editingQuestion.id ? optimisticQuestion as any : question) : [...questions, optimisticQuestion as any]);
+      toast.success(editingQuestion ? "Question updated!" : "Question added!");
       setIsCreateOpen(false);
-      setFormData(prev => ({ 
-        ...prev, 
-        questionText: "", 
-        imageUrl: "",
-        sortOrder: prev.sortOrder + 1,
-        options: [
-          { id: "A", text: "", imageUrl: "", readableImageUrl: "" },
-          { id: "B", text: "", imageUrl: "", readableImageUrl: "" },
-          { id: "C", text: "", imageUrl: "", readableImageUrl: "" },
-          { id: "D", text: "", imageUrl: "", readableImageUrl: "" },
-        ],
-        readableImageUrl: "",
-      }));
+      setEditingQuestion(null);
+      setFormData({ ...defaultQuestionForm(), sortOrder: questions.length + (editingQuestion ? 1 : 2) });
     } catch (e: any) {
-      toast.error(e.message || "Failed to add question");
+      toast.error(e.message || (editingQuestion ? "Failed to update question" : "Failed to add question"));
     } finally {
       setIsSubmitting(false);
     }
@@ -158,6 +202,20 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
     navigator.clipboard.writeText(link);
     toast.success("Public link copied to clipboard!");
   };
+
+  const formatDateValue = (value: string | Date | null | undefined) => value ? format(new Date(value), "dd MMM yyyy, HH:mm") : "-";
+  const plainText = (value: string) => value ? value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+  const normalizeFileName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "online-test";
+  const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
+  const formatQuestionType = (type: string) => ({ multiple_choice: "Multiple Choice", true_false: "Benar / Salah", checkbox: "Checkbox / Multi Select", multi_select: "Checkbox / Multi Select", checkbox_multi_select: "Checkbox / Multi Select", dropdown: "Dropdown Select", number: "Number Input", date: "Date Input", file_upload: "Upload File", rating: "Rating", matching: "Matching", ordering: "Ordering", passage: "Passage / Reading", psychometric_scale: "Skala Psikotes", personality: "Psikotes Kepribadian", interest_aptitude: "Minat & Bakat", situational_judgement: "Situational Judgement", essay: "Essay / Short Answer" }[type] || type);
+  const optionBasedTypes = ["multiple_choice", "true_false", "checkbox", "multi_select", "checkbox_multi_select", "dropdown", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
+  const exportEntries = (targetEntries: any[], fileName: string) => { const rows = targetEntries.flatMap((entry) => (entry.answers?.length ? entry.answers : [{ questionText: "Belum ada jawaban" }]).map((answer: any, index: number) => ({ "Candidate Name": entry.candidate?.fullName || "N/A", Email: entry.candidate?.email || "N/A", Status: entry.status, "Started At": formatDateValue(entry.startedAt), "Completed At": formatDateValue(entry.completedAt), "Question No": answer.questionId ? index + 1 : "", "Question Type": answer.questionType || "", Question: plainText(answer.questionText || ""), Answer: answer.answerText || "", "Correct Answer": answer.correctAnswer || "" }))); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Answers"); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(targetEntries.map((entry) => ({ "Candidate Name": entry.candidate?.fullName || "N/A", Email: entry.candidate?.email || "N/A", Status: entry.status, Answers: entry.answers?.length || 0, "Started At": formatDateValue(entry.startedAt), "Completed At": formatDateValue(entry.completedAt) }))), "Summary"); XLSX.writeFile(workbook, `${normalizeFileName(fileName)}.xlsx`); };
+  const openEditEntry = (entry: any) => { setEditingEntry(entry); setEntryEditForm({ status: entry.status || "Pending", score: entry.score == null ? "" : String(entry.score) }); };
+  const handleUpdateEntry = async () => { if (!editingEntry) return; const parsedScore = entryEditForm.score.trim() === "" ? null : Number(entryEditForm.score); if (parsedScore !== null && !Number.isFinite(parsedScore)) return toast.error("Score harus angka."); await updateTestEntry(editingEntry.id, { status: entryEditForm.status, score: parsedScore }); setEntries(entries.map((entry: any) => entry.id === editingEntry.id ? { ...entry, status: entryEditForm.status, score: parsedScore } : entry)); setEditingEntry(null); toast.success("Entry updated"); };
+  const handleDeleteEntry = async (entry: any) => { if (!confirm(`Hapus entry test milik ${entry.candidate?.fullName || "candidate ini"}?`)) return; await deleteTestEntry(entry.id); setEntries(entries.filter((item: any) => item.id !== entry.id)); toast.success("Entry deleted"); };
+  const handleAssignCandidate = async () => { const parsedCandidateId = Number(candidateId); if (!parsedCandidateId) return toast.error("Pilih kandidat dulu."); const assignment = await assignTestToCandidate(test.id, parsedCandidateId); const candidate = initialCandidates.find((item: any) => item.id === parsedCandidateId); setEntries([{ ...assignment, candidate, answers: [] }, ...entries]); setCandidateId(""); setIsAssignOpen(false); toast.success("Test berhasil di-assign"); };
+  const handleBulkImportQuestions = async () => { const rows = bulkQuestionText.split(/\r?\n/).map((row, index) => { const parts = row.split("|").map((part) => part.trim()); if (!parts[0]) return null; const rawType = (parts[1] || "multiple_choice").toLowerCase(); const questionType = rawType.includes("essay") ? "essay" : rawType.includes("checkbox") || rawType.includes("multi") ? "checkbox" : rawType.includes("dropdown") || rawType.includes("select") ? "dropdown" : rawType.includes("number") || rawType.includes("angka") ? "number" : rawType.includes("date") || rawType.includes("tanggal") ? "date" : rawType.includes("file") || rawType.includes("upload") ? "file_upload" : rawType.includes("rating") ? "rating" : rawType.includes("matching") || rawType.includes("cocok") ? "matching" : rawType.includes("ordering") || rawType.includes("urut") ? "ordering" : rawType.includes("passage") || rawType.includes("reading") ? "passage" : rawType.includes("benar") || rawType.includes("false") ? "true_false" : rawType.includes("skala") || rawType.includes("scale") ? "psychometric_scale" : rawType.includes("pribadi") || rawType.includes("personality") ? "personality" : rawType.includes("minat") || rawType.includes("bakat") ? "interest_aptitude" : rawType.includes("situasi") || rawType.includes("judgement") ? "situational_judgement" : "multiple_choice"; const options = optionBasedTypes.includes(questionType) ? (parts[2] || "").split(";").map((text, optionIndex) => ({ id: String.fromCharCode(65 + optionIndex), text: text.trim() })).filter((option) => option.text) : null; return { questionType, questionText: parts[0], options, correctAnswer: parts[3] || (options?.[0]?.id ?? ""), points: Number(parts[4] || 10) || 10, sortOrder: questions.length + index + 1 }; }).filter(Boolean) as any[]; if (!rows.length) return toast.error("Data import soal masih kosong."); const created = await importTestQuestions(test.id, rows); setQuestions([...questions, ...created]); setBulkQuestionText(""); setIsImportOpen(false); toast.success(`${created.length} soal berhasil diimport`); };
+  const handleGradeAnswer = async (entry: any, answer: any) => { const raw = prompt("Masukkan poin untuk jawaban ini", String(answer.pointsAwarded ?? 0)); if (raw === null) return; const pointsAwarded = Number(raw); if (!Number.isFinite(pointsAwarded)) return toast.error("Poin harus angka."); await gradeTestAnswer(answer.id, pointsAwarded, pointsAwarded > 0); const updatedEntries = entries.map((item: any) => { if (item.id !== entry.id) return item; const updatedAnswers = (item.answers || []).map((existing: any) => existing.id === answer.id ? { ...existing, pointsAwarded, isCorrect: pointsAwarded > 0 } : existing); return { ...item, answers: updatedAnswers, score: updatedAnswers.reduce((total: number, current: any) => total + (current.pointsAwarded || 0), 0), status: "Graded" }; }); setEntries(updatedEntries); setSelectedEntry(updatedEntries.find((item: any) => item.id === entry.id) || null); toast.success("Nilai jawaban diupdate"); };
 
   return (
     <AdminPageShell
@@ -183,13 +241,13 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           <div className="flex justify-between items-center mb-6 bg-muted/10 p-4 rounded-xl border border-muted/30">
             <div>
               <h2 className="text-lg font-semibold">Questions ({questions.length})</h2>
-              <p className="text-sm text-muted-foreground">Passing Score: {test.passingScore} &bull; Time Limit: {test.timeLimitMinutes} Mins</p>
+              <p className="text-sm text-muted-foreground">Time Limit: {test.timeLimitMinutes} Mins</p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={copyPublicLink} className="gap-2">
                 <IconLink className="w-4 h-4" /> Copy Public Link
               </Button>
-              <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+              <Button onClick={openCreateQuestion} className="gap-2">
                 <IconPlus className="w-4 h-4" /> Add Question
               </Button>
             </div>
@@ -202,33 +260,37 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               <div className="flex gap-3 items-start">
                 <Badge variant="secondary">{i + 1}</Badge>
                 <div className="max-w-3xl overflow-hidden">
-                  {q.imageUrl && (
-                    <img src={q.imageUrl} alt="Question Attachment" className="max-h-40 rounded-md border mb-3 object-contain" />
+                  {(q.readableImageUrl || q.imageUrl) && (
+                    <img src={q.readableImageUrl || q.imageUrl} alt="Question Attachment" className="max-h-40 rounded-md border mb-3 object-contain" />
                   )}
                   {/* Safely render HTML from Rich Text Editor */}
                   <div className="prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: q.questionText }} />
                   <div className="flex gap-2 mt-3">
-                    <Badge variant="outline" className="text-xs">{q.questionType === 'multiple_choice' ? 'Multiple Choice' : 'Essay'}</Badge>
-                    <Badge variant="outline" className="text-xs">{q.points} Points</Badge>
+                    <Badge variant="outline" className="text-xs">{formatQuestionType(q.questionType)}</Badge>
                   </div>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)}>
-                <IconTrash className="w-4 h-4 text-destructive/70 hover:text-destructive" />
-              </Button>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="icon" onClick={() => openEditQuestion(q)} title="Edit question">
+                  <IconPencil className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(q.id)} title="Delete question">
+                  <IconTrash className="w-4 h-4 text-destructive/70 hover:text-destructive" />
+                </Button>
+              </div>
             </div>
             
-            {q.questionType === "multiple_choice" && q.options && (
+            {optionBasedTypes.includes(normalizeQuestionType(q.questionType)) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pl-10">
-                {q.options.map((opt: any) => (
-                  <div key={opt.id} className={`p-3 rounded-lg border text-sm flex flex-col gap-2 ${opt.id === q.correctAnswer ? 'bg-accent/10 border-accent/30 text-accent' : 'bg-muted/30'}`}>
+                {(q.options?.length ? q.options : getDefaultOptionsForType(normalizeQuestionType(q.questionType))).map((opt: any) => (
+                  <div key={opt.id} className="p-3 rounded-lg border text-sm flex flex-col gap-2 bg-muted/30">
                     <div className="flex items-center gap-2">
                       <span className="font-bold opacity-50 w-5">{opt.id}.</span> 
-                      <span className={opt.id === q.correctAnswer ? 'font-medium' : ''}>{opt.text}</span>
+                      <span>{opt.text}</span>
                     </div>
-                    {opt.imageUrl && (
+                    {(opt.readableImageUrl || opt.imageUrl) && (
                       <div className="pl-7">
-                        <img src={opt.imageUrl} alt={`Option ${opt.id}`} className="h-16 rounded border object-contain bg-background" />
+                        <img src={opt.readableImageUrl || opt.imageUrl} alt={`Option ${opt.id}`} className="h-16 rounded border object-contain bg-background" />
                       </div>
                     )}
                   </div>
@@ -240,6 +302,10 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                 <span className="font-semibold text-foreground">Expected Keyword / Reference:</span> {q.correctAnswer}
               </div>
             )}
+            {q.questionType === "number" && <div className="mt-4 pl-10"><input type="number" disabled placeholder="Number input preview" className="w-full max-w-sm rounded-lg border bg-muted/20 p-3 text-sm" /></div>}
+            {q.questionType === "date" && <div className="mt-4 pl-10"><input type="date" disabled className="w-full max-w-sm rounded-lg border bg-muted/20 p-3 text-sm" /></div>}
+            {q.questionType === "file_upload" && <div className="mt-4 pl-10"><input type="file" disabled className="w-full max-w-sm rounded-lg border bg-muted/20 p-3 text-sm" /></div>}
+            {q.questionType === "passage" && <div className="mt-4 pl-10"><Textarea rows={4} disabled placeholder="Reading / passage answer preview" className="max-w-xl bg-muted/20" /></div>}
           </div>
         ))}
         {questions.length === 0 && (
@@ -249,27 +315,37 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
         )}
       </div>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog open={isCreateOpen} onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingQuestion(null); }}>
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Add New Question</DialogTitle>
-            <DialogDescription>Create a new question with formatted text and images.</DialogDescription>
+            <DialogTitle>{editingQuestion ? "Edit Question" : "Add New Question"}</DialogTitle>
+            <DialogDescription>{editingQuestion ? "Update question content, type, options, and images." : "Create a new question with formatted text and images."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-accent">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label>Question Type</Label>
-                <Select value={formData.questionType} onValueChange={(val) => setFormData({ ...formData, questionType: val })}>
+                <Select value={formData.questionType} onValueChange={handleQuestionTypeChange}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="multiple_choice">Multiple Choice</SelectItem>
+                    <SelectItem value="true_false">Benar / Salah</SelectItem>
+                    <SelectItem value="checkbox">Checkbox / Multi Select</SelectItem>
+                    <SelectItem value="dropdown">Dropdown Select</SelectItem>
+                    <SelectItem value="number">Number Input</SelectItem>
+                    <SelectItem value="date">Date Input</SelectItem>
+                    <SelectItem value="file_upload">Upload File</SelectItem>
+                    <SelectItem value="rating">Rating</SelectItem>
+                    <SelectItem value="matching">Matching</SelectItem>
+                    <SelectItem value="ordering">Ordering</SelectItem>
+                    <SelectItem value="passage">Passage / Reading</SelectItem>
+                    <SelectItem value="psychometric_scale">Skala Psikotes</SelectItem>
+                    <SelectItem value="personality">Psikotes Kepribadian</SelectItem>
+                    <SelectItem value="interest_aptitude">Minat & Bakat</SelectItem>
+                    <SelectItem value="situational_judgement">Situational Judgement</SelectItem>
                     <SelectItem value="essay">Essay / Short Answer</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Points</Label>
-                <Input type="number" value={formData.points} onChange={(e) => setFormData({ ...formData, points: parseInt(e.target.value) || 0 })} />
               </div>
             </div>
 
@@ -300,10 +376,10 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               />
             </div>
 
-            {formData.questionType === "multiple_choice" ? (
+            {optionBasedTypes.includes(normalizeQuestionType(formData.questionType)) ? (
               <div className="space-y-3 bg-muted/10 p-4 rounded-lg border mt-6">
                 <div className="flex justify-between items-center mb-2">
-                  <Label className="font-semibold text-base">Options</Label>
+                  <Label className="font-semibold text-base">Options / Skala Jawaban</Label>
                   <Button variant="outline" size="sm" onClick={handleAddOption} className="h-8 gap-1">
                     <IconPlus className="w-3 h-3" /> Add Option
                   </Button>
@@ -364,14 +440,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               <div className="space-y-2 bg-muted/10 p-4 rounded-lg border mt-6">
                 <Label>Expected Answer / Keyword</Label>
                 <Input value={formData.correctAnswer} onChange={(e) => setFormData({ ...formData, correctAnswer: e.target.value })} placeholder="e.g. JavaScript" />
-                <p className="text-xs text-muted-foreground">The system will look for this keyword to auto-score, or HR can grade it manually.</p>
+                <p className="text-xs text-muted-foreground">Untuk essay, sistem akan mencari keyword ini untuk auto-score awal; HR tetap bisa edit nilai manual.</p>
               </div>
             )}
           </div>
           <DialogFooter className="pt-4 mt-2 border-t">
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!formData.questionText || isSubmitting || isUploading}>
-              {isSubmitting ? "Saving..." : isUploading ? "Uploading..." : "Save Question"}
+            <Button onClick={handleSaveQuestion} disabled={!formData.questionText || isSubmitting || isUploading}>
+              {isSubmitting ? "Saving..." : isUploading ? "Uploading..." : editingQuestion ? "Update Question" : "Save Question"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -379,45 +455,43 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       </TabsContent>
 
       <TabsContent value="entries">
-        <MinimalTableShell label="test entries" title="Test Entries">
+        <MinimalTableShell
+          label="test entries"
+          title="Test Entries"
+          fileName={`hasil-entries-${test.title}`}
+          actions={(
+            <>
+              <Button variant="outline" onClick={() => setIsAssignOpen(true)} className="h-9 gap-2 rounded-lg border-0 bg-white px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"><IconPlus className="size-4" /> Assign</Button>
+              <Button variant="outline" onClick={() => exportEntries(entries, `hasil-entries-${test.title}`)} className="h-9 gap-2 rounded-lg border-0 bg-white px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"><IconDownload className="size-4" /> Export Detail</Button>
+            </>
+          )}
+        >
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>CANDIDATE NAME</TableHead>
-                <TableHead>EMAIL</TableHead>
-                <TableHead>STATUS</TableHead>
-                <TableHead>SCORE</TableHead>
-                <TableHead>STARTED AT</TableHead>
-                <TableHead>COMPLETED AT</TableHead>
-              </TableRow>
-            </TableHeader>
+            <TableHeader><TableRow><TableHead>CANDIDATE NAME</TableHead><TableHead>EMAIL</TableHead><TableHead>STATUS</TableHead><TableHead>ANSWERS</TableHead><TableHead>STARTED AT</TableHead><TableHead>COMPLETED AT</TableHead><TableHead className="text-right">ACTIONS</TableHead></TableRow></TableHeader>
             <TableBody>
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">{entry.candidate?.fullName || "N/A"}</TableCell>
                   <TableCell className="text-muted-foreground">{entry.candidate?.email || "N/A"}</TableCell>
-                  <TableCell>
-                    <Badge variant={entry.status === "Completed" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>
-                      {entry.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-semibold">{entry.score !== null ? entry.score : "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{entry.startedAt ? format(new Date(entry.startedAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{entry.completedAt ? format(new Date(entry.completedAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
+                  <TableCell><Badge variant={entry.status === "Completed" || entry.status === "Graded" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>{entry.status}</Badge></TableCell>
+                  
+                  <TableCell className="text-muted-foreground">{entry.answers?.length || 0} / {questions.length}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatDateValue(entry.startedAt)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatDateValue(entry.completedAt)}</TableCell>
+                  <TableCell><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => setSelectedEntry(entry)}><IconEye className="size-4" /> Detail</Button><Button variant="outline" size="sm" onClick={() => exportEntries([entry], `hasil-entry-${test.title}-${entry.candidate?.fullName || entry.id}`)}><IconDownload className="size-4" /> Excel</Button><Button variant="outline" size="sm" onClick={() => openEditEntry(entry)}><IconPencil className="size-4" /> Edit</Button><Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry)} className="text-destructive hover:text-destructive"><IconTrash className="size-4" /> Delete</Button></div></TableCell>
                 </TableRow>
               ))}
-              {entries.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                    No entries found for this test yet.
-                  </TableCell>
-                </TableRow>
-              )}
+              {entries.length === 0 && <TableRow><TableCell colSpan={8} className="text-center h-24 text-muted-foreground">No entries found for this test yet.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </MinimalTableShell>
+
+        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge></div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><p className="mt-1 whitespace-pre-wrap">{answer?.answerText || "Belum dijawab"}</p></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
+        <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>Edit Entry</DialogTitle><DialogDescription>Ubah status entry test kandidat.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Status</Label><Select value={entryEditForm.status} onValueChange={(value) => setEntryEditForm((prev) => ({ ...prev, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Pending">Pending</SelectItem><SelectItem value="In Progress">In Progress</SelectItem><SelectItem value="Completed">Completed</SelectItem><SelectItem value="Graded">Graded</SelectItem><SelectItem value="Expired">Expired</SelectItem></SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setEditingEntry(null)}>Cancel</Button><Button onClick={handleUpdateEntry}>Save</Button></DialogFooter></DialogContent></Dialog>
+        <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}><DialogContent><DialogHeader><DialogTitle>Assign Test ke Kandidat</DialogTitle><DialogDescription>Pilih kandidat yang akan menerima access key test.</DialogDescription></DialogHeader><Select value={candidateId} onValueChange={setCandidateId}><SelectTrigger><SelectValue placeholder="Pilih kandidat" /></SelectTrigger><SelectContent>{initialCandidates.map((candidate: any) => <SelectItem key={candidate.id} value={String(candidate.id)}>{candidate.fullName} · {candidate.email || candidate.phone || "No contact"}</SelectItem>)}</SelectContent></Select><DialogFooter><Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancel</Button><Button onClick={handleAssignCandidate}>Assign</Button></DialogFooter></DialogContent></Dialog>
       </TabsContent>
       </Tabs>
     </AdminPageShell>
   );
 }
+

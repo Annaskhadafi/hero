@@ -2687,6 +2687,9 @@ export const hcOnlineTestAssignments = pgTable('hero_hc_online_test_assignments'
   expiresAt: timestamp('expires_at').notNull(),
   status: text('status').notNull().default('Pending'), // Pending, In Progress, Completed, Expired
   score: integer('score'),
+  durationSeconds: integer('duration_seconds'),
+  tabLeaveCount: integer('tab_leave_count').notNull().default(0),
+  refreshCount: integer('refresh_count').notNull().default(0),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -2701,3 +2704,4 @@ export const hcOnlineTestAnswers = pgTable('hero_hc_online_test_answers', {
   pointsAwarded: integer('points_awarded').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
+

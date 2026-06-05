@@ -10,12 +10,41 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
+const radioQuestionTypes = ["multiple_choice", "true_false", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
+const questionTypeLabel = (type: string) => ({ multiple_choice: "Pilihan Ganda", true_false: "Benar / Salah", checkbox: "Checkbox", multi_select: "Checkbox", checkbox_multi_select: "Checkbox", dropdown: "Dropdown", number: "Number", date: "Date", file_upload: "Upload File", rating: "Rating", matching: "Matching", ordering: "Ordering", passage: "Passage", psychometric_scale: "Skala Psikotes", personality: "Psikotes Kepribadian", interest_aptitude: "Minat & Bakat", situational_judgement: "Situational Judgement", essay: "Essay" }[type] || type);
+const getDefaultOptionsForType = (type: string) => {
+  if (type === "true_false") return [{ id: "A", text: "Benar" }, { id: "B", text: "Salah" }];
+  if (normalizeQuestionType(type) === "checkbox") return [{ id: "A", text: "Pilihan A" }, { id: "B", text: "Pilihan B" }, { id: "C", text: "Pilihan C" }];
+  if (type === "dropdown") return [{ id: "A", text: "Opsi 1" }, { id: "B", text: "Opsi 2" }];
+  if (type === "rating") return [{ id: "1", text: "1" }, { id: "2", text: "2" }, { id: "3", text: "3" }, { id: "4", text: "4" }, { id: "5", text: "5" }];
+  if (type === "matching") return [{ id: "A", text: "Istilah A = Jawaban A" }, { id: "B", text: "Istilah B = Jawaban B" }];
+  if (type === "ordering") return [{ id: "1", text: "Langkah pertama" }, { id: "2", text: "Langkah kedua" }, { id: "3", text: "Langkah ketiga" }];
+  if (type === "psychometric_scale") return [{ id: "1", text: "Sangat Tidak Setuju" }, { id: "2", text: "Tidak Setuju" }, { id: "3", text: "Netral" }, { id: "4", text: "Setuju" }, { id: "5", text: "Sangat Setuju" }];
+  if (type === "personality") return [{ id: "A", text: "Sangat sesuai dengan saya" }, { id: "B", text: "Cukup sesuai" }, { id: "C", text: "Kurang sesuai" }, { id: "D", text: "Tidak sesuai" }];
+  if (type === "interest_aptitude") return [{ id: "A", text: "Administrasi" }, { id: "B", text: "Pelayanan lapangan" }, { id: "C", text: "Analitis" }, { id: "D", text: "Komunikasi" }];
+  if (type === "situational_judgement") return [{ id: "A", text: "Mengikuti SOP dan eskalasi ke atasan" }, { id: "B", text: "Mengambil keputusan sendiri" }, { id: "C", text: "Menunda sampai instruksi berikutnya" }];
+  return [];
+};
+const getDisplayOptions = (question: any) => {
+  const savedOptions = Array.isArray(question.options) ? question.options.filter((option: any) => option?.text?.trim() || option?.imageUrl) : [];
+  return savedOptions.length ? savedOptions : getDefaultOptionsForType(question.questionType);
+};
+
 export function CandidateTestClientPage({ assignment, test, questions }: { assignment: any, test: any, questions: any[] }) {
   const [hasStarted, setHasStarted] = useState(assignment.status !== "Pending");
   const [isFinished, setIsFinished] = useState(assignment.status === "Completed");
   const [timeLeft, setTimeLeft] = useState(test.timeLimitMinutes * 60);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tabLeaveCount, setTabLeaveCount] = useState(0);
+  const [refreshCount] = useState(() => { if (typeof window === "undefined") return 0; const key = `test-refresh-${assignment.id}`; const next = Number(sessionStorage.getItem(key) || "0") + 1; sessionStorage.setItem(key, String(next)); return Math.max(0, next - 1); });
+
+  useEffect(() => {
+    const onVisibility = () => { if (document.hidden && hasStarted && !isFinished) setTabLeaveCount((count) => count + 1); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [hasStarted, isFinished]);
 
   useEffect(() => {
     let timer: any;
@@ -43,10 +72,7 @@ export function CandidateTestClientPage({ assignment, test, questions }: { assig
     if (isFinished) return;
     setIsSubmitting(true);
     try {
-      for (const [qId, answer] of Object.entries(answers)) {
-        await submitTestAnswer(assignment.id, parseInt(qId), answer);
-      }
-      await finishTestAssignment(assignment.id);
+      await finishTestAssignment(assignment.id, answers, { tabLeaveCount, refreshCount });
       setIsFinished(true);
       toast.success("Test submitted successfully!");
     } catch (e) {
@@ -120,25 +146,44 @@ export function CandidateTestClientPage({ assignment, test, questions }: { assig
           <Card key={q.id}>
             <CardHeader className="bg-muted/20 border-b pb-4">
               <div className="flex gap-3">
-                <Badge className="h-6 w-6 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
-                <CardTitle className="text-base leading-relaxed font-medium">{q.questionText}</CardTitle>
+                <Badge className="h-6 w-6 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge><Badge variant="outline">{questionTypeLabel(q.questionType)}</Badge>
+                <CardTitle className="text-base leading-relaxed font-medium" dangerouslySetInnerHTML={{ __html: q.questionText }} />
               </div>
+              {q.imageUrl && <img src={q.imageUrl} alt="Gambar soal" className="mt-4 max-h-80 w-full rounded-lg border object-contain" />}
             </CardHeader>
             <CardContent className="pt-6">
-              {q.questionType === "multiple_choice" && q.options && (
+              {radioQuestionTypes.includes(normalizeQuestionType(q.questionType)) && (
                 <RadioGroup 
                   value={answers[q.id] || ""} 
                   onValueChange={(val) => setAnswers({ ...answers, [q.id]: val })}
                   className="space-y-3"
                 >
-                  {q.options.map((opt: any) => (
+                  {getDisplayOptions(q).map((opt: any) => (
                     <div key={opt.id} className="flex items-center space-x-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setAnswers({ ...answers, [q.id]: opt.id })}>
                       <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} />
                       <Label htmlFor={`q-${q.id}-${opt.id}`} className="flex-1 cursor-pointer font-normal text-base">{opt.text}</Label>
+                      {opt.imageUrl && <img src={opt.imageUrl} alt={opt.text} className="h-16 w-16 rounded border object-cover" />}
                     </div>
                   ))}
                 </RadioGroup>
               )}
+              {normalizeQuestionType(q.questionType) === "checkbox" && (
+                <div className="space-y-3">
+                  {getDisplayOptions(q).map((opt: any) => {
+                    const selected = (answers[q.id] || "").split(",").filter(Boolean);
+                    return <label key={opt.id} className="flex items-center gap-3 border p-4 rounded-lg"><input type="checkbox" checked={selected.includes(opt.id)} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} /> <span className="flex-1">{opt.text}</span>{opt.imageUrl && <img src={opt.imageUrl} alt={opt.text} className="h-16 w-16 rounded border object-cover" />}</label>;
+                  })}
+                </div>
+              )}
+              {normalizeQuestionType(q.questionType) === "dropdown" && (
+                <select className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })}>
+                  <option value="">Pilih jawaban...</option>{getDisplayOptions(q).map((opt: any) => <option key={opt.id} value={opt.id}>{opt.text}</option>)}
+                </select>
+              )}
+              {normalizeQuestionType(q.questionType) === "number" && <input type="number" className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
+              {normalizeQuestionType(q.questionType) === "date" && <input type="date" className="w-full rounded-lg border bg-background p-3" value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
+              {normalizeQuestionType(q.questionType) === "file_upload" && <input type="file" className="w-full rounded-lg border bg-background p-3" onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.files?.[0]?.name || "" })} />}
+              {normalizeQuestionType(q.questionType) === "passage" && <Textarea rows={6} placeholder="Tulis jawaban berdasarkan bacaan..." value={answers[q.id] || ""} onChange={(event) => setAnswers({ ...answers, [q.id]: event.target.value })} />}
               {q.questionType === "essay" && (
                 <Textarea 
                   rows={4} 
@@ -154,9 +199,7 @@ export function CandidateTestClientPage({ assignment, test, questions }: { assig
 
       <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-4 flex justify-end shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
         <div className="max-w-4xl w-full mx-auto flex justify-between items-center">
-          <p className="text-sm text-muted-foreground">
-            Answered: {Object.keys(answers).length} of {questions.length}
-          </p>
+          <p className="text-sm text-muted-foreground">Answered: {Object.keys(answers).length} of {questions.length} · Tab leave: {tabLeaveCount}</p>
           <Button onClick={() => {
             if (confirm("Are you sure you want to finish the test? You cannot change your answers after submission.")) {
               handleFinishTest();

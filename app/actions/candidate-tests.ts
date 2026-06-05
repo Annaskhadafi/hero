@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { hcOnlineTestAssignments, hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAnswers, hcCandidates } from "@/db/schema/hero";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { randomUUID } from "crypto";
@@ -47,19 +47,40 @@ export async function getTestByAccessKey(accessKey: string) {
 }
 
 export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {
-  // Simple upsert logic could be used, or just insert
-  await db.insert(hcOnlineTestAnswers).values({
-    assignmentId,
-    questionId,
-    answerText,
-    isCorrect: null, // Auto-grading can happen in a separate worker or process
-    pointsAwarded: 0,
-  });
+  await db.insert(hcOnlineTestAnswers).values({ assignmentId, questionId, answerText, isCorrect: null, pointsAwarded: 0 });
 }
 
-export async function finishTestAssignment(assignmentId: number) {
+export async function finishTestAssignment(assignmentId: number, answers?: Record<number, string>, telemetry?: { tabLeaveCount?: number; refreshCount?: number }) {
+  const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.id, assignmentId)).limit(1);
+  if (!assignment) throw new Error("Assignment not found");
+
+  const questionIds = answers ? Object.keys(answers).map((id) => Number(id)).filter(Boolean) : [];
+  const questions = questionIds.length
+    ? await db.select().from(hcOnlineTestQuestions).where(inArray(hcOnlineTestQuestions.id, questionIds))
+    : [];
+  const questionById = new Map(questions.map((question) => [question.id, question]));
+
+  if (answers) {
+    await db.delete(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignmentId));
+    const answerRows = Object.entries(answers).map(([questionId, answerText]) => {
+      const question = questionById.get(Number(questionId));
+      const normalizedAnswer = answerText.trim().toLowerCase();
+      const normalizedCorrect = (question?.correctAnswer || "").trim().toLowerCase();
+      const optionBasedTypes = ["multiple_choice", "true_false", "checkbox", "dropdown", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
+      const isOptionBased = optionBasedTypes.includes(question?.questionType || "");
+      const isCorrect = isOptionBased ? normalizedAnswer === normalizedCorrect : (normalizedCorrect ? normalizedAnswer.includes(normalizedCorrect) : null);
+      return { assignmentId, questionId: Number(questionId), answerText, isCorrect, pointsAwarded: isCorrect ? question?.points || 0 : 0 };
+    });
+    if (answerRows.length) await db.insert(hcOnlineTestAnswers).values(answerRows);
+  }
+
+  const savedAnswers = await db.select({ pointsAwarded: hcOnlineTestAnswers.pointsAwarded }).from(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignmentId));
+  const score = savedAnswers.reduce((total, answer) => total + answer.pointsAwarded, 0);
+  const completedAt = new Date();
+  const durationSeconds = assignment.startedAt ? Math.max(0, Math.round((completedAt.getTime() - assignment.startedAt.getTime()) / 1000)) : null;
+
   await db.update(hcOnlineTestAssignments)
-    .set({ status: "Completed", completedAt: new Date() })
+    .set({ status: "Completed", score, completedAt, durationSeconds, tabLeaveCount: telemetry?.tabLeaveCount ?? 0, refreshCount: telemetry?.refreshCount ?? 0 })
     .where(eq(hcOnlineTestAssignments.id, assignmentId));
   
   revalidatePath("/dashboard/hc/recruitment");
@@ -71,16 +92,18 @@ export async function startTestAssignment(assignmentId: number) {
     .where(eq(hcOnlineTestAssignments.id, assignmentId));
 }
 
-export async function registerForPublicTest(testId: number, data: { fullName: string; email: string; phone: string }) {
+export async function registerForPublicTest(testId: number) {
   try {
     const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, testId)).limit(1);
     if (!test) throw new Error("Test not found");
 
-    // Create a candidate
+    const publicIdentity = randomUUID();
+
+    // Create an anonymous candidate for public links.
     const [candidate] = await db.insert(hcCandidates).values({
-      fullName: data.fullName,
-      email: data.email,
-      phone: data.phone,
+      fullName: `Peserta Public Test ${publicIdentity.slice(0, 8)}`,
+      email: `public-${publicIdentity}@test.local`,
+      phone: "",
       source: "Public Test Link",
       currentStage: "Psikotes", // Start at psikotes/test stage
     }).returning();
