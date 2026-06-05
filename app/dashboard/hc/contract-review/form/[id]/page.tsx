@@ -9,7 +9,7 @@ export const metadata = {
   title: "Form Contract Review - HC",
 }
 
-export default async function ContractReviewEditPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+export default async function ContractReviewEditPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
   const id = parseInt(resolvedParams.id)
   if (isNaN(id)) return notFound()
