@@ -15,7 +15,7 @@ import {
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate } from "@/app/actions/recruitment";
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -249,6 +249,18 @@ export function RecruitmentClientPage({
     const link = `${window.location.origin}/careers/${job.id}`;
     navigator.clipboard.writeText(link);
     toast.success("Public link copied to clipboard!");
+  };
+
+  const handleDeleteCandidate = async (candidateId: number) => {
+    if (confirm("Are you sure you want to delete this candidate? This action cannot be undone and will delete all related records (interviews, MCU).")) {
+      try {
+        await deleteCandidate(candidateId);
+        setCandidates((prev) => prev.filter((c) => c.id !== candidateId));
+        toast.success("Candidate deleted successfully.");
+      } catch (e: any) {
+        toast.error(e.message || "Failed to delete candidate.");
+      }
+    }
   };
 
   const handleDeleteVacancy = async (id: number) => {
@@ -498,6 +510,9 @@ export function RecruitmentClientPage({
                               ) : null}
                               <Button variant="default" size="sm" asChild>
                                 <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)} title="Delete Dummy Data">
+                                <IconTrash className="w-4 h-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -845,6 +860,9 @@ export function RecruitmentClientPage({
                         ) : null}
                         <Button variant="default" size="sm" asChild>
                           <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)} title="Delete Dummy Data">
+                          <IconTrash className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>
