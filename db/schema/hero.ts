@@ -2565,3 +2565,48 @@ export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+// ─── HC Contract Review ──────────────────────────────────────────────
+
+export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_reviews', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id').references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  reviewType: text('review_type').notNull().default('probation'), // 'probation', 'contract'
+  contractLength: text('contract_length').notNull().default(''),
+  todayDate: date('today_date').notNull(),
+  hireDate: date('hire_date').notNull(),
+  
+  // Performance
+  performanceActivities: jsonb('performance_activities').$type<Array<{ activity: string, achievement: string, remark: string }>>().default([]),
+  
+  // Competency Achievement (Below/Meet/Exceed)
+  compDisciplineAch: text('comp_discipline_ach').notNull().default(''),
+  compDisciplineRemark: text('comp_discipline_remark').notNull().default(''),
+  compSkillAch: text('comp_skill_ach').notNull().default(''),
+  compSkillRemark: text('comp_skill_remark').notNull().default(''),
+  compResultAch: text('comp_result_ach').notNull().default(''),
+  compResultRemark: text('comp_result_remark').notNull().default(''),
+  compQualityAch: text('comp_quality_ach').notNull().default(''),
+  compQualityRemark: text('comp_quality_remark').notNull().default(''),
+  compCustomerAch: text('comp_customer_ach').notNull().default(''),
+  compCustomerRemark: text('comp_customer_remark').notNull().default(''),
+  compTeamworkAch: text('comp_teamwork_ach').notNull().default(''),
+  compTeamworkRemark: text('comp_teamwork_remark').notNull().default(''),
+  
+  // Recommendation
+  recommendation: text('recommendation').notNull().default(''), // confirm_permanent, contract_extended, terminate_probation, contract_ended
+  contractExtendedMonths: integer('contract_extended_months'),
+  
+  // Signatories
+  leaderName: text('leader_name').notNull().default(''),
+  employeeNameStr: text('employee_name_str').notNull().default(''),
+  superiorName: text('superior_name').notNull().default(''),
+  hrName: text('hr_name').notNull().default(''),
+  nextSuperiorName: text('next_superior_name').notNull().default(''),
+
+  letterIssuance: text('letter_issuance').notNull().default(''), // permanent_confirmation, contract_extension, unsuccessful_probation, end_of_contract
+  
+  status: text('status').notNull().default('draft'), // draft, finalized
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})

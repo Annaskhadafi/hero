@@ -717,6 +717,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HR',
+    title: 'Contract Review',
+    url: '/dashboard/hc/contract-review',
+    iconName: 'file-signature',
+    resource: 'hc_contract_review',
+    sortOrder: 14, // sort order can be overlapping, it's just an int
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HR',
     title: 'Org Structure',
     url: '/dashboard/hc/org-chart',
     iconName: 'git-branch',

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, lte, sql, isNull } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   activities,
@@ -1390,7 +1390,13 @@ export async function ensureApprovalBlueprintSeedData() {
   await ensureDailyActivityTemplateFields(dailyVersion.id)
   await ensureDailyActivityWorkflowSeed()
 
-  const activityRows = await db.select({ id: activities.id }).from(activities)
+  // Optimize: Only sync activities that haven't been synced yet
+  const activityRows = await db
+    .select({ id: activities.id })
+    .from(activities)
+    .leftJoin(formSubmissions, eq(activities.id, formSubmissions.legacyActivityId))
+    .where(isNull(formSubmissions.id))
+    
   for (const activity of activityRows) {
     await syncActivityWorkflowArtifacts(activity.id, undefined, { skipPush: true })
   }
