@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { addTestQuestion, deleteTestQuestion } from "@/app/actions/recruitment-tests";
 import { uploadFile } from "@/app/actions/upload";
 import { toast } from "sonner";
-import { IconPlus, IconTrash, IconPhotoUp, IconX, IconLink } from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -163,6 +164,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
         { label: test.title, href: `/dashboard/hc/recruitment/tests/${test.id}` },
       ]}
     >
+      <div className="mb-4">
+        <Button variant="ghost" asChild className="gap-2 text-muted-foreground hover:text-foreground -ml-4">
+          <Link href="/dashboard/hc/recruitment/tests">
+            <IconArrowLeft className="w-4 h-4" /> Back to Test Banks
+          </Link>
+        </Button>
+      </div>
+
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-lg font-semibold">Questions ({questions.length})</h2>

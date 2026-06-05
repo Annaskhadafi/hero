@@ -6,9 +6,9 @@ import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { createOnlineTest, deleteOnlineTest } from "@/app/actions/recruitment-tests";
+import { createOnlineTest, deleteOnlineTest, updateOnlineTest } from "@/app/actions/recruitment-tests";
 import { toast } from "sonner";
-import { IconPlus, IconSettings, IconTrash } from "@tabler/icons-react";
+import { IconPlus, IconSettings, IconTrash, IconLink, IconEdit } from "@tabler/icons-react";
 import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,27 @@ import { Label } from "@/components/ui/label";
 export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any[] }) {
   const [tests, setTests] = useState(initialTests);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [selectedTestId, setSelectedTestId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ title: "", description: "", timeLimitMinutes: 60, passingScore: 70 });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const copyPublicLink = (testId: number) => {
+    const link = `${window.location.origin}/test/public/${testId}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Public link copied to clipboard!");
+  };
+
+  const openEditModal = (test: any) => {
+    setSelectedTestId(test.id);
+    setFormData({
+      title: test.title,
+      description: test.description,
+      timeLimitMinutes: test.timeLimitMinutes,
+      passingScore: test.passingScore,
+    });
+    setIsEditOpen(true);
+  };
 
   const handleCreate = async () => {
     setIsSubmitting(true);
@@ -29,6 +48,21 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
       setIsCreateOpen(false);
     } catch (e: any) {
       toast.error(e.message || "Failed to create test");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!selectedTestId) return;
+    setIsSubmitting(true);
+    try {
+      const updatedTest = await updateOnlineTest(selectedTestId, formData);
+      setTests(tests.map(t => t.id === selectedTestId ? { ...t, ...updatedTest } : t));
+      toast.success("Online test updated!");
+      setIsEditOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update test");
     } finally {
       setIsSubmitting(false);
     }
@@ -88,12 +122,18 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" asChild>
+                    <Button variant="ghost" size="icon" onClick={() => copyPublicLink(test.id)} title="Copy Public Link">
+                      <IconLink className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEditModal(test)} title="Edit Test Details">
+                      <IconEdit className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+                    </Button>
+                    <Button variant="ghost" size="icon" asChild title="Manage Questions">
                       <Link href={`/dashboard/hc/recruitment/tests/${test.id}`}>
                         <IconSettings className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
                       </Link>
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(test.id)}>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(test.id)} title="Delete Test">
                       <IconTrash className="w-4 h-4 text-destructive/70 hover:text-destructive transition-colors" />
                     </Button>
                   </div>
@@ -155,9 +195,56 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!formData.title || isSubmitting}>
-              {isSubmitting ? "Creating..." : "Create Test"}
-            </Button>
+            <Button onClick={handleCreate} disabled={isSubmitting}>{isSubmitting ? "Creating..." : "Create Test"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Test Details</DialogTitle>
+            <DialogDescription>Update the configuration for this assessment.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Test Title</Label>
+              <Input
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="e.g. Frontend Developer Logical Test"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Brief instructions or summary"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Time Limit (Minutes)</Label>
+                <Input
+                  type="number"
+                  value={formData.timeLimitMinutes}
+                  onChange={(e) => setFormData({ ...formData, timeLimitMinutes: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Passing Score</Label>
+                <Input
+                  type="number"
+                  value={formData.passingScore}
+                  onChange={(e) => setFormData({ ...formData, passingScore: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save Changes"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
