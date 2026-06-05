@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAssignments, hcOnlineTestAnswers } from "@/db/schema/hero";
+import { hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAssignments, hcOnlineTestAnswers, hcCandidates } from "@/db/schema/hero";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
@@ -36,6 +36,29 @@ export async function getTestWithQuestions(testId: number) {
   }));
 
   return { test, questions: resolvedQuestions };
+}
+
+export async function getTestEntries(testId: number) {
+  const entries = await db.select({
+    id: hcOnlineTestAssignments.id,
+    accessKey: hcOnlineTestAssignments.accessKey,
+    status: hcOnlineTestAssignments.status,
+    score: hcOnlineTestAssignments.score,
+    startedAt: hcOnlineTestAssignments.startedAt,
+    completedAt: hcOnlineTestAssignments.completedAt,
+    expiresAt: hcOnlineTestAssignments.expiresAt,
+    candidate: {
+      id: hcCandidates.id,
+      fullName: hcCandidates.fullName,
+      email: hcCandidates.email,
+    }
+  })
+  .from(hcOnlineTestAssignments)
+  .innerJoin(hcCandidates, eq(hcOnlineTestAssignments.candidateId, hcCandidates.id))
+  .where(eq(hcOnlineTestAssignments.testId, testId))
+  .orderBy(desc(hcOnlineTestAssignments.createdAt));
+  
+  return entries;
 }
 
 export async function createOnlineTest(data: { title: string; description: string; timeLimitMinutes: number; passingScore: number }) {

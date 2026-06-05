@@ -14,10 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { format } from "date-fns";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 
-export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions }: { initialTest: any, initialQuestions: any[] }) {
+export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions, initialEntries = [] }: { initialTest: any, initialQuestions: any[], initialEntries?: any[] }) {
   const [test, setTest] = useState(initialTest);
   const [questions, setQuestions] = useState(initialQuestions);
+  const [entries, setEntries] = useState(initialEntries);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -172,23 +177,30 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
         </Button>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-lg font-semibold">Questions ({questions.length})</h2>
-          <p className="text-sm text-muted-foreground">Passing Score: {test.passingScore} &bull; Time Limit: {test.timeLimitMinutes} Mins</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={copyPublicLink} className="gap-2">
-            <IconLink className="w-4 h-4" /> Copy Public Link
-          </Button>
-          <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
-            <IconPlus className="w-4 h-4" /> Add Question
-          </Button>
-        </div>
-      </div>
+      <Tabs defaultValue="questions" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="questions">Questions ({questions.length})</TabsTrigger>
+          <TabsTrigger value="entries">Hasil Entries ({entries.length})</TabsTrigger>
+        </TabsList>
 
-      <div className="grid gap-4">
-        {questions.map((q, i) => (
+        <TabsContent value="questions">
+          <div className="flex justify-between items-center mb-6 bg-muted/10 p-4 rounded-xl border border-muted/30">
+            <div>
+              <h2 className="text-lg font-semibold">Questions ({questions.length})</h2>
+              <p className="text-sm text-muted-foreground">Passing Score: {test.passingScore} &bull; Time Limit: {test.timeLimitMinutes} Mins</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={copyPublicLink} className="gap-2">
+                <IconLink className="w-4 h-4" /> Copy Public Link
+              </Button>
+              <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+                <IconPlus className="w-4 h-4" /> Add Question
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {questions.map((q, i) => (
           <div key={q.id} className="bg-card border rounded-lg p-5">
             <div className="flex justify-between items-start mb-4">
               <div className="flex gap-3 items-start">
@@ -368,6 +380,48 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </TabsContent>
+
+      <TabsContent value="entries">
+        <MinimalTableShell>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>CANDIDATE NAME</TableHead>
+                <TableHead>EMAIL</TableHead>
+                <TableHead>STATUS</TableHead>
+                <TableHead>SCORE</TableHead>
+                <TableHead>STARTED AT</TableHead>
+                <TableHead>COMPLETED AT</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="font-medium">{entry.candidate?.fullName || "N/A"}</TableCell>
+                  <TableCell className="text-muted-foreground">{entry.candidate?.email || "N/A"}</TableCell>
+                  <TableCell>
+                    <Badge variant={entry.status === "Completed" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>
+                      {entry.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-semibold">{entry.score !== null ? entry.score : "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">{entry.startedAt ? format(new Date(entry.startedAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">{entry.completedAt ? format(new Date(entry.completedAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
+                </TableRow>
+              ))}
+              {entries.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                    No entries found for this test yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </MinimalTableShell>
+      </TabsContent>
+      </Tabs>
     </AdminPageShell>
   );
 }
