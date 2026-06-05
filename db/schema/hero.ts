@@ -2258,11 +2258,22 @@ export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
 export const hcRecruitments = pgTable('hero_hc_recruitments', {
   id: serial('id').primaryKey(),
   jobTitle: text('job_title').notNull(),
+  department: text('department').notNull().default(''),
+  section: text('section').notNull().default(''),
+  location: text('location').notNull().default(''),
   totalRequested: integer('total_requested').notNull().default(1),
-  section: text('section').notNull(),
   status: text('status').notNull().default('Sourcing'), // Sourcing, Psikotes, Interview, Offering, Medical Checkup, Selesai
-  requestDate: timestamp('request_date').notNull().defaultNow(),
-  dueDate: timestamp('due_date').notNull(),
+  
+  // Public Form & Open/Close Settings
+  isPublic: boolean('is_public').notNull().default(false),
+  startDate: timestamp('start_date'),
+  endDate: timestamp('end_date'),
+  jobDescription: text('job_description').notNull().default(''),
+  requirements: text('requirements').notNull().default(''),
+  qualifications: jsonb('qualifications').$type<string[]>(), // Array of checked qualification strings
+  mandatoryFields: jsonb('mandatory_fields').$type<string[]>(), // Array of mandatory field names for public form
+  emailTemplateId: integer('email_template_id'), // Reference to hcEmailTemplates (optional override)
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -2383,13 +2394,33 @@ export const hcOnboardingTasks = pgTable('hero_hc_onboarding_tasks', {
 export const hcCandidates = pgTable('hero_hc_candidates', {
   id: serial('id').primaryKey(),
   recruitmentId: integer('recruitment_id').references(() => hcRecruitments.id, { onDelete: 'set null' }),
+  
+  // Personal Info
   fullName: text('full_name').notNull(),
   email: text('email').notNull().default(''),
   phone: text('phone').notNull().default(''),
-  source: text('source').notNull().default(''), // Job Portal, Referral, Walk-in, etc.
+  dateOfBirth: timestamp('date_of_birth'),
+  address: text('address').notNull().default(''),
+  gender: text('gender').notNull().default(''),
+  
+  // Nested Structured Data
+  workExperience: jsonb('work_experience').$type<Array<{ company: string; role: string; yearIn: string; yearOut: string; description: string }>>(),
+  education: jsonb('education').$type<Array<{ level: string; institution: string; major: string; yearIn: string; yearOut: string }>>(),
+  drivingLicenses: jsonb('driving_licenses').$type<string[]>(), // Array of strings e.g. ["SIM A", "SIM C"]
+  certificates: jsonb('certificates').$type<Array<{ name: string; year: string; publisher: string }>>(),
+  achievements: text('achievements').notNull().default(''),
+  
+  // Files and Status
   cvUrl: text('cv_url').notNull().default(''),
-  currentStage: text('current_stage').notNull().default('Sourcing'), // Sourcing, Screening, Psikotes, Interview, Offering, MCU, Hired, Rejected
-  rating: integer('rating'), // 1-5
+  source: text('source').notNull().default(''),
+  currentStage: text('current_stage').notNull().default('Sourcing'),
+  rating: integer('rating'),
+  
+  // AI Assessment
+  aiScore: integer('ai_score'),
+  aiSummary: text('ai_summary').notNull().default(''),
+  aiAssessmentDate: timestamp('ai_assessment_date'),
+
   notes: text('notes').notNull().default(''),
   rejectionReason: text('rejection_reason').notNull().default(''),
   rejectedAtStage: text('rejected_at_stage').notNull().default(''),
@@ -2609,4 +2640,64 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
   status: text('status').notNull().default('draft'), // draft, finalized
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Phase 2: Form Builder, Email Settings & Online Tests ───────────────
+
+export const hcEmailTemplates = pgTable('hero_hc_email_templates', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  type: text('type').notNull(), // e.g. "application_received", "interview_invitation", "test_assigned"
+  subject: text('subject').notNull(),
+  body: text('body').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcOnlineTests = pgTable('hero_hc_online_tests', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  timeLimitMinutes: integer('time_limit_minutes').notNull().default(60),
+  passingScore: integer('passing_score').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcOnlineTestQuestions = pgTable('hero_hc_online_test_questions', {
+  id: serial('id').primaryKey(),
+  testId: integer('test_id').notNull().references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
+  questionType: text('question_type').notNull(), // "multiple_choice", "essay"
+  questionText: text('question_text').notNull(),
+  imageUrl: text('image_url').notNull().default(''),
+  options: jsonb('options').$type<Array<{ id: string; text: string }>>(), // For multiple choice
+  correctAnswer: text('correct_answer').notNull().default(''), // ID of correct option, or keyword for essay
+  points: integer('points').notNull().default(1),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcOnlineTestAssignments = pgTable('hero_hc_online_test_assignments', {
+  id: serial('id').primaryKey(),
+  testId: integer('test_id').notNull().references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
+  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  accessKey: text('access_key').notNull().unique(), // Unique UUID or secure random string
+  expiresAt: timestamp('expires_at').notNull(),
+  status: text('status').notNull().default('Pending'), // Pending, In Progress, Completed, Expired
+  score: integer('score'),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcOnlineTestAnswers = pgTable('hero_hc_online_test_answers', {
+  id: serial('id').primaryKey(),
+  assignmentId: integer('assignment_id').notNull().references(() => hcOnlineTestAssignments.id, { onDelete: 'cascade' }),
+  questionId: integer('question_id').notNull().references(() => hcOnlineTestQuestions.id, { onDelete: 'cascade' }),
+  answerText: text('answer_text').notNull(),
+  isCorrect: boolean('is_correct'),
+  pointsAwarded: integer('points_awarded').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 })

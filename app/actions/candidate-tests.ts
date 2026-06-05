@@ -1,0 +1,71 @@
+"use server";
+
+import { db } from "@/db";
+import { hcOnlineTestAssignments, hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAnswers } from "@/db/schema/hero";
+import { eq, and } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { getS3ObjectReadUrl } from "@/lib/s3-storage";
+
+export async function getTestByAccessKey(accessKey: string) {
+  const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.accessKey, accessKey)).limit(1);
+  if (!assignment) return null;
+
+  const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, assignment.testId)).limit(1);
+  if (!test) return null;
+
+  const questions = await db.select().from(hcOnlineTestQuestions).where(eq(hcOnlineTestQuestions.testId, test.id)).orderBy(hcOnlineTestQuestions.sortOrder);
+  
+  // Exclude correct answers from the public payload for security
+  const safeQuestions = await Promise.all(questions.map(async (q) => {
+    let resolvedImageUrl = q.imageUrl;
+    if (resolvedImageUrl) {
+      resolvedImageUrl = await getS3ObjectReadUrl(resolvedImageUrl) || resolvedImageUrl;
+    }
+
+    let resolvedOptions = q.options;
+    if (Array.isArray(resolvedOptions)) {
+      resolvedOptions = await Promise.all(resolvedOptions.map(async (opt: any) => {
+        if (opt.imageUrl) {
+          return { ...opt, imageUrl: await getS3ObjectReadUrl(opt.imageUrl) || opt.imageUrl };
+        }
+        return opt;
+      }));
+    }
+
+    return {
+      id: q.id,
+      questionType: q.questionType,
+      questionText: q.questionText,
+      imageUrl: resolvedImageUrl,
+      options: resolvedOptions,
+      points: q.points,
+    };
+  }));
+
+  return { assignment, test, questions: safeQuestions };
+}
+
+export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {
+  // Simple upsert logic could be used, or just insert
+  await db.insert(hcOnlineTestAnswers).values({
+    assignmentId,
+    questionId,
+    answerText,
+    isCorrect: null, // Auto-grading can happen in a separate worker or process
+    score: 0,
+  });
+}
+
+export async function finishTestAssignment(assignmentId: number) {
+  await db.update(hcOnlineTestAssignments)
+    .set({ status: "Completed", completedAt: new Date() })
+    .where(eq(hcOnlineTestAssignments.id, assignmentId));
+  
+  revalidatePath("/dashboard/hc/recruitment");
+}
+
+export async function startTestAssignment(assignmentId: number) {
+  await db.update(hcOnlineTestAssignments)
+    .set({ status: "In Progress", startedAt: new Date() })
+    .where(eq(hcOnlineTestAssignments.id, assignmentId));
+}

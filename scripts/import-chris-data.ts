@@ -74,11 +74,12 @@ async function main() {
       if (!r.job_title) continue;
       await db.insert(hcRecruitments).values({
         jobTitle: r.job_title,
+        department: "-",
         totalRequested: parseInt(r.total_requested || "1", 10) || 1,
         section: r.section || "-",
         status: r.status || "Sourcing",
-        requestDate: safeDate(r.request_date),
-        dueDate: safeDate(r.due_date),
+        startDate: safeDate(r.request_date),
+        endDate: safeDate(r.due_date),
       });
     }
   }

@@ -5,9 +5,13 @@ import {
   hcRecruitments,
   hcCandidates,
   hcCandidateStages,
+  masterDepartments,
+  masterSections
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import fs from "fs";
+import path from "path";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -17,11 +21,19 @@ export type RecruitmentFilter = {
 
 export type RecruitmentData = {
   jobTitle: string;
-  totalRequested: number;
+  department: string;
   section: string;
+  location: string;
+  totalRequested: number;
   status?: string;
-  dueDate: string;
-  priority?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  isPublic?: boolean;
+  jobDescription?: string;
+  requirements?: string;
+  qualifications?: string[];
+  mandatoryFields?: string[];
+  emailTemplateId?: number | null;
 };
 
 export type CandidateData = {
@@ -29,6 +41,15 @@ export type CandidateData = {
   fullName: string;
   email?: string;
   phone?: string;
+  dateOfBirth?: string | null;
+  address?: string;
+  gender?: string;
+  workExperience?: Array<{ company: string; role: string; yearIn: string; yearOut: string; description: string }>;
+  education?: Array<{ level: string; institution: string; major: string; yearIn: string; yearOut: string }>;
+  drivingLicenses?: string[];
+  certificates?: Array<{ name: string; year: string; publisher: string }>;
+  achievements?: string;
+  cvUrl?: string;
   source?: string;
   notes?: string;
 };
@@ -68,11 +89,19 @@ export async function getRecruitments(filters?: RecruitmentFilter) {
     .select({
       id: hcRecruitments.id,
       jobTitle: hcRecruitments.jobTitle,
-      totalRequested: hcRecruitments.totalRequested,
+      department: hcRecruitments.department,
       section: hcRecruitments.section,
+      location: hcRecruitments.location,
+      totalRequested: hcRecruitments.totalRequested,
       status: hcRecruitments.status,
-      requestDate: hcRecruitments.requestDate,
-      dueDate: hcRecruitments.dueDate,
+      startDate: hcRecruitments.startDate,
+      endDate: hcRecruitments.endDate,
+      isPublic: hcRecruitments.isPublic,
+      jobDescription: hcRecruitments.jobDescription,
+      requirements: hcRecruitments.requirements,
+      qualifications: hcRecruitments.qualifications,
+      mandatoryFields: hcRecruitments.mandatoryFields,
+      emailTemplateId: hcRecruitments.emailTemplateId,
       candidateCount: sql<number>`cast(count(${hcCandidates.id}) as int)`,
     })
     .from(hcRecruitments)
@@ -87,16 +116,39 @@ export async function getRecruitments(filters?: RecruitmentFilter) {
     .groupBy(
       hcRecruitments.id,
       hcRecruitments.jobTitle,
-      hcRecruitments.totalRequested,
+      hcRecruitments.department,
       hcRecruitments.section,
+      hcRecruitments.location,
+      hcRecruitments.totalRequested,
       hcRecruitments.status,
-      hcRecruitments.requestDate,
-      hcRecruitments.dueDate
+      hcRecruitments.startDate,
+      hcRecruitments.endDate,
+      hcRecruitments.isPublic,
+      hcRecruitments.jobDescription,
+      hcRecruitments.requirements,
+      hcRecruitments.qualifications,
+      hcRecruitments.mandatoryFields,
+      hcRecruitments.emailTemplateId
     )
     .orderBy(desc(hcRecruitments.createdAt));
 
   return rows;
 }
+
+export async function getRecruitmentFormOptions() {
+  try {
+    const [departments, sections] = await Promise.all([
+      db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
+      db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
+    ]);
+    return { departments, sections };
+  } catch (error) {
+    console.error("Failed to fetch form options", error);
+    return { departments: [], sections: [] };
+  }
+}
+
+
 
 export async function getRecruitmentById(id: number) {
   const [data] = await db
@@ -104,13 +156,12 @@ export async function getRecruitmentById(id: number) {
     .from(hcRecruitments)
     .where(eq(hcRecruitments.id, id))
     .limit(1);
+
   return data ?? null;
 }
 
 export async function getRecruitmentStats() {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
   const [activeResult] = await db
     .select({ value: count() })
@@ -133,7 +184,7 @@ export async function getRecruitmentStats() {
     .from(hcRecruitments)
     .where(
       and(
-        sql`${hcRecruitments.dueDate} < now()`,
+        sql`${hcRecruitments.endDate} < now()`,
         sql`${hcRecruitments.status} NOT IN ('Completed', 'Cancelled')`
       )
     );
@@ -151,10 +202,19 @@ export async function createRecruitment(data: RecruitmentData) {
     .insert(hcRecruitments)
     .values({
       jobTitle: data.jobTitle,
-      totalRequested: data.totalRequested,
-      section: data.section,
+      department: data.department || "",
+      section: data.section || "",
+      location: data.location || "",
+      totalRequested: data.totalRequested || 1,
       status: data.status ?? "Draft",
-      dueDate: new Date(data.dueDate),
+      startDate: data.startDate ? new Date(data.startDate) : null,
+      endDate: data.endDate ? new Date(data.endDate) : null,
+      isPublic: data.isPublic ?? false,
+      jobDescription: data.jobDescription || "",
+      requirements: data.requirements || "",
+      qualifications: data.qualifications || [],
+      mandatoryFields: data.mandatoryFields || ["ktp", "cv"],
+      emailTemplateId: data.emailTemplateId || null,
     })
     .returning();
 
@@ -166,10 +226,19 @@ export async function updateRecruitment(id: number, data: Partial<RecruitmentDat
   const updatePayload: Record<string, unknown> = { updatedAt: new Date() };
 
   if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle;
-  if (data.totalRequested !== undefined) updatePayload.totalRequested = data.totalRequested;
+  if (data.department !== undefined) updatePayload.department = data.department;
   if (data.section !== undefined) updatePayload.section = data.section;
+  if (data.location !== undefined) updatePayload.location = data.location;
+  if (data.totalRequested !== undefined) updatePayload.totalRequested = data.totalRequested;
   if (data.status !== undefined) updatePayload.status = data.status;
-  if (data.dueDate !== undefined) updatePayload.dueDate = new Date(data.dueDate);
+  if (data.startDate !== undefined) updatePayload.startDate = data.startDate ? new Date(data.startDate) : null;
+  if (data.endDate !== undefined) updatePayload.endDate = data.endDate ? new Date(data.endDate) : null;
+  if (data.isPublic !== undefined) updatePayload.isPublic = data.isPublic;
+  if (data.jobDescription !== undefined) updatePayload.jobDescription = data.jobDescription;
+  if (data.requirements !== undefined) updatePayload.requirements = data.requirements;
+  if (data.qualifications !== undefined) updatePayload.qualifications = data.qualifications;
+  if (data.mandatoryFields !== undefined) updatePayload.mandatoryFields = data.mandatoryFields;
+  if (data.emailTemplateId !== undefined) updatePayload.emailTemplateId = data.emailTemplateId;
 
   const [updated] = await db
     .update(hcRecruitments)
@@ -195,16 +264,8 @@ export async function deleteRecruitment(id: number) {
 
 // ─── Candidates ───────────────────────────────────────────────────────────
 
-export async function getCandidates(recruitmentId?: number) {
-  const conditions = [];
-
-  if (recruitmentId) {
-    conditions.push(eq(hcCandidates.recruitmentId, recruitmentId));
-  }
-
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-  return await db
+export async function getCandidates() {
+  const rows = await db
     .select({
       id: hcCandidates.id,
       recruitmentId: hcCandidates.recruitmentId,
@@ -216,16 +277,17 @@ export async function getCandidates(recruitmentId?: number) {
       currentStage: hcCandidates.currentStage,
       rating: hcCandidates.rating,
       notes: hcCandidates.notes,
+      cvUrl: hcCandidates.cvUrl,
+      aiScore: hcCandidates.aiScore,
+      aiSummary: hcCandidates.aiSummary,
       rejectionReason: hcCandidates.rejectionReason,
       createdAt: hcCandidates.createdAt,
     })
     .from(hcCandidates)
-    .leftJoin(
-      hcRecruitments,
-      eq(hcCandidates.recruitmentId, hcRecruitments.id)
-    )
-    .where(whereClause)
-    .orderBy(desc(hcCandidates.createdAt));
+    .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+    .orderBy(desc(hcCandidates.id));
+
+  return rows;
 }
 
 export async function getCandidateById(id: number) {
@@ -237,30 +299,36 @@ export async function getCandidateById(id: number) {
       fullName: hcCandidates.fullName,
       email: hcCandidates.email,
       phone: hcCandidates.phone,
+      dateOfBirth: hcCandidates.dateOfBirth,
+      address: hcCandidates.address,
+      gender: hcCandidates.gender,
+      workExperience: hcCandidates.workExperience,
+      education: hcCandidates.education,
+      drivingLicenses: hcCandidates.drivingLicenses,
+      certificates: hcCandidates.certificates,
+      achievements: hcCandidates.achievements,
       source: hcCandidates.source,
-      cvUrl: hcCandidates.cvUrl,
       currentStage: hcCandidates.currentStage,
-      rating: hcCandidates.rating,
       notes: hcCandidates.notes,
+      cvUrl: hcCandidates.cvUrl,
+      aiScore: hcCandidates.aiScore,
+      aiSummary: hcCandidates.aiSummary,
       rejectionReason: hcCandidates.rejectionReason,
-      rejectedAtStage: hcCandidates.rejectedAtStage,
       createdAt: hcCandidates.createdAt,
     })
     .from(hcCandidates)
-    .leftJoin(
-      hcRecruitments,
-      eq(hcCandidates.recruitmentId, hcRecruitments.id)
-    )
+    .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
     .where(eq(hcCandidates.id, id))
     .limit(1);
 
   if (!candidate) return null;
 
+  // fetch stages history
   const stages = await db
     .select()
     .from(hcCandidateStages)
     .where(eq(hcCandidateStages.candidateId, id))
-    .orderBy(hcCandidateStages.enteredAt);
+    .orderBy(hcCandidateStages.createdAt);
 
   return { ...candidate, stages };
 }
@@ -271,10 +339,19 @@ export async function createCandidate(data: CandidateData) {
     .values({
       recruitmentId: data.recruitmentId,
       fullName: data.fullName,
-      email: data.email ?? "",
-      phone: data.phone ?? "",
-      source: data.source ?? "",
-      notes: data.notes ?? "",
+      email: data.email || "",
+      phone: data.phone || "",
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      address: data.address || "",
+      gender: data.gender || "",
+      workExperience: data.workExperience || [],
+      education: data.education || [],
+      drivingLicenses: data.drivingLicenses || [],
+      certificates: data.certificates || [],
+      achievements: data.achievements || "",
+      source: data.source || "Walk-in",
+      notes: data.notes || "",
+      cvUrl: data.cvUrl || "",
       currentStage: "Sourcing",
     })
     .returning();
@@ -284,7 +361,7 @@ export async function createCandidate(data: CandidateData) {
     candidateId: created.id,
     stage: "Sourcing",
     enteredAt: new Date(),
-    notes: "Kandidat ditambahkan ke pipeline",
+    notes: "Candidate applied/added",
   });
 
   revalidatePath("/dashboard/hc/recruitment");
@@ -293,61 +370,62 @@ export async function createCandidate(data: CandidateData) {
 
 export async function updateCandidateStage(
   candidateId: number,
-  newStage: string,
-  data?: StageAdvanceData
+  nextStage: StageName,
+  advanceData?: StageAdvanceData
 ) {
   const now = new Date();
 
-  // Close the current stage
-  const [currentCandidate] = await db
+  // 1. Get candidate's current stage
+  const [candidate] = await db
     .select({ currentStage: hcCandidates.currentStage })
     .from(hcCandidates)
     .where(eq(hcCandidates.id, candidateId))
     .limit(1);
 
-  if (currentCandidate) {
-    // Mark current stage as exited
-    const [currentStageRecord] = await db
-      .select({ id: hcCandidateStages.id })
-      .from(hcCandidateStages)
-      .where(
-        and(
-          eq(hcCandidateStages.candidateId, candidateId),
-          eq(hcCandidateStages.stage, currentCandidate.currentStage),
-          isNull(hcCandidateStages.exitedAt)
-        )
-      )
-      .limit(1);
-
-    if (currentStageRecord) {
-      await db
-        .update(hcCandidateStages)
-        .set({
-          exitedAt: now,
-          result: data?.result ?? "pass",
-          evaluator: data?.evaluator ?? "",
-          notes: data?.notes ?? "",
-          score: data?.score ?? null,
-        })
-        .where(eq(hcCandidateStages.id, currentStageRecord.id));
-    }
+  if (!candidate) throw new Error("Candidate not found");
+  if (candidate.currentStage === nextStage) return; // No-op
+  if (candidate.currentStage === "Rejected" || candidate.currentStage === "Hired") {
+    throw new Error("Cannot change stage of a closed candidate");
   }
 
-  // Create new stage record
+  // 2. Close current stage record
+  const [currentStageRecord] = await db
+    .select({ id: hcCandidateStages.id })
+    .from(hcCandidateStages)
+    .where(
+      and(
+        eq(hcCandidateStages.candidateId, candidateId),
+        eq(hcCandidateStages.stage, candidate.currentStage),
+        isNull(hcCandidateStages.exitedAt)
+      )
+    )
+    .limit(1);
+
+  if (currentStageRecord) {
+    await db
+      .update(hcCandidateStages)
+      .set({
+        exitedAt: now,
+        result: advanceData?.result || "pass",
+        evaluator: advanceData?.evaluator || "",
+        notes: advanceData?.notes || "",
+        score: advanceData?.score,
+      })
+      .where(eq(hcCandidateStages.id, currentStageRecord.id));
+  }
+
+  // 3. Open new stage record
   await db.insert(hcCandidateStages).values({
     candidateId,
-    stage: newStage,
+    stage: nextStage,
     enteredAt: now,
-    evaluator: data?.evaluator ?? "",
-    notes: data?.notes ?? "",
-    score: data?.score ?? null,
   });
 
-  // Update candidate current stage
+  // 4. Update candidate master record
   const [updated] = await db
     .update(hcCandidates)
     .set({
-      currentStage: newStage,
+      currentStage: nextStage,
       updatedAt: now,
     })
     .where(eq(hcCandidates.id, candidateId))
@@ -357,14 +435,19 @@ export async function updateCandidateStage(
   return updated;
 }
 
-export async function rejectCandidate(
-  candidateId: number,
-  stage: string,
-  reason: string
-) {
+export async function rejectCandidate(candidateId: number, reason: string) {
   const now = new Date();
 
-  // Close the current stage as failed
+  // Close current stage
+  const [candidate] = await db
+    .select({ currentStage: hcCandidates.currentStage })
+    .from(hcCandidates)
+    .where(eq(hcCandidates.id, candidateId))
+    .limit(1);
+
+  if (!candidate) throw new Error("Candidate not found");
+  const stage = candidate.currentStage;
+
   const [currentStageRecord] = await db
     .select({ id: hcCandidateStages.id })
     .from(hcCandidateStages)
@@ -464,14 +547,7 @@ export async function hireCandidate(candidateId: number) {
 
 export async function updateCandidate(
   id: number,
-  data: Partial<{
-    fullName: string;
-    email: string;
-    phone: string;
-    source: string;
-    notes: string;
-    rating: number;
-  }>
+  data: Partial<CandidateData & { rating: number }>
 ) {
   const updatePayload: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -498,4 +574,129 @@ export async function deleteCandidate(id: number) {
 
   revalidatePath("/dashboard/hc/recruitment");
   return { success: true };
+}
+
+// ─── AI Assessment ────────────────────────────────────────────────────────
+
+export async function assessCandidateCv(candidateId: number) {
+  // 1. Fetch Candidate & Job Vacancy
+  const candidate = await getCandidateById(candidateId);
+  if (!candidate) {
+    return { success: false, error: "Candidate not found." };
+  }
+
+  const job = await getRecruitmentById(candidate.recruitmentId!);
+  if (!job) {
+    return { success: false, error: "Job vacancy not found." };
+  }
+
+  try {
+    let cvText = "CV not provided or unreadable.";
+    
+    // Parse CV if exists
+    if (candidate.cvUrl) {
+      let fileBuffer: Buffer | null = null;
+      try {
+        if (candidate.cvUrl.startsWith("http")) {
+          const fetchRes = await fetch(candidate.cvUrl);
+          if (fetchRes.ok) {
+            const arrayBuffer = await fetchRes.arrayBuffer();
+            fileBuffer = Buffer.from(arrayBuffer);
+          }
+        } else {
+          const filename = candidate.cvUrl.split("/").pop();
+          if (filename) {
+            const filePath = path.join(process.cwd(), "public", "uploads", filename);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            }
+          }
+        }
+
+        if (fileBuffer) {
+          const pdfParse = require("pdf-parse");
+          const pdfData = await pdfParse(fileBuffer);
+          cvText = pdfData.text;
+        }
+      } catch (e) {
+        console.warn("Failed to parse CV for AI assessment", e);
+      }
+    }
+
+    // Prepare JSON payload for AI Context
+    const candidateProfile = {
+      personalInfo: {
+        dateOfBirth: candidate.dateOfBirth,
+        address: candidate.address,
+        gender: candidate.gender,
+      },
+      education: candidate.education,
+      workExperience: candidate.workExperience,
+      drivingLicenses: candidate.drivingLicenses,
+      certificates: candidate.certificates,
+      achievements: candidate.achievements,
+      parsedCV: cvText.substring(0, 5000), // Trim to avoid token limits
+    };
+
+    const jobRequirements = {
+      title: job.jobTitle,
+      department: job.department,
+      section: job.section,
+      description: job.jobDescription,
+      requirementsText: job.requirements,
+      qualificationsChecklist: job.qualifications,
+    };
+
+    // 4. Call Ollama API
+    const ollamaUrl = process.env.OLLAMA_URL || "https://ollama.com/api/chat";
+    const ollamaModel = process.env.OLLAMA_MODEL || "qwen3.5:397b-cloud";
+    const ollamaKey = process.env.OLLAMA_API_KEY;
+
+    const promptSystem = `You are an expert HR Assessor. You will be provided with a Candidate Profile (JSON) and Job Requirements (JSON).
+Your task is to critically analyze how well the candidate's structured data (Education, Experience, Licenses, CV) matches the Job Requirements and specific Qualifications Checklist.
+Return a JSON object strictly following this format: {"score": 85, "summary": "Brief explanation here"}. The score should be an integer from 0 to 100 representing suitability.`;
+
+    const response = await fetch(ollamaUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(ollamaKey ? { "Authorization": `Bearer ${ollamaKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: ollamaModel,
+        messages: [
+          { role: "system", content: promptSystem },
+          {
+            role: "user",
+            content: `Job Requirements: ${JSON.stringify(jobRequirements)}\n\nCandidate Profile: ${JSON.stringify(candidateProfile)}`
+          }
+        ],
+        stream: false,
+        format: "json",
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API returned ${response.status}`);
+    }
+
+    const aiData = await response.json();
+    const aiContent = JSON.parse(aiData.message.content);
+
+    // 5. Update Candidate
+    await db
+      .update(hcCandidates)
+      .set({
+        aiScore: aiContent.score,
+        aiSummary: aiContent.summary,
+        aiAssessmentDate: new Date(),
+      })
+      .where(eq(hcCandidates.id, candidateId));
+
+    revalidatePath("/dashboard/hc/recruitment");
+    return { success: true, score: aiContent.score, summary: aiContent.summary };
+  } catch (error: any) {
+    console.error("AI Assessment Error:", error);
+    return { success: false, error: error.message };
+  }
 }

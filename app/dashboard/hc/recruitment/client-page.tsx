@@ -1,62 +1,31 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 import {
-  IconClipboardCheck,
-  IconClock,
-  IconFileCheck,
-  IconFileX,
-  IconPlus,
+  IconBriefcase,
   IconUsers,
-  IconUserCheck,
-  IconAlertTriangle,
+  IconCopy,
+  IconSettings,
+  IconBrain,
+  IconFileText,
+  IconEye,
+  IconPlus,
+  IconTrash,
+  IconExternalLink,
 } from "@tabler/icons-react";
-import {
-  CheckCircle2,
-  Eye,
-  Star,
-  Trash2,
-  XCircle,
-  ChevronRight,
-  ArrowRight,
-} from "lucide-react";
-
-import {
-  createRecruitment,
-  updateRecruitment,
-  deleteRecruitment,
-  getCandidates,
-  getCandidateById,
-  createCandidate,
-  updateCandidateStage,
-  rejectCandidate,
-  hireCandidate,
-  deleteCandidate,
-} from "@/app/actions/recruitment";
+import { format, differenceInDays } from "date-fns";
+import { toast } from "sonner";
+import { updateRecruitment, createRecruitment, deleteRecruitment } from "@/app/actions/recruitment";
+import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
-import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner";
-import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
-import {
-  EnterpriseScorecards,
-  EnterpriseRecordDialog,
-  EnterpriseFormGrid,
-  EnterpriseActionButtons,
-} from "@/components/ui/enterprise-table-kit";
-import { TableMultiFilter } from "@/components/ui/table-multi-filter";
+import { HcWorkspaceBanner, hcPrimaryActionClassName, hcTableRowClassName, hcMutedPanelClassName } from "@/components/hc/hc-workspace-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
   Table,
   TableBody,
@@ -65,18 +34,38 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
 type Recruitment = {
   id: number;
   jobTitle: string;
-  totalRequested: number;
+  department: string;
   section: string;
+  location: string;
+  totalRequested: number;
   status: string;
-  requestDate: Date;
-  dueDate: Date;
+  startDate: Date | null;
+  endDate: Date | null;
   candidateCount: number;
+  isPublic?: boolean;
+  jobDescription?: string;
+  requirements?: string;
+  qualifications?: string[] | null;
 };
 
 type Candidate = {
@@ -90,1289 +79,777 @@ type Candidate = {
   currentStage: string;
   rating: number | null;
   notes: string;
+  cvUrl: string;
+  aiScore: number | null;
+  aiSummary: string;
   rejectionReason: string;
   createdAt: Date;
 };
 
-type StageRecord = {
-  id: number;
-  candidateId: number;
-  stage: string;
-  enteredAt: Date;
-  exitedAt: Date | null;
-  result: string;
-  evaluator: string;
-  notes: string;
-  score: number | null;
-  createdAt: Date;
-};
-
-type CandidateDetail = Candidate & {
-  rejectedAtStage: string;
-  cvUrl: string;
-  stages: StageRecord[];
-};
-
-type Stats = {
+type RecruitmentStats = {
   activeMPR: number;
   totalCandidates: number;
   hired: number;
   overdue: number;
 };
 
-// ─── Pipeline Statuses ────────────────────────────────────────────────────
-
-const MPR_STATUSES = [
-  "Draft",
-  "Approved",
-  "Sourcing",
-  "In Progress",
-  "Completed",
-  "Cancelled",
-] as const;
-
-const SOURCE_OPTIONS = [
-  { value: "Direct", label: "Direct" },
-  { value: "Jobstreet", label: "Jobstreet" },
-  { value: "LinkedIn", label: "LinkedIn" },
-  { value: "Referral", label: "Referral" },
-  { value: "Agency", label: "Agency" },
-];
-
-const STAGE_OPTIONS = [
-  "Sourcing",
-  "Screening",
-  "Psikotes",
-  "Interview",
-  "Offering",
-  "Medical Checkup",
-  "Hired",
-  "Rejected",
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-function formatDate(dateStr: string | Date | null): string {
-  if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatDateTime(dateStr: string | Date | null): string {
-  if (!dateStr) return "-";
-  return new Date(dateStr).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function stageBadge(stage: string) {
-  const config: Record<string, { bg: string; text: string; border: string }> = {
-    Sourcing: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-    Screening: { bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200" },
-    Psikotes: { bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
-    Interview: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
-    Offering: { bg: "bg-green-50", text: "text-green-700", border: "border-green-200" },
-    "Medical Checkup": { bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200" },
-    MCU: { bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200" },
-    Hired: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-    Rejected: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
+interface RecruitmentClientPageProps {
+  recruitments: Recruitment[];
+  candidates: Candidate[];
+  stats: RecruitmentStats;
+  formOptions: {
+    departments: { id: number; name: string }[];
+    sections: { id: number; name: string; departmentId: number | null }[];
   };
-
-  const c = config[stage] ?? { bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
-  return (
-    <Badge variant="outline" className={`rounded-full border ${c.border} ${c.bg} ${c.text} px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider`}>
-      {stage}
-    </Badge>
-  );
 }
-
-function mprStatusBadge(status: string) {
-  const config: Record<string, { bg: string; text: string; border: string }> = {
-    Draft: { bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" },
-    Approved: { bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
-    Sourcing: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
-    "In Progress": { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
-    Completed: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-    Cancelled: { bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
-  };
-
-  const c = config[status] ?? { bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
-  return (
-    <Badge variant="outline" className={`rounded-full border ${c.border} ${c.bg} ${c.text} px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider`}>
-      {status}
-    </Badge>
-  );
-}
-
-function renderStars(rating: number | null) {
-  if (!rating) return <span className="text-muted-foreground">-</span>;
-  return (
-    <div className="flex items-center gap-0.5">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Star
-          key={i}
-          className={`size-3.5 ${i < rating ? "fill-amber-400 text-amber-400" : "text-gray-200"}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function getNextStage(currentStage: string): string | null {
-  const idx = STAGE_OPTIONS.indexOf(currentStage);
-  if (idx === -1 || idx >= 5) return null;
-  return STAGE_OPTIONS[idx + 1];
-}
-
-// ─── Pipeline Visual ──────────────────────────────────────────────────────
-
-function PipelineVisual({ status }: { status: string }) {
-  const steps = ["Draft", "Approved", "Sourcing", "In Progress", "Selesai"];
-  const mappedStatus = status === "Completed" ? "Selesai" : status;
-  const currentIdx = steps.indexOf(mappedStatus);
-
-  return (
-    <div className="flex items-center gap-1">
-      {steps.map((step, i) => {
-        const isActive = i <= currentIdx;
-        const isCurrent = i === currentIdx;
-        return (
-          <div key={step} className="flex items-center">
-            <div
-              className={`h-2 w-6 rounded-full transition-colors ${
-                isActive
-                  ? isCurrent
-                    ? "bg-blue-500"
-                    : "bg-blue-300"
-                  : "bg-gray-200"
-              }`}
-              title={step}
-            />
-            {i < steps.length - 1 && (
-              <ChevronRight className="size-3 text-gray-300" />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Component ────────────────────────────────────────────────────────────
 
 export function RecruitmentClientPage({
   recruitments: initialRecruitments,
   candidates: initialCandidates,
-  stats: initialStats,
-}: {
-  recruitments: Recruitment[];
-  candidates: Candidate[];
-  stats: Stats;
-}) {
-  // ── State ─────────────────────────────────────────────────────────────────
-  const [recruitments, setRecruitments] = useState<Recruitment[]>(initialRecruitments);
-  const [candidates, setCandidates] = useState<Candidate[]>(initialCandidates);
-  const [stats, setStats] = useState<Stats>(initialStats);
-  const [activeTab, setActiveTab] = useState("mpr");
+  stats,
+  formOptions,
+}: RecruitmentClientPageProps) {
+  const [activeView, setActiveView] = useState<"vacancies" | "pipeline">("vacancies");
+  const [pipelineJobIdFilter, setPipelineJobIdFilter] = useState<number | null>(null);
+  const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
+  const [recruitments, setRecruitments] = useState(initialRecruitments);
+  const [candidates, setCandidates] = useState(initialCandidates);
 
-  // MPR dialog state
-  const [isMprFormOpen, setIsMprFormOpen] = useState(false);
-  const [editingMpr, setEditingMpr] = useState<Recruitment | null>(null);
-  const [isDeleteMprOpen, setIsDeleteMprOpen] = useState(false);
-  const [deleteMprTarget, setDeleteMprTarget] = useState<Recruitment | null>(null);
-  const [mprForm, setMprForm] = useState({
+  // Settings Dialog State
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Candidate List Dialog State
+  const [isCandidateListOpen, setIsCandidateListOpen] = useState(false);
+  const [selectedCandidateListJobId, setSelectedCandidateListJobId] = useState<number | null>(null);
+  const [settingsForm, setSettingsForm] = useState({
+    isPublic: false,
     jobTitle: "",
+    department: "",
     section: "",
-    totalRequested: "1",
-    dueDate: "",
-    status: "Draft",
+    location: "",
+    totalRequested: 1,
+    startDate: "",
+    endDate: "",
+    jobDescription: "",
+    requirements: "",
+    qualifications: [] as string[],
+    mandatoryFields: [] as string[],
+    emailTemplateId: null as number | null,
   });
 
-  // Candidate dialog state
-  const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
-  const [candidateForm, setCandidateForm] = useState({
-    fullName: "",
-    email: "",
-    phone: "",
-    source: "Direct",
-    recruitmentId: "",
-    notes: "",
-  });
-
-  // View candidate detail
-  const [viewCandidate, setViewCandidate] = useState<CandidateDetail | null>(null);
-  const [isViewCandidateOpen, setIsViewCandidateOpen] = useState(false);
-
-  // Advance stage dialog
-  const [advanceTarget, setAdvanceTarget] = useState<Candidate | null>(null);
-  const [isAdvanceOpen, setIsAdvanceOpen] = useState(false);
-  const [advanceForm, setAdvanceForm] = useState({
-    evaluator: "",
-    notes: "",
-    score: "",
-  });
-
-  // Reject dialog
-  const [rejectTarget, setRejectTarget] = useState<Candidate | null>(null);
-  const [isRejectOpen, setIsRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-
-  // Delete candidate
-  const [isDeleteCandidateOpen, setIsDeleteCandidateOpen] = useState(false);
-  const [deleteCandidateTarget, setDeleteCandidateTarget] = useState<Candidate | null>(null);
-
-  // Filter by recruitment (clicking MPR shows its candidates)
-  const [filterRecruitmentId, setFilterRecruitmentId] = useState<number | null>(null);
-
-  const [isLoading, setIsLoading] = useState(false);
-
-  // ── Computed ──────────────────────────────────────────────────────────────
-
-  const inProcessCount = useMemo(
-    () =>
-      candidates.filter(
-        (c) => c.currentStage !== "Rejected" && c.currentStage !== "Hired"
-      ).length,
-    [candidates]
+  const candidateFilters = (
+    <div className="flex flex-col sm:flex-row gap-2">
+      <select
+        className="flex h-9 w-[200px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        data-table-filter-key="job"
+      >
+        <option value="">Semua Lowongan</option>
+        {recruitments.map(r => (
+          <option key={r.id} value={r.jobTitle}>{r.jobTitle}</option>
+        ))}
+      </select>
+      <select
+        className="flex h-9 w-[160px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        data-table-filter-key="stage"
+      >
+        <option value="">Semua Tahapan</option>
+        <option value="Sourcing">Sourcing</option>
+        <option value="Screening">Screening</option>
+        <option value="Psikotes">Psikotes</option>
+        <option value="Interview">Interview</option>
+        <option value="Offering">Offering</option>
+        <option value="Hired">Hired</option>
+      </select>
+    </div>
   );
 
-  const hiredCount = useMemo(
-    () => candidates.filter((c) => c.currentStage === "Hired").length,
-    [candidates]
+  const availableSections = formOptions.sections.filter(
+    (s) => !settingsForm.department || 
+    s.departmentId === formOptions.departments.find(d => d.name === settingsForm.department)?.id
   );
 
-  const rejectedCount = useMemo(
-    () => candidates.filter((c) => c.currentStage === "Rejected").length,
-    [candidates]
-  );
-
-  const filteredCandidates = useMemo(() => {
-    if (!filterRecruitmentId) return candidates;
-    return candidates.filter((c) => c.recruitmentId === filterRecruitmentId);
-  }, [candidates, filterRecruitmentId]);
-
-  const filterRecruitmentName = useMemo(() => {
-    if (!filterRecruitmentId) return null;
-    return recruitments.find((r) => r.id === filterRecruitmentId)?.jobTitle ?? null;
-  }, [filterRecruitmentId, recruitments]);
-
-  // ── MPR Handlers ──────────────────────────────────────────────────────────
-
-  const resetMprForm = useCallback(() => {
-    setMprForm({
-      jobTitle: "",
-      section: "",
-      totalRequested: "1",
-      dueDate: "",
-      status: "Draft",
+  const openSettings = (job: Recruitment) => {
+    setSelectedJobId(job.id);
+    setSettingsForm({
+      isPublic: job.isPublic || false,
+      jobTitle: job.jobTitle || "",
+      department: job.department || "",
+      section: job.section || "",
+      location: job.location || "",
+      totalRequested: job.totalRequested || 1,
+      startDate: job.startDate ? new Date(job.startDate).toISOString().split('T')[0] : "",
+      endDate: job.endDate ? new Date(job.endDate).toISOString().split('T')[0] : "",
+      jobDescription: job.jobDescription || "",
+      requirements: job.requirements || "",
+      qualifications: job.qualifications || [],
+      mandatoryFields: job.mandatoryFields || ["ktp", "cv"],
+      emailTemplateId: job.emailTemplateId || null,
     });
-    setEditingMpr(null);
-  }, []);
+    setIsSettingsOpen(true);
+  };
 
-  const handleOpenAddMpr = useCallback(() => {
-    resetMprForm();
-    setIsMprFormOpen(true);
-  }, [resetMprForm]);
-
-  const handleOpenEditMpr = useCallback((mpr: Recruitment) => {
-    setEditingMpr(mpr);
-    setMprForm({
-      jobTitle: mpr.jobTitle,
-      section: mpr.section,
-      totalRequested: mpr.totalRequested.toString(),
-      dueDate: new Date(mpr.dueDate).toISOString().split("T")[0],
-      status: mpr.status,
-    });
-    setIsMprFormOpen(true);
-  }, []);
-
-  const handleSaveMpr = useCallback(async () => {
-    setIsLoading(true);
+  const handleCreateVacancy = async () => {
     try {
-      const payload = {
-        jobTitle: mprForm.jobTitle,
-        section: mprForm.section,
-        totalRequested: parseInt(mprForm.totalRequested, 10) || 1,
-        dueDate: mprForm.dueDate,
-        status: mprForm.status,
-      };
-
-      if (editingMpr) {
-        await updateRecruitment(editingMpr.id, payload);
-      } else {
-        await createRecruitment(payload);
-      }
-
-      // Refresh data
-      const [newRecruitments, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getRecruitments()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setRecruitments(newRecruitments);
-      setStats(newStats);
-      setIsMprFormOpen(false);
-      resetMprForm();
-    } catch {
-      alert("Terjadi kesalahan saat menyimpan data.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [mprForm, editingMpr, resetMprForm]);
-
-  const handleDeleteMpr = useCallback(async () => {
-    if (!deleteMprTarget) return;
-    setIsLoading(true);
-    try {
-      await deleteRecruitment(deleteMprTarget.id);
-      const [newRecruitments, newCandidates, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getRecruitments()),
-        import("@/app/actions/recruitment").then((m) => m.getCandidates()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setRecruitments(newRecruitments);
-      setCandidates(newCandidates);
-      setStats(newStats);
-      setIsDeleteMprOpen(false);
-      setDeleteMprTarget(null);
-    } catch {
-      alert("Terjadi kesalahan saat menghapus data.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [deleteMprTarget]);
-
-  // ── Candidate Handlers ────────────────────────────────────────────────────
-
-  const resetCandidateForm = useCallback(() => {
-    setCandidateForm({
-      fullName: "",
-      email: "",
-      phone: "",
-      source: "Direct",
-      recruitmentId: "",
-      notes: "",
-    });
-  }, []);
-
-  const handleOpenAddCandidate = useCallback(() => {
-    resetCandidateForm();
-    setIsAddCandidateOpen(true);
-  }, [resetCandidateForm]);
-
-  const handleSaveCandidate = useCallback(async () => {
-    if (!candidateForm.recruitmentId || !candidateForm.fullName) return;
-    setIsLoading(true);
-    try {
-      await createCandidate({
-        recruitmentId: parseInt(candidateForm.recruitmentId, 10),
-        fullName: candidateForm.fullName,
-        email: candidateForm.email,
-        phone: candidateForm.phone,
-        source: candidateForm.source,
-        notes: candidateForm.notes,
+      const newJob = await createRecruitment({
+        jobTitle: "New Vacancy",
+        department: "-",
+        section: "-",
+        location: "-",
+        totalRequested: 1,
       });
-
-      const [newCandidates, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getCandidates()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setCandidates(newCandidates);
-      setStats(newStats);
-      setIsAddCandidateOpen(false);
-      resetCandidateForm();
-    } catch {
-      alert("Terjadi kesalahan saat menambahkan kandidat.");
-    } finally {
-      setIsLoading(false);
+      setRecruitments([newJob as any, ...recruitments]);
+      toast.success("New Vacancy created! Click settings to configure.");
+      openSettings(newJob as any);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create vacancy.");
     }
-  }, [candidateForm, resetCandidateForm]);
+  };
 
-  const handleViewCandidate = useCallback(async (cand: Candidate) => {
-    const detail = await getCandidateById(cand.id);
-    if (detail) {
-      setViewCandidate(detail as CandidateDetail);
-      setIsViewCandidateOpen(true);
-    }
-  }, []);
-
-  const handleOpenAdvance = useCallback((cand: Candidate) => {
-    setAdvanceTarget(cand);
-    setAdvanceForm({ evaluator: "", notes: "", score: "" });
-    setIsAdvanceOpen(true);
-  }, []);
-
-  const handleAdvanceStage = useCallback(async () => {
-    if (!advanceTarget) return;
-    const nextStage = getNextStage(advanceTarget.currentStage);
-    if (!nextStage) return;
-
-    setIsLoading(true);
+  const handleSaveSettings = async () => {
+    if (!selectedJobId) return;
+    setIsSubmitting(true);
     try {
-      await updateCandidateStage(advanceTarget.id, nextStage, {
-        evaluator: advanceForm.evaluator,
-        notes: advanceForm.notes,
-        score: advanceForm.score ? parseInt(advanceForm.score, 10) : undefined,
-      });
-
-      const [newCandidates, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getCandidates()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setCandidates(newCandidates);
-      setStats(newStats);
-      setIsAdvanceOpen(false);
-      setAdvanceTarget(null);
-    } catch {
-      alert("Terjadi kesalahan saat memajukan tahap kandidat.");
+      const updated = await updateRecruitment(selectedJobId, {
+        isPublic: settingsForm.isPublic,
+        jobTitle: settingsForm.jobTitle,
+        department: settingsForm.department,
+        section: settingsForm.section,
+        location: settingsForm.location,
+        totalRequested: settingsForm.totalRequested,
+        startDate: settingsForm.startDate || null,
+        endDate: settingsForm.endDate || null,
+        jobDescription: settingsForm.jobDescription,
+        requirements: settingsForm.requirements,
+        qualifications: settingsForm.qualifications,
+        mandatoryFields: settingsForm.mandatoryFields,
+        emailTemplateId: settingsForm.emailTemplateId,
+      } as any);
+      
+      setRecruitments((prev) =>
+        prev.map((r) => (r.id === selectedJobId ? { ...r, ...updated } : r))
+      );
+      toast.success("Job settings saved successfully.");
+      setIsSettingsOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save settings.");
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
-  }, [advanceTarget, advanceForm]);
+  };
 
-  const handleOpenReject = useCallback((cand: Candidate) => {
-    setRejectTarget(cand);
-    setRejectReason("");
-    setIsRejectOpen(true);
-  }, []);
+  const copyPublicLink = (job: Recruitment) => {
+    if (!job.isPublic) {
+      toast.error("You must set the status to Published in Settings before sharing the link.");
+      return;
+    }
+    const link = `${window.location.origin}/careers/${job.id}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Public link copied to clipboard!");
+  };
 
-  const handleReject = useCallback(async () => {
-    if (!rejectTarget || !rejectReason.trim()) return;
-
-    setIsLoading(true);
+  const handleDeleteVacancy = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this vacancy?")) return;
     try {
-      await rejectCandidate(rejectTarget.id, rejectTarget.currentStage, rejectReason);
-
-      const [newCandidates, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getCandidates()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setCandidates(newCandidates);
-      setStats(newStats);
-      setIsRejectOpen(false);
-      setRejectTarget(null);
-    } catch {
-      alert("Terjadi kesalahan saat menolak kandidat.");
-    } finally {
-      setIsLoading(false);
+      await deleteRecruitment(id);
+      setRecruitments(recruitments.filter(r => r.id !== id));
+      toast.success("Vacancy deleted successfully.");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete vacancy.");
     }
-  }, [rejectTarget, rejectReason]);
-
-  const handleHire = useCallback(async (cand: Candidate) => {
-    if (!confirm(`Tandai ${cand.fullName} sebagai HIRED?`)) return;
-
-    setIsLoading(true);
-    try {
-      await hireCandidate(cand.id);
-      const [newCandidates, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getCandidates()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setCandidates(newCandidates);
-      setStats(newStats);
-    } catch {
-      alert("Terjadi kesalahan.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const handleDeleteCandidate = useCallback(async () => {
-    if (!deleteCandidateTarget) return;
-    setIsLoading(true);
-    try {
-      await deleteCandidate(deleteCandidateTarget.id);
-      const [newCandidates, newStats] = await Promise.all([
-        import("@/app/actions/recruitment").then((m) => m.getCandidates()),
-        import("@/app/actions/recruitment").then((m) => m.getRecruitmentStats()),
-      ]);
-      setCandidates(newCandidates);
-      setStats(newStats);
-      setIsDeleteCandidateOpen(false);
-      setDeleteCandidateTarget(null);
-    } catch {
-      alert("Terjadi kesalahan saat menghapus kandidat.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [deleteCandidateTarget]);
-
-  const handleFilterByRecruitment = useCallback((recruitmentId: number) => {
-    setFilterRecruitmentId(recruitmentId);
-    setActiveTab("candidates");
-  }, []);
-
-  // ── Scorecards ────────────────────────────────────────────────────────────
-
-  const mprScorecards: React.ComponentProps<typeof EnterpriseScorecards>["items"] = [
-    {
-      label: "MPR Aktif",
-      value: stats.activeMPR,
-      description: "Permintaan tenaga kerja aktif",
-      icon: <IconClipboardCheck className="size-5 text-sky-600" />,
-      tone: "info",
-    },
-    {
-      label: "Total Kandidat",
-      value: stats.totalCandidates,
-      description: "Semua kandidat dalam pipeline",
-      icon: <IconUsers className="size-5 text-foreground" />,
-      tone: "default",
-    },
-    {
-      label: "Diterima (Hired)",
-      value: stats.hired,
-      description: "Kandidat yang berhasil di-hire",
-      icon: <IconFileCheck className="size-5 text-emerald-600" />,
-      tone: "success",
-    },
-    {
-      label: "Terlambat",
-      value: stats.overdue,
-      description: "MPR melewati batas waktu",
-      icon: <IconAlertTriangle className="size-5 text-rose-600" />,
-      tone: "danger",
-    },
-  ];
-
-  const candidateScorecards: React.ComponentProps<typeof EnterpriseScorecards>["items"] = [
-    {
-      label: "Total Kandidat",
-      value: candidates.length,
-      description: "Semua kandidat terdaftar",
-      icon: <IconUsers className="size-5 text-foreground" />,
-      tone: "default",
-    },
-    {
-      label: "Dalam Proses",
-      value: inProcessCount,
-      description: "Sedang menjalani rekrutmen",
-      icon: <IconClock className="size-5 text-sky-600" />,
-      tone: "info",
-    },
-    {
-      label: "Diterima",
-      value: hiredCount,
-      description: "Berhasil di-hire",
-      icon: <IconUserCheck className="size-5 text-emerald-600" />,
-      tone: "success",
-    },
-    {
-      label: "Ditolak",
-      value: rejectedCount,
-      description: "Tidak lolos seleksi",
-      icon: <IconFileX className="size-5 text-rose-600" />,
-      tone: "danger",
-    },
-  ];
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  };
 
   return (
     <AdminPageShell
-      eyebrow="HC - Recruitment"
-      title="Recruitment"
-      description="Kelola Man Power Request dan kandidat rekrutmen."
+      eyebrow="Human Capital"
+      title="Recruitment Management"
+      description="Manage open job vacancies, candidate pipeline, and AI assessments"
     >
-      <HcWorkspaceBanner
-        title="Recruitment Pipeline Desk"
-        description="MPR dan kandidat dipisah rapi, tapi tetap terasa satu alur kerja: kebutuhan tenaga kerja, pipeline, stage, dan keputusan."
-        items={[
-          { label: "MPR", value: recruitments.length, tone: "slate" },
-          { label: "Kandidat", value: candidates.length, tone: "sky" },
-          { label: "Aktif", value: candidates.filter((candidate) => candidate.currentStage !== "Rejected" && candidate.currentStage !== "Hired").length, tone: "emerald" },
-        ]}
-      />
+      <div className="space-y-8 pb-12 animate-in fade-in duration-500">
+        <HcWorkspaceBanner
+          title="Recruitment Studio"
+          description="AI-Powered Talent Acquisition & Candidate Pipeline"
+        />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4 h-auto w-full justify-start overflow-x-auto rounded-2xl bg-slate-100/80 p-1">
-          <TabsTrigger value="mpr">Man Power Request</TabsTrigger>
-          <TabsTrigger value="candidates">Kandidat</TabsTrigger>
-        </TabsList>
-
-        {/* ─── Tab 1: MPR ─────────────────────────────────────────────────── */}
-        <TabsContent value="mpr" className="space-y-5">
-          <EnterpriseScorecards items={mprScorecards} />
-
-          <MinimalTableShell
-            label="MPR"
-            fileName="Data-MPR"
-            searchPlaceholder="Cari MPR..."
-            primaryAction={
-              <Button onClick={handleOpenAddMpr} className={hcPrimaryActionClassName}>
-                <IconPlus className="size-4 mr-2" />
-                Tambah MPR
-              </Button>
-            }
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">No</TableHead>
-                  <TableHead>Posisi</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Jumlah</TableHead>
-                  <TableHead>Kandidat</TableHead>
-                  <TableHead>Pipeline</TableHead>
-                  <TableHead>Jatuh Tempo</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recruitments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      Belum ada data MPR.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  recruitments.map((mpr, index) => (
-                    <TableRow key={mpr.id} data-filter-stage={mpr.status}>
-                      <TableCell className="font-medium tabular-nums">{index + 1}</TableCell>
-                      <TableCell className="font-semibold">{mpr.jobTitle}</TableCell>
-                      <TableCell>{mpr.section}</TableCell>
-                      <TableCell className="tabular-nums">{mpr.totalRequested} Orang</TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-blue-600 hover:underline font-semibold tabular-nums"
-                          onClick={() => handleFilterByRecruitment(mpr.id)}
-                        >
-                          {mpr.candidateCount}
-                          <ArrowRight className="size-3" />
-                        </button>
-                      </TableCell>
-                      <TableCell>
-                        <PipelineVisual status={mpr.status} />
-                      </TableCell>
-                      <TableCell data-date-value={new Date(mpr.dueDate).toISOString()}>
-                        {formatDate(mpr.dueDate)}
-                      </TableCell>
-                      <TableCell>{mprStatusBadge(mpr.status)}</TableCell>
-                      <TableCell className="text-right">
-                        <EnterpriseActionButtons
-                          access={{ canView: true, canEdit: true, canDelete: true }}
-                          onView={() => handleFilterByRecruitment(mpr.id)}
-                          onEdit={() => handleOpenEditMpr(mpr)}
-                          onDelete={() => {
-                            setDeleteMprTarget(mpr);
-                            setIsDeleteMprOpen(true);
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </MinimalTableShell>
-        </TabsContent>
-
-        {/* ─── Tab 2: Candidates ──────────────────────────────────────────── */}
-        <TabsContent value="candidates" className="space-y-5">
-          <EnterpriseScorecards items={candidateScorecards} />
-
-          {filterRecruitmentId && (
-            <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm">
-              <span className="text-blue-700 font-medium">
-                Menampilkan kandidat dari:
-              </span>
-              <Badge variant="outline" className="border-blue-300 bg-white text-blue-700">
-                {filterRecruitmentName}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto text-blue-600 hover:text-blue-800"
-                onClick={() => setFilterRecruitmentId(null)}
-              >
-                Tampilkan Semua
-              </Button>
-            </div>
-          )}
-
-          <MinimalTableShell
-            label="Kandidat"
-            fileName="Data-Kandidat"
-            searchPlaceholder="Cari kandidat..."
-            filters={
-              <>
-                <TableMultiFilter
-                  label="Tahap"
-                  filterKey="stage"
-                  options={STAGE_OPTIONS.map((s) => ({ value: s, label: s }))}
-                  widthClassName="w-[180px]"
-                />
-                <TableMultiFilter
-                  label="Sumber"
-                  filterKey="source"
-                  options={SOURCE_OPTIONS}
-                  widthClassName="w-[160px]"
-                />
-              </>
-            }
-            primaryAction={
-              <Button onClick={handleOpenAddCandidate}>
-                <IconPlus className="size-4 mr-2" />
-                Tambah Kandidat
-              </Button>
-            }
-          >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">No</TableHead>
-                  <TableHead>Nama</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Telepon</TableHead>
-                  <TableHead>Posisi</TableHead>
-                  <TableHead>Sumber</TableHead>
-                  <TableHead>Tahap</TableHead>
-                  <TableHead>Rating</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCandidates.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      {filterRecruitmentId
-                        ? "Belum ada kandidat untuk posisi ini."
-                        : "Belum ada data kandidat."}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredCandidates.map((cand, index) => {
-                    const nextStage = getNextStage(cand.currentStage);
-                    const canAdvance = nextStage !== null;
-                    const canReject = cand.currentStage !== "Rejected" && cand.currentStage !== "Hired";
-                    const canHire = cand.currentStage === "Medical Checkup";
-
-                    return (
-                      <TableRow
-                        key={cand.id}
-                        data-filter-stage={cand.currentStage}
-                        data-filter-source={cand.source}
-                      >
-                        <TableCell className="font-medium tabular-nums">{index + 1}</TableCell>
-                        <TableCell className="font-semibold">{cand.fullName}</TableCell>
-                        <TableCell className="text-muted-foreground">{cand.email || "-"}</TableCell>
-                        <TableCell className="text-muted-foreground">{cand.phone || "-"}</TableCell>
-                        <TableCell>{cand.jobTitle ?? "-"}</TableCell>
-                        <TableCell>
-                          {cand.source ? (
-                            <Badge variant="outline" className="rounded-full text-[10px]">
-                              {cand.source}
-                            </Badge>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell>{stageBadge(cand.currentStage)}</TableCell>
-                        <TableCell>{renderStars(cand.rating)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="denseIcon"
-                              onClick={() => handleViewCandidate(cand)}
-                              aria-label="Lihat detail"
-                            >
-                              <Eye className="size-4" />
-                            </Button>
-                            {canAdvance && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="denseIcon"
-                                onClick={() => handleOpenAdvance(cand)}
-                                aria-label="Majukan tahap"
-                                title={`Lanjut ke ${nextStage}`}
-                              >
-                                <ArrowRight className="size-4 text-blue-600" />
-                              </Button>
-                            )}
-                            {canHire && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="denseIcon"
-                                onClick={() => handleHire(cand)}
-                                aria-label="Hire kandidat"
-                              >
-                                <CheckCircle2 className="size-4 text-emerald-600" />
-                              </Button>
-                            )}
-                            {canReject && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="denseIcon"
-                                onClick={() => handleOpenReject(cand)}
-                                aria-label="Tolak kandidat"
-                              >
-                                <XCircle className="size-4 text-destructive" />
-                              </Button>
-                            )}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="denseIcon"
-                              onClick={() => {
-                                setDeleteCandidateTarget(cand);
-                                setIsDeleteCandidateOpen(true);
-                              }}
-                              aria-label="Hapus kandidat"
-                            >
-                              <Trash2 className="size-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </MinimalTableShell>
-        </TabsContent>
-      </Tabs>
-
-      {/* ─── Add/Edit MPR Dialog ──────────────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isMprFormOpen}
-        onOpenChange={setIsMprFormOpen}
-        title={editingMpr ? "Ubah MPR" : "Tambah MPR Baru"}
-        description="Isi data permintaan tenaga kerja."
-        mode="form"
-        footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setIsMprFormOpen(false)}>
-              Batal
-            </Button>
-            <Button type="button" disabled={isLoading} onClick={handleSaveMpr}>
-              {isLoading ? "Menyimpan..." : "Simpan"}
-            </Button>
-          </>
-        }
-      >
-        <EnterpriseFormGrid>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Posisi / Job Title</Label>
-            <Input
-              value={mprForm.jobTitle}
-              onChange={(e) => setMprForm({ ...mprForm, jobTitle: e.target.value })}
-              placeholder="Contoh: Mekanik Senior"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Section</Label>
-            <Input
-              value={mprForm.section}
-              onChange={(e) => setMprForm({ ...mprForm, section: e.target.value })}
-              placeholder="Contoh: Operation"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Jumlah Dibutuhkan</Label>
-            <Input
-              type="number"
-              min={1}
-              value={mprForm.totalRequested}
-              onChange={(e) => setMprForm({ ...mprForm, totalRequested: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Jatuh Tempo</Label>
-            <Input
-              type="date"
-              value={mprForm.dueDate}
-              onChange={(e) => setMprForm({ ...mprForm, dueDate: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <Select
-              value={mprForm.status}
-              onValueChange={(val) => setMprForm({ ...mprForm, status: val })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MPR_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </EnterpriseFormGrid>
-      </EnterpriseRecordDialog>
-
-      {/* ─── Delete MPR Confirmation ──────────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isDeleteMprOpen}
-        onOpenChange={setIsDeleteMprOpen}
-        title="Hapus MPR"
-        description="Tindakan ini akan menghapus MPR dan semua kandidat terkait."
-        mode="delete"
-        footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setIsDeleteMprOpen(false)}>
-              Batal
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isLoading}
-              onClick={handleDeleteMpr}
-            >
-              {isLoading ? "Menghapus..." : "Hapus"}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-muted-foreground">
-          Apakah Anda yakin ingin menghapus MPR &ldquo;{deleteMprTarget?.jobTitle}&rdquo;?
-          Semua data kandidat yang terkait juga akan dihapus.
-        </p>
-      </EnterpriseRecordDialog>
-
-      {/* ─── Add Candidate Dialog ─────────────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isAddCandidateOpen}
-        onOpenChange={setIsAddCandidateOpen}
-        title="Tambah Kandidat"
-        description="Tambahkan kandidat baru ke pipeline rekrutmen."
-        mode="form"
-        footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setIsAddCandidateOpen(false)}>
-              Batal
-            </Button>
-            <Button type="button" disabled={isLoading} onClick={handleSaveCandidate}>
-              {isLoading ? "Menyimpan..." : "Simpan"}
-            </Button>
-          </>
-        }
-      >
-        <EnterpriseFormGrid>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Nama Lengkap</Label>
-            <Input
-              value={candidateForm.fullName}
-              onChange={(e) => setCandidateForm({ ...candidateForm, fullName: e.target.value })}
-              placeholder="Nama lengkap kandidat"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={candidateForm.email}
-              onChange={(e) => setCandidateForm({ ...candidateForm, email: e.target.value })}
-              placeholder="email@example.com"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Telepon</Label>
-            <Input
-              value={candidateForm.phone}
-              onChange={(e) => setCandidateForm({ ...candidateForm, phone: e.target.value })}
-              placeholder="08xxx"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Sumber</Label>
-            <Select
-              value={candidateForm.source}
-              onValueChange={(val) => setCandidateForm({ ...candidateForm, source: val })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SOURCE_OPTIONS.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Posisi (MPR)</Label>
-            <Select
-              value={candidateForm.recruitmentId}
-              onValueChange={(val) => setCandidateForm({ ...candidateForm, recruitmentId: val })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih posisi..." />
-              </SelectTrigger>
-              <SelectContent>
-                {recruitments.map((r) => (
-                  <SelectItem key={r.id} value={r.id.toString()}>
-                    {r.jobTitle} - {r.section}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Catatan</Label>
-            <Textarea
-              value={candidateForm.notes}
-              onChange={(e) => setCandidateForm({ ...candidateForm, notes: e.target.value })}
-              placeholder="Catatan tambahan..."
-              rows={3}
-            />
-          </div>
-        </EnterpriseFormGrid>
-      </EnterpriseRecordDialog>
-
-      {/* ─── View Candidate Detail Dialog ─────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isViewCandidateOpen}
-        onOpenChange={setIsViewCandidateOpen}
-        title={`Detail Kandidat: ${viewCandidate?.fullName ?? ""}`}
-        description={viewCandidate?.jobTitle ? `Posisi: ${viewCandidate.jobTitle}` : undefined}
-        mode="view"
-      >
-        {viewCandidate && (
-          <div className="space-y-5">
-            {/* Profile section */}
-            <EnterpriseFormGrid>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</p>
-                <p className="text-sm">{viewCandidate.email || "-"}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Telepon</p>
-                <p className="text-sm">{viewCandidate.phone || "-"}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sumber</p>
-                <p className="text-sm">{viewCandidate.source || "-"}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tahap Saat Ini</p>
-                <div>{stageBadge(viewCandidate.currentStage)}</div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rating</p>
-                <div>{renderStars(viewCandidate.rating)}</div>
-              </div>
-              {viewCandidate.currentStage === "Rejected" && (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Alasan Ditolak</p>
-                  <p className="text-sm text-rose-600">
-                    {viewCandidate.rejectionReason} (di tahap {viewCandidate.rejectedAtStage})
-                  </p>
-                </div>
+        {/* View Toggle & Stats */}
+        <div className="flex flex-col lg:flex-row justify-between gap-6 items-start lg:items-end px-2">
+          <div className="flex bg-muted/30 p-1.5 rounded-2xl border backdrop-blur-sm shadow-sm relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-accent/5 to-transparent pointer-events-none" />
+            <button
+              onClick={() => { setActiveView("vacancies"); setPipelineJobIdFilter(null); }}
+              className={cn(
+                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
+                activeView === "vacancies"
+                  ? "bg-background text-foreground shadow-md ring-1 ring-border/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
               )}
-            </EnterpriseFormGrid>
+            >
+              <IconBriefcase className="w-4 h-4" />
+              Job Vacancies
+            </button>
+            <button
+              onClick={() => setActiveView("pipeline")}
+              className={cn(
+                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
+                activeView === "pipeline"
+                  ? "bg-background text-foreground shadow-md ring-1 ring-border/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              <IconUsers className="w-4 h-4" />
+              Candidate Pipeline
+            </button>
+            <Link
+              href="/dashboard/hc/recruitment/tests"
+              className={cn(
+                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
+                "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              <IconFileText className="w-4 h-4" />
+              Online Tests
+            </Link>
+          </div>
 
-            {viewCandidate.notes && (
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Catatan</p>
-                <p className="text-sm whitespace-pre-wrap">{viewCandidate.notes}</p>
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex flex-col items-end">
+              <span className="text-muted-foreground">Active Vacancies</span>
+              <span className="text-2xl font-bold tracking-tight">{stats.activeMPR}</span>
+            </div>
+            <div className="w-px h-10 bg-border mx-2" />
+            <div className="flex flex-col items-end">
+              <span className="text-muted-foreground">Total Candidates</span>
+              <span className="text-2xl font-bold tracking-tight text-accent">{stats.totalCandidates}</span>
+            </div>
+            <div className="w-px h-10 bg-border mx-2" />
+            <Button className={hcPrimaryActionClassName} onClick={handleCreateVacancy}>
+              <IconPlus className="w-4 h-4 mr-2" />
+              New Vacancy
+            </Button>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="px-2">
+          {activeView === "vacancies" ? (
+             <div className={hcMutedPanelClassName}>
+               <MinimalTableShell label="Job Vacancies">
+                 <Table>
+                   <TableHeader>
+                     <TableRow className="hover:bg-transparent border-border/50">
+                       <TableHead className="w-16 text-center">NO</TableHead>
+                       <TableHead>JOB TITLE</TableHead>
+                       <TableHead>SECTION</TableHead>
+                       <TableHead>DATE RANGE</TableHead>
+                       <TableHead>DAYS LEFT</TableHead>
+                       <TableHead className="text-center">QUOTA</TableHead>
+                       <TableHead className="text-center">APPLIED</TableHead>
+                       <TableHead>PUBLIC STATUS</TableHead>
+                       <TableHead className="text-right">ACTIONS</TableHead>
+                     </TableRow>
+                   </TableHeader>
+                   <TableBody>
+                     {recruitments.map((job, idx) => (
+                       <TableRow key={job.id} className={hcTableRowClassName}>
+                         <TableCell className="text-center text-muted-foreground font-medium">{idx + 1}</TableCell>
+                         <TableCell className="font-semibold">{job.jobTitle}</TableCell>
+                         <TableCell>{job.section || "-"}</TableCell>
+                         <TableCell className="whitespace-nowrap">
+                           {job.startDate ? format(new Date(job.startDate), "dd MMM yyyy") : "?"} -{" "}
+                           {job.endDate ? format(new Date(job.endDate), "dd MMM yyyy") : "?"}
+                         </TableCell>
+                         <TableCell>
+                           {(() => {
+                             if (!job.endDate) return "-";
+                             const diff = differenceInDays(new Date(job.endDate), new Date());
+                             if (diff < 0) return <span className="text-destructive font-semibold">Expired</span>;
+                             if (diff === 0) return <span className="text-destructive font-semibold">Ends Today</span>;
+                             return <span className={diff <= 3 ? "text-amber-500 font-semibold" : ""}>{diff} Days</span>;
+                           })()}
+                         </TableCell>
+                         <TableCell className="text-center">
+                           <span className="font-medium">{job.totalRequested}</span>
+                         </TableCell>
+                         <TableCell className="text-center">
+                           <span className="font-bold text-accent">{job.candidateCount}</span>
+                         </TableCell>
+                         <TableCell>
+                           <Badge variant={job.isPublic ? "default" : "secondary"} className="rounded-full">
+                             {job.isPublic ? "Published" : "Draft"}
+                           </Badge>
+                         </TableCell>
+                         <TableCell className="text-right">
+                             <div className="flex items-center justify-end gap-1">
+                               <Button variant="ghost" size="icon" onClick={() => { setSelectedCandidateListJobId(job.id); setIsCandidateListOpen(true); }} title="View Candidates">
+                                 <IconUsers className="w-4 h-4 text-blue-500" />
+                               </Button>
+                               {job.isPublic ? (
+                                 <a
+                                   href={`/careers/${job.id}`}
+                                   target="_blank"
+                                   rel="noreferrer"
+                                   className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9 rounded-md text-muted-foreground"
+                                 >
+                                   <IconExternalLink className="w-4 h-4" />
+                                 </a>
+                               ) : null}
+                               <Button variant="ghost" size="icon" onClick={() => copyPublicLink(job)}>
+                                 <IconCopy className="w-4 h-4 text-muted-foreground" />
+                               </Button>
+                               <Button variant="ghost" size="icon" onClick={() => openSettings(job)}>
+                                 <IconSettings className="w-4 h-4 text-muted-foreground" />
+                               </Button>
+                               <Button variant="ghost" size="icon" onClick={() => handleDeleteVacancy(job.id)}>
+                                 <IconTrash className="w-4 h-4 text-destructive" />
+                               </Button>
+                             </div>
+                         </TableCell>
+                       </TableRow>
+                     ))}
+                     {recruitments.length === 0 && (
+                       <TableRow>
+                         <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                           No Job Vacancies found.
+                         </TableCell>
+                       </TableRow>
+                     )}
+                   </TableBody>
+                 </Table>
+               </MinimalTableShell>
+             </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Kanban / Pipeline View */}
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex bg-muted/30 p-1 rounded-lg border w-fit">
+                  <button
+                    onClick={() => setPipelineViewMode("list")}
+                    className={cn(
+                      "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                      pipelineViewMode === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    List Table
+                  </button>
+                  <button
+                    onClick={() => setPipelineViewMode("kanban")}
+                    className={cn(
+                      "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                      pipelineViewMode === "kanban" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Kanban Board
+                  </button>
+                </div>
+                {pipelineJobIdFilter && (
+                  <div className="flex items-center gap-2 bg-muted/30 px-4 py-2 rounded-xl border border-dashed">
+                    <span className="text-sm text-muted-foreground">Filtered by Job:</span>
+                    <Badge variant="secondary">{recruitments.find(r => r.id === pipelineJobIdFilter)?.jobTitle}</Badge>
+                    <Button variant="ghost" size="sm" onClick={() => setPipelineJobIdFilter(null)} className="h-6 px-2 ml-2">
+                      Clear Filter
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
-
-            {/* Stage timeline */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-foreground">Riwayat Tahapan</h4>
-              {viewCandidate.stages.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Belum ada riwayat tahapan.</p>
+              
+              {pipelineViewMode === "list" ? (
+                <MinimalTableShell label="Kandidat" filters={candidateFilters}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent border-border/50">
+                        <TableHead className="w-12 text-center">NO</TableHead>
+                        <TableHead>NAMA LENGKAP</TableHead>
+                        <TableHead>LOWONGAN</TableHead>
+                        <TableHead>EMAIL</TableHead>
+                        <TableHead>PHONE</TableHead>
+                        <TableHead>STAGE</TableHead>
+                        <TableHead>AI MATCH</TableHead>
+                        <TableHead className="text-right">ACTIONS</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates).map((candidate, idx) => (
+                        <TableRow key={candidate.id} className={hcTableRowClassName} data-filter-stage={candidate.currentStage} data-filter-job={candidate.jobTitle || ""}>
+                          <TableCell className="text-center text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell className="font-semibold">{candidate.fullName}</TableCell>
+                          <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
+                          <TableCell>{candidate.email}</TableCell>
+                          <TableCell>{candidate.phone}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{candidate.currentStage}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {candidate.aiScore !== null ? (
+                              <div className="flex items-center gap-2">
+                                <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
+                                <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                              </div>
+                            ) : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {candidate.cvUrl ? (
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                              </Button>
+                            ) : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {(pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates).length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                            Belum ada kandidat.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </MinimalTableShell>
               ) : (
-                <div className="relative space-y-0">
-                  <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
-                  {viewCandidate.stages.map((stage) => (
-                    <div key={stage.id} className="relative flex gap-3 pb-4">
-                      <div className={`relative z-10 mt-1.5 size-[22px] shrink-0 rounded-full border-2 ${
-                        stage.result === "fail"
-                          ? "border-rose-400 bg-rose-100"
-                          : stage.result === "pass"
-                            ? "border-emerald-400 bg-emerald-100"
-                            : "border-blue-400 bg-blue-100"
-                      }`} />
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          {stageBadge(stage.stage)}
-                          {stage.result && (
-                            <Badge
-                              variant="outline"
-                              className={`rounded-full text-[10px] ${
-                                stage.result === "fail"
-                                  ? "border-rose-300 bg-rose-50 text-rose-700"
-                                  : stage.result === "pass"
-                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                                    : "border-gray-300 bg-gray-50 text-gray-700"
-                              }`}
-                            >
-                              {stage.result === "pass" ? "Lulus" : stage.result === "fail" ? "Gagal" : stage.result}
+                <ScrollArea className="w-full pb-4">
+                <div className="flex gap-6 min-w-max">
+                  {["Sourcing", "Screening", "Psikotes", "Interview", "Offering", "Hired"].map((stage) => {
+                    const filteredCandidates = pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates;
+                    const stageCandidates = filteredCandidates.filter((c) => c.currentStage === stage);
+                    return (
+                      <div key={stage} className="w-[340px] flex flex-col gap-4">
+                        <div className="flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur-sm py-2 z-10 border-b">
+                          <h3 className="font-bold text-sm tracking-widest uppercase text-muted-foreground flex items-center gap-2">
+                            {stage}
+                            <Badge variant="secondary" className="rounded-full px-2 py-0 h-5 text-xs bg-muted/50">
+                              {stageCandidates.length}
                             </Badge>
+                          </h3>
+                        </div>
+                        
+                        <div className="flex flex-col gap-4">
+                          {stageCandidates.map((candidate) => (
+                            <div
+                              key={candidate.id}
+                              className="bg-card border shadow-sm rounded-2xl p-5 hover:shadow-md transition-shadow group relative"
+                            >
+                              <div className="flex justify-between items-start mb-3">
+                                <div>
+                                  <h4 className="font-semibold text-base mb-0.5">{candidate.fullName}</h4>
+                                  <p className="text-xs text-muted-foreground font-medium">{candidate.jobTitle || "General Application"}</p>
+                                </div>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <IconEye className="w-4 h-4" />
+                                </Button>
+                              </div>
+
+                              {/* AI Score Indicator */}
+                              {candidate.aiScore !== null ? (
+                                <div className="mt-4 p-3 rounded-xl bg-gradient-to-br from-accent/5 to-accent/10 border border-accent/20">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-1.5">
+                                      <IconBrain className="w-3.5 h-3.5" />
+                                      AI Match
+                                    </span>
+                                    <span className="text-sm font-bold text-accent">{candidate.aiScore}%</span>
+                                  </div>
+                                  <Progress value={candidate.aiScore} className="h-1.5 bg-accent/20 [&>div]:bg-accent" />
+                                </div>
+                              ) : (
+                                <div className="mt-4">
+                                  <Button variant="outline" size="sm" className="w-full text-xs rounded-xl border-dashed hover:border-accent hover:text-accent hover:bg-accent/5">
+                                    <IconBrain className="w-3.5 h-3.5 mr-2" />
+                                    Run AI Assessment
+                                  </Button>
+                                </div>
+                              )}
+
+                              <div className="mt-4 pt-4 border-t flex justify-between items-center text-xs text-muted-foreground">
+                                <div className="flex items-center gap-1.5">
+                                  <IconFileText className="w-3.5 h-3.5" />
+                                  <span>{candidate.cvUrl ? "CV Uploaded" : "No CV"}</span>
+                                </div>
+                                <span>{format(new Date(candidate.createdAt), "dd MMM yyyy")}</span>
+                              </div>
+                            </div>
+                          ))}
+                          {stageCandidates.length === 0 && (
+                            <div className="border-2 border-dashed rounded-2xl p-6 text-center text-muted-foreground/50 flex flex-col items-center justify-center bg-muted/5">
+                              <span className="text-xs font-medium uppercase tracking-wider">Empty</span>
+                            </div>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Masuk: {formatDateTime(stage.enteredAt)}
-                          {stage.exitedAt && <> | Keluar: {formatDateTime(stage.exitedAt)}</>}
-                        </p>
-                        {stage.evaluator && (
-                          <p className="text-xs text-muted-foreground">
-                            Evaluator: {stage.evaluator}
-                          </p>
-                        )}
-                        {stage.score != null && (
-                          <p className="text-xs text-muted-foreground">
-                            Skor: {stage.score}
-                          </p>
-                        )}
-                        {stage.notes && (
-                          <p className="text-xs text-muted-foreground italic">
-                            {stage.notes}
-                          </p>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                </ScrollArea>
               )}
             </div>
-          </div>
-        )}
-      </EnterpriseRecordDialog>
-
-      {/* ─── Advance Stage Dialog ──────────────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isAdvanceOpen}
-        onOpenChange={setIsAdvanceOpen}
-        title="Majukan Tahap"
-        description={
-          advanceTarget
-            ? `${advanceTarget.fullName}: ${advanceTarget.currentStage} -> ${getNextStage(advanceTarget.currentStage) ?? "-"}`
-            : undefined
-        }
-        mode="form"
-        footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setIsAdvanceOpen(false)}>
-              Batal
-            </Button>
-            <Button type="button" disabled={isLoading} onClick={handleAdvanceStage}>
-              {isLoading ? "Memproses..." : "Majukan"}
-            </Button>
-          </>
-        }
-      >
-        <EnterpriseFormGrid>
-          <div className="space-y-2">
-            <Label>Evaluator</Label>
-            <Input
-              value={advanceForm.evaluator}
-              onChange={(e) => setAdvanceForm({ ...advanceForm, evaluator: e.target.value })}
-              placeholder="Nama evaluator"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Skor (opsional)</Label>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              value={advanceForm.score}
-              onChange={(e) => setAdvanceForm({ ...advanceForm, score: e.target.value })}
-              placeholder="0-100"
-            />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label>Catatan</Label>
-            <Textarea
-              value={advanceForm.notes}
-              onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })}
-              placeholder="Catatan evaluasi..."
-              rows={3}
-            />
-          </div>
-        </EnterpriseFormGrid>
-      </EnterpriseRecordDialog>
-
-      {/* ─── Reject Dialog ────────────────────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isRejectOpen}
-        onOpenChange={setIsRejectOpen}
-        title="Tolak Kandidat"
-        description={
-          rejectTarget
-            ? `Tolak ${rejectTarget.fullName} pada tahap ${rejectTarget.currentStage}`
-            : undefined
-        }
-        mode="delete"
-        footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setIsRejectOpen(false)}>
-              Batal
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isLoading || !rejectReason.trim()}
-              onClick={handleReject}
-            >
-              {isLoading ? "Memproses..." : "Tolak Kandidat"}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-2">
-          <Label>Alasan Penolakan</Label>
-          <Textarea
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Jelaskan alasan penolakan..."
-            rows={4}
-          />
+          )}
         </div>
-      </EnterpriseRecordDialog>
+      </div>
 
-      {/* ─── Delete Candidate Confirmation ────────────────────────────────── */}
-      <EnterpriseRecordDialog
-        open={isDeleteCandidateOpen}
-        onOpenChange={setIsDeleteCandidateOpen}
-        title="Hapus Kandidat"
-        description="Tindakan ini tidak dapat dibatalkan."
-        mode="delete"
-        footer={
-          <>
-            <Button type="button" variant="outline" onClick={() => setIsDeleteCandidateOpen(false)}>
-              Batal
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Job Vacancy Settings</DialogTitle>
+            <DialogDescription>
+              Configure the public link and application form settings for this recruitment.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto px-1">
+            <div className="flex items-center justify-between rounded-lg border p-4 bg-accent/5">
+              <div className="space-y-0.5">
+                <Label className="text-base text-accent font-semibold">Publish to Careers Page</Label>
+                <div className="text-sm text-muted-foreground">
+                  Allow candidates to apply using the public link.
+                </div>
+              </div>
+              <Switch
+                checked={settingsForm.isPublic}
+                onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, isPublic: checked })}
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2 col-span-2">
+                <Label>Job Title</Label>
+                <Input
+                  value={settingsForm.jobTitle}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, jobTitle: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Total Quota</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={settingsForm.totalRequested}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, totalRequested: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select
+                  value={settingsForm.department}
+                  onValueChange={(val) => setSettingsForm({ ...settingsForm, department: val, section: "" })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formOptions.departments.map((d) => (
+                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Section</Label>
+                <Select
+                  value={settingsForm.section}
+                  onValueChange={(val) => setSettingsForm({ ...settingsForm, section: val })}
+                  disabled={!settingsForm.department}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={settingsForm.department ? "Select Section" : "Select Dept First"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSections.map((s) => (
+                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Input
+                  placeholder="e.g. Head Office, Bintaro"
+                  value={settingsForm.location}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, location: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Open Date</Label>
+                <Input
+                  type="date"
+                  value={settingsForm.startDate}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, startDate: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Expiry Date</Label>
+                <Input
+                  type="date"
+                  value={settingsForm.endDate}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, endDate: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Job Description</Label>
+              <Textarea
+                placeholder="Describe the responsibilities and scope of this role..."
+                rows={3}
+                value={settingsForm.jobDescription}
+                onChange={(e) => setSettingsForm({ ...settingsForm, jobDescription: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Requirements (General Text)</Label>
+              <Textarea
+                placeholder="General description of what you are looking for..."
+                rows={3}
+                value={settingsForm.requirements}
+                onChange={(e) => setSettingsForm({ ...settingsForm, requirements: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label>AI Assessment Qualifications (Checklist)</Label>
+              <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
+                {[
+                  "Pendidikan Min. SMA/SMK",
+                  "Pendidikan Min. D3",
+                  "Pendidikan Min. S1",
+                  "Pengalaman Min. 1 Tahun",
+                  "Pengalaman Min. 2 Tahun",
+                  "Pengalaman Min. 3 Tahun",
+                  "Bahasa Inggris Aktif",
+                  "Menguasai Microsoft Office",
+                  "Memiliki SIM A",
+                  "Memiliki SIM C",
+                ].map((qual) => (
+                  <div key={qual} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={qual}
+                      checked={settingsForm.qualifications.includes(qual)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSettingsForm({ ...settingsForm, qualifications: [...settingsForm.qualifications, qual] });
+                        } else {
+                          setSettingsForm({ ...settingsForm, qualifications: settingsForm.qualifications.filter((q) => q !== qual) });
+                        }
+                      }}
+                    />
+                    <Label htmlFor={qual} className="font-normal text-sm cursor-pointer">{qual}</Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                AI will strictly check the candidate's CV and Form against these specific points. 
+                (Checked points will be analyzed).
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Form Builder: Mandatory Fields</Label>
+              <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
+                {[
+                  { id: "dateOfBirth", label: "Date of Birth" },
+                  { id: "address", label: "Full Address" },
+                  { id: "gender", label: "Gender" },
+                  { id: "drivingLicenses", label: "Driving Licenses (SIM)" },
+                  { id: "certificates", label: "Certifications" },
+                  { id: "workExperience", label: "Detailed Work Experience" },
+                  { id: "education", label: "Detailed Education History" },
+                ].map((field) => (
+                  <div key={field.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`mandatory-${field.id}`}
+                      checked={settingsForm.mandatoryFields?.includes(field.id) || false}
+                      onCheckedChange={(checked) => {
+                        const current = settingsForm.mandatoryFields || [];
+                        if (checked) {
+                          setSettingsForm({ ...settingsForm, mandatoryFields: [...current, field.id] });
+                        } else {
+                          setSettingsForm({ ...settingsForm, mandatoryFields: current.filter((q) => q !== field.id) });
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`mandatory-${field.id}`} className="font-normal text-sm cursor-pointer">{field.label}</Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Selected fields will be required when candidates fill out the public application form.
+                Name, Email, Phone, and CV are always required.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveSettings} disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Settings"}
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isLoading}
-              onClick={handleDeleteCandidate}
-            >
-              {isLoading ? "Menghapus..." : "Hapus"}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-muted-foreground">
-          Apakah Anda yakin ingin menghapus kandidat &ldquo;{deleteCandidateTarget?.fullName}&rdquo;?
-          Semua riwayat tahapan juga akan dihapus.
-        </p>
-      </EnterpriseRecordDialog>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+    <Dialog open={isCandidateListOpen} onOpenChange={setIsCandidateListOpen}>
+      <DialogContent className="sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Daftar Kandidat</DialogTitle>
+          <DialogDescription>
+            Pelamar untuk lowongan {recruitments.find(r => r.id === selectedCandidateListJobId)?.jobTitle}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <MinimalTableShell label="Kandidat" filters={candidateFilters}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12 text-center">NO</TableHead>
+                  <TableHead>NAMA LENGKAP</TableHead>
+                  <TableHead>LOWONGAN</TableHead>
+                  <TableHead>EMAIL</TableHead>
+                  <TableHead>PHONE</TableHead>
+                  <TableHead>STAGE</TableHead>
+                  <TableHead>AI MATCH</TableHead>
+                  <TableHead className="text-right">ACTIONS</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {candidates.filter(c => c.recruitmentId === selectedCandidateListJobId).map((candidate, idx) => (
+                  <TableRow key={candidate.id} data-filter-stage={candidate.currentStage} data-filter-job={candidate.jobTitle || ""}>
+                    <TableCell className="text-center">{idx + 1}</TableCell>
+                    <TableCell className="font-semibold">{candidate.fullName}</TableCell>
+                    <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
+                    <TableCell>{candidate.email}</TableCell>
+                    <TableCell>{candidate.phone}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{candidate.currentStage}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {candidate.aiScore !== null ? (
+                        <div className="flex items-center gap-2">
+                          <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
+                          <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                        </div>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {candidate.cvUrl ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                        </Button>
+                      ) : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {candidates.filter(c => c.recruitmentId === selectedCandidateListJobId).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                      Belum ada kandidat yang mendaftar.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </MinimalTableShell>
+        </div>
+      </DialogContent>
+    </Dialog>
+
     </AdminPageShell>
   );
 }

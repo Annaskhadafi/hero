@@ -8,11 +8,14 @@ export async function uploadFile(formData: FormData) {
   try {
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
-    if (!file.type.startsWith("image/")) {
-      return { success: false, error: "File must be an image." };
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      return { success: false, error: "File must be an image or PDF." };
     }
-    if (file.size > MAX_IMAGE_FILE_SIZE) {
+    if (file.type.startsWith("image/") && file.size > MAX_IMAGE_FILE_SIZE) {
       return { success: false, error: "Photo size max 5MB." };
+    }
+    if (file.type === "application/pdf" && file.size > 10 * 1024 * 1024) {
+      return { success: false, error: "PDF size max 10MB." };
     }
     const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
 
