@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any[] }) {
+export function RecruitmentTestsClientPage({ initialTests, testGroups = [] }: { initialTests: any[], testGroups?: any[] }) {
   const [tests, setTests] = useState(initialTests);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -26,6 +26,12 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
     const link = `${window.location.origin}/test/public/${testId}`;
     navigator.clipboard.writeText(link);
     toast.success("Public link copied to clipboard!");
+  };
+
+  const copyGroupLink = (slug: string) => {
+    const link = `${window.location.origin}/test-group/${slug}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Group link copied to clipboard!");
   };
 
   const openEditModal = (test: any) => {
@@ -85,6 +91,33 @@ export function RecruitmentTestsClientPage({ initialTests }: { initialTests: any
       title="Online Tests"
       description="Create and manage online assessments for candidates."
     >
+      {testGroups.length > 0 && (
+        <div className="mb-8 space-y-4">
+          <h2 className="text-lg font-semibold">Test Groups (Rangkaian Tes)</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {testGroups.map((group: any) => (
+              <div key={group.id} className="border p-4 rounded-lg bg-card shadow-sm flex flex-col justify-between">
+                <div>
+                  <h3 className="font-bold text-primary text-lg">{group.name}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{group.description}</p>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => copyGroupLink(group.slug)} className="flex-1 gap-2">
+                    <IconLink className="w-4 h-4" /> Copy Public Link
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`/test-group/${group.slug}`} target="_blank" rel="noreferrer">View</a>
+                  </Button>
+                  <Button variant="default" size="sm" asChild>
+                    <Link href={`/dashboard/hc/recruitment/test-groups/${group.slug}`}>Lihat Hasil</Link>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-lg font-semibold">Test Banks</h2>
         <Button onClick={() => setIsCreateOpen(true)} className="gap-2">

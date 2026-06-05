@@ -2655,6 +2655,22 @@ export const hcEmailTemplates = pgTable('hero_hc_email_templates', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hcOnlineTestGroups = pgTable('hero_hc_online_test_groups', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcOnlineTestGroupItems = pgTable('hero_hc_online_test_group_items', {
+  id: serial('id').primaryKey(),
+  groupId: integer('group_id').notNull().references(() => hcOnlineTestGroups.id, { onDelete: 'cascade' }),
+  testId: integer('test_id').notNull().references(() => hcOnlineTests.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+})
+
 export const hcOnlineTests = pgTable('hero_hc_online_tests', {
   id: serial('id').primaryKey(),
   title: text('title').notNull(),
@@ -2662,6 +2678,7 @@ export const hcOnlineTests = pgTable('hero_hc_online_tests', {
   timeLimitMinutes: integer('time_limit_minutes').notNull().default(60),
   passingScore: integer('passing_score').notNull().default(0),
   isActive: boolean('is_active').notNull().default(true),
+  isApplicationForm: boolean('is_application_form').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

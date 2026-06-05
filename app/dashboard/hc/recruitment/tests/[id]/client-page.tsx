@@ -247,13 +247,26 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               <Button variant="outline" onClick={copyPublicLink} className="gap-2">
                 <IconLink className="w-4 h-4" /> Copy Public Link
               </Button>
-              <Button onClick={openCreateQuestion} className="gap-2">
-                <IconPlus className="w-4 h-4" /> Add Question
-              </Button>
+              {!test.isApplicationForm && (
+                <Button onClick={openCreateQuestion} className="gap-2">
+                  <IconPlus className="w-4 h-4" /> Add Question
+                </Button>
+              )}
             </div>
           </div>
 
-          <div className="grid gap-4">
+          {test.isApplicationForm ? (
+            <div className="p-12 border rounded-lg bg-muted/10 text-center text-muted-foreground flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <IconLink className="w-8 h-8 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">Application Form</h3>
+                <p>This is a predefined application form. Questions and input fields are rendered automatically.<br/>No manual question building is required.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4">
             {questions.map((q, i) => (
           <div key={q.id} className="bg-card border rounded-lg p-5">
             <div className="flex justify-between items-start mb-4">
@@ -314,6 +327,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           </div>
         )}
       </div>
+      )}
 
       <Dialog open={isCreateOpen} onOpenChange={(open) => { setIsCreateOpen(open); if (!open) setEditingQuestion(null); }}>
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] flex flex-col overflow-hidden">

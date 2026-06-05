@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { hcOnlineTestAssignments, hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAnswers, hcCandidates } from "@/db/schema/hero";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { randomUUID } from "crypto";
@@ -43,7 +43,40 @@ export async function getTestByAccessKey(accessKey: string) {
     };
   }));
 
-  return { assignment, test, questions: safeQuestions };
+  let previousAnswers: Record<number, string> | null = null;
+  if (test.isApplicationForm) {
+    // Find the last completed application form assignment for this candidate
+    const previousAssignments = await db.select({
+      id: hcOnlineTestAssignments.id
+    })
+    .from(hcOnlineTestAssignments)
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestAssignments.testId, hcOnlineTests.id))
+    .where(
+      and(
+        eq(hcOnlineTestAssignments.candidateId, assignment.candidateId),
+        eq(hcOnlineTestAssignments.status, 'Completed'),
+        eq(hcOnlineTests.isApplicationForm, true)
+      )
+    )
+    .orderBy(desc(hcOnlineTestAssignments.createdAt))
+    .limit(1);
+
+    if (previousAssignments.length > 0) {
+      const answersList = await db.select().from(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, previousAssignments[0].id));
+      if (answersList.length > 0) {
+        previousAnswers = {};
+        for (const ans of answersList) {
+          // We need to map it to the NEW questionId for the current test.
+          // Since it's an Application Form, there's usually only 1 question.
+          if (questions.length > 0) {
+            previousAnswers[questions[0].id] = ans.answerText;
+          }
+        }
+      }
+    }
+  }
+
+  return { assignment, test, questions: safeQuestions, previousAnswers };
 }
 
 export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {
