@@ -53,7 +53,7 @@ export async function submitTestAnswer(assignmentId: number, questionId: number,
     questionId,
     answerText,
     isCorrect: null, // Auto-grading can happen in a separate worker or process
-    score: 0,
+    pointsAwarded: 0,
   });
 }
 
