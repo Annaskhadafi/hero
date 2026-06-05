@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { addTestQuestion, deleteTestQuestion } from "@/app/actions/recruitment-tests";
 import { uploadFile } from "@/app/actions/upload";
 import { toast } from "sonner";
-import { IconPlus, IconTrash, IconPhotoUp, IconX } from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconPhotoUp, IconX, IconLink } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -101,7 +101,18 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
         sortOrder: formData.sortOrder,
       };
       const newQuestion = await addTestQuestion(test.id, payload);
-      setQuestions([...questions, newQuestion as any]);
+      
+      // Re-attach the readable image URLs from formData so the optimistic UI preview works immediately
+      const optimisticQuestion = {
+        ...newQuestion,
+        imageUrl: formData.readableImageUrl || newQuestion.imageUrl,
+        options: newQuestion.options ? (newQuestion.options as any[]).map((opt, i) => ({
+          ...opt,
+          imageUrl: formData.options[i]?.readableImageUrl || opt.imageUrl
+        })) : null
+      };
+
+      setQuestions([...questions, optimisticQuestion as any]);
       toast.success("Question added!");
       setIsCreateOpen(false);
       setFormData(prev => ({ 
@@ -135,6 +146,12 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
     }
   };
 
+  const copyPublicLink = () => {
+    const link = `${window.location.origin}/test/public/${test.id}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Public link copied to clipboard!");
+  };
+
   return (
     <AdminPageShell
       title={`Test Editor: ${test.title}`}
@@ -151,9 +168,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           <h2 className="text-lg font-semibold">Questions ({questions.length})</h2>
           <p className="text-sm text-muted-foreground">Passing Score: {test.passingScore} &bull; Time Limit: {test.timeLimitMinutes} Mins</p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
-          <IconPlus className="w-4 h-4" /> Add Question
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={copyPublicLink} className="gap-2">
+            <IconLink className="w-4 h-4" /> Copy Public Link
+          </Button>
+          <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
+            <IconPlus className="w-4 h-4" /> Add Question
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4">

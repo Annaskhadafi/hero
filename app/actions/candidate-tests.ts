@@ -1,10 +1,11 @@
 "use server";
 
 import { db } from "@/db";
-import { hcOnlineTestAssignments, hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAnswers } from "@/db/schema/hero";
+import { hcOnlineTestAssignments, hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAnswers, hcCandidates } from "@/db/schema/hero";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
+import { randomUUID } from "crypto";
 
 export async function getTestByAccessKey(accessKey: string) {
   const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.accessKey, accessKey)).limit(1);
@@ -68,4 +69,33 @@ export async function startTestAssignment(assignmentId: number) {
   await db.update(hcOnlineTestAssignments)
     .set({ status: "In Progress", startedAt: new Date() })
     .where(eq(hcOnlineTestAssignments.id, assignmentId));
+}
+
+export async function registerForPublicTest(testId: number, data: { fullName: string; email: string; phone: string }) {
+  const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, testId)).limit(1);
+  if (!test) throw new Error("Test not found");
+
+  // Create a candidate
+  const [candidate] = await db.insert(hcCandidates).values({
+    fullName: data.fullName,
+    email: data.email,
+    phone: data.phone,
+    source: "Public Test Link",
+    currentStage: "Psikotes", // Start at psikotes/test stage
+  }).returning();
+
+  // Create assignment
+  const accessKey = randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+
+  const [assignment] = await db.insert(hcOnlineTestAssignments).values({
+    testId: test.id,
+    candidateId: candidate.id,
+    accessKey,
+    expiresAt,
+    status: "Pending",
+  }).returning();
+
+  return assignment.accessKey;
 }
