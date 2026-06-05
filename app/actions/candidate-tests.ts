@@ -72,30 +72,35 @@ export async function startTestAssignment(assignmentId: number) {
 }
 
 export async function registerForPublicTest(testId: number, data: { fullName: string; email: string; phone: string }) {
-  const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, testId)).limit(1);
-  if (!test) throw new Error("Test not found");
+  try {
+    const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, testId)).limit(1);
+    if (!test) throw new Error("Test not found");
 
-  // Create a candidate
-  const [candidate] = await db.insert(hcCandidates).values({
-    fullName: data.fullName,
-    email: data.email,
-    phone: data.phone,
-    source: "Public Test Link",
-    currentStage: "Psikotes", // Start at psikotes/test stage
-  }).returning();
+    // Create a candidate
+    const [candidate] = await db.insert(hcCandidates).values({
+      fullName: data.fullName,
+      email: data.email,
+      phone: data.phone,
+      source: "Public Test Link",
+      currentStage: "Psikotes", // Start at psikotes/test stage
+    }).returning();
 
-  // Create assignment
-  const accessKey = randomUUID();
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+    // Create assignment
+    const accessKey = randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
 
-  const [assignment] = await db.insert(hcOnlineTestAssignments).values({
-    testId: test.id,
-    candidateId: candidate.id,
-    accessKey,
-    expiresAt,
-    status: "Pending",
-  }).returning();
+    const [assignment] = await db.insert(hcOnlineTestAssignments).values({
+      testId: test.id,
+      candidateId: candidate.id,
+      accessKey,
+      expiresAt,
+      status: "Pending",
+    }).returning();
 
-  return assignment.accessKey;
+    return assignment.accessKey;
+  } catch (error) {
+    console.error("registerForPublicTest Error:", error);
+    throw new Error("Failed to register for the test. Please try again.");
+  }
 }

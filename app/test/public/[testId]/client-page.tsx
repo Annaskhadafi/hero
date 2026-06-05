@@ -72,18 +72,18 @@ export function PublicTestRegistrationClient({ test }: { test: any }) {
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />
             </div>
+            
+            <div className="pt-4">
+              <Button 
+                type="submit" 
+                className="w-full h-11" 
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Registering..." : "Continue to Test"}
+              </Button>
+            </div>
           </form>
         </CardContent>
-        <CardFooter className="pt-2 pb-6 px-6">
-          <Button 
-            form="registration-form" 
-            type="submit" 
-            className="w-full h-11" 
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Registering..." : "Continue to Test"}
-          </Button>
-        </CardFooter>
       </Card>
       
       <div className="mt-8 text-center text-sm text-muted-foreground">
