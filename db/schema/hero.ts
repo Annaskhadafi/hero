@@ -2441,6 +2441,21 @@ export const hcCandidateStages = pgTable('hero_hc_candidate_stages', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const hcCandidateInterviews = pgTable('hero_hc_candidate_interviews', {
+  id: serial('id').primaryKey(),
+  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  scheduledAt: timestamp('scheduled_at').notNull(),
+  durationMinutes: integer('duration_minutes').notNull().default(60),
+  interviewType: text('interview_type').notNull().default('Online'), // Online, Offline
+  locationOrLink: text('location_or_link').notNull().default(''),
+  interviewerName: text('interviewer_name').notNull().default(''),
+  status: text('status').notNull().default('Scheduled'), // Scheduled, Completed, Cancelled, No-Show
+  result: text('result').notNull().default('Pending'), // Pending, Pass, Fail
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 // ─── HC Offboarding ───────────────────────────────────────────────────────
 
 export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {

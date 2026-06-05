@@ -830,11 +830,16 @@ export function RecruitmentClientPage({
                       ) : "-"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {candidate.cvUrl ? (
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                      <div className="flex justify-end gap-2">
+                        {candidate.cvUrl ? (
+                          <Button variant="outline" size="sm" asChild>
+                            <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                          </Button>
+                        ) : null}
+                        <Button variant="default" size="sm" asChild>
+                          <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
                         </Button>
-                      ) : "-"}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
