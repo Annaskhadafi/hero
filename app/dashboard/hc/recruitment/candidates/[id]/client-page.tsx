@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
+import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
 
-export function CandidateDetailClientPage({ candidate, interviews }: { candidate: any, interviews: any[] }) {
+export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }: { candidate: any, interviews: any[], mcuRecords: any[] }) {
   const router = useRouter();
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
@@ -32,6 +33,15 @@ export function CandidateDetailClientPage({ candidate, interviews }: { candidate
     locationOrLink: "",
     interviewerName: "",
     notes: ""
+  });
+
+  const [isMcuScheduleOpen, setIsMcuScheduleOpen] = useState(false);
+  const [isMcuSubmitting, setIsMcuSubmitting] = useState(false);
+  const [mcuForm, setMcuForm] = useState({
+    klinikName: "",
+    klinikEmail: "",
+    paketMcu: "",
+    scheduledDate: "",
   });
 
   const handleScheduleSubmit = async () => {
@@ -73,8 +83,46 @@ export function CandidateDetailClientPage({ candidate, interviews }: { candidate
     }
   };
 
+  const handleMcuSubmit = async () => {
+    if (!mcuForm.klinikName || !mcuForm.klinikEmail || !mcuForm.paketMcu || !mcuForm.scheduledDate) {
+      toast.error("Please fill in all required MCU fields.");
+      return;
+    }
+
+    setIsMcuSubmitting(true);
+    try {
+      const scheduledDate = new Date(mcuForm.scheduledDate);
+      
+      await scheduleCandidateMcu(candidate.id, {
+        klinikName: mcuForm.klinikName,
+        klinikEmail: mcuForm.klinikEmail,
+        paketMcu: mcuForm.paketMcu,
+        scheduledDate,
+      });
+
+      toast.success("MCU scheduled and emails sent to Clinic and Candidate.");
+      setIsMcuScheduleOpen(false);
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to schedule MCU.");
+    } finally {
+      setIsMcuSubmitting(false);
+    }
+  };
+
+  const handleMcuResult = async (mcuId: number, status: string, notes: string) => {
+    try {
+      await updateMcuResult(mcuId, status, notes);
+      toast.success(`MCU marked as ${status}.`);
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update MCU result.");
+    }
+  };
+
   return (
-    <AdminPageShell>
+    <>
+      <AdminPageShell>
       <div className="flex items-center gap-4 mb-6">
         <Button variant="outline" size="icon" onClick={() => router.push("/dashboard/hc/recruitment")}>
           <IconArrowLeft className="w-4 h-4" />
@@ -96,9 +144,10 @@ export function CandidateDetailClientPage({ candidate, interviews }: { candidate
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interviews">Interviews ({interviews.length})</TabsTrigger>
+          <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
         </TabsList>
 
@@ -270,6 +319,90 @@ export function CandidateDetailClientPage({ candidate, interviews }: { candidate
           )}
         </TabsContent>
 
+        <TabsContent value="mcu">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Medical Check Up (MCU)</h3>
+            <Button onClick={() => setIsMcuScheduleOpen(true)}>
+              <IconStethoscope className="w-4 h-4 mr-2" />
+              Schedule MCU
+            </Button>
+          </div>
+
+          {mcuRecords.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <IconStethoscope className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
+                <h4 className="text-lg font-medium">No MCU scheduled</h4>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                  This candidate has not been scheduled for a Medical Checkup yet.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {mcuRecords.map((mcu) => (
+                <Card key={mcu.id} className={mcu.status !== 'Scheduled' ? 'opacity-90 bg-muted/20' : ''}>
+                  <CardHeader className="pb-3 flex flex-row items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <IconStethoscope className="w-4 h-4" />
+                        Medical Checkup at {mcu.klinikName}
+                      </CardTitle>
+                      <CardDescription>
+                        {format(new Date(mcu.scheduledDate), "EEEE, dd MMMM yyyy")}
+                      </CardDescription>
+                    </div>
+                    <Badge variant={
+                      mcu.status === 'Scheduled' ? 'default' : 
+                      mcu.status === 'Fit' ? 'secondary' : 'destructive'
+                    } className={mcu.status === 'Fit' ? 'bg-green-500' : ''}>
+                      {mcu.status}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground block text-xs">Clinic Email</span>
+                        <span className="font-medium">{mcu.klinikEmail}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-xs">MCU Package</span>
+                        <span className="font-medium">{mcu.paketMcu}</span>
+                      </div>
+                      {mcu.resultNotes && (
+                        <div className="md:col-span-2 mt-2 bg-muted/50 p-3 rounded-md">
+                          <span className="text-muted-foreground block text-xs mb-1">Result Notes</span>
+                          {mcu.resultNotes}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                  
+                  {mcu.status === 'Scheduled' && (
+                    <div className="bg-muted/30 p-4 border-t flex items-center justify-end gap-2">
+                      <span className="text-sm text-muted-foreground mr-auto">Mark MCU Result:</span>
+                      <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" 
+                        onClick={() => {
+                          const notes = prompt("Any notes for FIT result?");
+                          if (notes !== null) handleMcuResult(mcu.id, 'Fit', notes);
+                        }}>
+                        <IconCheck className="w-4 h-4 mr-1" /> Fit
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => {
+                          const notes = prompt("Reason for UNFIT result?");
+                          if (notes !== null) handleMcuResult(mcu.id, 'Unfit', notes);
+                        }}>
+                        <IconX className="w-4 h-4 mr-1" /> Unfit
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="history">
           <Card>
             <CardHeader>
@@ -367,5 +500,43 @@ export function CandidateDetailClientPage({ candidate, interviews }: { candidate
         </DialogContent>
       </Dialog>
     </AdminPageShell>
+
+      {/* Schedule MCU Dialog */}
+      <Dialog open={isMcuScheduleOpen} onOpenChange={setIsMcuScheduleOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Schedule Medical Checkup</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Clinic Name <span className="text-destructive">*</span></Label>
+              <Input placeholder="e.g. Klinik Pramita" value={mcuForm.klinikName} onChange={(e) => setMcuForm({...mcuForm, klinikName: e.target.value})} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Clinic Email <span className="text-destructive">*</span></Label>
+              <Input type="email" placeholder="e.g. admin@pramita.co.id" value={mcuForm.klinikEmail} onChange={(e) => setMcuForm({...mcuForm, klinikEmail: e.target.value})} />
+              <p className="text-xs text-muted-foreground">Surat Pengantar MCU will be sent to this email automatically.</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>MCU Package <span className="text-destructive">*</span></Label>
+              <Input placeholder="e.g. Paket Executive" value={mcuForm.paketMcu} onChange={(e) => setMcuForm({...mcuForm, paketMcu: e.target.value})} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Date <span className="text-destructive">*</span></Label>
+              <Input type="date" value={mcuForm.scheduledDate} onChange={(e) => setMcuForm({...mcuForm, scheduledDate: e.target.value})} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsMcuScheduleOpen(false)}>Cancel</Button>
+            <Button onClick={handleMcuSubmit} disabled={isMcuSubmitting}>
+              {isMcuSubmitting ? "Processing..." : "Schedule & Send Emails"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
