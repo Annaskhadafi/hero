@@ -20,13 +20,13 @@ async function run() {
     for (const q of queries) {
       try {
         await db.execute(sql.raw(q));
-      } catch (e) {
+      } catch (e: any) {
         console.log("Skipped/Failed:", e.message);
       }
     }
     
     console.log("Added onboarding columns!");
-  } catch(e) { console.log(e.message); }
+  } catch(e: any) { console.log(e.message); }
   process.exit(0);
 }
 run();
