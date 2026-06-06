@@ -27,7 +27,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
   let vacancyTitle = "Position";
   if (candidate.recruitmentId) {
     const [recruitment] = await db.select().from(hcRecruitments).where(eq(hcRecruitments.id, candidate.recruitmentId)).limit(1);
-    if (recruitment) vacancyTitle = recruitment.title;
+    if (recruitment) vacancyTitle = recruitment.jobTitle;
   }
 
   // Insert MCU record
