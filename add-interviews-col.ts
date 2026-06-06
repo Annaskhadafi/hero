@@ -6,7 +6,7 @@ async function run() {
   try {
     await db.execute(sql`ALTER TABLE "hero_hc_candidate_interviews" ADD COLUMN IF NOT EXISTS "result" text DEFAULT 'Pending' NOT NULL;`);
     console.log("Added result column");
-  } catch(e) { console.log(e.message); }
+  } catch(e: any) { console.log(e.message); }
   process.exit(0);
 }
 run();
