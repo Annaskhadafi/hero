@@ -34,3 +34,39 @@ export async function uploadFile(formData: FormData) {
     return { success: false, error: "Failed to upload file to Object Storage" };
   }
 }
+
+export async function uploadImageFromUrl(imageUrl: string) {
+  try {
+    if (process.env.UPLOAD_DRIVER !== "s3" && !isS3UploadConfigured()) {
+      return { success: false, error: "S3 Upload Driver is not properly configured." };
+    }
+
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      return { success: false, error: "Failed to fetch image from URL." };
+    }
+
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) {
+      return { success: false, error: "URL does not point to a valid image." };
+    }
+
+    if (blob.size > MAX_IMAGE_FILE_SIZE) {
+      return { success: false, error: "Image from URL is too large (max 5MB)." };
+    }
+
+    const urlObj = new URL(imageUrl);
+    let fileName = urlObj.pathname.split('/').pop() || "image.jpg";
+    if (!fileName.includes('.')) fileName += ".jpg";
+    
+    const file = new File([blob], fileName, { type: blob.type });
+
+    const result = await uploadAnyFileToS3(file);
+    const readableUrl = await getS3ObjectReadUrl(result.url);
+    
+    return { success: true, url: result.url, readableUrl };
+  } catch (error) {
+    console.error("Upload from URL error:", error);
+    return { success: false, error: "Failed to fetch or upload image from URL." };
+  }
+}

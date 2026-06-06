@@ -7,7 +7,7 @@ import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { addTestQuestion, assignTestToCandidate, deleteTestEntry, deleteTestQuestion, gradeTestAnswer, importTestQuestions, updateTestEntry, updateTestQuestion } from "@/app/actions/recruitment-tests";
-import { uploadFile } from "@/app/actions/upload";
+import { uploadFile, uploadImageFromUrl } from "@/app/actions/upload";
 import { toast } from "sonner";
 import { IconDownload, IconEye, IconPencil, IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft } from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -124,6 +124,34 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       }
     } catch (err: any) {
       toast.error("Failed to upload image");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleImageUrlUpload = async (target: 'question' | number) => {
+    const url = window.prompt("Masukkan Image URL yang ingin diupload ke S3:");
+    if (!url) return;
+
+    setIsUploading(true);
+    try {
+      const res = await uploadImageFromUrl(url);
+      if (res.success && res.url) {
+        const readableUrl = res.readableUrl || res.url;
+        if (target === 'question') {
+          setFormData(prev => ({ ...prev, imageUrl: res.url, readableImageUrl: readableUrl }));
+        } else {
+          const newOpts = [...formData.options];
+          newOpts[target as number].imageUrl = res.url;
+          newOpts[target as number].readableImageUrl = readableUrl;
+          setFormData(prev => ({ ...prev, options: newOpts }));
+        }
+        toast.success("Image fetched and uploaded!");
+      } else {
+        toast.error("Upload failed: " + (res.error || "Unknown error"));
+      }
+    } catch (err: any) {
+      toast.error("Failed to upload image from URL");
     } finally {
       setIsUploading(false);
     }
@@ -366,11 +394,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
             <div className="space-y-2">
               <div className="flex justify-between items-end">
                 <Label>Question Content</Label>
-                <div>
+                <div className="flex items-center gap-4 mt-2">
                   <Label htmlFor="q-image-upload" className="cursor-pointer flex items-center gap-1 text-xs text-accent hover:underline font-medium">
                     <IconPhotoUp className="w-3 h-3" /> Add Image
                   </Label>
                   <input id="q-image-upload" type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, 'question')} disabled={isUploading} />
+                  <button type="button" onClick={() => handleImageUrlUpload('question')} className="flex items-center gap-1 text-xs text-accent hover:underline font-medium" disabled={isUploading}>
+                    <IconLink className="w-3 h-3" /> Image by URL
+                  </button>
                 </div>
               </div>
               
@@ -424,10 +455,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
                           </div>
                         ) : (
                           <div>
-                            <Label htmlFor={`opt-img-${opt.id}`} className="cursor-pointer flex items-center gap-1 text-xs text-muted-foreground hover:text-accent font-medium w-fit">
-                              <IconPhotoUp className="w-3 h-3" /> Add Image to Option
+                            <Label htmlFor={`opt-img-${opt.id}`} className="cursor-pointer flex items-center gap-1 text-xs text-muted-foreground hover:text-accent hover:underline font-medium ml-2">
+                              <IconPhotoUp className="w-3 h-3" /> Add Image
                             </Label>
                             <input id={`opt-img-${opt.id}`} type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, idx)} disabled={isUploading} />
+                            
+                            <button type="button" onClick={() => handleImageUrlUpload(idx)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-accent hover:underline font-medium ml-2" disabled={isUploading}>
+                              <IconLink className="w-3 h-3" /> Image URL
+                            </button>
                           </div>
                         )}
                       </div>
