@@ -5,7 +5,7 @@ import { getCandidateByToken, submitOnboardingData } from "@/app/actions/onboard
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/Button"
+import { Button } from "@/components/ui/button"
 import { CheckCircle2, Loader2, UserCircle, Building2, HeartPulse, FileText } from "lucide-react"
 
 export default function OnboardingPage({ params }: { params: Promise<{ token: string }> }) {
