@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// Removed Select imports
 import { uploadFile } from "@/app/actions/upload";
 import { getRecruitmentById, createCandidate } from "@/app/actions/recruitment";
 import { toast } from "sonner";
@@ -237,15 +237,16 @@ export default function CareerApplicationPage() {
                         </div>
                         <div className="space-y-2">
                           <Label>Jenis Kelamin <span className="text-destructive">*</span></Label>
-                          <Select required onValueChange={setGender}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Pilih..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Laki-laki">Laki-laki</SelectItem>
-                              <SelectItem value="Perempuan">Perempuan</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <select 
+                            required 
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            value={gender}
+                            onChange={(e) => setGender(e.target.value)}
+                          >
+                            <option value="" disabled>Pilih...</option>
+                            <option value="Laki-laki">Laki-laki</option>
+                            <option value="Perempuan">Perempuan</option>
+                          </select>
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -275,14 +276,16 @@ export default function CareerApplicationPage() {
                       <div key={idx} className="grid md:grid-cols-12 gap-4 items-start bg-muted/20 p-4 rounded-lg relative group">
                         <div className="md:col-span-2 space-y-2">
                           <Label>Jenjang</Label>
-                          <Select value={edu.jenjang} onValueChange={(val) => {
-                            const newEdu = [...education]; newEdu[idx].jenjang = val; setEducation(newEdu);
-                          }}>
-                            <SelectTrigger><SelectValue placeholder="Pilih" /></SelectTrigger>
-                            <SelectContent>
-                              {JENJANG_OPTIONS.map(j => <SelectItem key={j} value={j}>{j}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
+                          <select 
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                            value={edu.jenjang} 
+                            onChange={(e) => {
+                              const newEdu = [...education]; newEdu[idx].jenjang = e.target.value; setEducation(newEdu);
+                            }}
+                          >
+                            <option value="" disabled>Pilih</option>
+                            {JENJANG_OPTIONS.map(j => <option key={j} value={j}>{j}</option>)}
+                          </select>
                         </div>
                         <div className="md:col-span-4 space-y-2">
                           <Label>Nama Institusi/Sekolah</Label>

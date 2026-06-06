@@ -181,9 +181,9 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
           questions.map((q, index) => (
             <Card key={q.id}>
             <CardHeader className="bg-muted/20 border-b pb-4">
-              <div className="flex gap-3">
-                <Badge className="h-6 w-6 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
-                <CardTitle className="text-base leading-relaxed font-medium" dangerouslySetInnerHTML={{ __html: q.questionText }} />
+              <div className="flex gap-3 w-full max-w-full">
+                <Badge className="h-6 w-6 shrink-0 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
+                <CardTitle className="text-base leading-relaxed font-medium flex-1 overflow-hidden break-words whitespace-pre-wrap [&>img]:max-w-full [&>img]:h-auto [&>table]:block [&>table]:w-full [&>table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.questionText }} />
               </div>
               {q.imageUrl && <img src={q.imageUrl} alt="Gambar soal" className="mt-4 max-h-80 w-full rounded-lg border object-contain" />}
             </CardHeader>
@@ -211,12 +211,12 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} className="block m-0" />
                             </div>
                           </div>
-                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="cursor-pointer font-medium text-center w-full"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
+                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="cursor-pointer font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
                         </div>
                       ) : (
                         <div key={opt.id} className="flex items-center space-x-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setAnswers({ ...answers, [q.id]: opt.id })}>
                           <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} />
-                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="flex-1 cursor-pointer font-normal text-base"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
+                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="flex-1 cursor-pointer font-normal text-base break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
                         </div>
                       );
                     })}
@@ -243,12 +243,12 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               <input type="checkbox" checked={isChecked} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} className="h-4 w-4 rounded border-primary accent-primary" />
                             </div>
                           </div>
-                          <span className="font-medium text-center w-full"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
+                          <span className="font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
                         </label>
                       ) : (
                         <label key={opt.id} className="flex items-center gap-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer">
                           <input type="checkbox" checked={isChecked} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} /> 
-                          <span className="flex-1"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
+                          <span className="flex-1 break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
                         </label>
                       );
                     })}
@@ -316,7 +316,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                                 className="w-4 h-4 cursor-pointer accent-primary" 
                               />
                             </td>
-                            <td className="p-3 text-left">
+                            <td className="p-3 text-left break-words whitespace-pre-wrap max-w-[200px] sm:max-w-none">
                               <span className="font-semibold mr-2">{opt.id}.</span>{opt.text}
                             </td>
                           </tr>
