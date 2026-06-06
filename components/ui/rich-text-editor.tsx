@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useMemo, useRef, useCallback } from "react";
 import "react-quill-new/dist/quill.snow.css";
+import { uploadFile } from "@/app/actions/upload";
 
 // Dynamically import our wrapper to ensure Quill is registered with blotFormatter
 const ReactQuill = dynamic(() => import("./quill-wrapper"), {
@@ -18,18 +19,57 @@ interface RichTextEditorProps {
 }
 
 export function RichTextEditor({ value, onChange, placeholder, className }: RichTextEditorProps) {
+  const quillRef = useRef<any>(null);
+
+  const imageHandler = useCallback(() => {
+    const input = document.createElement("input");
+    input.setAttribute("type", "file");
+    input.setAttribute("accept", "image/*");
+    input.click();
+
+    input.onchange = async () => {
+      const file = input.files ? input.files[0] : null;
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        // Upload via centralized action (which handles S3 if configured)
+        const res = await uploadFile(formData);
+        if (res.success && res.readableUrl) {
+          const quill = quillRef.current?.getEditor();
+          if (quill) {
+            const range = quill.getSelection(true);
+            quill.insertEmbed(range.index, "image", res.readableUrl);
+          }
+        } else {
+          alert("Gagal upload gambar: " + res.error);
+        }
+      } catch (error) {
+        console.error("Upload error:", error);
+        alert("Terjadi kesalahan saat mengupload gambar.");
+      }
+    };
+  }, []);
+
   // Memoize modules to avoid unnecessary re-renders of the editor
   const modules = useMemo(
     () => ({
-      toolbar: [
-        [{ header: [1, 2, 3, false] }],
-        ["bold", "italic", "underline", "strike"],
-        [{ list: "ordered" }, { list: "bullet" }],
-        ["link", "image", "clean"],
-      ],
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline", "strike"],
+          [{ list: "ordered" }, { list: "bullet" }],
+          ["link", "image", "clean"],
+        ],
+        handlers: {
+          image: imageHandler,
+        },
+      },
       blotFormatter: {},
     }),
-    []
+    [imageHandler]
   );
 
   const formats = [
@@ -46,6 +86,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
   return (
     <div className={className}>
       <ReactQuill
+        ref={quillRef}
         theme="snow"
         value={value}
         onChange={onChange}
