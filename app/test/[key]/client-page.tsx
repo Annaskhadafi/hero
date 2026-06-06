@@ -35,7 +35,21 @@ const getDisplayOptions = (question: any) => {
 export function CandidateTestClientPage({ assignment, test, questions, previousAnswers }: { assignment: any, test: any, questions: any[], previousAnswers?: any }) {
   const [hasStarted, setHasStarted] = useState(assignment.status !== "Pending");
   const [isFinished, setIsFinished] = useState(assignment.status === "Completed");
-  const [timeLeft, setTimeLeft] = useState(test.timeLimitMinutes * 60);
+  const storageKey = `hero_test_timer_${assignment.id}`;
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return parseInt(saved, 10);
+    }
+    return test.timeLimitMinutes * 60;
+  });
+
+  useEffect(() => {
+    if (hasStarted && !isFinished) {
+      localStorage.setItem(storageKey, timeLeft.toString());
+    }
+  }, [timeLeft, hasStarted, isFinished, storageKey]);
+
   const [answers, setAnswers] = useState<Record<number, string>>(previousAnswers || {});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tabLeaveCount, setTabLeaveCount] = useState(0);
@@ -73,7 +87,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
         setTimeLeft((prev) => prev - 1);
       }, 1000);
     } else if (timeLeft === 0 && !isFinished) {
-      handleFinishTest();
+      handleFinishTest(true);
     }
     return () => clearInterval(timer);
   }, [hasStarted, isFinished, timeLeft]);
@@ -88,12 +102,22 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
     }
   };
 
-  const handleFinishTest = async () => {
+  const handleFinishTest = async (isAutoSubmit = false) => {
     if (isFinished) return;
+
+    if (!isAutoSubmit && !test.isApplicationForm) {
+      const unanswered = questions.some(q => !answers[q.id] || answers[q.id].trim() === "" || answers[q.id] === ",");
+      if (unanswered) {
+        toast.error("Mohon isi semua jawaban sebelum menyelesaikan tes.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       await finishTestAssignment(assignment.id, answers, { tabLeaveCount, refreshCount });
       setIsFinished(true);
+      if (typeof window !== "undefined") localStorage.removeItem(`hero_test_timer_${assignment.id}`);
       toast.success("Test submitted successfully!");
     } catch (e) {
       toast.error("Failed to submit test.");
@@ -178,11 +202,13 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
         {test.isApplicationForm ? (
           <ApplicationForm answers={answers} setAnswers={setAnswers} questionId={questions[0]?.id || 0} />
         ) : (
-          questions.map((q, index) => (
+          questions.map((q, index) => {
+            const isAnswered = answers[q.id] && answers[q.id].trim() !== "" && answers[q.id] !== ",";
+            return (
             <Card key={q.id}>
             <CardHeader className="flex flex-col bg-muted/20 border-b pb-4 space-y-4 min-w-0">
               <div className="flex gap-3 w-full min-w-0">
-                <Badge className="h-6 w-6 shrink-0 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
+                <Badge className={`h-6 w-6 shrink-0 flex items-center justify-center p-0 rounded-full text-white border-0 ${isAnswered ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600'}`}>{index + 1}</Badge>
                 <CardTitle className="question-content text-base leading-relaxed font-medium flex-1" dangerouslySetInnerHTML={{ __html: q.questionText }} />
               </div>
               {q.imageUrl && <img src={q.imageUrl} alt="Gambar soal" className="mt-4 max-h-80 w-full rounded-lg border object-contain" />}
@@ -328,7 +354,8 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
               })()}
             </CardContent>
           </Card>
-          ))
+          );
+        })
         )}
       </div>
 
