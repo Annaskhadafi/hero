@@ -180,10 +180,10 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
         ) : (
           questions.map((q, index) => (
             <Card key={q.id}>
-            <CardHeader className="bg-muted/20 border-b pb-4">
-              <div className="flex gap-3 w-full max-w-full">
+            <CardHeader className="flex flex-col bg-muted/20 border-b pb-4 space-y-4 min-w-0">
+              <div className="flex gap-3 w-full min-w-0">
                 <Badge className="h-6 w-6 shrink-0 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
-                <CardTitle className="text-base leading-relaxed font-medium flex-1 min-w-0 break-words whitespace-pre-wrap [&_*]:whitespace-normal [&_*]:break-words [&_*]:text-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:object-contain [&_table]:block [&_table]:w-full [&_table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.questionText }} />
+                <CardTitle className="question-content text-base leading-relaxed font-medium flex-1" dangerouslySetInnerHTML={{ __html: q.questionText }} />
               </div>
               {q.imageUrl && <img src={q.imageUrl} alt="Gambar soal" className="mt-4 max-h-80 w-full rounded-lg border object-contain" />}
             </CardHeader>
@@ -211,12 +211,12 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} className="block m-0" />
                             </div>
                           </div>
-                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="cursor-pointer font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
+                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="question-content cursor-pointer font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
                         </div>
                       ) : (
                         <div key={opt.id} className="flex items-center space-x-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer transition-colors" onClick={() => setAnswers({ ...answers, [q.id]: opt.id })}>
                           <RadioGroupItem value={opt.id} id={`q-${q.id}-${opt.id}`} />
-                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="flex-1 cursor-pointer font-normal text-base break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
+                          <Label htmlFor={`q-${q.id}-${opt.id}`} className="question-content flex-1 cursor-pointer font-normal text-base break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</Label>
                         </div>
                       );
                     })}
@@ -243,12 +243,12 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               <input type="checkbox" checked={isChecked} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} className="h-4 w-4 rounded border-primary accent-primary" />
                             </div>
                           </div>
-                          <span className="font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
+                          <span className="question-content font-medium text-center w-full break-words whitespace-pre-wrap"><span className="font-bold mr-1">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
                         </label>
                       ) : (
                         <label key={opt.id} className="flex items-center gap-3 border p-4 rounded-lg hover:bg-muted/10 cursor-pointer">
                           <input type="checkbox" checked={isChecked} onChange={(event) => { const next = event.target.checked ? [...selected, opt.id] : selected.filter((id) => id !== opt.id); setAnswers({ ...answers, [q.id]: next.join(",") }); }} /> 
-                          <span className="flex-1 break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
+                          <span className="question-content flex-1 break-words whitespace-pre-wrap"><span className="font-bold mr-2">{opt.id}.</span> {opt.id === opt.text ? "" : opt.text}</span>
                         </label>
                       );
                     })}
@@ -317,7 +317,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
                               />
                             </td>
                             <td className="p-3 text-left break-words whitespace-pre-wrap max-w-[200px] sm:max-w-none">
-                              <span className="font-semibold mr-2">{opt.id}.</span>{opt.text}
+                              <span className="question-content font-semibold mr-2">{opt.id}.</span>{opt.text}
                             </td>
                           </tr>
                         ))}
