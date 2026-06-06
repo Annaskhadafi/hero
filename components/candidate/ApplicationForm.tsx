@@ -8,6 +8,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { useState, useRef, useEffect } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
+const NativeSelect = ({ value, onChange, options, placeholder, className }: any) => (
+  <select
+    className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className || ""}`}
+    value={value}
+    onChange={onChange}
+  >
+    <option value="" disabled>{placeholder || "-- Pilih --"}</option>
+    {options.map((opt: string) => (
+      <option key={opt} value={opt}>{opt}</option>
+    ))}
+  </select>
+);
+
 export function ApplicationForm({ 
   answers, 
   setAnswers,
@@ -55,18 +68,7 @@ export function ApplicationForm({
 
   const getVal = (key: string) => getFormData()[key] || "";
 
-  const NativeSelect = ({ value, onChange, options, placeholder, className }: any) => (
-    <select
-      className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className || ""}`}
-      value={value}
-      onChange={onChange}
-    >
-      <option value="" disabled>{placeholder || "-- Pilih --"}</option>
-      {options.map((opt: string) => (
-        <option key={opt} value={opt}>{opt}</option>
-      ))}
-    </select>
-  );
+  const getVal = (key: string) => getFormData()[key] || "";
 
   return (
     <div className="space-y-8 p-6 bg-white text-black max-w-5xl mx-auto rounded-lg shadow-sm border">
