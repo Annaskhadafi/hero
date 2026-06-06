@@ -112,6 +112,38 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
   const completedAt = new Date();
   const durationSeconds = assignment.startedAt ? Math.max(0, Math.round((completedAt.getTime() - assignment.startedAt.getTime()) / 1000)) : null;
 
+  const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, assignment.testId)).limit(1);
+
+  if (test?.isApplicationForm && answers) {
+    let fullName = "";
+    let email = "";
+    let phone = "";
+    
+    for (const [qIdStr, text] of Object.entries(answers)) {
+      const qText = questionById.get(Number(qIdStr))?.questionText.toLowerCase() || "";
+      if (!text) continue;
+      
+      if (qText.includes("nama") && !qText.includes("perusahaan") && !qText.includes("sekolah") && !qText.includes("universitas")) {
+        fullName = text;
+      } else if (qText.includes("email")) {
+        email = text;
+      } else if (qText.includes("telepon") || qText.includes("hp") || qText.includes("whatsapp")) {
+        phone = text;
+      }
+    }
+    
+    if (fullName || email || phone) {
+      const updateData: any = {};
+      if (fullName) updateData.fullName = fullName;
+      if (email) updateData.email = email;
+      if (phone) updateData.phone = phone;
+      
+      await db.update(hcCandidates)
+        .set(updateData)
+        .where(eq(hcCandidates.id, assignment.candidateId));
+    }
+  }
+
   await db.update(hcOnlineTestAssignments)
     .set({ status: "Completed", score, completedAt, durationSeconds, tabLeaveCount: telemetry?.tabLeaveCount ?? 0, refreshCount: telemetry?.refreshCount ?? 0 })
     .where(eq(hcOnlineTestAssignments.id, assignmentId));
@@ -125,26 +157,37 @@ export async function startTestAssignment(assignmentId: number) {
     .where(eq(hcOnlineTestAssignments.id, assignmentId));
 }
 
-export async function registerForPublicTest(testId: number) {
+export async function registerForPublicTest(testId: number, data: { fullName: string; phone: string; email: string }) {
   try {
     const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, testId)).limit(1);
     if (!test) throw new Error("Test not found");
 
-    const publicIdentity = randomUUID();
+    const candidates = await db.select()
+      .from(hcCandidates)
+      .where(and(
+        eq(hcCandidates.fullName, data.fullName),
+        eq(hcCandidates.phone, data.phone)
+      ))
+      .orderBy(desc(hcCandidates.createdAt))
+      .limit(1);
+    let candidate = candidates[0];
 
-    // Create an anonymous candidate for public links.
-    const [candidate] = await db.insert(hcCandidates).values({
-      fullName: `Peserta Public Test ${publicIdentity.slice(0, 8)}`,
-      email: `public-${publicIdentity}@test.local`,
-      phone: "",
-      source: "Public Test Link",
-      currentStage: "Psikotes", // Start at psikotes/test stage
-    }).returning();
+    if (!candidate) {
+      const [newCandidate] = await db.insert(hcCandidates).values({
+        fullName: data.fullName,
+        email: data.email || "",
+        phone: data.phone,
+        source: "Public Test Link",
+        currentStage: "Psikotes",
+      }).returning();
+      candidate = newCandidate;
+    } else if (data.email && !candidate.email) {
+      await db.update(hcCandidates).set({ email: data.email }).where(eq(hcCandidates.id, candidate.id));
+    }
 
-    // Create assignment
     const accessKey = randomUUID();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+    expiresAt.setDate(expiresAt.getDate() + 7);
 
     const [assignment] = await db.insert(hcOnlineTestAssignments).values({
       testId: test.id,
@@ -160,3 +203,4 @@ export async function registerForPublicTest(testId: number) {
     throw new Error("Failed to register for the test. Please try again.");
   }
 }
+

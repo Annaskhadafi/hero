@@ -6,31 +6,17 @@ import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 
-export async function registerTestGroup(groupId: number, data: { fullName: string; phone: string; email: string }) {
+export async function registerTestGroup(groupId: number) {
   try {
-    // 1. Find or create candidate
-    const candidates = await db.select()
-      .from(hcCandidates)
-      .where(and(
-        eq(hcCandidates.fullName, data.fullName),
-        eq(hcCandidates.phone, data.phone)
-      ))
-      .orderBy(desc(hcCandidates.createdAt))
-      .limit(1);
-    let candidate = candidates[0];
-
-    if (!candidate) {
-      const [newCandidate] = await db.insert(hcCandidates).values({
-        fullName: data.fullName,
-        phone: data.phone,
-        email: data.email || "",
-        source: "Test Group Link"
-      }).returning();
-      candidate = newCandidate;
-    } else if (data.email && !candidate.email) {
-      // update email if provided
-      await db.update(hcCandidates).set({ email: data.email }).where(eq(hcCandidates.id, candidate.id));
-    }
+    // 1. Create anonymous candidate
+    const publicIdentity = randomUUID();
+    const [candidate] = await db.insert(hcCandidates).values({
+      fullName: `Peserta Test Group ${publicIdentity.slice(0, 8)}`,
+      email: `group-${publicIdentity}@test.local`,
+      phone: "",
+      source: "Test Group Link",
+      currentStage: "Psikotes"
+    }).returning();
 
     // 2. Fetch all tests in this group
     const groupItems = await db.select({

@@ -13,24 +13,13 @@ import { Loader2 } from "lucide-react";
 export default function ClientPage({ group, items }: { group: any; items: any[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: "",
-    phone: "",
-    email: ""
-  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.fullName || !formData.phone) {
-      toast.error("Nama dan Nomor Telepon wajib diisi.");
-      return;
-    }
-
+  const handleStartTest = async () => {
     setLoading(true);
     try {
-      const result = await registerTestGroup(group.id, formData);
+      const result = await registerTestGroup(group.id);
       if (result.success && result.redirectUrl) {
-        toast.success("Berhasil didaftarkan, mengarahkan ke tes...");
+        toast.success("Mempersiapkan tes...");
         router.push(result.redirectUrl);
       } else {
         toast.error(result.error || "Gagal mendaftar tes.");
@@ -62,52 +51,16 @@ export default function ClientPage({ group, items }: { group: any; items: any[] 
             </ul>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Nama Lengkap <span className="text-red-500">*</span></Label>
-              <Input
-                id="fullName"
-                placeholder="Masukkan nama lengkap Anda"
-                value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                required
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="phone">Nomor Telepon / WhatsApp <span className="text-red-500">*</span></Label>
-              <Input
-                id="phone"
-                placeholder="Contoh: 08123456789"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                required
-              />
-              <p className="text-xs text-muted-foreground">Digunakan untuk mengecek histori tes Anda sebelumnya.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email (Opsional)</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="nama@email.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-
-            <Button type="submit" className="w-full mt-6" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Mempersiapkan Tes...
-                </>
-              ) : (
-                "Mulai Tes Sekarang"
-              )}
-            </Button>
-          </form>
+          <Button onClick={handleStartTest} className="w-full mt-2 h-11" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Mempersiapkan Tes...
+              </>
+            ) : (
+              "Mulai Tes Sekarang"
+            )}
+          </Button>
         </CardContent>
       </Card>
     </div>

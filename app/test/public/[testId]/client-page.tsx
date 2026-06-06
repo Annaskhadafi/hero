@@ -4,17 +4,30 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { registerForPublicTest } from "@/app/actions/candidate-tests";
 import { toast } from "sonner";
 
 export function PublicTestRegistrationClient({ test }: { test: any }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    fullName: "",
+    phone: "",
+    email: ""
+  });
 
-  const handleStartTest = async () => {
+  const handleStartTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.fullName || !formData.phone) {
+      toast.error("Nama dan Nomor Telepon wajib diisi.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const accessKey = await registerForPublicTest(test.id);
+      const accessKey = await registerForPublicTest(test.id, formData);
       toast.success("Test siap dimulai");
       router.push(`/test/${accessKey}`);
     } catch (error: any) {
@@ -30,14 +43,45 @@ export function PublicTestRegistrationClient({ test }: { test: any }) {
           <CardTitle className="text-2xl">{test.title}</CardTitle>
           <CardDescription className="mt-2">{test.description}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5 pt-6">
-          <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-            <p className="mb-2 font-medium text-foreground">Link public langsung masuk ke test.</p>
-            <p>Tidak perlu mengisi nama, email, atau nomor telepon.</p>
-          </div>
-          <Button className="h-11 w-full" disabled={isSubmitting} onClick={handleStartTest}>
-            {isSubmitting ? "Menyiapkan Test..." : "Mulai Test"}
-          </Button>
+        <CardContent className="pt-6">
+          <form onSubmit={handleStartTest} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Nama Lengkap <span className="text-red-500">*</span></Label>
+              <Input
+                id="fullName"
+                placeholder="Masukkan nama lengkap Anda"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                required
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="phone">Nomor Telepon / WhatsApp <span className="text-red-500">*</span></Label>
+              <Input
+                id="phone"
+                placeholder="Contoh: 08123456789"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email (Opsional)</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="nama@email.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+
+            <Button type="submit" className="h-11 w-full mt-4" disabled={isSubmitting}>
+              {isSubmitting ? "Menyiapkan Test..." : "Mulai Test"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
       
