@@ -86,6 +86,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
   return (
     <div className={className}>
       <ReactQuill
+        // @ts-expect-error ReactQuill dynamic import type missing ref
         ref={quillRef}
         theme="snow"
         value={value}

@@ -2426,6 +2426,17 @@ export const hcCandidates = pgTable('hero_hc_candidates', {
   rejectedAtStage: text('rejected_at_stage').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+
+  // Onboarding Info
+  onboardingToken: text('onboarding_token').unique(),
+  nikKtp: text('nik_ktp'),
+  npwpNumber: text('npwp_number'),
+  bpjsKesehatan: text('bpjs_kesehatan'),
+  bpjsKetenagakerjaan: text('bpjs_ketenagakerjaan'),
+  bankName: text('bank_name'),
+  bankAccountNumber: text('bank_account_number'),
+  emergencyContactName: text('emergency_contact_name'),
+  emergencyContactPhone: text('emergency_contact_phone'),
 })
 
 export const hcCandidateStages = pgTable('hero_hc_candidate_stages', {

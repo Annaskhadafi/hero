@@ -140,26 +140,24 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
 
   return (
     <>
-      <AdminPageShell>
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="outline" size="icon" onClick={() => router.push("/dashboard/hc/recruitment")}>
-          <IconArrowLeft className="w-4 h-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{candidate.fullName}</h1>
-          <p className="text-muted-foreground">
-            {candidate.jobTitle} • Applied on {format(new Date(candidate.createdAt), "dd MMM yyyy")}
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Badge variant="secondary" className="text-sm px-3 py-1">{candidate.currentStage}</Badge>
-          {candidate.cvUrl && (
-            <Button asChild variant="outline">
-              <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+      <AdminPageShell 
+        eyebrow="Candidate Details" 
+        title={candidate.fullName} 
+        description={`${candidate.jobTitle || 'Position'} • Applied on ${format(new Date(candidate.createdAt), "dd MMM yyyy")}`}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/hc/recruitment")}>
+              <IconArrowLeft className="w-4 h-4 mr-2" /> Back
             </Button>
-          )}
-        </div>
-      </div>
+            <Badge variant="secondary" className="text-sm px-3 py-1">{candidate.currentStage}</Badge>
+            {candidate.cvUrl && (
+              <Button asChild variant="outline" size="sm">
+                <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+              </Button>
+            )}
+          </>
+        }
+      >
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="mb-4 flex-wrap">

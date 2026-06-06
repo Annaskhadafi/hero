@@ -1,0 +1,18 @@
+import { db } from "./db/index.js";
+import { sql } from "drizzle-orm";
+
+async function run() {
+  try {
+    const email = 'mochamad.khadafi@chitraparatama.co.id';
+    const u = await db.execute(sql`SELECT * FROM "user" WHERE email=${email}`);
+    console.log('user:', u.rows);
+    if (u.rows.length > 0) {
+      const a = await db.execute(sql`SELECT * FROM account WHERE user_id=${u.rows[0].id}`);
+      console.log('account:', a.rows);
+    }
+  } catch(e) {
+    console.error(e.message);
+  }
+  process.exit(0);
+}
+run();

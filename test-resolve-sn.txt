@@ -1,0 +1,44 @@
+import { db } from "./db/index.js";
+import { centralServiceEmployees } from "./db/schema/central-service.js";
+import { employees, hrEmployees } from "./db/schema/hero.js";
+import { eq, or, sql } from "drizzle-orm";
+import type { AnyColumn } from "drizzle-orm";
+
+function buildSnLookupVariants(sn: string) {
+  const trimmedSn = sn.trim();
+  const upperSn = trimmedSn.toUpperCase();
+  const withoutEmployeePrefix = upperSn.replace(/^EMP[-\s]*/i, "");
+  const variants = new Set([trimmedSn, upperSn, withoutEmployeePrefix]);
+  if (withoutEmployeePrefix) variants.add(`EMP-${withoutEmployeePrefix}`);
+  return [...variants].map(v => v.trim().toUpperCase()).filter(Boolean);
+}
+
+function snMatches(column: AnyColumn, snVariants: string[]) {
+  const normalizedColumn = sql<string>`upper(trim(${column}))`;
+  return or(...snVariants.map(variant => eq(normalizedColumn, variant)));
+}
+
+async function run() {
+  try {
+    const sn = "71261";
+    const snVariants = buildSnLookupVariants(sn);
+    console.log("Checking variants:", snVariants);
+
+    console.log("Checking hrEmployees...");
+    const hrEmp = await db.select({ email: hrEmployees.email }).from(hrEmployees).where(snMatches(hrEmployees.employeeId, snVariants)).limit(1);
+    console.log("hrEmp:", hrEmp);
+
+    console.log("Checking centralServiceEmployees...");
+    const csEmp = await db.select({ email: centralServiceEmployees.email }).from(centralServiceEmployees).where(snMatches(centralServiceEmployees.employeeSn, snVariants)).limit(1);
+    console.log("csEmp:", csEmp);
+
+    console.log("Checking employees...");
+    const legEmp = await db.select({ email: employees.email }).from(employees).where(snMatches(employees.employeeSn, snVariants)).limit(1);
+    console.log("legEmp:", legEmp);
+
+  } catch(e) {
+    console.error("resolve-sn Error:", e.message);
+  }
+  process.exit(0);
+}
+run();

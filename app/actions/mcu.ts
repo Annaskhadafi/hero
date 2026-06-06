@@ -36,7 +36,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
     klinikName: data.klinikName,
     klinikEmail: data.klinikEmail,
     paketMcu: data.paketMcu,
-    scheduledDate: data.scheduledDate,
+    scheduledDate: format(data.scheduledDate, "yyyy-MM-dd"),
     status: "Scheduled",
   }).returning();
 

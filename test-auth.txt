@@ -1,0 +1,21 @@
+import { auth } from "./lib/auth.js";
+import { headers } from "next/headers";
+
+async function run() {
+  try {
+    const res = await auth.api.signInEmail({
+      body: {
+        email: "mochamad.khadafi@chitraparatama.co.id",
+        password: "password", // whatever they typed
+      },
+      headers: new Headers({
+        "x-forwarded-for": "127.0.0.1",
+        "user-agent": "test"
+      })
+    });
+    console.log(res);
+  } catch(e) {
+    console.error("Auth error:", e);
+  }
+}
+run();

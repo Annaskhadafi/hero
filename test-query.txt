@@ -1,0 +1,14 @@
+import { db } from "./db/index.js";
+import { hcCandidateStages } from "./db/schema/hero.js";
+import { eq } from "drizzle-orm";
+
+async function run() {
+  try {
+    const res = await db.select().from(hcCandidateStages).limit(1);
+    console.log("Success! Row count:", res.length);
+  } catch(e) {
+    console.error("Query failed:", e.message);
+  }
+  process.exit(0);
+}
+run();

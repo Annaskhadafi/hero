@@ -1,0 +1,23 @@
+import { db } from "./db/index.js";
+import { sql } from "drizzle-orm";
+
+async function run() {
+  console.log("Fixing hero_hc_candidate_stages...");
+  try {
+    const queries = [
+      `ALTER TABLE "hero_hc_candidate_stages" ADD COLUMN IF NOT EXISTS "entered_at" timestamp DEFAULT now() NOT NULL;`,
+      `ALTER TABLE "hero_hc_candidate_stages" ADD COLUMN IF NOT EXISTS "exited_at" timestamp;`,
+      `ALTER TABLE "hero_hc_candidate_stages" ADD COLUMN IF NOT EXISTS "result" text DEFAULT '' NOT NULL;`,
+      `ALTER TABLE "hero_hc_candidate_stages" ADD COLUMN IF NOT EXISTS "evaluator" text DEFAULT '' NOT NULL;`,
+      `ALTER TABLE "hero_hc_candidate_stages" ADD COLUMN IF NOT EXISTS "score" integer;`
+    ];
+    for (const q of queries) {
+      try {
+        await db.execute(sql.raw(q));
+      } catch (e) { console.log(e.message); }
+    }
+    console.log("Fixed stages table!");
+  } catch(e) { console.log(e.message); }
+  process.exit(0);
+}
+run();

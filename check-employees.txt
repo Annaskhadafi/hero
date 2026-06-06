@@ -1,0 +1,19 @@
+import { db } from "./db/index.js";
+import { centralServiceEmployees } from "./db/schema/central-service.js";
+import { employees, hrEmployees } from "./db/schema/hero.js";
+import { sql } from "drizzle-orm";
+
+async function run() {
+  try {
+    await db.select().from(centralServiceEmployees).limit(1);
+    console.log("CentralService OK");
+    await db.select().from(employees).limit(1);
+    console.log("Employees OK");
+    await db.select().from(hrEmployees).limit(1);
+    console.log("HREmployees OK");
+  } catch(e) {
+    console.error("Error:", e.message);
+  }
+  process.exit(0);
+}
+run();
