@@ -235,3 +235,28 @@ export async function getTestGroupEntries(slug: string) {
     entries: entries.sort((a, b) => b.totalScore - a.totalScore) // sort by highest score
   };
 }
+
+export async function deleteTestGroupCandidate(groupId: number, candidateId: number) {
+  try {
+    const groupItems = await db.select({ testId: hcOnlineTestGroupItems.testId })
+      .from(hcOnlineTestGroupItems)
+      .where(eq(hcOnlineTestGroupItems.groupId, groupId));
+      
+    if (groupItems.length === 0) return { success: true };
+    
+    const testIds = groupItems.map(i => i.testId);
+    
+    await db.delete(hcOnlineTestAssignments)
+      .where(and(
+        eq(hcOnlineTestAssignments.candidateId, candidateId),
+        inArray(hcOnlineTestAssignments.testId, testIds)
+      ));
+      
+    revalidatePath("/dashboard/hc/recruitment/test-groups");
+    return { success: true };
+  } catch (error: any) {
+    console.error("deleteTestGroupCandidate error:", error);
+    return { success: false, error: "Failed to delete candidate results." };
+  }
+}
+
