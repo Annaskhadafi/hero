@@ -183,7 +183,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
             <CardHeader className="bg-muted/20 border-b pb-4">
               <div className="flex gap-3 w-full max-w-full">
                 <Badge className="h-6 w-6 shrink-0 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
-                <CardTitle className="text-base leading-relaxed font-medium flex-1 break-words whitespace-pre-wrap [&_*]:whitespace-normal [&_*]:break-words [&_*]:text-wrap [&>img]:max-w-full [&>img]:h-auto [&>table]:block [&>table]:w-full [&>table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.questionText }} />
+                <CardTitle className="text-base leading-relaxed font-medium flex-1 min-w-0 break-words whitespace-pre-wrap [&_*]:whitespace-normal [&_*]:break-words [&_*]:text-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:object-contain [&_table]:block [&_table]:w-full [&_table]:overflow-x-auto" dangerouslySetInnerHTML={{ __html: q.questionText }} />
               </div>
               {q.imageUrl && <img src={q.imageUrl} alt="Gambar soal" className="mt-4 max-h-80 w-full rounded-lg border object-contain" />}
             </CardHeader>
