@@ -182,7 +182,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
             <Card key={q.id}>
             <CardHeader className="bg-muted/20 border-b pb-4">
               <div className="flex gap-3">
-                <Badge className="h-6 w-6 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge><Badge variant="outline">{questionTypeLabel(q.questionType)}</Badge>
+                <Badge className="h-6 w-6 flex items-center justify-center p-0 rounded-full">{index + 1}</Badge>
                 <CardTitle className="text-base leading-relaxed font-medium" dangerouslySetInnerHTML={{ __html: q.questionText }} />
               </div>
               {q.imageUrl && <img src={q.imageUrl} alt="Gambar soal" className="mt-4 max-h-80 w-full rounded-lg border object-contain" />}

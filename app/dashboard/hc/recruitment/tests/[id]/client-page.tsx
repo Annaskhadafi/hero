@@ -266,7 +266,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
               </div>
             </div>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-4 md:grid-cols-2 items-start">
             {questions.map((q, i) => (
           <div key={q.id} className="bg-card border rounded-lg p-5">
             <div className="flex justify-between items-start mb-4">
