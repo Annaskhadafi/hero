@@ -68,8 +68,6 @@ export function ApplicationForm({
 
   const getVal = (key: string) => getFormData()[key] || "";
 
-  const getVal = (key: string) => getFormData()[key] || "";
-
   return (
     <div className="space-y-8 p-6 bg-white text-black max-w-5xl mx-auto rounded-lg shadow-sm border">
       <div className="text-center mb-8 border-b pb-4 flex flex-col items-center">
