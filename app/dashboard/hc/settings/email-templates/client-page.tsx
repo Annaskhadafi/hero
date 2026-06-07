@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { IconMail, IconPlus, IconTrash, IconSettings, IconHistory, IconExternalLink } from "@tabler/icons-react";
+import { IconMail, IconPlus, IconTrash, IconSettings, IconHistory, IconExternalLink, IconEye, IconCode } from "@tabler/icons-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { saveHcEmailTemplate, deleteHcEmailTemplate, getHcEmailDeliveryLogs, ensureDefaultTemplates } from "@/app/actions/hc-email-templates";
@@ -22,6 +22,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 
 const TEMPLATE_TYPES = [
   { value: "interview_invitation", label: "Interview Invitation" },
@@ -71,6 +72,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
     getHcEmailDeliveryLogs(10).then(setLogs).catch(() => {});
   }, []);
   const [form, setForm] = useState({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY });
+  const [showPreview, setShowPreview] = useState(false);
 
   const openEdit = (t?: HcEmailTemplate) => {
     if (t) {
@@ -81,6 +83,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
       setForm({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY });
     }
     setOpen(true);
+    setShowPreview(false);
   };
 
   const handleSave = async () => {
@@ -259,9 +262,28 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
                 placeholder="e.g. [HERO] Interview Invitation - {jobTitle}" />
             </div>
             <div className="space-y-2">
-              <Label>Email Body (HTML supported) <span className="text-destructive">*</span></Label>
-              <Textarea value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}
-                rows={14} className="font-mono text-sm" />
+              <div className="flex items-center justify-between">
+                <Label>Email Body (HTML supported) <span className="text-destructive">*</span></Label>
+                <div className="flex items-center gap-2">
+                  <IconCode className="w-4 h-4 text-muted-foreground" />
+                  <Switch checked={showPreview} onCheckedChange={setShowPreview} />
+                  <IconEye className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{showPreview ? "Preview" : "Code"}</span>
+                </div>
+              </div>
+              {showPreview ? (
+                <div className="border rounded-lg bg-white overflow-hidden" style={{ minHeight: "400px" }}>
+                  <iframe
+                    srcDoc={form.body}
+                    className="w-full h-full border-0"
+                    style={{ minHeight: "400px" }}
+                    title="Email Preview"
+                  />
+                </div>
+              ) : (
+                <Textarea value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}
+                  rows={14} className="font-mono text-sm" />
+              )}
             </div>
             <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-md">
               <strong>Available variables:</strong> {Object.keys(PLACEHOLDER_DEFS).map(k => `{${k}}`).join(", ")}
