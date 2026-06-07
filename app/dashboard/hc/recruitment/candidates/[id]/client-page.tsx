@@ -25,7 +25,7 @@ import { generateOnboardingToken } from "@/app/actions/onboarding";
 import { hireAndCreateEmployee, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 
-export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[] }) {
+export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[] }) {
   const router = useRouter();
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
@@ -218,6 +218,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
           <TabsTrigger value="emails">Emails ({emailLogs.length})</TabsTrigger>
+          <TabsTrigger value="test-results">Test Results ({testResults.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -984,6 +985,63 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                       </div>
                       {log.errorMessage && (
                         <div className="mt-2 text-sm bg-destructive/10 text-destructive p-2 rounded">{log.errorMessage}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="test-results">
+          <Card>
+            <CardHeader>
+              <CardTitle>Hasil Test Online</CardTitle>
+              <CardDescription>Skor dan jawaban dari setiap test yang dikerjakan</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {testResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">Belum ada test yang dikerjakan.</p>
+              ) : (
+                <div className="space-y-6">
+                  {testResults.map((result: any) => (
+                    <div key={result.id} className="border rounded-xl overflow-hidden">
+                      <div className="bg-muted/30 px-5 py-3 flex items-center justify-between">
+                        <div>
+                          <h4 className="font-semibold">{result.testTitle}</h4>
+                          <p className="text-xs text-muted-foreground">
+                            {result.startedAt ? format(new Date(result.startedAt), "dd MMM yyyy HH:mm") : "Not started"}
+                            {result.completedAt ? ` → ${format(new Date(result.completedAt), "dd MMM yyyy HH:mm")}` : ""}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant={result.status === "Completed" || result.status === "Graded" ? "default" : "secondary"}>{result.status}</Badge>
+                          {result.totalMaxPoints > 0 && (
+                            <div className="text-lg font-bold mt-1 text-primary">
+                              {result.totalEarnedPoints} / {result.totalMaxPoints}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {result.answers.length > 0 && (
+                        <div className="divide-y">
+                          {result.answers.map((ans: any) => (
+                            <div key={ans.id} className="px-5 py-3 flex items-start gap-4">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{ans.questionText}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Jawaban: <span className="font-medium">{ans.answerText || "-"}</span>
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <Badge variant={ans.isCorrect ? "default" : "destructive"} className="text-xs">
+                                  {ans.pointsAwarded} / {ans.maxPoints}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ))}

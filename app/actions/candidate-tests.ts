@@ -213,3 +213,52 @@ export async function registerForPublicTest(testId: number, data: { fullName: st
   }
 }
 
+export async function getCandidateTestResults(candidateId: number) {
+  const assignments = await db
+    .select({
+      id: hcOnlineTestAssignments.id,
+      testId: hcOnlineTestAssignments.testId,
+      testTitle: hcOnlineTests.title,
+      status: hcOnlineTestAssignments.status,
+      score: hcOnlineTestAssignments.score,
+      startedAt: hcOnlineTestAssignments.startedAt,
+      completedAt: hcOnlineTestAssignments.completedAt,
+      createdAt: hcOnlineTestAssignments.createdAt,
+    })
+    .from(hcOnlineTestAssignments)
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestAssignments.testId, hcOnlineTests.id))
+    .where(eq(hcOnlineTestAssignments.candidateId, candidateId))
+    .orderBy(desc(hcOnlineTestAssignments.createdAt));
+
+  const results = [];
+  for (const a of assignments) {
+    const answers = await db
+      .select({
+        id: hcOnlineTestAnswers.id,
+        questionId: hcOnlineTestAnswers.questionId,
+        answerText: hcOnlineTestAnswers.answerText,
+        isCorrect: hcOnlineTestAnswers.isCorrect,
+        pointsAwarded: hcOnlineTestAnswers.pointsAwarded,
+        questionText: hcOnlineTestQuestions.questionText,
+        questionType: hcOnlineTestQuestions.questionType,
+        maxPoints: hcOnlineTestQuestions.points,
+      })
+      .from(hcOnlineTestAnswers)
+      .innerJoin(hcOnlineTestQuestions, eq(hcOnlineTestAnswers.questionId, hcOnlineTestQuestions.id))
+      .where(eq(hcOnlineTestAnswers.assignmentId, a.id))
+      .orderBy(hcOnlineTestQuestions.sortOrder);
+
+    const totalMax = answers.reduce((sum, ans) => sum + ans.maxPoints, 0);
+    const totalEarned = answers.reduce((sum, ans) => sum + ans.pointsAwarded, 0);
+
+    results.push({
+      ...a,
+      answers,
+      totalMaxPoints: totalMax,
+      totalEarnedPoints: totalEarned,
+    });
+  }
+
+  return results;
+}
+
