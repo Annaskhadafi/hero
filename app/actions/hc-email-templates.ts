@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { hcEmailTemplates, emailDeliveryLogs } from "@/db/schema/hero";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { HC_TEMPLATE_CODES } from "@/lib/hc-email-utils";
 
@@ -14,11 +14,32 @@ export type HcEmailTemplateData = {
   isActive?: boolean;
 };
 
+async function ensureHcEmailTemplatesTable() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS hero_hc_email_templates (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch {
+    // table already exists or race condition, ignore
+  }
+}
+
 export async function getHcEmailTemplates() {
+  await ensureHcEmailTemplatesTable();
   return await db.select().from(hcEmailTemplates).orderBy(desc(hcEmailTemplates.createdAt));
 }
 
 export async function getHcEmailTemplateByType(type: string) {
+  await ensureHcEmailTemplatesTable();
   const [tmpl] = await db
     .select()
     .from(hcEmailTemplates)
@@ -27,7 +48,12 @@ export async function getHcEmailTemplateByType(type: string) {
   return tmpl ?? null;
 }
 
+export async function ensureHcEmailTable() {
+  await ensureHcEmailTemplatesTable();
+}
+
 export async function saveHcEmailTemplate(id: number | null, data: HcEmailTemplateData) {
+  await ensureHcEmailTemplatesTable();
   if (id) {
     const [updated] = await db
       .update(hcEmailTemplates)
@@ -43,6 +69,7 @@ export async function saveHcEmailTemplate(id: number | null, data: HcEmailTempla
 }
 
 export async function deleteHcEmailTemplate(id: number) {
+  await ensureHcEmailTemplatesTable();
   await db.delete(hcEmailTemplates).where(eq(hcEmailTemplates.id, id));
   revalidatePath("/dashboard/hc/settings/email-templates");
   return { success: true };
