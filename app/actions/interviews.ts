@@ -7,6 +7,37 @@ import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
+import { getHcEmailTemplateByType, renderHcTemplate } from "@/app/actions/hc-email-templates";
+
+const FALLBACK_HTML = (vars: Record<string, string>) => `
+<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
+  <h2 style="color:#0f172a;">Interview Invitation</h2>
+  <p>Dear <strong>${vars.candidateName}</strong>,</p>
+  <p>You are invited for an interview for <strong>${vars.jobTitle}</strong>.</p>
+  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
+    <p><strong>Date:</strong> ${vars.date}</p>
+    <p><strong>Time:</strong> ${vars.time}</p>
+    <p><strong>Location:</strong> ${vars.location}</p>
+    <p><strong>Interviewer:</strong> ${vars.interviewer}</p>
+  </div>
+  <p>Please be ready 10 minutes before the scheduled time.</p>
+  <p>Best regards,<br/>Human Capital Team</p>
+</div>`;
+
+const FALLBACK_TEXT = (vars: Record<string, string>) =>
+`Dear ${vars.candidateName},
+
+You are invited for an interview for ${vars.jobTitle}.
+
+Date: ${vars.date}
+Time: ${vars.time}
+Location: ${vars.location}
+Interviewer: ${vars.interviewer}
+
+Please be ready 10 minutes before the scheduled time.
+
+Best regards,
+Human Capital Team`;
 
 export async function getCandidateInterviews(candidateId: number) {
   return await db.select()
@@ -32,7 +63,6 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
     if (recruitment) vacancyTitle = recruitment.jobTitle;
   }
 
-  // Insert interview
   const [interview] = await db.insert(hcCandidateInterviews).values({
     candidateId,
     scheduledAt: data.scheduledAt,
@@ -44,62 +74,42 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
     status: "Scheduled",
   }).returning();
 
-  // Update candidate stage if not already passed interview
   if (candidate.currentStage !== "Passed Interview" && candidate.currentStage !== "MCU") {
     await db.update(hcCandidates)
       .set({ currentStage: "Interview", updatedAt: new Date() })
       .where(eq(hcCandidates.id, candidateId));
   }
 
-  // Send Email
   try {
     const smtpSettings = await getEmailSmtpSettingsData();
-    if (smtpSettings.host && smtpSettings.fromEmail) {
-      const subject = `[HERO] Interview Invitation - ${vacancyTitle}`;
+    if (smtpSettings.host && smtpSettings.fromEmail && candidate.email) {
       const interviewDate = format(data.scheduledAt, "EEEE, dd MMMM yyyy");
       const interviewTime = format(data.scheduledAt, "HH:mm");
-      
-      const html = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-w-xl mx-auto border p-6 rounded-lg">
-          <h2 style="color: #0f172a;">Interview Invitation</h2>
-          <p>Dear <strong>${candidate.fullName}</strong>,</p>
-          <p>Congratulations! You have successfully passed the online test phase. We would like to invite you for an interview for the <strong>${vacancyTitle}</strong> position.</p>
-          
-          <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e2e8f0;">
-            <p style="margin: 5px 0;"><strong>Date:</strong> ${interviewDate}</p>
-            <p style="margin: 5px 0;"><strong>Time:</strong> ${interviewTime}</p>
-            <p style="margin: 5px 0;"><strong>Type:</strong> ${data.interviewType}</p>
-            <p style="margin: 5px 0;"><strong>Location/Link:</strong> <br/>
-              ${data.interviewType.toLowerCase() === 'online' && data.locationOrLink.startsWith('http') 
-                ? `<a href="${data.locationOrLink}" target="_blank" style="color: #2563eb;">${data.locationOrLink}</a>`
-                : data.locationOrLink}
-            </p>
-            <p style="margin: 5px 0;"><strong>Interviewer:</strong> ${data.interviewerName}</p>
-          </div>
+      const templateVars = {
+        candidateName: candidate.fullName,
+        jobTitle: vacancyTitle,
+        companyName: "PT Chitra Paratama",
+        date: interviewDate,
+        time: interviewTime,
+        location: data.locationOrLink,
+        interviewer: data.interviewerName,
+        duration: String(data.durationMinutes),
+        testLink: "",
+      };
 
-          <p><strong>Preparation Notes:</strong><br/>
-          ${data.notes ? data.notes.replace(/\n/g, '<br/>') : "Please be ready 10 minutes before the scheduled time."}</p>
-          
-          <p style="margin-top: 30px;">Best regards,<br/>Human Capital Team</p>
-        </div>
-      `;
+      const template = await getHcEmailTemplateByType("interview_invitation");
+      let subject: string, html: string, text: string;
 
-      const text = `
-Dear ${candidate.fullName},
-Congratulations! You are invited to an interview for ${vacancyTitle}.
-
-Date: ${interviewDate}
-Time: ${interviewTime}
-Type: ${data.interviewType}
-Location/Link: ${data.locationOrLink}
-Interviewer: ${data.interviewerName}
-
-Notes:
-${data.notes || "Please be ready 10 minutes before the scheduled time."}
-
-Best regards,
-Human Capital Team
-      `;
+      if (template) {
+        const rendered = renderHcTemplate(template, templateVars);
+        subject = rendered.subject;
+        html = rendered.body;
+        text = rendered.body.replace(/<[^>]*>/g, "");
+      } else {
+        subject = `[HERO] Interview Invitation - ${vacancyTitle}`;
+        html = FALLBACK_HTML(templateVars);
+        text = FALLBACK_TEXT(templateVars);
+      }
 
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
@@ -112,7 +122,6 @@ Human Capital Team
     }
   } catch (error) {
     console.error("Failed to send interview email:", error);
-    // We don't fail the schedule operation if email fails, but we might want to log it
   }
 
   revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);

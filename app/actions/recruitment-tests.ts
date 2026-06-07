@@ -1,11 +1,14 @@
 "use server";
 
 import { db } from "@/db";
-import { hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAssignments, hcOnlineTestAnswers, hcCandidates } from "@/db/schema/hero";
+import { hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAssignments, hcOnlineTestAnswers, hcCandidates, hcRecruitments } from "@/db/schema/hero";
 import { eq, desc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
+import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
+import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { randomUUID } from "crypto";
+import { getHcEmailTemplateByType, renderHcTemplate } from "@/app/actions/hc-email-templates";
 
 
 export async function getRecruitmentTestCandidates() {
@@ -30,6 +33,70 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
     expiresAt,
     status: "Pending",
   }).returning();
+
+  const [test] = await db.select({ title: hcOnlineTests.title }).from(hcOnlineTests).where(eq(hcOnlineTests.id, testId)).limit(1);
+  const [candidate] = await db.select({
+    fullName: hcCandidates.fullName,
+    email: hcCandidates.email,
+    jobTitle: hcRecruitments.jobTitle,
+  }).from(hcCandidates).leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id)).where(eq(hcCandidates.id, candidateId)).limit(1);
+
+  if (candidate?.email && test?.title) {
+    try {
+      const smtpSettings = await getEmailSmtpSettingsData();
+      if (smtpSettings.host && smtpSettings.fromEmail) {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const testLink = `${baseUrl}/test/${accessKey}`;
+        const templateVars = {
+          candidateName: candidate.fullName,
+          jobTitle: candidate.jobTitle || "Position",
+          companyName: "PT Chitra Paratama",
+          date: "",
+          time: "",
+          location: "",
+          interviewer: "",
+          duration: String(expiresInDays),
+          testLink,
+        };
+
+        const template = await getHcEmailTemplateByType("test_assigned");
+        let subject: string, html: string, text: string;
+
+        if (template) {
+          const rendered = renderHcTemplate(template, templateVars);
+          subject = rendered.subject;
+          html = rendered.body;
+          text = rendered.body.replace(/<[^>]*>/g, "");
+        } else {
+          subject = `[HERO] Online Test - ${test.title}`;
+          html = `
+<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
+  <h2 style="color:#0f172a;">Online Test Assignment</h2>
+  <p>Dear <strong>${candidate.fullName}</strong>,</p>
+  <p>You have been assigned the <strong>${test.title}</strong> test for <strong>${candidate.jobTitle || "the position"}</strong>.</p>
+  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;text-align:center;">
+    <p style="margin-bottom:16px;">Click the button below to start your test:</p>
+    <a href="${testLink}" target="_blank" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Start Test</a>
+  </div>
+  <p style="font-size:13px;color:#64748b;">This link expires in ${expiresInDays} days. Complete the test before the deadline.</p>
+  <p>Best regards,<br/>Human Capital Team</p>
+</div>`;
+          text = `Dear ${candidate.fullName},\n\nYou have been assigned the ${test.title} test for ${candidate.jobTitle || "the position"}.\n\nStart your test here: ${testLink}\n\nThis link expires in ${expiresInDays} days.\n\nBest regards,\nHuman Capital Team`;
+        }
+
+        await sendEmailViaSmtp(smtpSettings, {
+          to: candidate.email,
+          subject,
+          html,
+          text,
+          templateName: "Online Test Assigned",
+          templateCode: "test_assigned",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to send test assignment email:", error);
+    }
+  }
 
   revalidatePath(`/dashboard/hc/recruitment/tests/${testId}`);
   return assignment;
