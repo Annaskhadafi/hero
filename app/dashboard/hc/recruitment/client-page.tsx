@@ -288,6 +288,47 @@ export function RecruitmentClientPage({
     finally { setIsBulkMcuSending(false); }
   };
 
+  const handlePreviewBulkInterview = async () => {
+    if (!bulkInterviewForm.date || !bulkInterviewForm.time) { toast.error("Isi tanggal dan waktu dulu"); return; }
+    setEmailPreviewLoading(true);
+    try {
+      const d = new Date(`${bulkInterviewForm.date}T${bulkInterviewForm.time}`);
+      const { format } = await import("date-fns");
+      const preview = await previewInterviewEmail({
+        candidateName: "[Candidate Name]",
+        jobTitle: "Posisi",
+        scheduledDate: format(d, "EEEE, dd MMMM yyyy"),
+        scheduledTime: format(d, "HH:mm"),
+        interviewType: bulkInterviewForm.type,
+        locationOrLink: bulkInterviewForm.location || "-",
+        interviewerName: bulkInterviewForm.interviewer || "-",
+        durationMinutes: bulkInterviewForm.duration,
+      });
+      setEmailPreview(preview);
+      setIsEmailPreviewOpen(true);
+    } catch (e: any) { toast.error("Gagal preview"); }
+    finally { setEmailPreviewLoading(false); }
+  };
+
+  const handlePreviewBulkMcu = async () => {
+    if (!bulkMcuForm.clinicName || !bulkMcuForm.date) { toast.error("Isi klinik dan tanggal dulu"); return; }
+    setEmailPreviewLoading(true);
+    try {
+      const d = new Date(bulkMcuForm.date);
+      const { format } = await import("date-fns");
+      const preview = await previewMcuEmail({
+        candidateName: "[Candidate Name]",
+        jobTitle: "Posisi",
+        klinikName: bulkMcuForm.clinicName,
+        paketMcu: bulkMcuForm.paket || "-",
+        scheduledDate: format(d, "dd MMMM yyyy"),
+      });
+      setEmailPreview(preview);
+      setIsEmailPreviewOpen(true);
+    } catch (e: any) { toast.error("Gagal preview"); }
+    finally { setEmailPreviewLoading(false); }
+  };
+
   const handleSendTestInvitation = async () => {
     if (!testInviteForm.testId || selectedIds.size === 0) {
       toast.error("Pilih test dan minimal 1 kandidat");
@@ -1540,6 +1581,9 @@ export function RecruitmentClientPage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsBulkInterviewOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={handlePreviewBulkInterview} disabled={emailPreviewLoading}>
+            {emailPreviewLoading ? "Loading..." : "Preview Email"}
+          </Button>
           <Button onClick={handleBulkInterview} disabled={isBulkInterviewSending}>
             {isBulkInterviewSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
@@ -1562,6 +1606,9 @@ export function RecruitmentClientPage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsBulkMcuOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={handlePreviewBulkMcu} disabled={emailPreviewLoading}>
+            {emailPreviewLoading ? "Loading..." : "Preview Email"}
+          </Button>
           <Button onClick={handleBulkMcu} disabled={isBulkMcuSending}>
             {isBulkMcuSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
