@@ -5,10 +5,11 @@ import {
   hcRecruitments,
   hcCandidates,
   hcCandidateStages,
+  hrEmployees,
   masterDepartments,
   masterSections
 } from "@/db/schema/hero";
-import { eq, desc, and, sql, count, isNull } from "drizzle-orm";
+import { eq, desc, and, sql, count, isNull, or, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import fs from "fs";
 import path from "path";
@@ -68,8 +69,8 @@ const STAGE_PIPELINE = [
   "Screening",
   "Psikotes",
   "Interview",
-  "Offering",
   "Medical Checkup",
+  "Offering",
 ] as const;
 
 export type StageName = (typeof STAGE_PIPELINE)[number] | "Hired" | "Rejected";
@@ -260,6 +261,186 @@ export async function deleteRecruitment(id: number) {
 
   revalidatePath("/dashboard/hc/recruitment");
   return { success: true };
+}
+
+export type CandidateFilter = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  stage?: string;
+  jobId?: number;
+};
+
+export type PaginatedResult<T> = {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export async function getCandidatesPaginated(filters: CandidateFilter = {}): Promise<PaginatedResult<CandidateRow>> {
+  const { page = 1, pageSize = 25, search, stage, jobId } = filters;
+  const conditions: ReturnType<typeof and>[] = [];
+
+  if (search) {
+    const s = `%${search}%`;
+    conditions.push(
+      or(
+        sql`${hcCandidates.fullName} ILIKE ${s}`,
+        sql`${hcCandidates.email} ILIKE ${s}`,
+        sql`${hcCandidates.phone} ILIKE ${s}`,
+      )
+    );
+  }
+  if (stage) {
+    conditions.push(eq(hcCandidates.currentStage, stage));
+  }
+  if (jobId) {
+    conditions.push(eq(hcCandidates.recruitmentId, jobId));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [{ count: total }] = await db
+    .select({ count: count() })
+    .from(hcCandidates)
+    .where(whereClause);
+
+  const offset = (page - 1) * pageSize;
+
+  const rows = await db
+    .select({
+      id: hcCandidates.id,
+      recruitmentId: hcCandidates.recruitmentId,
+      jobTitle: hcRecruitments.jobTitle,
+      fullName: hcCandidates.fullName,
+      email: hcCandidates.email,
+      phone: hcCandidates.phone,
+      source: hcCandidates.source,
+      currentStage: hcCandidates.currentStage,
+      rating: hcCandidates.rating,
+      notes: hcCandidates.notes,
+      cvUrl: hcCandidates.cvUrl,
+      aiScore: hcCandidates.aiScore,
+      aiSummary: hcCandidates.aiSummary,
+      rejectionReason: hcCandidates.rejectionReason,
+      createdAt: hcCandidates.createdAt,
+    })
+    .from(hcCandidates)
+    .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+    .where(whereClause)
+    .orderBy(desc(hcCandidates.id))
+    .limit(pageSize)
+    .offset(offset);
+
+  return {
+    data: rows,
+    total: total,
+    page,
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  };
+}
+
+type CandidateRow = {
+  id: number;
+  recruitmentId: number | null;
+  jobTitle: string | null;
+  fullName: string;
+  email: string;
+  phone: string;
+  source: string;
+  currentStage: string;
+  rating: number | null;
+  notes: string;
+  cvUrl: string;
+  aiScore: number | null;
+  aiSummary: string;
+  rejectionReason: string;
+  createdAt: Date;
+};
+
+export async function getNextEmployeeId(): Promise<string> {
+  const [last] = await db
+    .select({ id: hrEmployees.id })
+    .from(hrEmployees)
+    .orderBy(desc(hrEmployees.id))
+    .limit(1);
+  const nextNum = (last?.id ?? 0) + 1;
+  return `EMP-${String(nextNum).padStart(4, "0")}`;
+}
+
+export async function hireAndCreateEmployee(candidateId: number) {
+  const now = new Date();
+
+  const [candidate] = await db
+    .select({
+      id: hcCandidates.id,
+      fullName: hcCandidates.fullName,
+      email: hcCandidates.email,
+      phone: hcCandidates.phone,
+      dateOfBirth: hcCandidates.dateOfBirth,
+      address: hcCandidates.address,
+      gender: hcCandidates.gender,
+      currentStage: hcCandidates.currentStage,
+      recruitmentId: hcCandidates.recruitmentId,
+      nikKtp: hcCandidates.nikKtp,
+    })
+    .from(hcCandidates)
+    .where(eq(hcCandidates.id, candidateId))
+    .limit(1);
+
+  if (!candidate) throw new Error("Candidate not found");
+  if (candidate.currentStage === "Hired") throw new Error("Candidate already hired");
+  if (candidate.currentStage === "Rejected") throw new Error("Cannot hire rejected candidate");
+
+  const employeeId = await getNextEmployeeId();
+
+  const [employee] = await db.insert(hrEmployees).values({
+    employeeId,
+    fullName: candidate.fullName,
+    email: candidate.email || null,
+    birthDate: candidate.dateOfBirth ? candidate.dateOfBirth.toISOString().split("T")[0] : null,
+    genderCode: candidate.gender === "Laki-laki" ? "L" : candidate.gender === "Perempuan" ? "P" : null,
+    accountStatus: "active",
+    isActive: true,
+    joinDate: now.toISOString().split("T")[0],
+  }).returning();
+
+  const [currentStageRecord] = await db
+    .select({ id: hcCandidateStages.id })
+    .from(hcCandidateStages)
+    .where(
+      and(
+        eq(hcCandidateStages.candidateId, candidateId),
+        eq(hcCandidateStages.stage, candidate.currentStage),
+        isNull(hcCandidateStages.exitedAt)
+      )
+    )
+    .limit(1);
+
+  if (currentStageRecord) {
+    await db.update(hcCandidateStages)
+      .set({ exitedAt: now, result: "pass", notes: "Hired and converted to employee" })
+      .where(eq(hcCandidateStages.id, currentStageRecord.id));
+  }
+
+  await db.insert(hcCandidateStages).values({
+    candidateId,
+    stage: "Hired",
+    enteredAt: now,
+    result: "pass",
+    notes: `Converted to employee: ${employeeId}`,
+  });
+
+  await db.update(hcCandidates)
+    .set({ currentStage: "Hired", updatedAt: now })
+    .where(eq(hcCandidates.id, candidateId));
+
+  revalidatePath("/dashboard/hc/recruitment");
+
+  return { employee, employeeId };
 }
 
 // ─── Candidates ───────────────────────────────────────────────────────────
@@ -569,11 +750,16 @@ export async function updateCandidate(
 }
 
 export async function deleteCandidate(id: number) {
-  // Stages cascade delete
   await db.delete(hcCandidates).where(eq(hcCandidates.id, id));
-
   revalidatePath("/dashboard/hc/recruitment");
   return { success: true };
+}
+
+export async function deleteMultipleCandidates(ids: number[]) {
+  if (ids.length === 0) return { success: true, count: 0 };
+  await db.delete(hcCandidates).where(inArray(hcCandidates.id, ids));
+  revalidatePath("/dashboard/hc/recruitment");
+  return { success: true, count: ids.length };
 }
 
 // ─── AI Assessment ────────────────────────────────────────────────────────

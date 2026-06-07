@@ -1,4 +1,4 @@
-import { getRecruitments, getCandidates, getRecruitmentStats, getRecruitmentFormOptions } from "@/app/actions/recruitment";
+import { getRecruitments, getCandidatesPaginated, getRecruitmentStats, getRecruitmentFormOptions } from "@/app/actions/recruitment";
 import { RecruitmentClientPage } from "./client-page";
 
 export const metadata = {
@@ -6,9 +6,9 @@ export const metadata = {
 };
 
 export default async function RecruitmentPage() {
-  const [recruitments, candidates, stats, formOptions] = await Promise.all([
+  const [recruitments, candidatesPaginated, stats, formOptions] = await Promise.all([
     getRecruitments(),
-    getCandidates(),
+    getCandidatesPaginated({ page: 1, pageSize: 25 }),
     getRecruitmentStats(),
     getRecruitmentFormOptions(),
   ]);
@@ -16,7 +16,7 @@ export default async function RecruitmentPage() {
   return (
     <RecruitmentClientPage
       recruitments={recruitments}
-      candidates={candidates}
+      initialCandidates={candidatesPaginated}
       stats={stats}
       formOptions={formOptions}
     />

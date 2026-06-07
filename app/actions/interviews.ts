@@ -127,11 +127,11 @@ export async function updateInterviewStatus(interviewId: number, status: string,
 
   if (status === "Completed" && result === "Pass") {
     await db.update(hcCandidates)
-      .set({ currentStage: "Passed Interview", updatedAt: new Date() })
+      .set({ currentStage: "Medical Checkup", updatedAt: new Date() })
       .where(eq(hcCandidates.id, interview.candidateId));
   } else if (status === "Completed" && result === "Fail") {
      await db.update(hcCandidates)
-      .set({ currentStage: "Failed", rejectionReason: "Failed at interview stage", rejectedAtStage: "Interview", updatedAt: new Date() })
+      .set({ currentStage: "Rejected", rejectionReason: "Failed at interview stage", rejectedAtStage: "Interview", updatedAt: new Date() })
       .where(eq(hcCandidates.id, interview.candidateId));
   }
 

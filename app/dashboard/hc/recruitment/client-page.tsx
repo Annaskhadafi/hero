@@ -15,7 +15,7 @@ import {
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated } from "@/app/actions/recruitment";
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -97,7 +97,13 @@ type RecruitmentStats = {
 
 interface RecruitmentClientPageProps {
   recruitments: Recruitment[];
-  candidates: Candidate[];
+  initialCandidates: {
+    data: Candidate[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
   stats: RecruitmentStats;
   formOptions: {
     departments: { id: number; name: string }[];
@@ -107,15 +113,51 @@ interface RecruitmentClientPageProps {
 
 export function RecruitmentClientPage({
   recruitments: initialRecruitments,
-  candidates: initialCandidates,
+  initialCandidates: paginatedCandidates,
   stats,
   formOptions,
 }: RecruitmentClientPageProps) {
+  const [candidates, setCandidates] = useState<Candidate[]>(paginatedCandidates.data);
+  const [candidatePage, setCandidatePage] = useState(paginatedCandidates);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [activeView, setActiveView] = useState<"vacancies" | "pipeline">("vacancies");
   const [pipelineJobIdFilter, setPipelineJobIdFilter] = useState<number | null>(null);
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
   const [recruitments, setRecruitments] = useState(initialRecruitments);
-  const [candidates, setCandidates] = useState(initialCandidates);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  const visibleCandidates = pipelineJobIdFilter
+    ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter)
+    : candidates;
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (visibleCandidates.every(c => selectedIds.has(c.id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visibleCandidates.map(c => c.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Hapus ${selectedIds.size} kandidat? Aksi ini tidak bisa dibatalkan.`)) return;
+    try {
+      await deleteMultipleCandidates(Array.from(selectedIds));
+      setCandidates(prev => prev.filter(c => !selectedIds.has(c.id)));
+      setSelectedIds(new Set());
+      toast.success(`${selectedIds.size} kandidat dihapus.`);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal hapus");
+    }
+  };
 
   // Settings Dialog State
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -125,6 +167,9 @@ export function RecruitmentClientPage({
   // Candidate List Dialog State
   const [isCandidateListOpen, setIsCandidateListOpen] = useState(false);
   const [selectedCandidateListJobId, setSelectedCandidateListJobId] = useState<number | null>(null);
+  const [dialogCandidates, setDialogCandidates] = useState<Candidate[]>([]);
+  const [dialogCandidatesLoading, setDialogCandidatesLoading] = useState(false);
+  const [dialogCandidatePage, setDialogCandidatePage] = useState({ page: 1, total: 0, totalPages: 0 });
   const [settingsForm, setSettingsForm] = useState({
     isPublic: false,
     jobTitle: "",
@@ -263,6 +308,23 @@ export function RecruitmentClientPage({
     }
   };
 
+  const loadCandidatesPage = async (page: number) => {
+    setIsLoadingCandidates(true);
+    try {
+      const result = await getCandidatesPaginated({
+        page,
+        pageSize: 25,
+        jobId: pipelineJobIdFilter || undefined,
+      });
+      setCandidates(prev => page === 1 ? result.data : [...prev, ...result.data]);
+      setCandidatePage(result);
+    } catch (e: any) {
+      toast.error("Failed to load candidates");
+    } finally {
+      setIsLoadingCandidates(false);
+    }
+  };
+
   const handleDeleteVacancy = async (id: number) => {
     if (!confirm("Are you sure you want to delete this vacancy?")) return;
     try {
@@ -326,21 +388,24 @@ export function RecruitmentClientPage({
             </Link>
           </div>
 
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex flex-col items-end">
-              <span className="text-muted-foreground">Active Vacancies</span>
-              <span className="text-2xl font-bold tracking-tight">{stats.activeMPR}</span>
+          <div className="flex items-center gap-3">
+            {[
+              { label: "Active", value: stats.activeMPR, color: "text-primary" },
+              { label: "Candidates", value: stats.totalCandidates, color: "text-blue-600" },
+              { label: "Hired", value: stats.hired, color: "text-green-600" },
+              { label: "Overdue", value: stats.overdue, color: "text-amber-600" },
+            ].map((kpi) => (
+              <div key={kpi.label} className="flex flex-col min-w-[80px] bg-white rounded-xl border border-border/60 px-4 py-2.5 shadow-sm">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{kpi.label}</span>
+                <span className={`text-2xl font-bold tracking-tight ${kpi.color}`}>{kpi.value}</span>
+              </div>
+            ))}
+            <div className="ml-auto">
+              <Button className={hcPrimaryActionClassName} onClick={handleCreateVacancy}>
+                <IconPlus className="w-4 h-4 mr-2" />
+                New Vacancy
+              </Button>
             </div>
-            <div className="w-px h-10 bg-border mx-2" />
-            <div className="flex flex-col items-end">
-              <span className="text-muted-foreground">Total Candidates</span>
-              <span className="text-2xl font-bold tracking-tight text-accent">{stats.totalCandidates}</span>
-            </div>
-            <div className="w-px h-10 bg-border mx-2" />
-            <Button className={hcPrimaryActionClassName} onClick={handleCreateVacancy}>
-              <IconPlus className="w-4 h-4 mr-2" />
-              New Vacancy
-            </Button>
           </div>
         </div>
 
@@ -395,7 +460,17 @@ export function RecruitmentClientPage({
                          </TableCell>
                          <TableCell className="text-right">
                              <div className="flex items-center justify-end gap-1">
-                               <Button variant="ghost" size="icon" onClick={() => { setSelectedCandidateListJobId(job.id); setIsCandidateListOpen(true); }} title="View Candidates">
+                                <Button variant="ghost" size="icon" onClick={async () => {
+                                  setSelectedCandidateListJobId(job.id);
+                                  setDialogCandidatesLoading(true);
+                                  setIsCandidateListOpen(true);
+                                  try {
+                                    const res = await getCandidatesPaginated({ page: 1, pageSize: 50, jobId: job.id });
+                                    setDialogCandidates(res.data);
+                                    setDialogCandidatePage({ page: res.page, total: res.total, totalPages: res.totalPages });
+                                  } catch { setDialogCandidates([]); }
+                                  finally { setDialogCandidatesLoading(false); }
+                                }} title="View Candidates">
                                  <IconUsers className="w-4 h-4 text-blue-500" />
                                </Button>
                                {job.isPublic ? (
@@ -467,11 +542,28 @@ export function RecruitmentClientPage({
                 )}
               </div>
               
-              {pipelineViewMode === "list" ? (
+               {pipelineViewMode === "list" ? (
                 <MinimalTableShell label="Kandidat" filters={candidateFilters}>
+                  {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-3 px-4 py-2 bg-accent/5 border border-accent/20 rounded-lg mb-3">
+                      <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                      <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                        <IconTrash className="w-4 h-4 mr-1" /> Delete Selected
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                        Clear
+                      </Button>
+                    </div>
+                  )}
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-border/50">
+                        <TableHead className="w-10 text-center">
+                          <Checkbox
+                            checked={visibleCandidates.length > 0 && visibleCandidates.every(c => selectedIds.has(c.id))}
+                            onCheckedChange={toggleSelectAll}
+                          />
+                        </TableHead>
                         <TableHead className="w-12 text-center">NO</TableHead>
                         <TableHead>NAMA LENGKAP</TableHead>
                         <TableHead>LOWONGAN</TableHead>
@@ -483,8 +575,14 @@ export function RecruitmentClientPage({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates).map((candidate, idx) => (
+                      {visibleCandidates.map((candidate, idx) => (
                         <TableRow key={candidate.id} className={hcTableRowClassName} data-filter-stage={candidate.currentStage} data-filter-job={candidate.jobTitle || ""}>
+                          <TableCell className="text-center">
+                            <Checkbox
+                              checked={selectedIds.has(candidate.id)}
+                              onCheckedChange={() => toggleSelect(candidate.id)}
+                            />
+                          </TableCell>
                           <TableCell className="text-center text-muted-foreground">{idx + 1}</TableCell>
                           <TableCell className="font-semibold">{candidate.fullName}</TableCell>
                           <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
@@ -518,20 +616,37 @@ export function RecruitmentClientPage({
                           </TableCell>
                         </TableRow>
                       ))}
-                      {(pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates).length === 0 && (
+                      {visibleCandidates.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                          <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                             Belum ada kandidat.
                           </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
                   </Table>
+                  {candidatePage.totalPages > 1 && (
+                    <div className="flex items-center justify-between px-1 py-2">
+                      <span className="text-xs text-muted-foreground">
+                        {candidatePage.total} total — page {candidatePage.page} of {candidatePage.totalPages}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" disabled={candidatePage.page <= 1}
+                          onClick={() => loadCandidatesPage(1)}>
+                          First
+                        </Button>
+                        <Button variant="outline" size="sm" disabled={candidatePage.page >= candidatePage.totalPages}
+                          onClick={() => loadCandidatesPage(candidatePage.page + 1)}>
+                          Load More
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </MinimalTableShell>
               ) : (
                 <ScrollArea className="w-full pb-4">
                 <div className="flex gap-6 min-w-max">
-                  {["Sourcing", "Screening", "Psikotes", "Interview", "Offering", "Hired"].map((stage) => {
+                  {["Sourcing", "Screening", "Psikotes", "Interview", "Medical Checkup", "Offering", "Hired"].map((stage) => {
                     const filteredCandidates = pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates;
                     const stageCandidates = filteredCandidates.filter((c) => c.currentStage === stage);
                     return (
@@ -809,75 +924,107 @@ export function RecruitmentClientPage({
         </DialogContent>
       </Dialog>
 
-    <Dialog open={isCandidateListOpen} onOpenChange={setIsCandidateListOpen}>
+    <Dialog open={isCandidateListOpen} onOpenChange={(open) => { if (!open) setIsCandidateListOpen(false); }}>
       <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Daftar Kandidat</DialogTitle>
           <DialogDescription>
             Pelamar untuk lowongan {recruitments.find(r => r.id === selectedCandidateListJobId)?.jobTitle}
+            {dialogCandidatesLoading ? " — Memuat..." : ` — ${dialogCandidatePage.total} total`}
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">
-          <MinimalTableShell label="Kandidat" filters={candidateFilters}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12 text-center">NO</TableHead>
-                  <TableHead>NAMA LENGKAP</TableHead>
-                  <TableHead>LOWONGAN</TableHead>
-                  <TableHead>EMAIL</TableHead>
-                  <TableHead>PHONE</TableHead>
-                  <TableHead>STAGE</TableHead>
-                  <TableHead>AI MATCH</TableHead>
-                  <TableHead className="text-right">ACTIONS</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {candidates.filter(c => c.recruitmentId === selectedCandidateListJobId).map((candidate, idx) => (
-                  <TableRow key={candidate.id} data-filter-stage={candidate.currentStage} data-filter-job={candidate.jobTitle || ""}>
-                    <TableCell className="text-center">{idx + 1}</TableCell>
-                    <TableCell className="font-semibold">{candidate.fullName}</TableCell>
-                    <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
-                    <TableCell>{candidate.email}</TableCell>
-                    <TableCell>{candidate.phone}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{candidate.currentStage}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {candidate.aiScore !== null ? (
-                        <div className="flex items-center gap-2">
-                          <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
-                          <span className="text-xs font-medium">{candidate.aiScore}%</span>
-                        </div>
-                      ) : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {candidate.cvUrl ? (
-                          <Button variant="outline" size="sm" asChild>
-                            <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
-                          </Button>
-                        ) : null}
-                        <Button variant="default" size="sm" asChild>
-                          <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)} title="Delete Dummy Data">
-                          <IconTrash className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {candidates.filter(c => c.recruitmentId === selectedCandidateListJobId).length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                      Belum ada kandidat yang mendaftar.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </MinimalTableShell>
+          {dialogCandidatesLoading ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">Memuat data...</div>
+          ) : (
+            <>
+              <MinimalTableShell label="Kandidat">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12 text-center">NO</TableHead>
+                      <TableHead>NAMA LENGKAP</TableHead>
+                      <TableHead>EMAIL</TableHead>
+                      <TableHead>PHONE</TableHead>
+                      <TableHead>STAGE</TableHead>
+                      <TableHead>AI MATCH</TableHead>
+                      <TableHead className="text-right">ACTIONS</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dialogCandidates.map((candidate, idx) => (
+                      <TableRow key={candidate.id}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="font-semibold">{candidate.fullName}</TableCell>
+                        <TableCell>{candidate.email}</TableCell>
+                        <TableCell>{candidate.phone}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{candidate.currentStage}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {candidate.aiScore !== null ? (
+                            <div className="flex items-center gap-2">
+                              <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
+                              <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                            </div>
+                          ) : "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            {candidate.cvUrl ? (
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                              </Button>
+                            ) : null}
+                            <Button variant="default" size="sm" asChild>
+                              <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)}>
+                              <IconTrash className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {dialogCandidates.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                          Belum ada kandidat yang mendaftar.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </MinimalTableShell>
+              {dialogCandidatePage.totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-sm text-muted-foreground">
+                    Page {dialogCandidatePage.page} of {dialogCandidatePage.totalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={dialogCandidatePage.page <= 1}
+                      onClick={async () => {
+                        const prev = dialogCandidatePage.page - 1;
+                        const res = await getCandidatesPaginated({ page: prev, pageSize: 50, jobId: selectedCandidateListJobId! });
+                        setDialogCandidates(res.data);
+                        setDialogCandidatePage({ page: res.page, total: res.total, totalPages: res.totalPages });
+                      }}>
+                      Prev
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={dialogCandidatePage.page >= dialogCandidatePage.totalPages}
+                      onClick={async () => {
+                        const next = dialogCandidatePage.page + 1;
+                        const res = await getCandidatesPaginated({ page: next, pageSize: 50, jobId: selectedCandidateListJobId! });
+                        setDialogCandidates(res.data);
+                        setDialogCandidatePage({ page: res.page, total: res.total, totalPages: res.totalPages });
+                      }}>
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

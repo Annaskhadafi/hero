@@ -713,6 +713,7 @@ export function MinimalTableShell({
     }
   }, [dateFilterSupported, dateRange])
 
+  const mutationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   React.useEffect(() => {
     const root = shellRef.current
     if (!root) {
@@ -720,8 +721,12 @@ export function MinimalTableShell({
     }
 
     const observer = new MutationObserver(() => {
-      wireSortableHeaders()
-      applyFilters()
+      if (mutationTimerRef.current) return
+      mutationTimerRef.current = setTimeout(() => {
+        mutationTimerRef.current = null
+        wireSortableHeaders()
+        applyFilters()
+      }, 16)
     })
 
     observer.observe(root, {
@@ -730,7 +735,10 @@ export function MinimalTableShell({
       characterData: true,
     })
 
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (mutationTimerRef.current) clearTimeout(mutationTimerRef.current)
+    }
   }, [applyFilters, wireSortableHeaders])
 
   React.useEffect(() => {

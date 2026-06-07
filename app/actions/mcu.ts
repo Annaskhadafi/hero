@@ -157,13 +157,12 @@ export async function updateMcuResult(mcuId: number, status: string, notes: stri
     .returning();
 
   if (status === "Fit") {
-    // Kita set stage jadi "Offering" dulu sebelum Onboarding (Form Karyawan)
     await db.update(hcCandidates)
       .set({ currentStage: "Offering", updatedAt: new Date() })
       .where(eq(hcCandidates.id, mcu.candidateId));
   } else if (status === "Unfit") {
      await db.update(hcCandidates)
-      .set({ currentStage: "Failed", rejectionReason: "MCU Unfit", rejectedAtStage: "Medical Checkup", updatedAt: new Date() })
+      .set({ currentStage: "Rejected", rejectionReason: "MCU Unfit", rejectedAtStage: "Medical Checkup", updatedAt: new Date() })
       .where(eq(hcCandidates.id, mcu.candidateId));
   }
 

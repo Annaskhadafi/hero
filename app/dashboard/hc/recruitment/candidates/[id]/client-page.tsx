@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
+import { hireAndCreateEmployee } from "@/app/actions/recruitment";
 
 export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }: { candidate: any, interviews: any[], mcuRecords: any[] }) {
   const router = useRouter();
@@ -35,6 +36,23 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
     interviewerName: "",
     notes: ""
   });
+
+  const [isHireOpen, setIsHireOpen] = useState(false);
+  const [isHiring, setIsHiring] = useState(false);
+
+  const handleHire = async () => {
+    setIsHiring(true);
+    try {
+      const result = await hireAndCreateEmployee(candidate.id);
+      toast.success(`Hired! Employee ID: ${result.employeeId}`);
+      setIsHireOpen(false);
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to hire candidate");
+    } finally {
+      setIsHiring(false);
+    }
+  };
 
   const [isMcuScheduleOpen, setIsMcuScheduleOpen] = useState(false);
   const [isMcuSubmitting, setIsMcuSubmitting] = useState(false);
@@ -153,6 +171,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
             {candidate.cvUrl && (
               <Button asChild variant="outline" size="sm">
                 <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+              </Button>
+            )}
+            {candidate.currentStage === "Offering" && (
+              <Button size="sm" onClick={() => setIsHireOpen(true)}>
+                <IconCheck className="w-4 h-4 mr-2" /> Hire
               </Button>
             )}
           </>
@@ -602,6 +625,27 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
         </DialogContent>
       </Dialog>
     </AdminPageShell>
+
+      {/* Hire Confirmation Dialog */}
+      <Dialog open={isHireOpen} onOpenChange={setIsHireOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Hire</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p>Hire <strong>{candidate.fullName}</strong> for <strong>{candidate.jobTitle || "the position"}</strong>?</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              This will create an Employee record with auto-generated NIK and move the candidate to Hired stage.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHireOpen(false)}>Cancel</Button>
+            <Button onClick={handleHire} disabled={isHiring}>
+              {isHiring ? "Processing..." : "Confirm Hire"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Schedule MCU Dialog */}
       <Dialog open={isMcuScheduleOpen} onOpenChange={setIsMcuScheduleOpen}>
