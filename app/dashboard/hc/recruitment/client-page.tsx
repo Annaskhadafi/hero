@@ -142,7 +142,6 @@ export function RecruitmentClientPage({
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
   const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
-  const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
   const [emailPreview, setEmailPreview] = useState({ subject: "", html: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
@@ -825,37 +824,27 @@ export function RecruitmentClientPage({
                           <TableCell>{candidate.email}</TableCell>
                           <TableCell>{candidate.phone}</TableCell>
                           <TableCell>
-                            {editingStageId === candidate.id ? (
-                              <select
-                                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm"
-                                value={candidate.currentStage}
-                                onChange={async (e) => {
-                                  const newStage = e.target.value;
-                                  setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: newStage } : c));
-                                  setEditingStageId(null);
-                                  try {
-                                    await updateCandidateStage(candidate.id, newStage as any);
-                                    toast.success(`${candidate.fullName} → ${newStage}`);
-                                  } catch (err: any) {
-                                    setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: candidate.currentStage } : c));
-                                    toast.error(err.message || "Failed");
-                                  }
-                                }}
-                                onBlur={() => setEditingStageId(null)}
-                                autoFocus
-                              >
-                                {["Sourcing","Screening","Psikotes","Interview","Medical Checkup","Offering","Hired","Rejected"].map(s => (
-                                  <option key={s} value={s}>{s}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <button
-                                onClick={() => setEditingStageId(candidate.id)}
-                                className="cursor-pointer hover:underline"
-                              >
-                                <Badge variant="outline">{candidate.currentStage}</Badge>
-                              </button>
-                            )}
+                            <select
+                              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm cursor-pointer"
+                              value={candidate.currentStage}
+                              onChange={async (e) => {
+                                const newStage = e.target.value;
+                                const oldStage = candidate.currentStage;
+                                if (newStage === oldStage) return;
+                                setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: newStage } : c));
+                                try {
+                                  await updateCandidateStage(candidate.id, newStage as any);
+                                  toast.success(`${candidate.fullName} → ${newStage}`);
+                                } catch (err: any) {
+                                  setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: oldStage } : c));
+                                  toast.error(err.message || "Failed");
+                                }
+                              }}
+                            >
+                              {["Sourcing","Screening","Psikotes","Interview","Medical Checkup","Offering","Hired","Rejected"].map(s => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
                           </TableCell>
                           <TableCell className="text-center">
                             {candidate.currentStage === "Hired" ? (
