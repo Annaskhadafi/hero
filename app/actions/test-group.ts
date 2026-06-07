@@ -132,6 +132,66 @@ export async function getAllTestGroups() {
   return db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.isActive, true)).orderBy(hcOnlineTestGroups.name);
 }
 
+export async function getAllTestGroupsAdmin() {
+  return db.select().from(hcOnlineTestGroups).orderBy(hcOnlineTestGroups.name);
+}
+
+export async function createTestGroup(name: string) {
+  const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  const [group] = await db.insert(hcOnlineTestGroups).values({ name, slug, description: "" }).returning();
+  revalidatePath("/dashboard/hc/recruitment/test-groups");
+  return group;
+}
+
+export async function updateTestGroup(id: number, data: { name?: string; isActive?: boolean }) {
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) {
+    updateData.name = data.name;
+    updateData.slug = data.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  }
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  const [group] = await db.update(hcOnlineTestGroups).set(updateData).where(eq(hcOnlineTestGroups.id, id)).returning();
+  revalidatePath("/dashboard/hc/recruitment/test-groups");
+  return group;
+}
+
+export async function deleteTestGroup(id: number) {
+  await db.delete(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.id, id));
+  revalidatePath("/dashboard/hc/recruitment/test-groups");
+  return { success: true };
+}
+
+export async function addTestToGroup(groupId: number, testId: number) {
+  const max = await db.select({ sortOrder: hcOnlineTestGroupItems.sortOrder })
+    .from(hcOnlineTestGroupItems)
+    .where(eq(hcOnlineTestGroupItems.groupId, groupId))
+    .orderBy(desc(hcOnlineTestGroupItems.sortOrder))
+    .limit(1);
+  const sortOrder = max.length > 0 ? max[0].sortOrder + 1 : 0;
+  await db.insert(hcOnlineTestGroupItems).values({ groupId, testId, sortOrder });
+  revalidatePath("/dashboard/hc/recruitment/test-groups");
+}
+
+export async function removeTestFromGroup(groupItemId: number) {
+  await db.delete(hcOnlineTestGroupItems).where(eq(hcOnlineTestGroupItems.id, groupItemId));
+  revalidatePath("/dashboard/hc/recruitment/test-groups");
+}
+
+export async function getGroupWithTests(groupId: number) {
+  const [group] = await db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.id, groupId)).limit(1);
+  if (!group) return null;
+  const items = await db.select({
+    id: hcOnlineTestGroupItems.id,
+    testId: hcOnlineTests.id,
+    testTitle: hcOnlineTests.title,
+    sortOrder: hcOnlineTestGroupItems.sortOrder,
+  }).from(hcOnlineTestGroupItems)
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestGroupItems.testId, hcOnlineTests.id))
+    .where(eq(hcOnlineTestGroupItems.groupId, groupId))
+    .orderBy(hcOnlineTestGroupItems.sortOrder);
+  return { group, items };
+}
+
 export async function getTestGroupEntries(slug: string) {
   // 1. Get the group
   const groups = await db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.slug, slug)).limit(1);
