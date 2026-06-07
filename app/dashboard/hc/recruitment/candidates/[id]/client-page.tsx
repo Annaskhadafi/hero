@@ -996,15 +996,16 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
       {/* CV Viewer Dialog */}
       <Dialog open={!!cvViewerUrl} onOpenChange={(open) => { if (!open) setCvViewerUrl(null); }}>
-        <DialogContent className="w-[95vw] h-[92vh] max-w-none p-0 gap-0 overflow-hidden">
+        <DialogContent className="w-[95vw] h-[95vh] max-w-none p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
           <DialogHeader className="px-6 py-3 border-b shrink-0">
             <DialogTitle>CV / Resume — {candidate.fullName}</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden bg-muted/20 min-h-0">
+          <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
             {cvViewerUrl ? (
               <iframe
                 src={cvViewerUrl}
                 className="w-full h-full border-0"
+                style={{ height: '100%', minHeight: 0 }}
                 title={`CV of ${candidate.fullName}`}
               />
             ) : (
