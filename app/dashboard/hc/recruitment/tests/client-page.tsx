@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -91,7 +92,9 @@ export function RecruitmentTestsClientPage({ initialTests, testGroups = [] }: { 
       title="Online Tests"
       description="Create and manage online assessments for candidates."
     >
-      {testGroups.length > 0 && (
+      <RecruitmentTabBar />
+      <div className="mt-8">
+        {testGroups.length > 0 && (
         <div className="mb-8 space-y-4">
           <h2 className="text-lg font-semibold">Test Groups (Rangkaian Tes)</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -277,6 +280,7 @@ export function RecruitmentTestsClientPage({ initialTests, testGroups = [] }: { 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </AdminPageShell>
   );
 }

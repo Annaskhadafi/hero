@@ -37,6 +37,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { KanbanBoard } from "./kanban-board";
+import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import {
   Table,
   TableBody,
@@ -598,10 +599,12 @@ export function RecruitmentClientPage({
           description="AI-Powered Talent Acquisition & Candidate Pipeline"
         />
 
+        {/* Navigation Tab Bar */}
+        <RecruitmentTabBar />
+
         {/* View Toggle & Stats */}
-        <div className="flex flex-col lg:flex-row justify-between gap-6 items-start lg:items-end px-2">
-          <div className="flex bg-muted/30 p-1.5 rounded-2xl border backdrop-blur-sm shadow-sm relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-accent/5 to-transparent pointer-events-none" />
+        <div className="flex flex-col lg:flex-row justify-between gap-6 items-start lg:items-end px-2 mt-6">
+          <div className="flex bg-muted/30 p-1.5 rounded-2xl border backdrop-blur-sm shadow-sm">
             <button
               onClick={() => { setActiveView("vacancies"); setPipelineJobIdFilter(null); }}
               className={cn(
@@ -626,46 +629,6 @@ export function RecruitmentClientPage({
               <IconUsers className="w-4 h-4" />
               Candidate Pipeline
             </button>
-            <Link
-              href="/dashboard/hc/recruitment/tests"
-              className={cn(
-                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
-                "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <IconFileText className="w-4 h-4" />
-              Online Tests
-            </Link>
-            <Link
-              href="/dashboard/hc/recruitment/test-groups"
-              className={cn(
-                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
-                "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <IconStack2 className="w-4 h-4" />
-              Test Groups
-            </Link>
-            <Link
-              href="/dashboard/hc/settings/email-templates"
-              className={cn(
-                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
-                "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <IconMail className="w-4 h-4" />
-              Email Templates
-            </Link>
-            <Link
-              href="/dashboard/hc/settings/mcu-clinics"
-              className={cn(
-                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
-                "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              <IconBuilding className="w-4 h-4" />
-              Clinics
-            </Link>
           </div>
 
           <div className="flex items-center gap-3">

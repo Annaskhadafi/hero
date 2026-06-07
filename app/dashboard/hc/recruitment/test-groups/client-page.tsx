@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,7 +93,8 @@ export function TestGroupsClientPage({
 
   return (
     <AdminPageShell eyebrow="Human Capital" title="Test Groups" description="Kelola kelompok tes online (Test 1, Test 2)">
-      <div className="space-y-6 pb-12">
+      <RecruitmentTabBar />
+      <div className="mt-8 space-y-6 pb-12">
         <div className="flex items-center justify-between">
           <Link href="/dashboard/hc/recruitment" className="text-sm text-muted-foreground hover:text-foreground">
             ← Back to Recruitment

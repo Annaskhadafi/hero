@@ -5,6 +5,7 @@ import { IconPlus, IconTrash, IconSettings, IconBuilding } from "@tabler/icons-r
 import { toast } from "sonner";
 import { saveMcuClinic, deleteMcuClinic } from "@/app/actions/hc-mcu-clinics";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import { HcWorkspaceBanner } from "@/components/hc/hc-workspace-banner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +98,8 @@ export function McuClinicsClient({ initialClinics }: Props) {
 
   return (
     <AdminPageShell eyebrow="HC Settings" title="MCU Clinics" description="Manage medical clinic partners for candidate MCU">
-      <div className="space-y-6">
+      <RecruitmentTabBar />
+      <div className="mt-8 space-y-6">
         <HcWorkspaceBanner title="Master Klinik MCU"
           description="Daftar klinik rekanan untuk Medical Check Up. Data ini akan muncul sebagai pilihan saat HR menjadwalkan MCU candidate." />
 

@@ -8,6 +8,7 @@ import { saveHcEmailTemplate, deleteHcEmailTemplate, getHcEmailDeliveryLogs, ens
 import { getAvailablePlaceholders } from "@/lib/hc-email-utils";
 import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import { HcWorkspaceBanner } from "@/components/hc/hc-workspace-banner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -122,7 +123,8 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
 
   return (
     <AdminPageShell eyebrow="HC Settings" title="Email Templates" description="Manage recruitment email notifications">
-      <div className="space-y-6">
+      <RecruitmentTabBar />
+      <div className="mt-8 space-y-6">
         <HcWorkspaceBanner title="Email Notification Templates"
           description="Templates for interview invitations, test assignments, and application confirmations. Use {'{placeholder}'} syntax for dynamic values." />
 
