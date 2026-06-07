@@ -107,6 +107,8 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
   const [entryEditForm, setEntryEditForm] = useState({ status: "Pending", score: "" });
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [candidateId, setCandidateId] = useState("");
+  const [assignDate, setAssignDate] = useState("");
+  const [assignTime, setAssignTime] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [bulkQuestionText, setBulkQuestionText] = useState("");
   
@@ -368,7 +370,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
   const openEditEntry = (entry: any) => { setEditingEntry(entry); setEntryEditForm({ status: entry.status || "Pending", score: entry.score == null ? "" : String(entry.score) }); };
   const handleUpdateEntry = async () => { if (!editingEntry) return; const parsedScore = entryEditForm.score.trim() === "" ? null : Number(entryEditForm.score); if (parsedScore !== null && !Number.isFinite(parsedScore)) return toast.error("Score harus angka."); await updateTestEntry(editingEntry.id, { status: entryEditForm.status, score: parsedScore }); setEntries(entries.map((entry: any) => entry.id === editingEntry.id ? { ...entry, status: entryEditForm.status, score: parsedScore } : entry)); setEditingEntry(null); toast.success("Entry updated"); };
   const handleDeleteEntry = async (entry: any) => { if (!confirm(`Hapus entry test milik ${entry.candidate?.fullName || "candidate ini"}?`)) return; await deleteTestEntry(entry.id); setEntries(entries.filter((item: any) => item.id !== entry.id)); toast.success("Entry deleted"); };
-  const handleAssignCandidate = async () => { const parsedCandidateId = Number(candidateId); if (!parsedCandidateId) return toast.error("Pilih kandidat dulu."); const assignment = await assignTestToCandidate(test.id, parsedCandidateId); const candidate = initialCandidates.find((item: any) => item.id === parsedCandidateId); setEntries([{ ...assignment, candidate, answers: [] }, ...entries]); setCandidateId(""); setIsAssignOpen(false); toast.success("Test berhasil di-assign"); };
+  const handleAssignCandidate = async () => { const parsedCandidateId = Number(candidateId); if (!parsedCandidateId) return toast.error("Pilih kandidat dulu."); let scheduledAt: Date | null = null; if (assignDate && assignTime) scheduledAt = new Date(`${assignDate}T${assignTime}`); const assignment = await assignTestToCandidate(test.id, parsedCandidateId, 7, scheduledAt); const candidate = initialCandidates.find((item: any) => item.id === parsedCandidateId); setEntries([{ ...assignment, candidate, answers: [] }, ...entries]); setCandidateId(""); setAssignDate(""); setAssignTime(""); setIsAssignOpen(false); toast.success("Test berhasil di-assign"); };
   const handleBulkImportQuestions = async () => { const rows = bulkQuestionText.split(/\r?\n/).map((row, index) => { const parts = row.split("|").map((part) => part.trim()); if (!parts[0]) return null; const rawType = (parts[1] || "multiple_choice").toLowerCase(); const questionType = rawType.includes("essay") ? "essay" : rawType.includes("checkbox") || rawType.includes("multi") ? "checkbox" : rawType.includes("dropdown") || rawType.includes("select") ? "dropdown" : rawType.includes("number") || rawType.includes("angka") ? "number" : rawType.includes("date") || rawType.includes("tanggal") ? "date" : rawType.includes("file") || rawType.includes("upload") ? "file_upload" : rawType.includes("rating") ? "rating" : rawType.includes("matching") || rawType.includes("cocok") ? "matching" : rawType.includes("ordering") || rawType.includes("urut") ? "ordering" : rawType.includes("passage") || rawType.includes("reading") ? "passage" : rawType.includes("benar") || rawType.includes("false") ? "true_false" : rawType.includes("skala") || rawType.includes("scale") ? "psychometric_scale" : rawType.includes("pribadi") || rawType.includes("personality") ? "personality" : rawType.includes("minat") || rawType.includes("bakat") ? "interest_aptitude" : rawType.includes("situasi") || rawType.includes("judgement") ? "situational_judgement" : "multiple_choice"; const options = optionBasedTypes.includes(questionType) ? (parts[2] || "").split(";").map((text, optionIndex) => ({ id: String.fromCharCode(65 + optionIndex), text: text.trim() })).filter((option) => option.text) : null; return { questionType, questionText: parts[0], options, correctAnswer: parts[3] || (options?.[0]?.id ?? ""), points: Number(parts[4] || 10) || 10, sortOrder: questions.length + index + 1 }; }).filter(Boolean) as any[]; if (!rows.length) return toast.error("Data import soal masih kosong."); const created = await importTestQuestions(test.id, rows); setQuestions([...questions, ...created]); setBulkQuestionText(""); setIsImportOpen(false); toast.success(`${created.length} soal berhasil diimport`); };
   const handleGradeAnswer = async (entry: any, answer: any) => { const raw = prompt("Masukkan poin untuk jawaban ini", String(answer.pointsAwarded ?? 0)); if (raw === null) return; const pointsAwarded = Number(raw); if (!Number.isFinite(pointsAwarded)) return toast.error("Poin harus angka."); await gradeTestAnswer(answer.id, pointsAwarded, pointsAwarded > 0); const updatedEntries = entries.map((item: any) => { if (item.id !== entry.id) return item; const updatedAnswers = (item.answers || []).map((existing: any) => existing.id === answer.id ? { ...existing, pointsAwarded, isCorrect: pointsAwarded > 0 } : existing); return { ...item, answers: updatedAnswers, score: updatedAnswers.reduce((total: number, current: any) => total + (current.pointsAwarded || 0), 0), status: "Graded" }; }); setEntries(updatedEntries); setSelectedEntry(updatedEntries.find((item: any) => item.id === entry.id) || null); toast.success("Nilai jawaban diupdate"); };
 
@@ -643,14 +645,14 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           )}
         >
           <Table>
-            <TableHeader><TableRow><TableHead>CANDIDATE NAME</TableHead><TableHead>EMAIL</TableHead><TableHead>STATUS</TableHead><TableHead>ANSWERS</TableHead><TableHead>STARTED AT</TableHead><TableHead>COMPLETED AT</TableHead><TableHead className="text-right">ACTIONS</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>CANDIDATE NAME</TableHead><TableHead>EMAIL</TableHead><TableHead>STATUS</TableHead><TableHead>SCHEDULE</TableHead><TableHead>ANSWERS</TableHead><TableHead>STARTED AT</TableHead><TableHead>COMPLETED AT</TableHead><TableHead className="text-right">ACTIONS</TableHead></TableRow></TableHeader>
             <TableBody>
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">{entry.candidate?.fullName || "N/A"}</TableCell>
                   <TableCell className="text-muted-foreground">{entry.candidate?.email || "N/A"}</TableCell>
                   <TableCell><Badge variant={entry.status === "Completed" || entry.status === "Graded" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>{entry.status}</Badge></TableCell>
-                  
+                  <TableCell className="text-muted-foreground text-xs">{entry.scheduledAt ? format(new Date(entry.scheduledAt), "dd/MM/yy HH:mm") : "-"}</TableCell>
                   <TableCell className="text-muted-foreground">{entry.answers?.length || 0} / {questions.length}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDateValue(entry.startedAt)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDateValue(entry.completedAt)}</TableCell>
@@ -664,7 +666,39 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
 
         <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge></div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><AnswerDisplay text={answer?.answerText} /></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
         <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>Edit Entry</DialogTitle><DialogDescription>Ubah status entry test kandidat.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Status</Label><Select value={entryEditForm.status} onValueChange={(value) => setEntryEditForm((prev) => ({ ...prev, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Pending">Pending</SelectItem><SelectItem value="In Progress">In Progress</SelectItem><SelectItem value="Completed">Completed</SelectItem><SelectItem value="Graded">Graded</SelectItem><SelectItem value="Expired">Expired</SelectItem></SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setEditingEntry(null)}>Cancel</Button><Button onClick={handleUpdateEntry}>Save</Button></DialogFooter></DialogContent></Dialog>
-        <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}><DialogContent><DialogHeader><DialogTitle>Assign Test ke Kandidat</DialogTitle><DialogDescription>Pilih kandidat yang akan menerima access key test.</DialogDescription></DialogHeader><Select value={candidateId} onValueChange={setCandidateId}><SelectTrigger><SelectValue placeholder="Pilih kandidat" /></SelectTrigger><SelectContent>{initialCandidates.map((candidate: any) => <SelectItem key={candidate.id} value={String(candidate.id)}>{candidate.fullName} · {candidate.email || candidate.phone || "No contact"}</SelectItem>)}</SelectContent></Select><DialogFooter><Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancel</Button><Button onClick={handleAssignCandidate}>Assign</Button></DialogFooter></DialogContent></Dialog>
+        <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Assign Test ke Kandidat</DialogTitle>
+              <DialogDescription>Pilih kandidat dan atur jadwal (opsional).</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Kandidat</Label>
+                <Select value={candidateId} onValueChange={setCandidateId}>
+                  <SelectTrigger><SelectValue placeholder="Pilih kandidat" /></SelectTrigger>
+                  <SelectContent>
+                    {initialCandidates.map((candidate: any) => (
+                      <SelectItem key={candidate.id} value={String(candidate.id)}>{candidate.fullName} · {candidate.email || candidate.phone || "No contact"}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Jadwal (opsional)</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input type="date" value={assignDate} onChange={(e) => setAssignDate(e.target.value)} />
+                  <Input type="time" value={assignTime} onChange={(e) => setAssignTime(e.target.value)} />
+                </div>
+                <p className="text-xs text-muted-foreground">Kosongkan agar test langsung bisa diakses. Jika diisi, test hanya bisa dibuka setelah waktu tersebut.</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancel</Button>
+              <Button onClick={handleAssignCandidate}>Assign & Send Email</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </TabsContent>
       </Tabs>
     </AdminPageShell>
