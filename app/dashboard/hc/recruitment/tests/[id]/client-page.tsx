@@ -264,7 +264,46 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
   const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
   const formatQuestionType = (type: string) => ({ multiple_choice: "Multiple Choice", true_false: "Benar / Salah", checkbox: "Checkbox / Multi Select", multi_select: "Checkbox / Multi Select", checkbox_multi_select: "Checkbox / Multi Select", dropdown: "Dropdown Select", number: "Number Input", date: "Date Input", file_upload: "Upload File", rating: "Rating", matching: "Matching", ordering: "Ordering", passage: "Passage / Reading", psychometric_scale: "Skala Psikotes", personality: "Psikotes Kepribadian", interest_aptitude: "Minat & Bakat", situational_judgement: "Situational Judgement", essay: "Essay / Short Answer" }[type] || type);
   const optionBasedTypes = ["multiple_choice", "true_false", "checkbox", "multi_select", "checkbox_multi_select", "dropdown", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
-  const exportEntries = (targetEntries: any[], fileName: string) => { const rows = targetEntries.flatMap((entry) => (entry.answers?.length ? entry.answers : [{ questionText: "Belum ada jawaban" }]).map((answer: any, index: number) => ({ "Candidate Name": entry.candidate?.fullName || "N/A", Email: entry.candidate?.email || "N/A", Status: entry.status, "Started At": formatDateValue(entry.startedAt), "Completed At": formatDateValue(entry.completedAt), "Question No": answer.questionId ? index + 1 : "", "Question Type": answer.questionType || "", Question: plainText(answer.questionText || ""), Answer: answer.answerText || "", "Correct Answer": answer.correctAnswer || "" }))); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Answers"); XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(targetEntries.map((entry) => ({ "Candidate Name": entry.candidate?.fullName || "N/A", Email: entry.candidate?.email || "N/A", Status: entry.status, Answers: entry.answers?.length || 0, "Started At": formatDateValue(entry.startedAt), "Completed At": formatDateValue(entry.completedAt) }))), "Summary"); XLSX.writeFile(workbook, `${normalizeFileName(fileName)}.xlsx`); };
+  const formatAnswerForExcel = (answerText?: string) => {
+    if (!answerText) return "";
+    try {
+      const parsed = JSON.parse(answerText);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return Object.entries(parsed)
+          .map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").trim()}: ${v === null || v === undefined ? "" : String(v)}`)
+          .join("\n");
+      }
+    } catch {
+      // not JSON
+    }
+    return answerText;
+  };
+
+  const exportEntries = (targetEntries: any[], fileName: string) => {
+    const rows = targetEntries.flatMap((entry) => (entry.answers?.length ? entry.answers : [{ questionText: "Belum ada jawaban" }]).map((answer: any, index: number) => ({
+      "Candidate Name": entry.candidate?.fullName || "N/A",
+      Email: entry.candidate?.email || "N/A",
+      Status: entry.status,
+      "Started At": formatDateValue(entry.startedAt),
+      "Completed At": formatDateValue(entry.completedAt),
+      "Question No": answer.questionId ? index + 1 : "",
+      "Question Type": answer.questionType || "",
+      Question: plainText(answer.questionText || ""),
+      Answer: formatAnswerForExcel(answer.answerText),
+      "Correct Answer": answer.correctAnswer || "",
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Answers");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(targetEntries.map((entry) => ({
+      "Candidate Name": entry.candidate?.fullName || "N/A",
+      Email: entry.candidate?.email || "N/A",
+      Status: entry.status,
+      Answers: entry.answers?.length || 0,
+      "Started At": formatDateValue(entry.startedAt),
+      "Completed At": formatDateValue(entry.completedAt),
+    }))), "Summary");
+    XLSX.writeFile(workbook, `${normalizeFileName(fileName)}.xlsx`);
+  };
   const openEditEntry = (entry: any) => { setEditingEntry(entry); setEntryEditForm({ status: entry.status || "Pending", score: entry.score == null ? "" : String(entry.score) }); };
   const handleUpdateEntry = async () => { if (!editingEntry) return; const parsedScore = entryEditForm.score.trim() === "" ? null : Number(entryEditForm.score); if (parsedScore !== null && !Number.isFinite(parsedScore)) return toast.error("Score harus angka."); await updateTestEntry(editingEntry.id, { status: entryEditForm.status, score: parsedScore }); setEntries(entries.map((entry: any) => entry.id === editingEntry.id ? { ...entry, status: entryEditForm.status, score: parsedScore } : entry)); setEditingEntry(null); toast.success("Entry updated"); };
   const handleDeleteEntry = async (entry: any) => { if (!confirm(`Hapus entry test milik ${entry.candidate?.fullName || "candidate ini"}?`)) return; await deleteTestEntry(entry.id); setEntries(entries.filter((item: any) => item.id !== entry.id)); toast.success("Entry deleted"); };
