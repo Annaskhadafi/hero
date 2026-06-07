@@ -11,7 +11,6 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import * as XLSX from "xlsx"
 
 import { ScoreCard } from "@/components/score-card"
 import { Badge } from "@/components/ui/badge"
@@ -261,7 +260,7 @@ export function StockMaterialSapTable({ defaultRate }: StockMaterialSapTableProp
     totalValuationIdr: (apiStats?.totalValue ?? 0) * parsedRate,
   }), [apiStats, parsedRate])
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (data.length === 0) return
 
     const exportRows = data.map((item) => ({
@@ -280,6 +279,7 @@ export function StockMaterialSapTable({ defaultRate }: StockMaterialSapTableProp
       "Updated At": item.updatedAt ?? item.extractedAt ?? "",
     }))
 
+    const XLSX = await import("xlsx")
     const worksheet = XLSX.utils.json_to_sheet(exportRows)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, "Stock Material SAP")
@@ -366,7 +366,7 @@ export function StockMaterialSapTable({ defaultRate }: StockMaterialSapTableProp
               <RefreshCcw className="mr-2 h-4 w-4" />
               Refresh DB Data
             </Button>
-            <Button variant="outline" size="sm" onClick={handleExportExcel}>
+            <Button variant="outline" size="sm" onClick={() => void handleExportExcel()}>
               <Download className="mr-2 h-4 w-4" />
               Export Excel
             </Button>

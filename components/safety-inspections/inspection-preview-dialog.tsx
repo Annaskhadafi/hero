@@ -10,8 +10,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { type SafetyInspection } from "@/app/actions/safety-inspections"
-import html2canvas from "html2canvas-pro"
-import jsPDF from "jspdf"
 
 type InspectionWithAttachments = SafetyInspection & {
   reportAttachmentSignedUrl?: string
@@ -67,6 +65,7 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
       ),
     )
 
+    const { default: html2canvas } = await import("html2canvas-pro")
     return html2canvas(element, {
       scale: 2,
       useCORS: true,
@@ -82,6 +81,7 @@ export function InspectionPreviewDialog({ inspection, open, onOpenChange, onEdit
       const canvas = await renderDocumentCanvas()
       if (!canvas) return
 
+      const { default: jsPDF } = await import("jspdf")
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
       const pdfWidth = pdf.internal.pageSize.getWidth()
       const pdfHeight = pdf.internal.pageSize.getHeight()

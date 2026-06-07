@@ -3,7 +3,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCopy, Search, Wrench, X, Download, Filter } from "lucide-react"
 import { toast } from "sonner"
-import * as xlsx from "xlsx"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -707,7 +706,7 @@ export function WipRepairTable({ data, workOrderDetails, invoiceMappings, pmoMap
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     if (filteredData.length === 0) {
       toast.error("Tidak ada data untuk diekspor")
       return
@@ -742,12 +741,13 @@ export function WipRepairTable({ data, workOrderDetails, invoiceMappings, pmoMap
       }
     })
 
-    const worksheet = xlsx.utils.json_to_sheet(exportData)
-    const workbook = xlsx.utils.book_new()
-    xlsx.utils.book_append_sheet(workbook, worksheet, "WIP Repair")
+    const XLSX = await import("xlsx")
+    const worksheet = XLSX.utils.json_to_sheet(exportData)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "WIP Repair")
 
     const timestamp = new Date().toISOString().split("T")[0]
-    xlsx.writeFile(workbook, `WIP_Repair_Export_${timestamp}.xlsx`)
+    XLSX.writeFile(workbook, `WIP_Repair_Export_${timestamp}.xlsx`)
   }
 
   return (
@@ -796,7 +796,7 @@ export function WipRepairTable({ data, workOrderDetails, invoiceMappings, pmoMap
                 </DialogContent>
               </Dialog>
 
-              <Button type="button" variant="outline" className="h-10 rounded-xl shrink-0" onClick={handleExport}>
+              <Button type="button" variant="outline" className="h-10 rounded-xl shrink-0" onClick={() => void handleExport()}>
                 <Download className="mr-2 h-4 w-4" />
                 Export
               </Button>

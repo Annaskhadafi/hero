@@ -3,8 +3,6 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { Download, FileText, Printer } from 'lucide-react'
-import html2canvas from 'html2canvas-pro'
-import jsPDF from 'jspdf'
 
 import { logDailyChecklistAccess } from '@/app/actions/hse-checklists'
 import { Badge } from '@/components/ui/badge'
@@ -76,6 +74,7 @@ export function DailyChecklistReportDialog({
       })
     )
 
+    const { default: html2canvas } = await import('html2canvas-pro')
     return html2canvas(element, {
       scale: 2,
       useCORS: true,
@@ -91,6 +90,7 @@ export function DailyChecklistReportDialog({
       const canvas = await renderDocumentCanvas()
       if (!canvas) return
 
+      const { default: jsPDF } = await import('jspdf')
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       const pdfWidth = pdf.internal.pageSize.getWidth()
       const pdfHeight = pdf.internal.pageSize.getHeight()

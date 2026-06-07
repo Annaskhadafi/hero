@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useEffect, useMemo, useState, useTransition } from 'react'
-import * as XLSX from 'xlsx'
 import Fuse from 'fuse.js'
 import {
   CalendarDays,
@@ -75,7 +74,6 @@ import {
   normalizeAttendanceStatus,
   type AttendanceCellStatus,
 } from '@/lib/timesheet/attendance-real'
-import { parseAttendanceWorkbook } from '@/lib/timesheet/attendance-template-parser'
 import type {
   AttendancePreviewConflict,
   AttendancePreviewRow,
@@ -2559,6 +2557,10 @@ export function SchedulingTimesheetWorkspace({
     setIsImportingExcel(true)
     setLastImportSuccess(null)
     try {
+      const [XLSX, { parseAttendanceWorkbook }] = await Promise.all([
+        import('xlsx'),
+        import('@/lib/timesheet/attendance-template-parser'),
+      ])
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
       const allEmployeesForMatch = employees.length > 0 ? employees : visibleEmployees
@@ -3202,7 +3204,7 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  function downloadAttendanceTemplate() {
+  async function downloadAttendanceTemplate() {
     const templateRows = visibleEmployees.map((employee) => {
       const row: Record<string, string | number> = {
         Nama: employee.name,
@@ -3226,6 +3228,7 @@ export function SchedulingTimesheetWorkspace({
       { Status: 'Alpha', Keterangan: 'Cell rose.' },
       { Status: '-', Keterangan: 'Kosong / belum ada data.' },
     ]
+    const XLSX = await import('xlsx')
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(
       workbook,
@@ -4109,7 +4112,7 @@ export function SchedulingTimesheetWorkspace({
                     />
                   </Label>
                 </Button>
-                <Button size="sm" variant="outline" onClick={downloadAttendanceTemplate}>
+                <Button size="sm" variant="outline" onClick={() => void downloadAttendanceTemplate()}>
                   <Download className="mr-2 size-4" /> Template Excel
                 </Button>
                 <Button

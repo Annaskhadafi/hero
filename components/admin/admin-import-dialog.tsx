@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { CheckCircle2, FileSpreadsheet, Upload, Wand2 } from "lucide-react"
-import * as XLSX from "xlsx"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -44,7 +43,8 @@ function normalizeImportToken(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "")
 }
 
-function parseWorkbookRows(file: File, buffer: ArrayBuffer) {
+async function parseWorkbookRows(file: File, buffer: ArrayBuffer) {
+  const XLSX = await import("xlsx")
   const lowerName = file.name.toLowerCase()
 
   if (lowerName.endsWith(".csv")) {
@@ -134,7 +134,7 @@ export function AdminImportDialog({
 
     try {
       const buffer = await file.arrayBuffer()
-      const parsedRows = normalizeParsedRows(parseWorkbookRows(file, buffer))
+      const parsedRows = normalizeParsedRows(await parseWorkbookRows(file, buffer))
       const nextColumns = parsedRows[0]?.length ? parsedRows[0] : sampleColumns
       const nextDataRows = parsedRows.slice(1)
       const nextSampleRows = nextDataRows.slice(0, 3)
