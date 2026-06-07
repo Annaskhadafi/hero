@@ -10,35 +10,56 @@ import { format } from "date-fns";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 
-const FALLBACK_HTML = (vars: Record<string, string>) => `
-<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
-  <h2 style="color:#0f172a;">Interview Invitation</h2>
-  <p>Dear <strong>${vars.candidateName}</strong>,</p>
-  <p>You are invited for an interview for <strong>${vars.jobTitle}</strong>.</p>
-  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
-    <p><strong>Date:</strong> ${vars.date}</p>
-    <p><strong>Time:</strong> ${vars.time}</p>
-    <p><strong>Location:</strong> ${vars.location}</p>
-    <p><strong>Interviewer:</strong> ${vars.interviewer}</p>
-  </div>
-  <p>Please be ready 10 minutes before the scheduled time.</p>
-  <p>Best regards,<br/>Human Capital Team</p>
-</div>`;
+const FALLBACK_HTML = (vars: Record<string, string>) => `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">PT Chitra Paratama</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Sistem Rekrutmen & Assessment Online</p>
+    </td></tr>
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Selamat, ${vars.candidateName}! 🎉</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Selamat! Anda <strong>lolos ke tahap Interview</strong> untuk posisi <strong>${vars.jobTitle}</strong>.
+      </p>
+      <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
+        <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Interview:</strong></p>
+        <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${vars.date} · ${vars.time}</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#a16207;">${vars.interviewType}</p>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 8px;font-weight:700;color:#0f172a;font-size:14px;">📋 Detail Interview:</p>
+        <p style="margin:4px 0;color:#475569;font-size:13px;"><strong>Lokasi/Link:</strong> ${vars.location}</p>
+        <p style="margin:4px 0;color:#475569;font-size:13px;"><strong>Pewawancara:</strong> ${vars.interviewer}</p>
+        <p style="margin:4px 0;color:#475569;font-size:13px;"><strong>Durasi:</strong> ${vars.duration} menit</p>
+      </div>
+      <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">Mohon hadir 10 menit sebelum jadwal.<br/>Jika ada kendala, hubungi Tim Human Capital.</p>
+    </td></tr>
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
 
 const FALLBACK_TEXT = (vars: Record<string, string>) =>
-`Dear ${vars.candidateName},
+`Halo ${vars.candidateName},
 
-You are invited for an interview for ${vars.jobTitle}.
+Selamat! Anda lolos ke tahap Interview untuk posisi ${vars.jobTitle}.
 
-Date: ${vars.date}
-Time: ${vars.time}
-Location: ${vars.location}
-Interviewer: ${vars.interviewer}
+📅 Jadwal: ${vars.date} · ${vars.time}
+📍 Lokasi: ${vars.location}
+👤 Pewawancara: ${vars.interviewer}
+⏱ Durasi: ${vars.duration} menit
 
-Please be ready 10 minutes before the scheduled time.
+Mohon hadir 10 menit sebelum jadwal.
 
-Best regards,
-Human Capital Team`;
+Terima kasih,
+Tim Human Capital
+PT Chitra Paratama`;
 
 export async function getCandidateInterviews(candidateId: number) {
   return await db.select()
@@ -105,9 +126,12 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
         const rendered = renderHcTemplate(template, templateVars);
         subject = rendered.subject;
         html = rendered.body;
+        html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
+</div>` + html;
         text = rendered.body.replace(/<[^>]*>/g, "");
       } else {
-        subject = `[HERO] Interview Invitation - ${vacancyTitle}`;
+        subject = `[HERO] Undangan Interview — ${vacancyTitle}`;
         html = FALLBACK_HTML(templateVars);
         text = FALLBACK_TEXT(templateVars);
       }
@@ -127,6 +151,47 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
 
   revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);
   return interview;
+}
+
+export async function previewInterviewEmail(data: {
+  candidateName: string;
+  jobTitle: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  interviewType: string;
+  locationOrLink: string;
+  interviewerName: string;
+  durationMinutes: number;
+}) {
+  const templateVars = {
+    candidateName: data.candidateName,
+    jobTitle: data.jobTitle,
+    companyName: "PT Chitra Paratama",
+    date: data.scheduledDate,
+    time: data.scheduledTime,
+    location: data.locationOrLink,
+    interviewer: data.interviewerName,
+    duration: String(data.durationMinutes),
+    testLink: "",
+    interviewType: data.interviewType,
+  };
+
+  const template = await getHcEmailTemplateByType("interview_invitation");
+  let subject: string, html: string;
+
+  if (template) {
+    const rendered = renderHcTemplate(template, templateVars);
+    subject = rendered.subject;
+    html = rendered.body;
+    html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>🗓 Jadwal Interview:</strong> ${data.scheduledDate} · ${data.scheduledTime}
+</div>` + html;
+  } else {
+    subject = `[HERO] Undangan Interview — ${data.jobTitle}`;
+    html = FALLBACK_HTML(templateVars);
+  }
+
+  return { subject, html };
 }
 
 export async function updateInterviewStatus(interviewId: number, status: string, result: string) {

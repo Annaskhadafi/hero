@@ -25,23 +25,42 @@ const MCU_CLINIC_FALLBACK_HTML = (vars: Record<string, string>) => `
   <div style="margin-top:40px;"><p>Hormat kami,</p><p style="margin-top:60px;"><strong>Human Capital Department</strong><br/>PT Chitra Paratama</p></div>
 </div>`;
 
-const MCU_CANDIDATE_FALLBACK_HTML = (vars: Record<string, string>) => `
-<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
-  <p>Dear <strong>${vars.candidateName}</strong>,</p>
-  <p>Selamat! Anda lolos ke tahap Medical Check Up (MCU) untuk <strong>${vars.jobTitle}</strong>.</p>
-  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
-    <p><strong>Klinik:</strong> ${vars.clinicName}</p>
-    <p><strong>Tanggal:</strong> ${vars.date}</p>
-    <p><strong>Paket:</strong> ${vars.paket}</p>
-  </div>
-  <p><strong>Persiapan:</strong></p>
-  <ul>
-    <li>Puasa 10-12 jam sebelum MCU (boleh air putih).</li>
-    <li>Bawa KTP asli.</li>
-    <li>Sebut Anda dari PT Chitra Paratama.</li>
-  </ul>
-  <p>Best regards,<br/>Human Capital Team</p>
-</div>`;
+const MCU_CANDIDATE_FALLBACK_HTML = (vars: Record<string, string>) => `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">PT Chitra Paratama</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Sistem Rekrutmen & Assessment Online</p>
+    </td></tr>
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Selamat, ${vars.candidateName}! 🎉</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Selamat! Anda <strong>lolos ke tahap Medical Check Up (MCU)</strong> untuk posisi <strong>${vars.jobTitle}</strong>.
+      </p>
+      <div style="background:linear-gradient(135deg,#dbeafe,#bfdbfe);border:1px solid #3b82f6;border-radius:12px;padding:16px 20px;margin:20px 0;">
+        <p style="margin:0;font-size:14px;color:#1e40af;"><strong>🏥 Detail MCU:</strong></p>
+        <p style="margin:4px 0 0;font-size:14px;color:#1e40af;"><strong>Klinik:</strong> ${vars.clinicName}</p>
+        <p style="margin:4px 0 0;font-size:14px;color:#1e40af;"><strong>Tanggal:</strong> ${vars.date}</p>
+        <p style="margin:4px 0 0;font-size:14px;color:#1e40af;"><strong>Paket:</strong> ${vars.paket}</p>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 8px;font-weight:700;color:#0f172a;font-size:14px;">📋 Persiapan:</p>
+        <ul style="margin:0;padding-left:20px;color:#475569;font-size:13px;line-height:1.8;">
+          <li>Puasa 10-12 jam sebelum MCU (boleh air putih).</li>
+          <li>Bawa KTP asli.</li>
+          <li>Sebut Anda dari PT Chitra Paratama.</li>
+        </ul>
+      </div>
+    </td></tr>
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
 
 export async function getCandidateMcu(candidateId: number) {
   return await db.select()
@@ -143,7 +162,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         candHtml = r.body;
         candText = r.body.replace(/<[^>]*>/g, "");
       } else {
-        candSubject = `[HERO] Medical Check Up Invitation - ${vacancyTitle}`;
+        candSubject = `[HERO] Undangan Medical Check Up — ${vacancyTitle}`;
         candHtml = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
         candText = `Dear ${candidate.fullName},\n\nMCU untuk ${vacancyTitle}\nKlinik: ${data.klinikName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nPuasa 10-12 jam. Bawa KTP.\n\nHC Team`;
       }
@@ -182,4 +201,42 @@ export async function updateMcuResult(mcuId: number, status: string, notes: stri
 
   revalidatePath(`/dashboard/hc/recruitment/candidates/${mcu.candidateId}`);
   return mcu;
+}
+
+export async function previewMcuEmail(data: {
+  candidateName: string;
+  jobTitle: string;
+  klinikName: string;
+  paketMcu: string;
+  scheduledDate: string;
+}) {
+  const templateVars = {
+    candidateName: data.candidateName,
+    jobTitle: data.jobTitle,
+    companyName: "PT Chitra Paratama",
+    date: data.scheduledDate,
+    time: "",
+    location: "",
+    interviewer: "",
+    clinicName: data.klinikName,
+    clinicAddress: "",
+    clinicCity: "",
+    paket: data.paketMcu,
+    testLink: "",
+    duration: "",
+  };
+
+  const template = await getHcEmailTemplateByType("mcu_invitation");
+  let subject: string, html: string;
+
+  if (template) {
+    const rendered = renderHcTemplate(template, templateVars);
+    subject = rendered.subject;
+    html = rendered.body;
+  } else {
+    subject = `[HERO] Undangan Medical Check Up — ${data.jobTitle}`;
+    html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
+  }
+
+  return { subject, html };
 }

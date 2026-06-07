@@ -11,7 +11,7 @@ import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,8 +77,8 @@ function AnswerValue({ value }: { value: any }): React.ReactNode {
   return <span>{String(value)}</span>;
 }
 
-import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
-import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
+import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
+import { scheduleCandidateMcu, updateMcuResult, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
 import { hireAndCreateEmployee, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
@@ -102,6 +102,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [isHiring, setIsHiring] = useState(false);
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [cvLoading, setCvLoading] = useState(false);
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [emailPreviewData, setEmailPreviewData] = useState({ subject: "", html: "" });
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
 
   const handleViewCv = async () => {
     if (!candidate.cvUrl) return;
@@ -114,6 +117,47 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     } finally {
       setCvLoading(false);
     }
+  };
+
+  const handlePreviewInterview = async () => {
+    if (!scheduleForm.scheduledAtDate || !scheduleForm.scheduledAtTime) { toast.error("Isi tanggal dan waktu dulu"); return; }
+    setEmailPreviewLoading(true);
+    try {
+      const d = new Date(`${scheduleForm.scheduledAtDate}T${scheduleForm.scheduledAtTime}`);
+      const { format } = await import("date-fns");
+      const preview = await previewInterviewEmail({
+        candidateName: candidate.fullName,
+        jobTitle: candidate.jobTitle || "Posisi",
+        scheduledDate: format(d, "EEEE, dd MMMM yyyy"),
+        scheduledTime: format(d, "HH:mm"),
+        interviewType: scheduleForm.interviewType,
+        locationOrLink: scheduleForm.locationOrLink,
+        interviewerName: scheduleForm.interviewerName,
+        durationMinutes: scheduleForm.durationMinutes,
+      });
+      setEmailPreviewData(preview);
+      setEmailPreviewOpen(true);
+    } catch (e: any) { toast.error("Gagal preview"); }
+    finally { setEmailPreviewLoading(false); }
+  };
+
+  const handlePreviewMcu = async () => {
+    if (!mcuForm.scheduledDate || !mcuForm.klinikName) { toast.error("Isi klinik dan tanggal dulu"); return; }
+    setEmailPreviewLoading(true);
+    try {
+      const d = new Date(mcuForm.scheduledDate);
+      const { format } = await import("date-fns");
+      const preview = await previewMcuEmail({
+        candidateName: candidate.fullName,
+        jobTitle: candidate.jobTitle || "Posisi",
+        klinikName: mcuForm.klinikName,
+        paketMcu: mcuForm.paketMcu || "-",
+        scheduledDate: format(d, "dd MMMM yyyy"),
+      });
+      setEmailPreviewData(preview);
+      setEmailPreviewOpen(true);
+    } catch (e: any) { toast.error("Gagal preview"); }
+    finally { setEmailPreviewLoading(false); }
   };
 
   const handleHire = async () => {
@@ -1183,6 +1227,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsScheduleOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={handlePreviewInterview} disabled={emailPreviewLoading}>
+              {emailPreviewLoading ? "Loading..." : "Preview Email"}
+            </Button>
             <Button onClick={handleScheduleSubmit} disabled={isSubmitting}>
               {isSubmitting ? "Scheduling & Sending..." : "Schedule & Send Email"}
             </Button>
@@ -1271,6 +1318,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsMcuScheduleOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={handlePreviewMcu} disabled={emailPreviewLoading}>
+              {emailPreviewLoading ? "Loading..." : "Preview Email"}
+            </Button>
             <Button onClick={handleMcuSubmit} disabled={isMcuSubmitting}>
               {isMcuSubmitting ? "Processing..." : "Schedule & Send Emails"}
             </Button>
@@ -1303,6 +1353,22 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Preview Dialog */}
+      <Dialog open={emailPreviewOpen} onOpenChange={setEmailPreviewOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" style={{ maxHeight: '85vh' }}>
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Email Preview</DialogTitle>
+            <DialogDescription>Subject: {emailPreviewData.subject}</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto min-h-0 border rounded-lg bg-white">
+            <iframe srcDoc={emailPreviewData.html} className="w-full h-full border-0" style={{ minHeight: '500px' }} title="Email Preview" />
+          </div>
+          <DialogFooter className="shrink-0">
+            <Button variant="outline" onClick={() => setEmailPreviewOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
