@@ -264,6 +264,5 @@ export async function ensureDefaultTemplates() {
     }
   }
 
-  revalidatePath("/dashboard/hc/settings/email-templates");
   return { success: true };
 }
