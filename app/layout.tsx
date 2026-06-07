@@ -51,6 +51,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `(function(){var r=new MutationObserver(function(){document.querySelectorAll("[bis_skin_checked]").forEach(function(e){e.removeAttribute("bis_skin_checked")})});r.observe(document.documentElement,{attributes:true,childList:true,subtree:true});setTimeout(function(){r.disconnect()},3e3)})()`
+        }} />
+      </head>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
