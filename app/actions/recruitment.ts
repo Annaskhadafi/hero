@@ -315,6 +315,7 @@ export async function getCandidatesPaginated(filters: CandidateFilter = {}): Pro
       id: hcCandidates.id,
       recruitmentId: hcCandidates.recruitmentId,
       jobTitle: hcRecruitments.jobTitle,
+      location: hcRecruitments.location,
       fullName: hcCandidates.fullName,
       email: hcCandidates.email,
       phone: hcCandidates.phone,
@@ -348,6 +349,7 @@ type CandidateRow = {
   id: number;
   recruitmentId: number | null;
   jobTitle: string | null;
+  location: string | null;
   fullName: string;
   email: string;
   phone: string;

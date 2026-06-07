@@ -82,6 +82,7 @@ type Candidate = {
   id: number;
   recruitmentId: number | null;
   jobTitle: string | null;
+  location: string | null;
   fullName: string;
   email: string;
   phone: string;
@@ -125,7 +126,7 @@ export function RecruitmentClientPage({
   stats,
   formOptions,
 }: RecruitmentClientPageProps) {
-  const [candidates, setCandidates] = useState<Candidate[]>(paginatedCandidates.data);
+  const [candidates, setCandidates] = useState<Candidate[]>(paginatedCandidates.data as Candidate[]);
   const [candidatePage, setCandidatePage] = useState(paginatedCandidates);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [activeView, setActiveView] = useState<"vacancies" | "pipeline">("vacancies");
@@ -512,9 +513,9 @@ export function RecruitmentClientPage({
         pageSize: 25,
         jobId: pipelineJobIdFilter || undefined,
       });
-      setCandidates(prev => page === 1 ? result.data : [...prev, ...result.data]);
-      setCandidatePage(result);
-      refreshEmailStatuses(result.data);
+      setCandidates(prev => page === 1 ? result.data as Candidate[] : [...prev, ...result.data as Candidate[]]);
+      setCandidatePage(result as any);
+      refreshEmailStatuses(result.data as Candidate[]);
     } catch (e: any) {
       toast.error("Failed to load candidates");
     } finally {
@@ -693,7 +694,7 @@ export function RecruitmentClientPage({
                                   setIsCandidateListOpen(true);
                                   try {
                                     const res = await getCandidatesPaginated({ page: 1, pageSize: 50, jobId: job.id });
-                                    setDialogCandidates(res.data);
+                                    setDialogCandidates(res.data as Candidate[]);
                                     setDialogCandidatePage({ page: res.page, total: res.total, totalPages: res.totalPages });
                                   } catch { setDialogCandidates([]); }
                                   finally { setDialogCandidatesLoading(false); }
@@ -800,6 +801,7 @@ export function RecruitmentClientPage({
                         <TableHead className="w-12 text-center">NO</TableHead>
                         <TableHead>NAMA LENGKAP</TableHead>
                         <TableHead>LOWONGAN</TableHead>
+                        <TableHead>LOKASI</TableHead>
                         <TableHead>EMAIL</TableHead>
                         <TableHead>PHONE</TableHead>
                         <TableHead>STAGE</TableHead>
@@ -821,6 +823,7 @@ export function RecruitmentClientPage({
                           <TableCell className="text-center text-muted-foreground">{idx + 1}</TableCell>
                           <TableCell className="font-semibold">{candidate.fullName}</TableCell>
                           <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
+                          <TableCell className="text-muted-foreground">{candidate.location || "-"}</TableCell>
                           <TableCell>{candidate.email}</TableCell>
                           <TableCell>{candidate.phone}</TableCell>
                           <TableCell>
@@ -848,9 +851,9 @@ export function RecruitmentClientPage({
                           </TableCell>
                           <TableCell className="text-center">
                             {candidate.currentStage === "Hired" ? (
-                              <Badge className="bg-green-100 text-green-800 border-green-300">Lolos</Badge>
+                              <Badge className="bg-green-600 text-white font-bold">Lolos</Badge>
                             ) : candidate.currentStage === "Rejected" ? (
-                              <Badge className="bg-red-100 text-red-800 border-red-300">Tidak Lolos</Badge>
+                              <Badge className="bg-red-600 text-white font-bold">Tidak Lolos</Badge>
                             ) : (
                               <span className="text-muted-foreground text-xs">-</span>
                             )}
@@ -889,7 +892,7 @@ export function RecruitmentClientPage({
                       ))}
                       {visibleCandidates.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+                          <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
                             Belum ada kandidat.
                           </TableCell>
                         </TableRow>
@@ -1208,7 +1211,7 @@ export function RecruitmentClientPage({
                       onClick={async () => {
                         const prev = dialogCandidatePage.page - 1;
                         const res = await getCandidatesPaginated({ page: prev, pageSize: 50, jobId: selectedCandidateListJobId! });
-                        setDialogCandidates(res.data);
+                        setDialogCandidates(res.data as Candidate[]);
                         setDialogCandidatePage({ page: res.page, total: res.total, totalPages: res.totalPages });
                       }}>
                       Prev
@@ -1217,7 +1220,7 @@ export function RecruitmentClientPage({
                       onClick={async () => {
                         const next = dialogCandidatePage.page + 1;
                         const res = await getCandidatesPaginated({ page: next, pageSize: 50, jobId: selectedCandidateListJobId! });
-                        setDialogCandidates(res.data);
+                        setDialogCandidates(res.data as Candidate[]);
                         setDialogCandidatePage({ page: res.page, total: res.total, totalPages: res.totalPages });
                       }}>
                       Next
