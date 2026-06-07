@@ -131,34 +131,62 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  // Test not yet started (scheduled)
-  if (assignment.scheduledAt && questions.length === 0 && new Date() < new Date(assignment.scheduledAt)) {
-    const scheduledTime = new Date(assignment.scheduledAt);
-    return (
-      <Card className="max-w-2xl mx-auto mt-20 text-center p-6">
-        <CardHeader>
-          <div className="mx-auto bg-amber-100 text-amber-700 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-2xl">🕐</div>
-          <CardTitle className="text-2xl">Test Belum Tersedia</CardTitle>
-          <CardDescription className="text-base mt-2">
-            Test "{test.title}" akan dapat diakses pada:
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="text-2xl font-bold text-amber-700">
-            {new Date(assignment.scheduledAt).toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </div>
-          <div className="text-4xl font-bold text-amber-700">
-            {scheduledTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Silakan kembali pada waktu yang telah ditentukan. Link ini hanya akan berfungsi setelah jadwal dimulai.
-          </p>
-        </CardContent>
-      </Card>
-    );
+  // Test not yet started or already ended (scheduled)
+  if (questions.length === 0 && (assignment.scheduledAt || assignment.scheduledEndAt)) {
+    const now = new Date();
+    const isBefore = assignment.scheduledAt && now < new Date(assignment.scheduledAt);
+    const isAfter = assignment.scheduledEndAt && now > new Date(assignment.scheduledEndAt);
+
+    if (isBefore) {
+      const scheduledTime = new Date(assignment.scheduledAt);
+      return (
+        <Card className="max-w-2xl mx-auto mt-20 text-center p-6">
+          <CardHeader>
+            <div className="mx-auto bg-amber-100 text-amber-700 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-2xl">🕐</div>
+            <CardTitle className="text-2xl">Test Belum Tersedia</CardTitle>
+            <CardDescription className="text-base mt-2">
+              Test "{test.title}" akan dapat diakses pada:
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-2xl font-bold text-amber-700">
+              {scheduledTime.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </div>
+            <div className="text-4xl font-bold text-amber-700">
+              {scheduledTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Silakan kembali pada waktu yang telah ditentukan.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (isAfter) {
+      const endTime = assignment.scheduledEndAt ? new Date(assignment.scheduledEndAt) : null;
+      return (
+        <Card className="max-w-2xl mx-auto mt-20 text-center p-6">
+          <CardHeader>
+            <div className="mx-auto bg-destructive/10 text-destructive w-16 h-16 rounded-full flex items-center justify-center mb-4 text-2xl">✕</div>
+            <CardTitle className="text-2xl">Periode Tes Telah Berakhir</CardTitle>
+            <CardDescription className="text-base mt-2">
+              Test "{test.title}" sudah tidak dapat diakses.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {endTime && (
+              <p className="text-sm text-muted-foreground">
+                Periode tes berakhir pada {endTime.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}, pukul {endTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
   }
 
-  // Test already expired or not yet accessible
+  // Test already expired or not accessible (legacy second check)
   if (hasStarted && !isFinished && questions.length === 0 && assignment.scheduledAt) {
     const now = new Date();
     if (now < new Date(assignment.scheduledAt)) {

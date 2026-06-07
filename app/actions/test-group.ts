@@ -354,6 +354,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           accessKey,
           expiresAt,
           scheduledAt: scheduledAt || null,
+          scheduledEndAt: scheduledEndAt || null,
           status: "Pending",
         });
 

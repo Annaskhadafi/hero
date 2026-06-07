@@ -22,6 +22,13 @@ export async function ensureScheduledAtColumn() {
       ) THEN
         ALTER TABLE hero_hc_online_test_assignments ADD COLUMN scheduled_at timestamp;
       END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'hero_hc_online_test_assignments'
+        AND column_name = 'scheduled_end_at'
+      ) THEN
+        ALTER TABLE hero_hc_online_test_assignments ADD COLUMN scheduled_end_at timestamp;
+      END IF;
     END $$;
   `);
 }

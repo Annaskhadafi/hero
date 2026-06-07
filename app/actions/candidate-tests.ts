@@ -77,11 +77,15 @@ export async function getTestByAccessKey(accessKey: string) {
   }
 
   const scheduledAt = assignment.scheduledAt;
-  if (scheduledAt && new Date() < scheduledAt) {
-    return { assignment: { ...assignment, scheduledAt }, test, questions: [], previousAnswers: null };
+  const scheduledEndAt = assignment.scheduledEndAt;
+  const now = new Date();
+
+  // Block if before start or after end
+  if ((scheduledAt && now < scheduledAt) || (scheduledEndAt && now > scheduledEndAt)) {
+    return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: [], previousAnswers: null };
   }
 
-  return { assignment: { ...assignment, scheduledAt }, test, questions: safeQuestions, previousAnswers };
+  return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: safeQuestions, previousAnswers };
 }
 
 export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {
