@@ -360,3 +360,59 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
   return { results };
 }
 
+export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date | null) {
+  const groupItems = await db
+    .select({ title: hcOnlineTests.title })
+    .from(hcOnlineTestGroupItems)
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestGroupItems.testId, hcOnlineTests.id))
+    .where(eq(hcOnlineTestGroupItems.groupId, groupId))
+    .orderBy(hcOnlineTestGroupItems.sortOrder);
+
+  const [group] = await db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.id, groupId)).limit(1);
+  if (!group) return { subject: "", html: "" };
+
+  const { getHcEmailTemplateByType } = await import("@/app/actions/hc-email-templates");
+  const { renderHcTemplate } = await import("@/lib/hc-email-utils");
+  const { format } = await import("date-fns");
+
+  const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
+  const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
+  const linksHtml = groupItems.map((item, i) => `<li>${item.title}</li>`).join("");
+
+  const template = await getHcEmailTemplateByType("test_assigned");
+  const templateVars = {
+    candidateName: "[Candidate Name]",
+    jobTitle: group.name,
+    companyName: "PT Chitra Paratama",
+    date: scheduledDate,
+    time: scheduledTime,
+    location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
+    interviewer: "",
+    duration: "7",
+    testLink: "[Unique Link]",
+  };
+
+  let subject: string, html: string;
+  if (template) {
+    const rendered = renderHcTemplate(template, templateVars);
+    subject = rendered.subject;
+    html = rendered.body;
+  } else {
+    subject = `[HERO] Online Test - ${group.name}`;
+    html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
+  <h2 style="color:#0f172a;">Online Test Assignment</h2>
+  <p>Dear <strong>[Candidate Name]</strong>,</p>
+  <p>You have been assigned the <strong>${group.name}</strong> test.</p>
+  ${scheduledDate ? `<p style="color:#92400e;">Akses mulai: <strong>${scheduledDate} at ${scheduledTime}</strong>.</p>` : ""}
+  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
+    <p style="font-weight:600;margin-bottom:8px;">Tes yang harus dikerjakan:</p>
+    <ol style="text-align:left;">${linksHtml}</ol>
+  </div>
+  <p style="font-size:13px;color:#64748b;">Link berlaku 7 hari.</p>
+  <p>Best regards,<br/>Human Capital Team</p>
+</div>`;
+  }
+
+  return { subject, html };
+}
+

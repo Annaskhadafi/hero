@@ -20,7 +20,7 @@ import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
-import { getAllTestGroups, bulkAssignTestGroupToCandidates } from "@/app/actions/test-group";
+import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
 
@@ -141,6 +141,9 @@ export function RecruitmentClientPage({
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
   const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
+  const [emailPreview, setEmailPreview] = useState({ subject: "", html: "" });
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
   const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
@@ -257,6 +260,27 @@ export function RecruitmentClientPage({
       toast.error(e.message || "Failed to send invitation");
     } finally {
       setIsSendingTest(false);
+    }
+  };
+
+  const handlePreviewEmail = async () => {
+    if (!testInviteForm.testId) {
+      toast.error("Pilih test group dulu");
+      return;
+    }
+    setEmailPreviewLoading(true);
+    try {
+      let scheduledAt: Date | null = null;
+      if (testInviteForm.scheduledDate && testInviteForm.scheduledTime) {
+        scheduledAt = new Date(`${testInviteForm.scheduledDate}T${testInviteForm.scheduledTime}`);
+      }
+      const preview = await previewTestGroupEmail(parseInt(testInviteForm.testId), scheduledAt);
+      setEmailPreview(preview);
+      setIsEmailPreviewOpen(true);
+    } catch (e: any) {
+      toast.error("Failed to generate preview");
+    } finally {
+      setEmailPreviewLoading(false);
     }
   };
 
@@ -1286,6 +1310,9 @@ export function RecruitmentClientPage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsTestInviteOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={handlePreviewEmail} disabled={emailPreviewLoading || !testInviteForm.testId}>
+            {emailPreviewLoading ? "Loading..." : "Preview Email"}
+          </Button>
           <Button onClick={handleSendTestInvitation} disabled={isSendingTest || !testInviteForm.testId}>
             {isSendingTest ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
@@ -1381,6 +1408,29 @@ export function RecruitmentClientPage({
             </div>
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Email Preview Dialog */}
+    <Dialog open={isEmailPreviewOpen} onOpenChange={setIsEmailPreviewOpen}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" style={{ maxHeight: '85vh' }}>
+        <DialogHeader className="shrink-0">
+          <DialogTitle>Email Preview</DialogTitle>
+          <DialogDescription>
+            Subject: {emailPreview.subject}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-auto min-h-0 border rounded-lg bg-white">
+          <iframe
+            srcDoc={emailPreview.html}
+            className="w-full h-full border-0"
+            style={{ minHeight: '500px' }}
+            title="Email Preview"
+          />
+        </div>
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => setIsEmailPreviewOpen(false)}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 
