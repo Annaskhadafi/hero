@@ -20,6 +20,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
+function formatAnswer(text: string | null | undefined): string {
+  if (!text) return "-";
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map((v: any) => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ");
+    }
+    if (typeof parsed === "object" && parsed !== null) {
+      return Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(", ");
+    }
+  } catch {
+    return text;
+  }
+  return text;
+}
+
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
@@ -1043,11 +1059,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                                 <TableRow key={ans.id} className="border-t">
                                   <TableCell className="text-center text-muted-foreground text-xs">{idx + 1}</TableCell>
                                   <TableCell className="text-sm">{ans.questionText}</TableCell>
-                                  <TableCell className="text-sm">
-                                    <span className={cn(ans.pointsAwarded > 0 ? "text-green-700 font-medium" : "text-destructive font-medium")}>
-                                      {ans.answerText || "-"}
-                                    </span>
-                                  </TableCell>
+                              <TableCell className="text-sm">
+                                <span className={cn(ans.pointsAwarded > 0 ? "text-green-700 font-medium" : "text-destructive font-medium")}>
+                                  {formatAnswer(ans.answerText)}
+                                </span>
+                              </TableCell>
                                   <TableCell className="text-right">
                                     <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
                                       {ans.pointsAwarded}/{ans.maxPoints}
