@@ -996,11 +996,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
       {/* CV Viewer Dialog */}
       <Dialog open={!!cvViewerUrl} onOpenChange={(open) => { if (!open) setCvViewerUrl(null); }}>
-        <DialogContent className="sm:max-w-4xl h-[85vh] p-0 gap-0">
-          <DialogHeader className="px-6 py-4 border-b">
+        <DialogContent className="w-[95vw] h-[92vh] max-w-none p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-6 py-3 border-b shrink-0">
             <DialogTitle>CV / Resume — {candidate.fullName}</DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden bg-muted/20">
+          <div className="flex-1 overflow-hidden bg-muted/20 min-h-0">
             {cvViewerUrl ? (
               <iframe
                 src={cvViewerUrl}
@@ -1011,7 +1011,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
             )}
           </div>
-          <DialogFooter className="px-6 py-3 border-t">
+          <DialogFooter className="px-6 py-3 border-t shrink-0">
             <Button variant="outline" onClick={() => setCvViewerUrl(null)}>Close</Button>
             {cvViewerUrl && (
               <Button asChild variant="default">
