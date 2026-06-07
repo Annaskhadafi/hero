@@ -958,8 +958,8 @@ export function RecruitmentClientPage({
                                 <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
                               </Button>
                             ) : null}
-                            <Button variant="default" size="sm" asChild>
-                              <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
+                            <Button variant="default" size="sm" onClick={() => window.location.href = `/dashboard/hc/recruitment/candidates/${candidate.id}`}>
+                              View Details
                             </Button>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)}>
                               <IconTrash className="w-4 h-4" />
