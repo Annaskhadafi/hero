@@ -216,25 +216,22 @@ export function RecruitmentClientPage({
     setBatchForm({ batchName: batch.batchName, batchType: batch.batchType, scheduledDate: dateStr, scheduledTime: timeStr, scheduledEndDate: endDateStr, scheduledEndTime: endTimeStr });
   };
 
-  const openTestInvite = async () => {
-    try {
-      const groups = await getAllTestGroups();
-      setAvailableTestGroups(groups);
-    } catch (e) {
-      toast.error("Failed to load test groups");
-    }
-    // Load batches for the first selected candidate's job
+  const openTestInvite = () => {
+    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
+    setAvailableTestGroups([]);
+    setAvailableBatches([]);
+    setIsTestInviteOpen(true);
+    
+    // Load test groups
+    getAllTestGroups().then(groups => setAvailableTestGroups(groups)).catch(() => toast.error("Failed to load test groups"));
+    
+    // Load batches
     if (selectedIds.size > 0) {
       const firstCand = candidates.find(c => selectedIds.has(c.id));
       if (firstCand?.recruitmentId) {
-        try {
-          const list = await getBatchesByRecruitment(firstCand.recruitmentId);
-          setAvailableBatches(list);
-        } catch { setAvailableBatches([]); }
-      } else { setAvailableBatches([]); }
+        getBatchesByRecruitment(firstCand.recruitmentId).then(setAvailableBatches).catch(() => setAvailableBatches([]));
+      }
     }
-    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
-    setIsTestInviteOpen(true);
   };
 
   const handleSendTestInvitation = async () => {
@@ -783,9 +780,9 @@ export function RecruitmentClientPage({
                       <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
                         <IconTrash className="w-4 h-4 mr-1" /> Delete Selected
                       </Button>
-                      <Button variant="default" size="sm" onClick={openTestInvite}>
-                        <IconMail className="w-4 h-4 mr-1" /> Send Test Invitation
-                      </Button>
+              <Button variant="default" size="sm" onClick={openTestInvite}>
+                <IconMail className="w-4 h-4 mr-1" /> Send Test Invitation
+              </Button>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                         Clear
                       </Button>
