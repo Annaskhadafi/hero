@@ -194,6 +194,87 @@ export async function previewInterviewEmail(data: {
   return { subject, html };
 }
 
+export async function bulkScheduleInterviews(candidateIds: number[], data: {
+  scheduledAt: Date;
+  durationMinutes: number;
+  interviewType: string;
+  locationOrLink: string;
+  interviewerName: string;
+  notes: string;
+}) {
+  const smtpSettings = await getEmailSmtpSettingsData();
+  const { format } = await import("date-fns");
+  const template = await getHcEmailTemplateByType("interview_invitation");
+  const results: Array<{ candidateId: number; fullName: string; success: boolean; error?: string }> = [];
+
+  for (const cid of candidateIds) {
+    try {
+      const [candidate] = await db.select().from(hcCandidates).where(eq(hcCandidates.id, cid)).limit(1);
+      if (!candidate) { results.push({ candidateId: cid, fullName: "", success: false, error: "Not found" }); continue; }
+
+      let vacancyTitle = "Posisi";
+      if (candidate.recruitmentId) {
+        const [rec] = await db.select().from(hcRecruitments).where(eq(hcRecruitments.id, candidate.recruitmentId)).limit(1);
+        if (rec) vacancyTitle = rec.jobTitle;
+      }
+
+      await db.insert(hcCandidateInterviews).values({
+        candidateId: cid,
+        scheduledAt: data.scheduledAt,
+        durationMinutes: data.durationMinutes,
+        interviewType: data.interviewType,
+        locationOrLink: data.locationOrLink,
+        interviewerName: data.interviewerName,
+        notes: data.notes,
+        status: "Scheduled",
+      });
+
+      if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
+        const interviewDate = format(data.scheduledAt, "EEEE, dd MMMM yyyy");
+        const interviewTime = format(data.scheduledAt, "HH:mm");
+        const templateVars = {
+          candidateName: candidate.fullName,
+          jobTitle: vacancyTitle,
+          companyName: "PT Chitra Paratama",
+          date: interviewDate,
+          time: interviewTime,
+          location: data.locationOrLink,
+          interviewer: data.interviewerName,
+          duration: String(data.durationMinutes),
+          testLink: "",
+          interviewType: data.interviewType,
+        };
+
+        let subject: string, html: string, text: string;
+        if (template) {
+          const rendered = renderHcTemplate(template, templateVars);
+          subject = rendered.subject;
+          html = rendered.body;
+          html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
+</div>` + html;
+          text = rendered.body.replace(/<[^>]*>/g, "");
+        } else {
+          subject = `[HERO] Undangan Interview — ${vacancyTitle}`;
+          html = FALLBACK_HTML(templateVars);
+          text = FALLBACK_TEXT(templateVars);
+        }
+
+        await sendEmailViaSmtp(smtpSettings, {
+          to: candidate.email, subject, html, text,
+          templateName: "Interview Invitation", templateCode: "interview_invitation",
+        });
+      }
+      results.push({ candidateId: cid, fullName: candidate.fullName, success: true });
+    } catch (error: any) {
+      results.push({ candidateId: cid, fullName: "", success: false, error: error.message });
+    }
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return { results };
+}
+
 export async function updateInterviewStatus(interviewId: number, status: string, result: string) {
   const [interview] = await db.update(hcCandidateInterviews)
     .set({ status, result, updatedAt: new Date() })

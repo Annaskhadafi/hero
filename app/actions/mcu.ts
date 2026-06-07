@@ -240,3 +240,78 @@ export async function previewMcuEmail(data: {
 
   return { subject, html };
 }
+
+export async function bulkScheduleMcus(candidateIds: number[], data: {
+  klinikName: string;
+  klinikEmail: string;
+  paketMcu: string;
+  scheduledDate: Date;
+  clinicId?: number | null;
+}) {
+  const smtpSettings = await getEmailSmtpSettingsData();
+  const { format } = await import("date-fns");
+  const results: Array<{ candidateId: number; fullName: string; success: boolean; error?: string }> = [];
+
+  for (const cid of candidateIds) {
+    try {
+      const [candidate] = await db.select().from(hcCandidates).where(eq(hcCandidates.id, cid)).limit(1);
+      if (!candidate) { results.push({ candidateId: cid, fullName: "", success: false, error: "Not found" }); continue; }
+
+      let vacancyTitle = "Posisi";
+      if (candidate.recruitmentId) {
+        const [rec] = await db.select().from(hcRecruitments).where(eq(hcRecruitments.id, candidate.recruitmentId)).limit(1);
+        if (rec) vacancyTitle = rec.jobTitle;
+      }
+
+      await db.insert(hcCandidateMcu).values({
+        candidateId: cid,
+        klinikName: data.klinikName,
+        klinikEmail: data.klinikEmail,
+        paketMcu: data.paketMcu,
+        scheduledDate: format(data.scheduledDate, "yyyy-MM-dd"),
+        status: "Scheduled",
+      });
+
+      if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
+        const scheduledDateStr = format(data.scheduledDate, "EEEE, dd MMMM yyyy");
+        const templateVars = {
+          candidateName: candidate.fullName,
+          jobTitle: vacancyTitle,
+          companyName: "PT Chitra Paratama",
+          date: scheduledDateStr,
+          time: "",
+          location: "",
+          interviewer: "",
+          clinicName: data.klinikName,
+          clinicAddress: "",
+          clinicCity: "",
+          paket: data.paketMcu,
+          testLink: "",
+          duration: "",
+        };
+
+        const template = await getHcEmailTemplateByType("mcu_invitation");
+        let subject: string, html: string, text: string;
+        if (template) {
+          const r = renderHcTemplate(template, templateVars);
+          subject = r.subject; html = r.body; text = r.body.replace(/<[^>]*>/g, "");
+        } else {
+          subject = `[HERO] Undangan Medical Check Up — ${vacancyTitle}`;
+          html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
+          text = `Halo ${candidate.fullName},\n\nMCU untuk ${vacancyTitle}\nKlinik: ${data.klinikName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nPuasa 10-12 jam. Bawa KTP.\n\nHC Team`;
+        }
+
+        await sendEmailViaSmtp(smtpSettings, {
+          to: candidate.email, subject, html, text,
+          templateName: "MCU Invitation", templateCode: "mcu_invitation",
+        });
+      }
+      results.push({ candidateId: cid, fullName: candidate.fullName, success: true });
+    } catch (error: any) {
+      results.push({ candidateId: cid, fullName: "", success: false, error: error.message });
+    }
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return { results };
+}

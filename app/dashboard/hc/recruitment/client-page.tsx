@@ -16,12 +16,15 @@ import {
   IconBuilding,
   IconCalendarEvent,
   IconStack2,
+  IconStethoscope,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
+import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
+import { bulkScheduleMcus, previewMcuEmail } from "@/app/actions/mcu";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
 
@@ -146,6 +149,16 @@ export function RecruitmentClientPage({
   const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
   const [emailPreview, setEmailPreview] = useState({ subject: "", html: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+
+  // Bulk Interview State
+  const [isBulkInterviewOpen, setIsBulkInterviewOpen] = useState(false);
+  const [bulkInterviewForm, setBulkInterviewForm] = useState({ date: "", time: "", duration: 60, type: "Online", location: "", interviewer: "", notes: "" });
+  const [isBulkInterviewSending, setIsBulkInterviewSending] = useState(false);
+
+  // Bulk MCU State
+  const [isBulkMcuOpen, setIsBulkMcuOpen] = useState(false);
+  const [bulkMcuForm, setBulkMcuForm] = useState({ clinicName: "", clinicEmail: "", paket: "", date: "" });
+  const [isBulkMcuSending, setIsBulkMcuSending] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
   const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
@@ -233,6 +246,45 @@ export function RecruitmentClientPage({
         getBatchesByRecruitment(firstCand.recruitmentId).then(setAvailableBatches).catch(() => setAvailableBatches([]));
       }
     }
+  };
+
+  const handleBulkInterview = async () => {
+    if (!bulkInterviewForm.date || !bulkInterviewForm.time || !bulkInterviewForm.location) {
+      toast.error("Isi semua field"); return;
+    }
+    setIsBulkInterviewSending(true);
+    try {
+      const d = new Date(`${bulkInterviewForm.date}T${bulkInterviewForm.time}`);
+      const result = await bulkScheduleInterviews(Array.from(selectedIds), {
+        scheduledAt: d, durationMinutes: bulkInterviewForm.duration,
+        interviewType: bulkInterviewForm.type, locationOrLink: bulkInterviewForm.location,
+        interviewerName: bulkInterviewForm.interviewer, notes: bulkInterviewForm.notes,
+      });
+      const ok = result.results.filter(r => r.success).length;
+      toast.success(`Interview scheduled for ${ok} candidates`);
+      setIsBulkInterviewOpen(false);
+      setSelectedIds(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setIsBulkInterviewSending(false); }
+  };
+
+  const handleBulkMcu = async () => {
+    if (!bulkMcuForm.clinicName || !bulkMcuForm.clinicEmail || !bulkMcuForm.paket || !bulkMcuForm.date) {
+      toast.error("Isi semua field"); return;
+    }
+    setIsBulkMcuSending(true);
+    try {
+      const d = new Date(bulkMcuForm.date);
+      const result = await bulkScheduleMcus(Array.from(selectedIds), {
+        klinikName: bulkMcuForm.clinicName, klinikEmail: bulkMcuForm.clinicEmail,
+        paketMcu: bulkMcuForm.paket, scheduledDate: d,
+      });
+      const ok = result.results.filter(r => r.success).length;
+      toast.success(`MCU scheduled for ${ok} candidates`);
+      setIsBulkMcuOpen(false);
+      setSelectedIds(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setIsBulkMcuSending(false); }
   };
 
   const handleSendTestInvitation = async () => {
@@ -781,9 +833,15 @@ export function RecruitmentClientPage({
                       <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
                         <IconTrash className="w-4 h-4 mr-1" /> Delete Selected
                       </Button>
-              <Button variant="default" size="sm" onClick={openTestInvite}>
-                <IconMail className="w-4 h-4 mr-1" /> Send Test Invitation
-              </Button>
+                      <Button variant="default" size="sm" onClick={openTestInvite}>
+                        <IconMail className="w-4 h-4 mr-1" /> Send Test Invitation
+                      </Button>
+                      <Button variant="default" size="sm" onClick={() => setIsBulkInterviewOpen(true)}>
+                        <IconCalendarEvent className="w-4 h-4 mr-1" /> Send Interview Email
+                      </Button>
+                      <Button variant="default" size="sm" onClick={() => setIsBulkMcuOpen(true)}>
+                        <IconStethoscope className="w-4 h-4 mr-1" /> Send MCU Email
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                         Clear
                       </Button>
@@ -1489,6 +1547,61 @@ export function RecruitmentClientPage({
         </div>
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => setIsEmailPreviewOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Bulk Interview Dialog */}
+    <Dialog open={isBulkInterviewOpen} onOpenChange={setIsBulkInterviewOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Send Interview Email to {selectedIds.size} Candidates</DialogTitle>
+          <DialogDescription>Jadwal interview akan dikirim via email ke semua kandidat terpilih.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Date *</Label><Input type="date" value={bulkInterviewForm.date} onChange={e => setBulkInterviewForm({...bulkInterviewForm, date: e.target.value})} /></div>
+            <div className="space-y-2"><Label>Time *</Label><Input type="time" value={bulkInterviewForm.time} onChange={e => setBulkInterviewForm({...bulkInterviewForm, time: e.target.value})} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2"><Label>Duration (mins)</Label><Input type="number" min={15} value={bulkInterviewForm.duration} onChange={e => setBulkInterviewForm({...bulkInterviewForm, duration: parseInt(e.target.value)||60})} /></div>
+            <div className="space-y-2"><Label>Type</Label>
+              <Select value={bulkInterviewForm.type} onValueChange={v => setBulkInterviewForm({...bulkInterviewForm, type: v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Online">Online</SelectItem><SelectItem value="Offline">Offline</SelectItem></SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2"><Label>Location/Link *</Label><Input placeholder="Google Meet link or office address" value={bulkInterviewForm.location} onChange={e => setBulkInterviewForm({...bulkInterviewForm, location: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Interviewer</Label><Input placeholder="Nama pewawancara" value={bulkInterviewForm.interviewer} onChange={e => setBulkInterviewForm({...bulkInterviewForm, interviewer: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Notes</Label><Textarea placeholder="Catatan tambahan" value={bulkInterviewForm.notes} onChange={e => setBulkInterviewForm({...bulkInterviewForm, notes: e.target.value})} /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsBulkInterviewOpen(false)}>Cancel</Button>
+          <Button onClick={handleBulkInterview} disabled={isBulkInterviewSending}>
+            {isBulkInterviewSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Bulk MCU Dialog */}
+    <Dialog open={isBulkMcuOpen} onOpenChange={setIsBulkMcuOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Send MCU Email to {selectedIds.size} Candidates</DialogTitle>
+          <DialogDescription>Jadwal Medical Check Up akan dikirim via email ke semua kandidat terpilih.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2"><Label>Clinic Name *</Label><Input placeholder="Nama klinik" value={bulkMcuForm.clinicName} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicName: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Clinic Email *</Label><Input type="email" placeholder="Email klinik" value={bulkMcuForm.clinicEmail} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicEmail: e.target.value})} /></div>
+          <div className="space-y-2"><Label>MCU Package *</Label><Input placeholder="cth: Paket Executive" value={bulkMcuForm.paket} onChange={e => setBulkMcuForm({...bulkMcuForm, paket: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Date *</Label><Input type="date" value={bulkMcuForm.date} onChange={e => setBulkMcuForm({...bulkMcuForm, date: e.target.value})} /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsBulkMcuOpen(false)}>Cancel</Button>
+          <Button onClick={handleBulkMcu} disabled={isBulkMcuSending}>
+            {isBulkMcuSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
