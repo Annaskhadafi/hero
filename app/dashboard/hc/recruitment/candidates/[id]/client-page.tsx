@@ -20,20 +20,29 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-function formatAnswer(text: string | null | undefined): string {
-  if (!text) return "-";
+function AnswerCell({ text }: { text: string | null | undefined }) {
+  if (!text) return <span className="text-muted-foreground">-</span>;
   try {
     const parsed = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return (
+        <table className="w-full text-xs">
+          <tbody>
+            {Object.entries(parsed).map(([k, v]) => (
+              <tr key={k} className="border-b border-border/30 last:border-0">
+                <td className="py-1 pr-3 font-medium text-muted-foreground whitespace-nowrap align-top capitalize">{k.replace(/([A-Z])/g, " $1").trim()}</td>
+                <td className="py-1">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "-")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    }
     if (Array.isArray(parsed)) {
-      return parsed.map((v: any) => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ");
+      return <span>{parsed.map((v: any) => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ") || "-"}</span>;
     }
-    if (typeof parsed === "object" && parsed !== null) {
-      return Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(", ");
-    }
-  } catch {
-    return text;
-  }
-  return text;
+  } catch {}
+  return <span>{text}</span>;
 }
 
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
@@ -1061,7 +1070,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                                   <TableCell className="text-sm">{ans.questionText}</TableCell>
                               <TableCell className="text-sm">
                                 <span className={cn(ans.pointsAwarded > 0 ? "text-green-700 font-medium" : "text-destructive font-medium")}>
-                                  {formatAnswer(ans.answerText)}
+                                  <AnswerCell text={ans.answerText} />
                                 </span>
                               </TableCell>
                                   <TableCell className="text-right">
