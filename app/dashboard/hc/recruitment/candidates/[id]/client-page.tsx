@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -195,6 +195,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="mb-4 flex-wrap">
+          <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interviews">Interviews ({interviews.length})</TabsTrigger>
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
@@ -202,6 +203,222 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="history">Stage History</TabsTrigger>
           <TabsTrigger value="emails">Emails ({emailLogs.length})</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="profile">
+          <div className="space-y-6">
+            {/* Personal Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Personal Information</CardTitle>
+                <CardDescription>Data pribadi dari form lamaran</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Full Name</div>
+                      <div className="font-medium">{candidate.fullName || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Email</div>
+                      <div className="font-medium">{candidate.email || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Phone</div>
+                      <div className="font-medium">{candidate.phone || "-"}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Date of Birth</div>
+                      <div className="font-medium">{candidate.dateOfBirth ? format(new Date(candidate.dateOfBirth), "dd MMMM yyyy") : "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Gender</div>
+                      <div className="font-medium">{candidate.gender || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Source</div>
+                      <div className="font-medium">{candidate.source || "-"}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Position Applied</div>
+                      <div className="font-medium">{candidate.jobTitle || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Applied Date</div>
+                      <div className="font-medium">{format(new Date(candidate.createdAt), "dd MMMM yyyy")}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Current Stage</div>
+                      <Badge variant="outline">{candidate.currentStage}</Badge>
+                    </div>
+                  </div>
+                </div>
+                {candidate.address && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Address</div>
+                    <div className="text-sm">{candidate.address}</div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Work Experience */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Work Experience</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {candidate.workExperience?.length > 0 ? (
+                  <div className="space-y-4">
+                    {candidate.workExperience.map((we: any, i: number) => (
+                      <div key={i} className="p-4 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-semibold">{we.role}</div>
+                            <div className="text-sm text-muted-foreground">{we.company}</div>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{we.yearIn} - {we.yearOut}</div>
+                        </div>
+                        {we.description && (
+                          <div className="mt-2 text-sm text-muted-foreground">{we.description}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No work experience listed</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Education */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Education</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {candidate.education?.length > 0 ? (
+                  <div className="space-y-4">
+                    {candidate.education.map((edu: any, i: number) => (
+                      <div key={i} className="p-4 rounded-lg bg-muted/30 border border-border/50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-semibold">{edu.institution}</div>
+                            <div className="text-sm text-muted-foreground">{edu.major} • {edu.level}</div>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{edu.yearIn} - {edu.yearOut}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No education listed</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Driving Licenses & Certificates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Driving Licenses</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {candidate.drivingLicenses?.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {candidate.drivingLicenses.map((lic: string, i: number) => (
+                        <Badge key={i} variant="secondary">{lic}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No driving licenses listed</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Certifications</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {candidate.certificates?.length > 0 ? (
+                    <div className="space-y-3">
+                      {candidate.certificates.map((cert: any, i: number) => (
+                        <div key={i} className="flex justify-between items-center p-2 rounded bg-muted/30">
+                          <div>
+                            <div className="font-medium text-sm">{cert.name}</div>
+                            <div className="text-xs text-muted-foreground">{cert.publisher}</div>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{cert.year}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No certifications listed</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Achievements */}
+            {candidate.achievements && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Achievements</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm">{candidate.achievements}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* CV & AI Assessment */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>CV / Resume</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {candidate.cvUrl ? (
+                    <Button asChild variant="outline">
+                      <a href={candidate.cvUrl} target="_blank" rel="noreferrer">
+                        <IconFileText className="w-4 h-4 mr-2" />
+                        View CV Document
+                      </a>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No CV uploaded</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>AI Assessment</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {candidate.aiScore !== null ? (
+                    <>
+                      <div className="flex items-center gap-3">
+                        <div className="text-3xl font-bold">{candidate.aiScore}%</div>
+                        <div className="text-sm text-muted-foreground">Match Score</div>
+                      </div>
+                      {candidate.aiSummary && (
+                        <div className="text-sm bg-muted/50 p-3 rounded-md">{candidate.aiSummary}</div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No AI assessment yet</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
 
         <TabsContent value="overview">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
