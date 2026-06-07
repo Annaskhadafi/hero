@@ -1209,24 +1209,52 @@ export function RecruitmentClientPage({
           <div className="space-y-2">
             <Label>Schedule Test (optional)</Label>
             {availableBatches.length > 0 && (
-              <div className="mb-2">
-                <Select value={testInviteForm.batchId} onValueChange={(val) => {
-                  const batch = availableBatches.find(b => String(b.id) === val);
-                  if (batch) {
-                    const d = new Date(batch.scheduledAt);
-                    setTestInviteForm({ ...testInviteForm, batchId: val, scheduledDate: d.toISOString().split("T")[0], scheduledTime: d.toTimeString().slice(0, 5) });
-                  } else {
-                    setTestInviteForm({ ...testInviteForm, batchId: val });
-                  }
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Pilih batch (auto-fill jadwal)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Manual</SelectItem>
-                    {availableBatches.map((b) => (
-                      <SelectItem key={b.id} value={String(b.id)}>{b.batchName} — {b.batchType.replace(/_/g, " ").toUpperCase()} ({format(new Date(b.scheduledAt), "dd/MM/yy HH:mm")})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2 mb-2 p-3 rounded-lg border bg-muted/10">
+                <span className="text-xs font-medium text-muted-foreground">Pilih Batch (jadwal otomatis terisi)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {["psikotes_1", "psikotes_2", "interview", "mcu"].map((type) => {
+                    const typeBatches = availableBatches.filter((b) => b.batchType === type);
+                    if (typeBatches.length === 0) return null;
+                    const typeLabel = type === "psikotes_1" ? "Psikotes 1" : type === "psikotes_2" ? "Psikotes 2" : type === "interview" ? "Interview" : "MCU";
+                    return (
+                      <div key={type} className="col-span-2 space-y-1">
+                        <span className="text-xs font-semibold text-muted-foreground">{typeLabel}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {typeBatches.map((b) => {
+                            const isSelected = testInviteForm.batchId === String(b.id);
+                            return (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => {
+                                  const d = new Date(b.scheduledAt);
+                                  setTestInviteForm({
+                                    ...testInviteForm,
+                                    batchId: String(b.id),
+                                    scheduledDate: d.toISOString().split("T")[0],
+                                    scheduledTime: d.toTimeString().slice(0, 5),
+                                  });
+                                }}
+                                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80 text-foreground"}`}
+                              >
+                                {b.batchName}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {testInviteForm.batchId && (
+                    <button
+                      type="button"
+                      onClick={() => setTestInviteForm({ ...testInviteForm, batchId: "", scheduledDate: "", scheduledTime: "" })}
+                      className="px-2 py-1 rounded-md text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 col-span-2"
+                    >
+                      Clear Batch Selection
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
@@ -1259,42 +1287,17 @@ export function RecruitmentClientPage({
 
     {/* Batch Management Dialog */}
     <Dialog open={isBatchOpen} onOpenChange={setIsBatchOpen}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" style={{ maxHeight: '85vh' }}>
+        <DialogHeader className="shrink-0">
           <DialogTitle>Schedule Batches</DialogTitle>
           <DialogDescription>
             Kelola batch jadwal untuk {recruitments.find(r => r.id === batchJobId)?.jobTitle || "lowongan ini"}.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          {/* Existing Batches */}
-          <div className="space-y-2">
-            <Label>Daftar Batch</Label>
-            {batches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Belum ada batch. Buat batch baru di bawah.</p>
-            ) : (
-              <div className="space-y-2 max-h-[200px] overflow-auto">
-                {batches.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
-                    <div>
-                      <div className="font-medium">{b.batchName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {b.batchType.replace(/_/g, " ").toUpperCase()} • {format(new Date(b.scheduledAt), "dd MMM yyyy HH:mm")}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => handleEditBatch(b)}>Edit</Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteBatch(b.id)}>Delete</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
+        <div className="flex-1 overflow-auto min-h-0 space-y-6 py-2">
           {/* Add / Edit Batch Form */}
-          <div className="border-t pt-4 space-y-3">
-            <Label>{editingBatchId ? "Edit Batch" : "Tambah Batch Baru"}</Label>
+          <div className="p-4 rounded-xl border bg-muted/10 space-y-3">
+            <Label className="font-semibold">{editingBatchId ? "Edit Batch" : "Tambah Batch Baru"}</Label>
             <div className="grid grid-cols-2 gap-3">
               <Input placeholder="Nama Batch (cth: Batch 1)" value={batchForm.batchName} onChange={(e) => setBatchForm({ ...batchForm, batchName: e.target.value })} />
               <Select value={batchForm.batchType} onValueChange={(v) => setBatchForm({ ...batchForm, batchType: v })}>
@@ -1311,16 +1314,50 @@ export function RecruitmentClientPage({
               <Input type="date" value={batchForm.scheduledDate} onChange={(e) => setBatchForm({ ...batchForm, scheduledDate: e.target.value })} />
               <Input type="time" value={batchForm.scheduledTime} onChange={(e) => setBatchForm({ ...batchForm, scheduledTime: e.target.value })} />
             </div>
+            <div className="flex gap-2 justify-end">
+              {editingBatchId && (
+                <Button variant="ghost" size="sm" onClick={() => { setEditingBatchId(null); setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" }); }}>
+                  Cancel Edit
+                </Button>
+              )}
+              <Button onClick={handleSaveBatch} disabled={batchLoading} size="sm">
+                {batchLoading ? "Saving..." : editingBatchId ? "Update" : "Tambah"}
+              </Button>
+            </div>
           </div>
+
+          {/* Batch List — Grouped by Type */}
+          {batches.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center">Belum ada batch. Tambah batch di atas.</p>
+          ) : (
+            <div className="space-y-4">
+              {["psikotes_1", "psikotes_2", "interview", "mcu"].map((type) => {
+                const typeBatches = batches.filter((b) => b.batchType === type);
+                if (typeBatches.length === 0) return null;
+                const typeLabel = type === "psikotes_1" ? "Psikotes 1" : type === "psikotes_2" ? "Psikotes 2" : type === "interview" ? "Interview" : "Medical Checkup";
+                return (
+                  <div key={type}>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 border-b pb-2">{typeLabel}</h4>
+                    <div className="space-y-2">
+                      {typeBatches.map((b) => (
+                        <div key={b.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                          <div>
+                            <div className="font-medium">{b.batchName}</div>
+                            <div className="text-xs text-muted-foreground">{format(new Date(b.scheduledAt), "dd MMM yyyy HH:mm")}</div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => handleEditBatch(b)}>Edit</Button>
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteBatch(b.id)}>Delete</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => { setEditingBatchId(null); setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" }); }}>
-            {editingBatchId ? "Cancel Edit" : "Reset"}
-          </Button>
-          <Button onClick={handleSaveBatch} disabled={batchLoading}>
-            {batchLoading ? "Saving..." : editingBatchId ? "Update Batch" : "Create Batch"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
 
