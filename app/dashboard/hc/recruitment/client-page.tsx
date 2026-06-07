@@ -669,8 +669,8 @@ export function RecruitmentClientPage({
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {candidate.cvUrl ? (
-                                <Button variant="outline" size="sm" asChild>
-                                  <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                                <Button variant="outline" size="sm" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id}>
+                                  {cvLoadingId === candidate.id ? "Loading..." : "View CV"}
                                 </Button>
                               ) : null}
                               <Button variant="default" size="sm" asChild>
