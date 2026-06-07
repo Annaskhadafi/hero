@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   IconBriefcase,
   IconUsers,
@@ -17,7 +17,7 @@ import {
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses } from "@/app/actions/recruitment";
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -28,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { KanbanBoard } from "./kanban-board";
 import {
   Table,
   TableBody,
@@ -127,6 +128,25 @@ export function RecruitmentClientPage({
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
   const [recruitments, setRecruitments] = useState(initialRecruitments);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [emailStatuses, setEmailStatuses] = useState<Record<number, { status: string; lastSentAt: Date | null; templateName: string | null }>>({});
+
+  const refreshEmailStatuses = async (candList: Candidate[]) => {
+    const ids = candList.map(c => c.id);
+    if (ids.length === 0) return;
+    try {
+      const statuses = await getCandidateEmailStatuses(ids);
+      setEmailStatuses(prev => {
+        const next = { ...prev };
+        for (const s of statuses) next[s.candidateId] = s;
+        return next;
+      });
+    } catch {}
+  };
+
+  useEffect(() => {
+    refreshEmailStatuses(candidates);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visibleCandidates = pipelineJobIdFilter
     ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter)
@@ -320,6 +340,7 @@ export function RecruitmentClientPage({
       });
       setCandidates(prev => page === 1 ? result.data : [...prev, ...result.data]);
       setCandidatePage(result);
+      refreshEmailStatuses(result.data);
     } catch (e: any) {
       toast.error("Failed to load candidates");
     } finally {
@@ -593,6 +614,7 @@ export function RecruitmentClientPage({
                         <TableHead>PHONE</TableHead>
                         <TableHead>STAGE</TableHead>
                         <TableHead>AI MATCH</TableHead>
+                        <TableHead className="text-center w-20">EMAIL STATUS</TableHead>
                         <TableHead className="text-right">ACTIONS</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -619,6 +641,13 @@ export function RecruitmentClientPage({
                                 <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
                                 <span className="text-xs font-medium">{candidate.aiScore}%</span>
                               </div>
+                            ) : "-"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {emailStatuses[candidate.id] && emailStatuses[candidate.id].status !== "none" ? (
+                              <span title={`Email ${emailStatuses[candidate.id].status}`}>
+                                <IconMail className={cn("w-4 h-4 mx-auto", emailStatuses[candidate.id].status === "sent" ? "text-green-600" : "text-destructive")} />
+                              </span>
                             ) : "-"}
                           </TableCell>
                           <TableCell className="text-right">
@@ -665,83 +694,14 @@ export function RecruitmentClientPage({
                     </div>
                   )}
                 </MinimalTableShell>
-              ) : (
-                <ScrollArea className="w-full pb-4">
-                <div className="flex gap-6 min-w-max">
-                  {["Sourcing", "Screening", "Psikotes", "Interview", "Medical Checkup", "Offering", "Hired"].map((stage) => {
-                    const filteredCandidates = pipelineJobIdFilter ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter) : candidates;
-                    const stageCandidates = filteredCandidates.filter((c) => c.currentStage === stage);
-                    return (
-                      <div key={stage} className="w-[340px] flex flex-col gap-4">
-                        <div className="flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur-sm py-2 z-10 border-b">
-                          <h3 className="font-bold text-sm tracking-widest uppercase text-muted-foreground flex items-center gap-2">
-                            {stage}
-                            <Badge variant="secondary" className="rounded-full px-2 py-0 h-5 text-xs bg-muted/50">
-                              {stageCandidates.length}
-                            </Badge>
-                          </h3>
-                        </div>
-                        
-                        <div className="flex flex-col gap-4">
-                          {stageCandidates.map((candidate) => (
-                            <div
-                              key={candidate.id}
-                              className="bg-card border shadow-sm rounded-2xl p-5 hover:shadow-md transition-shadow group relative"
-                            >
-                              <div className="flex justify-between items-start mb-3">
-                                <div>
-                                  <h4 className="font-semibold text-base mb-0.5">{candidate.fullName}</h4>
-                                  <p className="text-xs text-muted-foreground font-medium">{candidate.jobTitle || "General Application"}</p>
-                                </div>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" asChild>
-                                  <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>
-                                    <IconEye className="w-4 h-4" />
-                                  </Link>
-                                </Button>
-                              </div>
-
-                              {/* AI Score Indicator */}
-                              {candidate.aiScore !== null ? (
-                                <div className="mt-4 p-3 rounded-xl bg-gradient-to-br from-accent/5 to-accent/10 border border-accent/20">
-                                  <div className="flex justify-between items-center mb-2">
-                                    <span className="text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-1.5">
-                                      <IconBrain className="w-3.5 h-3.5" />
-                                      AI Match
-                                    </span>
-                                    <span className="text-sm font-bold text-accent">{candidate.aiScore}%</span>
-                                  </div>
-                                  <Progress value={candidate.aiScore} className="h-1.5 bg-accent/20 [&>div]:bg-accent" />
-                                </div>
-                              ) : (
-                                <div className="mt-4">
-                                  <Button variant="outline" size="sm" className="w-full text-xs rounded-xl border-dashed hover:border-accent hover:text-accent hover:bg-accent/5">
-                                    <IconBrain className="w-3.5 h-3.5 mr-2" />
-                                    Run AI Assessment
-                                  </Button>
-                                </div>
-                              )}
-
-                              <div className="mt-4 pt-4 border-t flex justify-between items-center text-xs text-muted-foreground">
-                                <div className="flex items-center gap-1.5">
-                                  <IconFileText className="w-3.5 h-3.5" />
-                                  <span>{candidate.cvUrl ? "CV Uploaded" : "No CV"}</span>
-                                </div>
-                                <span>{format(new Date(candidate.createdAt), "dd MMM yyyy")}</span>
-                              </div>
-                            </div>
-                          ))}
-                          {stageCandidates.length === 0 && (
-                            <div className="border-2 border-dashed rounded-2xl p-6 text-center text-muted-foreground/50 flex flex-col items-center justify-center bg-muted/5">
-                              <span className="text-xs font-medium uppercase tracking-wider">Empty</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                </ScrollArea>
-              )}
+               ) : (
+                 <KanbanBoard
+                   candidates={visibleCandidates}
+                   jobFilter={pipelineJobIdFilter}
+                   onCandidateUpdate={(id, stage) => setCandidates(prev => prev.map(c => c.id === id ? { ...c, currentStage: stage } : c))}
+                   emailStatuses={emailStatuses}
+                 />
+               )}
             </div>
           )}
         </div>

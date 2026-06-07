@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
@@ -24,7 +25,7 @@ import { generateOnboardingToken } from "@/app/actions/onboarding";
 import { hireAndCreateEmployee } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 
-export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }: { candidate: any, interviews: any[], mcuRecords: any[] }) {
+export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[] }) {
   const router = useRouter();
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
@@ -199,6 +200,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
+          <TabsTrigger value="emails">Emails ({emailLogs.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -565,6 +567,44 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="emails">
+          <Card>
+            <CardHeader>
+              <CardTitle>Email Delivery Logs</CardTitle>
+              <CardDescription>History of emails sent to {candidate.email || "this candidate"}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {emailLogs.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-8 text-center">No email delivery records found.</div>
+              ) : (
+                <div className="space-y-4">
+                  {emailLogs.map((log: any) => (
+                    <div key={log.id} className="relative pl-6 border-l-2 border-muted pb-6 last:pb-0">
+                      <div className={cn("absolute w-3 h-3 rounded-full -left-[7px] top-1", log.status === "sent" ? "bg-green-500" : "bg-destructive")} />
+                      <div className="flex items-center gap-2">
+                        <IconMail className="w-4 h-4 text-muted-foreground" />
+                        <span className="font-medium">{log.templateName || log.subject || "Email"}</span>
+                        <Badge variant={log.status === "sent" ? "default" : "destructive"} className="text-xs">
+                          {log.status}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        To: {log.toEmail} • From: {log.fromEmail || "-"}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {log.sentAt ? format(new Date(log.sentAt), "dd MMM yyyy HH:mm") : format(new Date(log.createdAt), "dd MMM yyyy HH:mm")}
+                      </div>
+                      {log.errorMessage && (
+                        <div className="mt-2 text-sm bg-destructive/10 text-destructive p-2 rounded">{log.errorMessage}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -7,7 +7,8 @@ import {
   hcCandidateStages,
   hrEmployees,
   masterDepartments,
-  masterSections
+  masterSections,
+  emailDeliveryLogs,
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count, isNull, or, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -760,6 +761,71 @@ export async function deleteMultipleCandidates(ids: number[]) {
   await db.delete(hcCandidates).where(inArray(hcCandidates.id, ids));
   revalidatePath("/dashboard/hc/recruitment");
   return { success: true, count: ids.length };
+}
+
+export async function getCandidateEmailStatuses(candidateIds: number[]) {
+  if (candidateIds.length === 0) return [];
+
+  const rows = await db
+    .select({ id: hcCandidates.id, email: hcCandidates.email })
+    .from(hcCandidates)
+    .where(inArray(hcCandidates.id, candidateIds));
+
+  const emails = rows.map((r) => r.email).filter(Boolean) as string[];
+  if (emails.length === 0) {
+    return rows.map((r) => ({
+      candidateId: r.id,
+      status: "none" as const,
+      lastSentAt: null as Date | null,
+      templateName: null as string | null,
+    }));
+  }
+
+  const logs = await db
+    .select()
+    .from(emailDeliveryLogs)
+    .where(inArray(emailDeliveryLogs.toEmail, emails))
+    .orderBy(desc(emailDeliveryLogs.createdAt));
+
+  const latestByEmail = new Map<
+    string,
+    { status: string; sentAt: Date | null; templateName: string | null }
+  >();
+  for (const log of logs) {
+    if (!latestByEmail.has(log.toEmail)) {
+      latestByEmail.set(log.toEmail, {
+        status: log.status,
+        sentAt: log.sentAt,
+        templateName: log.templateName,
+      });
+    }
+  }
+
+  return rows.map((r) => {
+    const latest = r.email ? latestByEmail.get(r.email) : undefined;
+    return {
+      candidateId: r.id,
+      status: latest ? latest.status : ("none" as const),
+      lastSentAt: latest ? latest.sentAt : null,
+      templateName: latest ? latest.templateName : null,
+    };
+  });
+}
+
+export async function getCandidateEmailLogs(candidateId: number) {
+  const [candidate] = await db
+    .select({ email: hcCandidates.email })
+    .from(hcCandidates)
+    .where(eq(hcCandidates.id, candidateId))
+    .limit(1);
+
+  if (!candidate?.email) return [];
+
+  return db
+    .select()
+    .from(emailDeliveryLogs)
+    .where(eq(emailDeliveryLogs.toEmail, candidate.email))
+    .orderBy(desc(emailDeliveryLogs.createdAt));
 }
 
 // ─── AI Assessment ────────────────────────────────────────────────────────

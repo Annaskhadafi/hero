@@ -21,13 +21,55 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format } from "date-fns";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 
+function ValueDisplay({ value }: { value: any }) {
+  if (value === null || value === undefined) return <span>-</span>;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return <span>{String(value)}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span>-</span>;
+    if (value.every((v) => typeof v === "string" || typeof v === "number")) return <span>{value.join(", ")}</span>;
+    return (
+      <div className="space-y-2">
+        {value.map((item, idx) => (
+          <div key={idx} className="rounded border border-border/50 bg-muted/20 px-2 py-1">
+            {typeof item === "object" && item !== null ? (
+              <div className="space-y-0.5">
+                {Object.entries(item).map(([k, v]) => (
+                  <div key={k} className="flex items-start gap-2 text-xs">
+                    <span className="min-w-[100px] shrink-0 text-muted-foreground">{k.replace(/([A-Z])/g, " $1").trim()}</span>
+                    <ValueDisplay value={v} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs">{String(item)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (typeof value === "object") {
+    return (
+      <div className="space-y-0.5">
+        {Object.entries(value).map(([k, v]) => (
+          <div key={k} className="flex items-start gap-2 text-xs">
+            <span className="min-w-[100px] shrink-0 text-muted-foreground">{k.replace(/([A-Z])/g, " $1").trim()}</span>
+            <ValueDisplay value={v} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return <span>{String(value)}</span>;
+}
+
 function AnswerDisplay({ text }: { text?: string }) {
   if (!text) return <p className="mt-1 text-muted-foreground">Belum dijawab</p>;
 
-  let parsed: Record<string, any> | null = null;
+  let parsed: any = null;
   try {
     parsed = JSON.parse(text);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) parsed = null;
+    if (typeof parsed !== "object" || parsed === null) parsed = null;
   } catch {
     parsed = null;
   }
@@ -36,12 +78,16 @@ function AnswerDisplay({ text }: { text?: string }) {
     return <p className="mt-1 whitespace-pre-wrap">{text}</p>;
   }
 
+  if (Array.isArray(parsed)) {
+    return <ValueDisplay value={parsed} />;
+  }
+
   return (
     <div className="mt-1 space-y-1 text-sm">
       {Object.entries(parsed).map(([key, value]) => (
         <div key={key} className="flex items-start gap-2 border-b border-border/40 py-1 last:border-0">
           <span className="min-w-[140px] shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/([A-Z])/g, " $1").trim()}</span>
-          <span className="font-medium">{value === null || value === undefined ? "-" : String(value)}</span>
+          <div className="font-medium flex-1"><ValueDisplay value={value} /></div>
         </div>
       ))}
     </div>
@@ -264,14 +310,29 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
   const normalizeQuestionType = (type: string) => type === "multi_select" || type === "checkbox_multi_select" ? "checkbox" : type;
   const formatQuestionType = (type: string) => ({ multiple_choice: "Multiple Choice", true_false: "Benar / Salah", checkbox: "Checkbox / Multi Select", multi_select: "Checkbox / Multi Select", checkbox_multi_select: "Checkbox / Multi Select", dropdown: "Dropdown Select", number: "Number Input", date: "Date Input", file_upload: "Upload File", rating: "Rating", matching: "Matching", ordering: "Ordering", passage: "Passage / Reading", psychometric_scale: "Skala Psikotes", personality: "Psikotes Kepribadian", interest_aptitude: "Minat & Bakat", situational_judgement: "Situational Judgement", essay: "Essay / Short Answer" }[type] || type);
   const optionBasedTypes = ["multiple_choice", "true_false", "checkbox", "multi_select", "checkbox_multi_select", "dropdown", "rating", "matching", "ordering", "psychometric_scale", "personality", "interest_aptitude", "situational_judgement"];
+  const formatValueForExcel = (value: any, depth = 0): string => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+    if (Array.isArray(value)) {
+      if (value.length === 0) return "";
+      const items = value.map((v) => formatValueForExcel(v, depth + 1));
+      if (items.every((i) => !i.includes("\n"))) return items.join(", ");
+      return items.map((item, idx) => `${idx + 1}. ${item.replace(/\n/g, "\n   ")}`).join("\n");
+    }
+    if (typeof value === "object") {
+      return Object.entries(value)
+        .map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").trim()}: ${formatValueForExcel(v, depth + 1)}`)
+        .join("\n");
+    }
+    return String(value);
+  };
+
   const formatAnswerForExcel = (answerText?: string) => {
     if (!answerText) return "";
     try {
       const parsed = JSON.parse(answerText);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        return Object.entries(parsed)
-          .map(([k, v]) => `${k.replace(/([A-Z])/g, " $1").trim()}: ${v === null || v === undefined ? "" : String(v)}`)
-          .join("\n");
+      if (typeof parsed === "object" && parsed !== null) {
+        return formatValueForExcel(parsed);
       }
     } catch {
       // not JSON

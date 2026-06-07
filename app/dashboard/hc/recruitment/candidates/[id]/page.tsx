@@ -1,4 +1,4 @@
-import { getCandidateById } from "@/app/actions/recruitment";
+import { getCandidateById, getCandidateEmailLogs } from "@/app/actions/recruitment";
 import { getCandidateInterviews } from "@/app/actions/interviews";
 import { getCandidateMcu } from "@/app/actions/mcu";
 import { CandidateDetailClientPage } from "./client-page";
@@ -16,10 +16,11 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
     notFound();
   }
 
-  const [candidate, interviews, mcuRecords] = await Promise.all([
+  const [candidate, interviews, mcuRecords, emailLogs] = await Promise.all([
     getCandidateById(candidateId),
     getCandidateInterviews(candidateId),
     getCandidateMcu(candidateId),
+    getCandidateEmailLogs(candidateId),
   ]);
 
   if (!candidate) {
@@ -31,6 +32,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
       candidate={candidate as any}
       interviews={interviews}
       mcuRecords={mcuRecords}
+      emailLogs={emailLogs}
     />
   );
 }
