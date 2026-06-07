@@ -397,6 +397,11 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     const rendered = renderHcTemplate(template, templateVars);
     subject = rendered.subject;
     html = rendered.body;
+    if (scheduledDate) {
+      html = `<div style="font-family:Arial,sans-serif;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>Jadwal:</strong> Tes hanya dapat diakses mulai <strong>${scheduledDate}</strong> pukul <strong>${scheduledTime}</strong>.
+</div>` + html;
+    }
   } else {
     subject = `[HERO] Online Test - ${group.name}`;
     html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
