@@ -21,6 +21,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format } from "date-fns";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 
+function AnswerDisplay({ text }: { text?: string }) {
+  if (!text) return <p className="mt-1 text-muted-foreground">Belum dijawab</p>;
+
+  let parsed: Record<string, any> | null = null;
+  try {
+    parsed = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) parsed = null;
+  } catch {
+    parsed = null;
+  }
+
+  if (!parsed) {
+    return <p className="mt-1 whitespace-pre-wrap">{text}</p>;
+  }
+
+  return (
+    <div className="mt-1 space-y-1 text-sm">
+      {Object.entries(parsed).map(([key, value]) => (
+        <div key={key} className="flex items-start gap-2 border-b border-border/40 py-1 last:border-0">
+          <span className="min-w-[140px] shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/([A-Z])/g, " $1").trim()}</span>
+          <span className="font-medium">{value === null || value === undefined ? "-" : String(value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions, initialEntries = [], initialCandidates = [] }: { initialTest: any, initialQuestions: any[], initialEntries?: any[], initialCandidates?: any[] }) {
   const [test, setTest] = useState(initialTest);
   const [questions, setQuestions] = useState(initialQuestions);
@@ -535,7 +562,7 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
           </Table>
         </MinimalTableShell>
 
-        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge></div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><p className="mt-1 whitespace-pre-wrap">{answer?.answerText || "Belum dijawab"}</p></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
+        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge></div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><AnswerDisplay text={answer?.answerText} /></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
         <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>Edit Entry</DialogTitle><DialogDescription>Ubah status entry test kandidat.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Status</Label><Select value={entryEditForm.status} onValueChange={(value) => setEntryEditForm((prev) => ({ ...prev, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Pending">Pending</SelectItem><SelectItem value="In Progress">In Progress</SelectItem><SelectItem value="Completed">Completed</SelectItem><SelectItem value="Graded">Graded</SelectItem><SelectItem value="Expired">Expired</SelectItem></SelectContent></Select></div></div><DialogFooter><Button variant="outline" onClick={() => setEditingEntry(null)}>Cancel</Button><Button onClick={handleUpdateEntry}>Save</Button></DialogFooter></DialogContent></Dialog>
         <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}><DialogContent><DialogHeader><DialogTitle>Assign Test ke Kandidat</DialogTitle><DialogDescription>Pilih kandidat yang akan menerima access key test.</DialogDescription></DialogHeader><Select value={candidateId} onValueChange={setCandidateId}><SelectTrigger><SelectValue placeholder="Pilih kandidat" /></SelectTrigger><SelectContent>{initialCandidates.map((candidate: any) => <SelectItem key={candidate.id} value={String(candidate.id)}>{candidate.fullName} · {candidate.email || candidate.phone || "No contact"}</SelectItem>)}</SelectContent></Select><DialogFooter><Button variant="outline" onClick={() => setIsAssignOpen(false)}>Cancel</Button><Button onClick={handleAssignCandidate}>Assign</Button></DialogFooter></DialogContent></Dialog>
       </TabsContent>
