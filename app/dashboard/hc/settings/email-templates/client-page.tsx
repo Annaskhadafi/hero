@@ -26,6 +26,8 @@ const TEMPLATE_TYPES = [
   { value: "interview_invitation", label: "Interview Invitation" },
   { value: "test_assigned", label: "Online Test Assigned" },
   { value: "application_received", label: "Application Received" },
+  { value: "mcu_pengantar", label: "MCU Surat Pengantar (to Clinic)" },
+  { value: "mcu_invitation", label: "MCU Invitation (to Candidate)" },
 ] as const;
 
 const PLACEHOLDER_DEFS = getAvailablePlaceholders();

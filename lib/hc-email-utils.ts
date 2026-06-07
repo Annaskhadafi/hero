@@ -8,6 +8,10 @@ const PLACEHOLDERS: Record<string, string> = {
   interviewer: "Nama pewawancara",
   testLink: "Link tes online",
   duration: "Durasi dalam menit",
+  clinicName: "Nama klinik MCU",
+  clinicAddress: "Alamat klinik",
+  clinicCity: "Kota klinik",
+  paket: "Paket MCU",
 };
 
 export function getAvailablePlaceholders() {
@@ -25,4 +29,7 @@ export function renderHcTemplate(template: { subject: string; body: string }, va
   return { subject, body };
 }
 
-export const HC_TEMPLATE_CODES = ["interview_invitation", "test_assigned", "application_received"];
+export const HC_TEMPLATE_CODES = [
+  "interview_invitation", "test_assigned", "application_received",
+  "mcu_pengantar", "mcu_invitation",
+];

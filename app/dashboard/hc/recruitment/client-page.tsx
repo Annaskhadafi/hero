@@ -13,6 +13,7 @@ import {
   IconTrash,
   IconExternalLink,
   IconMail,
+  IconBuilding,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
@@ -396,6 +397,16 @@ export function RecruitmentClientPage({
             >
               <IconMail className="w-4 h-4" />
               Email Templates
+            </Link>
+            <Link
+              href="/dashboard/hc/settings/mcu-clinics"
+              className={cn(
+                "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
+                "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              <IconBuilding className="w-4 h-4" />
+              Clinics
             </Link>
           </div>
 

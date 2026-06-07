@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy } from "@tabler/icons-react";
@@ -21,6 +22,7 @@ import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions
 import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
 import { hireAndCreateEmployee } from "@/app/actions/recruitment";
+import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 
 export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }: { candidate: any, interviews: any[], mcuRecords: any[] }) {
   const router = useRouter();
@@ -54,9 +56,16 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
     }
   };
 
+  const [clinics, setClinics] = useState<Array<{ id: number; name: string; email: string; paketOptions: string[] | null }>>([]);
+  const [selectedPaketOptions, setSelectedPaketOptions] = useState<string[]>([]);
+  useEffect(() => {
+    getActiveMcuClinics().then(setClinics).catch(() => {});
+  }, []);
+
   const [isMcuScheduleOpen, setIsMcuScheduleOpen] = useState(false);
   const [isMcuSubmitting, setIsMcuSubmitting] = useState(false);
   const [mcuForm, setMcuForm] = useState({
+    clinicId: "",
     klinikName: "",
     klinikEmail: "",
     paketMcu: "",
@@ -117,6 +126,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
         klinikEmail: mcuForm.klinikEmail,
         paketMcu: mcuForm.paketMcu,
         scheduledDate,
+        clinicId: mcuForm.clinicId ? parseInt(mcuForm.clinicId) : null,
       });
 
       toast.success("MCU scheduled and emails sent to Clinic and Candidate.");
@@ -655,19 +665,48 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords }:
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label>Clinic Name <span className="text-destructive">*</span></Label>
-              <Input placeholder="e.g. Klinik Pramita" value={mcuForm.klinikName} onChange={(e) => setMcuForm({...mcuForm, klinikName: e.target.value})} />
+              <Label>Clinic <span className="text-destructive">*</span></Label>
+              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={mcuForm.clinicId}
+                onChange={(e) => {
+                  const clinic = clinics.find(c => c.id === parseInt(e.target.value));
+                  setMcuForm({
+                    ...mcuForm,
+                    clinicId: e.target.value,
+                    klinikName: clinic?.name || "",
+                    klinikEmail: clinic?.email || "",
+                    paketMcu: "",
+                  });
+                  setSelectedPaketOptions(clinic?.paketOptions || []);
+                }}
+              >
+                <option value="">-- Select Clinic --</option>
+                {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {clinics.length === 0 && (
+                <p className="text-xs text-muted-foreground">No clinics registered. <Link href="/dashboard/hc/settings/mcu-clinics" className="text-accent underline">Add clinics first</Link>.</p>
+              )}
             </div>
 
             <div className="space-y-2">
               <Label>Clinic Email <span className="text-destructive">*</span></Label>
-              <Input type="email" placeholder="e.g. admin@pramita.co.id" value={mcuForm.klinikEmail} onChange={(e) => setMcuForm({...mcuForm, klinikEmail: e.target.value})} />
-              <p className="text-xs text-muted-foreground">Surat Pengantar MCU will be sent to this email automatically.</p>
+              <Input type="email" value={mcuForm.klinikEmail} onChange={(e) => setMcuForm({...mcuForm, klinikEmail: e.target.value})} />
+              <p className="text-xs text-muted-foreground">Surat Pengantar MCU akan dikirim ke email ini.</p>
             </div>
 
             <div className="space-y-2">
               <Label>MCU Package <span className="text-destructive">*</span></Label>
-              <Input placeholder="e.g. Paket Executive" value={mcuForm.paketMcu} onChange={(e) => setMcuForm({...mcuForm, paketMcu: e.target.value})} />
+              {selectedPaketOptions.length > 0 ? (
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={mcuForm.paketMcu}
+                  onChange={(e) => setMcuForm({...mcuForm, paketMcu: e.target.value})}
+                >
+                  <option value="">-- Select Package --</option>
+                  {selectedPaketOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              ) : (
+                <Input placeholder="e.g. Paket Executive" value={mcuForm.paketMcu} onChange={(e) => setMcuForm({...mcuForm, paketMcu: e.target.value})} />
+              )}
             </div>
 
             <div className="space-y-2">

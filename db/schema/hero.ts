@@ -2762,3 +2762,17 @@ export const hcOnlineTestAnswers = pgTable('hero_hc_online_test_answers', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const hcMcuClinics = pgTable('hero_hc_mcu_clinics', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().default(''),
+  phone: text('phone').notNull().default(''),
+  address: text('address').notNull().default(''),
+  city: text('city').notNull().default(''),
+  contactPerson: text('contact_person').notNull().default(''),
+  paketOptions: jsonb('paket_options').$type<string[]>(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
