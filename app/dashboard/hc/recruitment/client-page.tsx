@@ -14,11 +14,13 @@ import {
   IconExternalLink,
   IconMail,
   IconBuilding,
+  IconCalendarEvent,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
+import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -136,9 +138,70 @@ export function RecruitmentClientPage({
 
   // Test Invitation Dialog
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
-  const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7 });
+  const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
+  const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date }>>([]);
+
+  // Batch Management
+  const [isBatchOpen, setIsBatchOpen] = useState(false);
+  const [batchJobId, setBatchJobId] = useState<number | null>(null);
+  const [batches, setBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; recruitmentId: number }>>([]);
+  const [batchForm, setBatchForm] = useState({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" });
+  const [editingBatchId, setEditingBatchId] = useState<number | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const openBatches = async (jobId: number) => {
+    setBatchJobId(jobId);
+    setIsBatchOpen(true);
+    setEditingBatchId(null);
+    setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" });
+    try {
+      const list = await getBatchesByRecruitment(jobId);
+      setBatches(list);
+    } catch (e) { setBatches([]); }
+  };
+
+  const handleSaveBatch = async () => {
+    if (!batchForm.batchName || !batchForm.scheduledDate || !batchForm.scheduledTime || !batchJobId) {
+      toast.error("Isi semua field batch");
+      return;
+    }
+    setBatchLoading(true);
+    const scheduledAt = new Date(`${batchForm.scheduledDate}T${batchForm.scheduledTime}`);
+    try {
+      if (editingBatchId) {
+        await updateBatch(editingBatchId, { batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt });
+        setBatches(prev => prev.map(b => b.id === editingBatchId ? { ...b, batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt } : b));
+        toast.success("Batch updated");
+      } else {
+        const created = await createBatch({ recruitmentId: batchJobId, batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt });
+        setBatches(prev => [...prev, created]);
+        toast.success("Batch created");
+      }
+      setEditingBatchId(null);
+      setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save batch");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleDeleteBatch = async (id: number) => {
+    if (!confirm("Delete batch ini?")) return;
+    await deleteBatch(id);
+    setBatches(prev => prev.filter(b => b.id !== id));
+    toast.success("Batch deleted");
+  };
+
+  const handleEditBatch = (batch: any) => {
+    setEditingBatchId(batch.id);
+    const d = new Date(batch.scheduledAt);
+    const dateStr = d.toISOString().split("T")[0];
+    const timeStr = d.toTimeString().slice(0, 5);
+    setBatchForm({ batchName: batch.batchName, batchType: batch.batchType, scheduledDate: dateStr, scheduledTime: timeStr });
+  };
 
   const openTestInvite = async () => {
     try {
@@ -148,7 +211,17 @@ export function RecruitmentClientPage({
     } catch (e) {
       toast.error("Failed to load tests");
     }
-    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7 });
+    // Load batches for the first selected candidate's job
+    if (selectedIds.size > 0) {
+      const firstCand = candidates.find(c => selectedIds.has(c.id));
+      if (firstCand?.recruitmentId) {
+        try {
+          const list = await getBatchesByRecruitment(firstCand.recruitmentId);
+          setAvailableBatches(list);
+        } catch { setAvailableBatches([]); }
+      } else { setAvailableBatches([]); }
+    }
+    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
     setIsTestInviteOpen(true);
   };
 
@@ -578,6 +651,9 @@ export function RecruitmentClientPage({
                                   finally { setDialogCandidatesLoading(false); }
                                 }} title="View Candidates">
                                  <IconUsers className="w-4 h-4 text-blue-500" />
+                               </Button>
+                               <Button variant="ghost" size="icon" onClick={() => openBatches(job.id)} title="Schedule Batches">
+                                 <IconCalendarEvent className="w-4 h-4 text-amber-600" />
                                </Button>
                                {job.isPublic ? (
                                  <a
@@ -1132,6 +1208,27 @@ export function RecruitmentClientPage({
 
           <div className="space-y-2">
             <Label>Schedule Test (optional)</Label>
+            {availableBatches.length > 0 && (
+              <div className="mb-2">
+                <Select value={testInviteForm.batchId} onValueChange={(val) => {
+                  const batch = availableBatches.find(b => String(b.id) === val);
+                  if (batch) {
+                    const d = new Date(batch.scheduledAt);
+                    setTestInviteForm({ ...testInviteForm, batchId: val, scheduledDate: d.toISOString().split("T")[0], scheduledTime: d.toTimeString().slice(0, 5) });
+                  } else {
+                    setTestInviteForm({ ...testInviteForm, batchId: val });
+                  }
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Pilih batch (auto-fill jadwal)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Manual</SelectItem>
+                    {availableBatches.map((b) => (
+                      <SelectItem key={b.id} value={String(b.id)}>{b.batchName} — {b.batchType.replace(/_/g, " ").toUpperCase()} ({format(new Date(b.scheduledAt), "dd/MM/yy HH:mm")})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">Date</Label>
@@ -1155,6 +1252,73 @@ export function RecruitmentClientPage({
           <Button variant="outline" onClick={() => setIsTestInviteOpen(false)}>Cancel</Button>
           <Button onClick={handleSendTestInvitation} disabled={isSendingTest || !testInviteForm.testId}>
             {isSendingTest ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Batch Management Dialog */}
+    <Dialog open={isBatchOpen} onOpenChange={setIsBatchOpen}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Schedule Batches</DialogTitle>
+          <DialogDescription>
+            Kelola batch jadwal untuk {recruitments.find(r => r.id === batchJobId)?.jobTitle || "lowongan ini"}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Existing Batches */}
+          <div className="space-y-2">
+            <Label>Daftar Batch</Label>
+            {batches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Belum ada batch. Buat batch baru di bawah.</p>
+            ) : (
+              <div className="space-y-2 max-h-[200px] overflow-auto">
+                {batches.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
+                    <div>
+                      <div className="font-medium">{b.batchName}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {b.batchType.replace(/_/g, " ").toUpperCase()} • {format(new Date(b.scheduledAt), "dd MMM yyyy HH:mm")}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => handleEditBatch(b)}>Edit</Button>
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteBatch(b.id)}>Delete</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add / Edit Batch Form */}
+          <div className="border-t pt-4 space-y-3">
+            <Label>{editingBatchId ? "Edit Batch" : "Tambah Batch Baru"}</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <Input placeholder="Nama Batch (cth: Batch 1)" value={batchForm.batchName} onChange={(e) => setBatchForm({ ...batchForm, batchName: e.target.value })} />
+              <Select value={batchForm.batchType} onValueChange={(v) => setBatchForm({ ...batchForm, batchType: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="psikotes_1">Psikotes 1</SelectItem>
+                  <SelectItem value="psikotes_2">Psikotes 2</SelectItem>
+                  <SelectItem value="interview">Interview</SelectItem>
+                  <SelectItem value="mcu">Medical Checkup</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input type="date" value={batchForm.scheduledDate} onChange={(e) => setBatchForm({ ...batchForm, scheduledDate: e.target.value })} />
+              <Input type="time" value={batchForm.scheduledTime} onChange={(e) => setBatchForm({ ...batchForm, scheduledTime: e.target.value })} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setEditingBatchId(null); setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" }); }}>
+            {editingBatchId ? "Cancel Edit" : "Reset"}
+          </Button>
+          <Button onClick={handleSaveBatch} disabled={batchLoading}>
+            {batchLoading ? "Saving..." : editingBatchId ? "Update Batch" : "Create Batch"}
           </Button>
         </DialogFooter>
       </DialogContent>

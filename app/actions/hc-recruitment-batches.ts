@@ -1,0 +1,77 @@
+"use server";
+
+import { db } from "@/db";
+import { hcRecruitmentBatches } from "@/db/schema/hero";
+import { eq, desc, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+async function ensureBatchesTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS hero_hc_recruitment_batches (
+      id SERIAL PRIMARY KEY,
+      recruitment_id INTEGER NOT NULL REFERENCES hero_hc_recruitments(id) ON DELETE CASCADE,
+      batch_name TEXT NOT NULL,
+      batch_type TEXT NOT NULL,
+      scheduled_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+export type BatchData = {
+  recruitmentId: number;
+  batchName: string;
+  batchType: string;
+  scheduledAt: Date;
+};
+
+export async function getBatchesByRecruitment(recruitmentId: number) {
+  await ensureBatchesTable();
+  return db
+    .select()
+    .from(hcRecruitmentBatches)
+    .where(eq(hcRecruitmentBatches.recruitmentId, recruitmentId))
+    .orderBy(hcRecruitmentBatches.scheduledAt);
+}
+
+export async function createBatch(data: BatchData) {
+  await ensureBatchesTable();
+  const [batch] = await db
+    .insert(hcRecruitmentBatches)
+    .values({
+      recruitmentId: data.recruitmentId,
+      batchName: data.batchName,
+      batchType: data.batchType,
+      scheduledAt: data.scheduledAt,
+    })
+    .returning();
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return batch;
+}
+
+export async function updateBatch(
+  id: number,
+  data: Partial<BatchData>
+) {
+  await ensureBatchesTable();
+  const [batch] = await db
+    .update(hcRecruitmentBatches)
+    .set({
+      batchName: data.batchName,
+      batchType: data.batchType,
+      scheduledAt: data.scheduledAt,
+    })
+    .where(eq(hcRecruitmentBatches.id, id))
+    .returning();
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return batch;
+}
+
+export async function deleteBatch(id: number) {
+  await ensureBatchesTable();
+  await db.delete(hcRecruitmentBatches).where(eq(hcRecruitmentBatches.id, id));
+  revalidatePath("/dashboard/hc/recruitment");
+  return { success: true };
+}

@@ -2777,3 +2777,12 @@ export const hcMcuClinics = pgTable('hero_hc_mcu_clinics', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hcRecruitmentBatches = pgTable('hero_hc_recruitment_batches', {
+  id: serial('id').primaryKey(),
+  recruitmentId: integer('recruitment_id').notNull().references(() => hcRecruitments.id, { onDelete: 'cascade' }),
+  batchName: text('batch_name').notNull(),
+  batchType: text('batch_type').notNull(), // psikotes_1, psikotes_2, interview, mcu
+  scheduledAt: timestamp('scheduled_at').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
