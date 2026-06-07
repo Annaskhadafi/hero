@@ -385,24 +385,58 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           html = rendered.body;
           text = rendered.body.replace(/<[^>]*>/g, "");
         } else {
-          subject = `[HERO] Online Test - ${group?.name || "Assessment"}`;
+          subject = `[HERO] Undangan Tes Online — ${group?.name || "Assessment"}`;
           const groupUrl = `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
-          html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
-  <h2 style="color:#0f172a;">Online Test Assignment</h2>
-  <p>Dear <strong>${candidate.fullName}</strong>,</p>
-  <p>You have been assigned the <strong>${group?.name || "Assessment"}</strong> test.</p>
-  ${scheduledDate ? `<p style="color:#92400e;">Akses mulai: <strong>${scheduledDate} at ${scheduledTime}</strong>.</p>` : ""}
-  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
-    <p style="font-weight:600;margin-bottom:8px;">Tes yang harus dikerjakan:</p>
-    <ol style="text-align:left;">${linksHtml}</ol>
-  </div>
-  <div style="text-align:center;margin:24px 0;">
-    <a href="${groupUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Start Test</a>
-  </div>
-  <p style="font-size:13px;color:#64748b;">Link berlaku 7 hari.</p>
-  <p>Best regards,<br/>Human Capital Team</p>
-</div>`;
-          text = `Dear ${candidate.fullName},\n\nTest: ${group?.name}\n\nLinks:\n${testLinks.join("\n")}\n\nBest regards,\nHuman Capital Team`;
+          const scheduleInfo = scheduledDate
+            ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
+                <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
+                <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}${scheduledEndAt ? ` s/d ${format(scheduledEndAt, "HH:mm")}` : ""}</p>
+                <p style="margin:4px 0 0;font-size:12px;color:#a16207;">Link tes hanya dapat diakses pada rentang waktu di atas.</p>
+              </div>`
+            : "";
+          html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <!-- Header -->
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">HERO Human Capital</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Sistem Rekrutmen & Assessment Online</p>
+    </td></tr>
+    <!-- Body -->
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Selamat, ${candidate.fullName}! 🎉</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Selamat! Anda <strong>lolos ke tahap selanjutnya</strong> dan diundang untuk mengikuti <strong>${group?.name || "Assessment"}</strong>.
+      </p>
+      <p style="margin:4px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Silakan klik tombol di bawah untuk memulai rangkaian tes Anda:
+      </p>
+      <!-- CTA -->
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${groupUrl}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#0f172a,#334155);color:#ffffff;padding:14px 40px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.3px;">🔗 Mulai Tes Sekarang</a>
+      </div>
+      ${scheduleInfo}
+      <!-- Test List -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 12px;font-weight:700;color:#0f172a;font-size:14px;">📋 Rangkaian Tes:</p>
+        <ol style="margin:0;padding-left:20px;color:#475569;font-size:13px;line-height:2;">${linksHtml}</ol>
+      </div>
+      <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">
+        Link berlaku selama <strong>7 hari</strong>. Mohon diselesaikan sebelum batas waktu.<br/>
+        Jika mengalami kendala, silakan hubungi Tim Human Capital.
+      </p>
+    </td></tr>
+    <!-- Footer -->
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+          text = `Halo ${candidate.fullName},\n\nSelamat! Anda lolos ke tahap selanjutnya dan diundang untuk mengikuti ${group?.name}.\n\nRangkaian Tes:\n${testLinks.map((l, i) => `${i + 1}. ${groupItems[i]?.title}: ${l}`).join("\n")}\n\nTotal Tes: ${testLinks.map((l, i) => `${i + 1}. ${groupItems[i]?.title}`).join(", ")}.\n\nAkses melalui link ini: ${groupUrl}\n\nLink berlaku 7 hari.\n\nTerima kasih,\nTim Human Capital\nPT Chitra Paratama`;
         }
 
         await sendEmailViaSmtp(smtpSettings, {
@@ -467,23 +501,45 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
 </div>` + html;
     }
   } else {
-    subject = `[HERO] Online Test - ${group.name}`;
+    subject = `[HERO] Undangan Tes Online — ${group.name}`;
     const testGroupUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
-    html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
-  <h2 style="color:#0f172a;">Online Test Assignment</h2>
-  <p>Dear <strong>[Candidate Name]</strong>,</p>
-  <p>You have been assigned the <strong>${group.name}</strong> test.</p>
-  ${scheduledDate ? `<p style="color:#92400e;">Akses mulai: <strong>${scheduledDate} at ${scheduledTime}</strong>.</p>` : ""}
-  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
-    <p style="font-weight:600;margin-bottom:8px;">Tes yang harus dikerjakan:</p>
-    <ol style="text-align:left;">${linksHtml}</ol>
-  </div>
-  <div style="text-align:center;margin:24px 0;">
-    <a href="${testGroupUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Start Test</a>
-  </div>
-  <p style="font-size:13px;color:#64748b;">Link berlaku 7 hari.</p>
-  <p>Best regards,<br/>Human Capital Team</p>
-</div>`;
+    const scheduleInfo = scheduledDate
+      ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
+          <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
+          <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}${scheduledEndAt ? ` s/d ${format(scheduledEndAt, "HH:mm")}` : ""}</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#a16207;">Link tes hanya dapat diakses pada rentang waktu di atas.</p>
+        </div>`
+      : "";
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">HERO Human Capital</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Sistem Rekrutmen & Assessment Online</p>
+    </td></tr>
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Selamat, [Candidate Name]! 🎉</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Selamat! Anda <strong>lolos ke tahap selanjutnya</strong> dan diundang untuk mengikuti <strong>${group.name}</strong>.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${testGroupUrl}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#0f172a,#334155);color:#ffffff;padding:14px 40px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;letter-spacing:0.3px;">🔗 Mulai Tes Sekarang</a>
+      </div>
+      ${scheduleInfo}
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 12px;font-weight:700;color:#0f172a;font-size:14px;">📋 Rangkaian Tes:</p>
+        <ol style="margin:0;padding-left:20px;color:#475569;font-size:13px;line-height:2;">${linksHtml}</ol>
+      </div>
+    </td></tr>
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
   }
 
   return { subject, html };
