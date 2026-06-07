@@ -310,7 +310,7 @@ export async function deleteTestGroupCandidate(groupId: number, candidateId: num
   }
 }
 
-export async function bulkAssignTestGroupToCandidates(groupId: number, candidateIds: number[], scheduledAt?: Date | null) {
+export async function bulkAssignTestGroupToCandidates(groupId: number, candidateIds: number[], scheduledAt?: Date | null, scheduledEndAt?: Date | null) {
   const groupItems = await db
     .select({ testId: hcOnlineTestGroupItems.testId, sortOrder: hcOnlineTestGroupItems.sortOrder, title: hcOnlineTests.title })
     .from(hcOnlineTestGroupItems)
@@ -374,7 +374,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
           interviewer: "",
           duration: "7",
-          testLink: `${baseUrl}/test-group/${group?.slug || groupId}`,
+          testLink: `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
         };
 
         let subject: string, html: string, text: string;
@@ -385,7 +385,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           text = rendered.body.replace(/<[^>]*>/g, "");
         } else {
           subject = `[HERO] Online Test - ${group?.name || "Assessment"}`;
-          const groupUrl = `${baseUrl}/test-group/${group?.slug || groupId}`;
+          const groupUrl = `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
           html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
   <h2 style="color:#0f172a;">Online Test Assignment</h2>
   <p>Dear <strong>${candidate.fullName}</strong>,</p>
@@ -423,7 +423,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
   return { results };
 }
 
-export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date | null) {
+export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date | null, scheduledEndAt?: Date | null) {
   const groupItems = await db
     .select({ title: hcOnlineTests.title })
     .from(hcOnlineTestGroupItems)
@@ -452,7 +452,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
     interviewer: "",
     duration: "7",
-    testLink: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}`,
+    testLink: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
   };
 
   let subject: string, html: string;
@@ -467,7 +467,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     }
   } else {
     subject = `[HERO] Online Test - ${group.name}`;
-    const testGroupUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}`;
+    const testGroupUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
     html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
   <h2 style="color:#0f172a;">Online Test Assignment</h2>
   <p>Dear <strong>[Candidate Name]</strong>,</p>

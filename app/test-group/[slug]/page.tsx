@@ -1,8 +1,17 @@
+import { Suspense } from "react";
 import { db } from "@/db";
 import { hcOnlineTestGroups, hcOnlineTestGroupItems, hcOnlineTests } from "@/db/schema/hero";
 import { eq, asc } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import ClientPage from "./client-page";
+
+function ClientPageWrapper({ group, items }: { group: any; items: any[] }) {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ClientPage group={group} items={items} />
+    </Suspense>
+  );
+}
 
 export default async function TestGroupPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = await params;
@@ -27,5 +36,5 @@ export default async function TestGroupPage({ params }: { params: Promise<{ slug
   .where(eq(hcOnlineTestGroupItems.groupId, group.id))
   .orderBy(asc(hcOnlineTestGroupItems.sortOrder));
 
-  return <ClientPage group={group} items={items} />;
+  return <ClientPageWrapper group={group} items={items} />;
 }

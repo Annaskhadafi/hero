@@ -140,7 +140,7 @@ export function RecruitmentClientPage({
 
   // Test Invitation Dialog
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
-  const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
+  const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
   const [emailPreview, setEmailPreview] = useState({ subject: "", html: "" });
@@ -233,7 +233,7 @@ export function RecruitmentClientPage({
         } catch { setAvailableBatches([]); }
       } else { setAvailableBatches([]); }
     }
-    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
+    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
     setIsTestInviteOpen(true);
   };
 
@@ -245,13 +245,18 @@ export function RecruitmentClientPage({
     setIsSendingTest(true);
     try {
       let scheduledAt: Date | null = null;
+      let scheduledEndAt: Date | null = null;
       if (testInviteForm.scheduledDate && testInviteForm.scheduledTime) {
         scheduledAt = new Date(`${testInviteForm.scheduledDate}T${testInviteForm.scheduledTime}`);
+      }
+      if (testInviteForm.scheduledEndDate && testInviteForm.scheduledEndTime) {
+        scheduledEndAt = new Date(`${testInviteForm.scheduledEndDate}T${testInviteForm.scheduledEndTime}`);
       }
       const result = await bulkAssignTestGroupToCandidates(
         parseInt(testInviteForm.testId),
         Array.from(selectedIds),
         scheduledAt,
+        scheduledEndAt,
       );
       const successCount = result.results.filter(r => r.success).length;
       toast.success(`Test invitation sent to ${successCount} candidates${result.results.find(r => !r.success) ? `, ${result.results.filter(r => !r.success).length} failed` : ""}`);
@@ -272,10 +277,14 @@ export function RecruitmentClientPage({
     setEmailPreviewLoading(true);
     try {
       let scheduledAt: Date | null = null;
+      let scheduledEndAt: Date | null = null;
       if (testInviteForm.scheduledDate && testInviteForm.scheduledTime) {
         scheduledAt = new Date(`${testInviteForm.scheduledDate}T${testInviteForm.scheduledTime}`);
       }
-      const preview = await previewTestGroupEmail(parseInt(testInviteForm.testId), scheduledAt);
+      if (testInviteForm.scheduledEndDate && testInviteForm.scheduledEndTime) {
+        scheduledEndAt = new Date(`${testInviteForm.scheduledEndDate}T${testInviteForm.scheduledEndTime}`);
+      }
+      const preview = await previewTestGroupEmail(parseInt(testInviteForm.testId), scheduledAt, scheduledEndAt);
       setEmailPreview(preview);
       setIsEmailPreviewOpen(true);
     } catch (e: any) {
@@ -1275,11 +1284,14 @@ export function RecruitmentClientPage({
                             type="button"
                             onClick={() => {
                               const d = new Date(b.scheduledAt);
+                              const endDate = b.scheduledEndAt ? new Date(b.scheduledEndAt) : null;
                               setTestInviteForm({
                                 ...testInviteForm,
                                 batchId: String(b.id),
                                 scheduledDate: d.toISOString().split("T")[0],
                                 scheduledTime: d.toTimeString().slice(0, 5),
+                                scheduledEndDate: endDate ? endDate.toISOString().split("T")[0] : "",
+                                scheduledEndTime: endDate ? endDate.toTimeString().slice(0, 5) : "",
                               });
                             }}
                             className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80 text-foreground"}`}
@@ -1296,7 +1308,7 @@ export function RecruitmentClientPage({
                   {testInviteForm.batchId && (
                     <button
                       type="button"
-                      onClick={() => setTestInviteForm({ ...testInviteForm, batchId: "", scheduledDate: "", scheduledTime: "" })}
+                      onClick={() => setTestInviteForm({ ...testInviteForm, batchId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "" })}
                       className="px-2 py-1 rounded-md text-xs font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 col-span-2"
                     >
                       Clear Batch Selection
@@ -1307,15 +1319,21 @@ export function RecruitmentClientPage({
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Date</Label>
-                <Input type="date" value={testInviteForm.scheduledDate} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledDate: e.target.value })} />
+                <Label className="text-xs text-muted-foreground">Mulai</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <Input type="date" value={testInviteForm.scheduledDate} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledDate: e.target.value })} />
+                  <Input type="time" value={testInviteForm.scheduledTime} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledTime: e.target.value })} />
+                </div>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Time</Label>
-                <Input type="time" value={testInviteForm.scheduledTime} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledTime: e.target.value })} />
+                <Label className="text-xs text-muted-foreground">Selesai (optional)</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <Input type="date" value={testInviteForm.scheduledEndDate} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledEndDate: e.target.value })} />
+                  <Input type="time" value={testInviteForm.scheduledEndTime} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledEndTime: e.target.value })} />
+                </div>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Leave empty for immediate access. If set, the test link will only work after this time.</p>
+            <p className="text-xs text-muted-foreground">Kosongkan agar test langsung bisa diakses. Jika diisi, test hanya bisa dibuka dalam rentang waktu tersebut.</p>
           </div>
 
         </div>
