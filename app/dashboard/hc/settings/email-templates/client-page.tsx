@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { IconMail, IconPlus, IconTrash, IconSettings, IconHistory, IconExternalLink } from "@tabler/icons-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { saveHcEmailTemplate, deleteHcEmailTemplate, getHcEmailDeliveryLogs } from "@/app/actions/hc-email-templates";
+import { saveHcEmailTemplate, deleteHcEmailTemplate, getHcEmailDeliveryLogs, ensureDefaultTemplates } from "@/app/actions/hc-email-templates";
 import { getAvailablePlaceholders } from "@/lib/hc-email-utils";
 import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -129,7 +129,12 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Templates</CardTitle>
-            <Button onClick={() => openEdit()}><IconPlus className="w-4 h-4 mr-2" /> New Template</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={async () => { await ensureDefaultTemplates(); toast.success("Default templates created"); window.location.reload(); }}>
+                Seed Default Templates
+              </Button>
+              <Button onClick={() => openEdit()}><IconPlus className="w-4 h-4 mr-2" /> New Template</Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
