@@ -142,6 +142,7 @@ export function RecruitmentClientPage({
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
   const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [editingStageId, setEditingStageId] = useState<number | null>(null);
   const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
   const [emailPreview, setEmailPreview] = useState({ subject: "", html: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
@@ -803,6 +804,7 @@ export function RecruitmentClientPage({
                         <TableHead>EMAIL</TableHead>
                         <TableHead>PHONE</TableHead>
                         <TableHead>STAGE</TableHead>
+                        <TableHead className="text-center">HASIL AKHIR</TableHead>
                         <TableHead>AI MATCH</TableHead>
                         <TableHead className="text-center w-20">EMAIL STATUS</TableHead>
                         <TableHead className="text-right">ACTIONS</TableHead>
@@ -823,7 +825,46 @@ export function RecruitmentClientPage({
                           <TableCell>{candidate.email}</TableCell>
                           <TableCell>{candidate.phone}</TableCell>
                           <TableCell>
-                            <Badge variant="outline">{candidate.currentStage}</Badge>
+                            {editingStageId === candidate.id ? (
+                              <select
+                                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm"
+                                value={candidate.currentStage}
+                                onChange={async (e) => {
+                                  const newStage = e.target.value;
+                                  setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: newStage } : c));
+                                  setEditingStageId(null);
+                                  try {
+                                    await updateCandidateStage(candidate.id, newStage as any);
+                                    toast.success(`${candidate.fullName} → ${newStage}`);
+                                  } catch (err: any) {
+                                    setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: candidate.currentStage } : c));
+                                    toast.error(err.message || "Failed");
+                                  }
+                                }}
+                                onBlur={() => setEditingStageId(null)}
+                                autoFocus
+                              >
+                                {["Sourcing","Screening","Psikotes","Interview","Medical Checkup","Offering","Hired","Rejected"].map(s => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <button
+                                onClick={() => setEditingStageId(candidate.id)}
+                                className="cursor-pointer hover:underline"
+                              >
+                                <Badge variant="outline">{candidate.currentStage}</Badge>
+                              </button>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {candidate.currentStage === "Hired" ? (
+                              <Badge className="bg-green-100 text-green-800 border-green-300">Lolos</Badge>
+                            ) : candidate.currentStage === "Rejected" ? (
+                              <Badge className="bg-red-100 text-red-800 border-red-300">Tidak Lolos</Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {candidate.aiScore !== null ? (
@@ -859,7 +900,7 @@ export function RecruitmentClientPage({
                       ))}
                       {visibleCandidates.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                          <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                             Belum ada kandidat.
                           </TableCell>
                         </TableRow>
