@@ -13,6 +13,7 @@ async function ensureBatchesTable() {
       batch_name TEXT NOT NULL,
       batch_type TEXT NOT NULL,
       scheduled_at TIMESTAMP NOT NULL,
+      scheduled_end_at TIMESTAMP,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
@@ -23,6 +24,7 @@ export type BatchData = {
   batchName: string;
   batchType: string;
   scheduledAt: Date;
+  scheduledEndAt?: Date | null;
 };
 
 export async function getBatchesByRecruitment(recruitmentId: number) {
@@ -43,6 +45,7 @@ export async function createBatch(data: BatchData) {
       batchName: data.batchName,
       batchType: data.batchType,
       scheduledAt: data.scheduledAt,
+      scheduledEndAt: data.scheduledEndAt || null,
     })
     .returning();
 
@@ -55,13 +58,15 @@ export async function updateBatch(
   data: Partial<BatchData>
 ) {
   await ensureBatchesTable();
+  const payload: Record<string, unknown> = {};
+  if (data.batchName !== undefined) payload.batchName = data.batchName;
+  if (data.batchType !== undefined) payload.batchType = data.batchType;
+  if (data.scheduledAt !== undefined) payload.scheduledAt = data.scheduledAt;
+  if (data.scheduledEndAt !== undefined) payload.scheduledEndAt = data.scheduledEndAt || null;
+  
   const [batch] = await db
     .update(hcRecruitmentBatches)
-    .set({
-      batchName: data.batchName,
-      batchType: data.batchType,
-      scheduledAt: data.scheduledAt,
-    })
+    .set(payload)
     .where(eq(hcRecruitmentBatches.id, id))
     .returning();
 

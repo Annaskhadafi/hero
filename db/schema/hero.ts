@@ -2783,6 +2783,7 @@ export const hcRecruitmentBatches = pgTable('hero_hc_recruitment_batches', {
   batchName: text('batch_name').notNull(),
   batchType: text('batch_type').notNull(), // psikotes_1, psikotes_2, interview, mcu
   scheduledAt: timestamp('scheduled_at').notNull(),
+  scheduledEndAt: timestamp('scheduled_end_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

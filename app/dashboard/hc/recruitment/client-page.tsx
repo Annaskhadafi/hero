@@ -141,13 +141,13 @@ export function RecruitmentClientPage({
   const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
-  const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date }>>([]);
+  const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
 
   // Batch Management
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   const [batchJobId, setBatchJobId] = useState<number | null>(null);
-  const [batches, setBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; recruitmentId: number }>>([]);
-  const [batchForm, setBatchForm] = useState({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" });
+  const [batches, setBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null; recruitmentId: number }>>([]);
+  const [batchForm, setBatchForm] = useState({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "" });
   const [editingBatchId, setEditingBatchId] = useState<number | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
 
@@ -155,7 +155,7 @@ export function RecruitmentClientPage({
     setBatchJobId(jobId);
     setIsBatchOpen(true);
     setEditingBatchId(null);
-    setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" });
+    setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "" });
     try {
       const list = await getBatchesByRecruitment(jobId);
       setBatches(list);
@@ -169,18 +169,22 @@ export function RecruitmentClientPage({
     }
     setBatchLoading(true);
     const scheduledAt = new Date(`${batchForm.scheduledDate}T${batchForm.scheduledTime}`);
+    let scheduledEndAt: Date | null = null;
+    if (batchForm.scheduledEndDate && batchForm.scheduledEndTime) {
+      scheduledEndAt = new Date(`${batchForm.scheduledEndDate}T${batchForm.scheduledEndTime}`);
+    }
     try {
       if (editingBatchId) {
-        await updateBatch(editingBatchId, { batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt });
-        setBatches(prev => prev.map(b => b.id === editingBatchId ? { ...b, batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt } : b));
+        await updateBatch(editingBatchId, { batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt, scheduledEndAt });
+        setBatches(prev => prev.map(b => b.id === editingBatchId ? { ...b, batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt, scheduledEndAt: scheduledEndAt || b.scheduledEndAt } : b));
         toast.success("Batch updated");
       } else {
-        const created = await createBatch({ recruitmentId: batchJobId, batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt });
+        const created = await createBatch({ recruitmentId: batchJobId, batchName: batchForm.batchName, batchType: batchForm.batchType, scheduledAt, scheduledEndAt });
         setBatches(prev => [...prev, created]);
         toast.success("Batch created");
       }
       setEditingBatchId(null);
-      setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" });
+      setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "" });
     } catch (e: any) {
       toast.error(e.message || "Failed to save batch");
     } finally {
@@ -200,7 +204,10 @@ export function RecruitmentClientPage({
     const d = new Date(batch.scheduledAt);
     const dateStr = d.toISOString().split("T")[0];
     const timeStr = d.toTimeString().slice(0, 5);
-    setBatchForm({ batchName: batch.batchName, batchType: batch.batchType, scheduledDate: dateStr, scheduledTime: timeStr });
+    const endDate = batch.scheduledEndAt ? new Date(batch.scheduledEndAt) : null;
+    const endDateStr = endDate ? endDate.toISOString().split("T")[0] : "";
+    const endTimeStr = endDate ? endDate.toTimeString().slice(0, 5) : "";
+    setBatchForm({ batchName: batch.batchName, batchType: batch.batchType, scheduledDate: dateStr, scheduledTime: timeStr, scheduledEndDate: endDateStr, scheduledEndTime: endTimeStr });
   };
 
   const openTestInvite = async () => {
@@ -1223,22 +1230,23 @@ export function RecruitmentClientPage({
                           {typeBatches.map((b) => {
                             const isSelected = testInviteForm.batchId === String(b.id);
                             return (
-                              <button
-                                key={b.id}
-                                type="button"
-                                onClick={() => {
-                                  const d = new Date(b.scheduledAt);
-                                  setTestInviteForm({
-                                    ...testInviteForm,
-                                    batchId: String(b.id),
-                                    scheduledDate: d.toISOString().split("T")[0],
-                                    scheduledTime: d.toTimeString().slice(0, 5),
-                                  });
-                                }}
-                                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80 text-foreground"}`}
-                              >
-                                {b.batchName}
-                              </button>
+                          <button
+                            key={b.id}
+                            type="button"
+                            onClick={() => {
+                              const d = new Date(b.scheduledAt);
+                              setTestInviteForm({
+                                ...testInviteForm,
+                                batchId: String(b.id),
+                                scheduledDate: d.toISOString().split("T")[0],
+                                scheduledTime: d.toTimeString().slice(0, 5),
+                              });
+                            }}
+                            className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80 text-foreground"}`}
+                            title={`${format(new Date(b.scheduledAt), "dd/MM/yy HH:mm")}${b.scheduledEndAt ? ` → ${format(new Date(b.scheduledEndAt), "HH:mm")}` : ""}`}
+                          >
+                            {b.batchName}
+                          </button>
                             );
                           })}
                         </div>
@@ -1311,12 +1319,24 @@ export function RecruitmentClientPage({
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Input type="date" value={batchForm.scheduledDate} onChange={(e) => setBatchForm({ ...batchForm, scheduledDate: e.target.value })} />
-              <Input type="time" value={batchForm.scheduledTime} onChange={(e) => setBatchForm({ ...batchForm, scheduledTime: e.target.value })} />
+              <div>
+                <Label className="text-xs text-muted-foreground">Mulai</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <Input type="date" value={batchForm.scheduledDate} onChange={(e) => setBatchForm({ ...batchForm, scheduledDate: e.target.value })} />
+                  <Input type="time" value={batchForm.scheduledTime} onChange={(e) => setBatchForm({ ...batchForm, scheduledTime: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Selesai (optional)</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <Input type="date" value={batchForm.scheduledEndDate} onChange={(e) => setBatchForm({ ...batchForm, scheduledEndDate: e.target.value })} />
+                  <Input type="time" value={batchForm.scheduledEndTime} onChange={(e) => setBatchForm({ ...batchForm, scheduledEndTime: e.target.value })} />
+                </div>
+              </div>
             </div>
             <div className="flex gap-2 justify-end">
               {editingBatchId && (
-                <Button variant="ghost" size="sm" onClick={() => { setEditingBatchId(null); setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "" }); }}>
+                <Button variant="ghost" size="sm" onClick={() => { setEditingBatchId(null); setBatchForm({ batchName: "", batchType: "psikotes_1", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "" }); }}>
                   Cancel Edit
                 </Button>
               )}
@@ -1343,7 +1363,10 @@ export function RecruitmentClientPage({
                         <div key={b.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
                           <div>
                             <div className="font-medium">{b.batchName}</div>
-                            <div className="text-xs text-muted-foreground">{format(new Date(b.scheduledAt), "dd MMM yyyy HH:mm")}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {format(new Date(b.scheduledAt), "dd MMM yyyy HH:mm")}
+                              {b.scheduledEndAt && ` — ${format(new Date(b.scheduledEndAt), "HH:mm")}`}
+                            </div>
                           </div>
                           <div className="flex gap-1">
                             <Button size="sm" variant="ghost" onClick={() => handleEditBatch(b)}>Edit</Button>
