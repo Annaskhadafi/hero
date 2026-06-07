@@ -254,14 +254,14 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                       <div className="font-medium">{candidate.gender || "-"}</div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Source</div>
-                      <div className="font-medium">{candidate.source || "-"}</div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Address</div>
+                      <div className="font-medium text-sm">{candidate.address || "-"}</div>
                     </div>
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Position Applied</div>
-                      <div className="font-medium">{candidate.jobTitle || "-"}</div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Source</div>
+                      <div className="font-medium">{candidate.source || "-"}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground uppercase tracking-wide">Applied Date</div>
@@ -273,10 +273,66 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     </div>
                   </div>
                 </div>
-                {candidate.address && (
+              </CardContent>
+            </Card>
+
+            {/* Job Vacancy Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Job Vacancy Details</CardTitle>
+                <CardDescription>Informasi lowongan yang dilamar</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Position</div>
+                      <div className="font-medium">{candidate.jobTitle || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Department</div>
+                      <div className="font-medium">{candidate.department || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Section</div>
+                      <div className="font-medium">{candidate.section || "-"}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Location</div>
+                      <div className="font-medium">{candidate.location || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Open Date</div>
+                      <div className="font-medium">{candidate.startDate ? format(new Date(candidate.startDate), "dd MMMM yyyy") : "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Expiry Date</div>
+                      <div className="font-medium">{candidate.endDate ? format(new Date(candidate.endDate), "dd MMMM yyyy") : "-"}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Quota</div>
+                      <div className="font-medium">{candidate.totalRequested || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Vacancy Status</div>
+                      <div className="font-medium">{candidate.vacancyStatus || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+                {candidate.jobDescription && (
                   <div className="mt-4 pt-4 border-t">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Address</div>
-                    <div className="text-sm">{candidate.address}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Job Description</div>
+                    <div className="text-sm whitespace-pre-wrap">{candidate.jobDescription}</div>
+                  </div>
+                )}
+                {candidate.requirements && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Requirements</div>
+                    <div className="text-sm whitespace-pre-wrap">{candidate.requirements}</div>
                   </div>
                 )}
               </CardContent>
@@ -387,12 +443,12 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   <CardTitle>Achievements</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm">{candidate.achievements}</p>
+                  <p className="text-sm whitespace-pre-wrap">{candidate.achievements}</p>
                 </CardContent>
               </Card>
             )}
 
-            {/* CV & AI Assessment */}
+            {/* CV & Rating */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
@@ -412,25 +468,122 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
               <Card>
                 <CardHeader>
-                  <CardTitle>AI Assessment</CardTitle>
+                  <CardTitle>Rating & Notes</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {candidate.aiScore !== null ? (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <div className="text-3xl font-bold">{candidate.aiScore}%</div>
-                        <div className="text-sm text-muted-foreground">Match Score</div>
-                      </div>
-                      {candidate.aiSummary && (
-                        <div className="text-sm bg-muted/50 p-3 rounded-md">{candidate.aiSummary}</div>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No AI assessment yet</p>
+                  <div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Rating</div>
+                    <div className="font-medium">{candidate.rating ? `${candidate.rating} / 5` : "Not rated yet"}</div>
+                  </div>
+                  {candidate.notes && (
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Notes</div>
+                      <div className="text-sm mt-1 bg-muted/50 p-3 rounded-md whitespace-pre-wrap">{candidate.notes}</div>
+                    </div>
                   )}
                 </CardContent>
               </Card>
             </div>
+
+            {/* AI Assessment */}
+            <Card>
+              <CardHeader>
+                <CardTitle>AI Assessment</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {candidate.aiScore !== null ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="text-3xl font-bold">{candidate.aiScore}%</div>
+                      <div className="text-sm text-muted-foreground">Match Score</div>
+                      {candidate.aiAssessmentDate && (
+                        <div className="text-xs text-muted-foreground ml-auto">
+                          Assessed: {format(new Date(candidate.aiAssessmentDate), "dd MMM yyyy HH:mm")}
+                        </div>
+                      )}
+                    </div>
+                    {candidate.aiSummary && (
+                      <div className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">{candidate.aiSummary}</div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No AI assessment yet</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Rejection Info */}
+            {candidate.rejectionReason && (
+              <Card className="border-destructive/50">
+                <CardHeader>
+                  <CardTitle className="text-destructive">Rejection Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Rejected At Stage</div>
+                    <div className="font-medium">{candidate.rejectedAtStage || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">Reason</div>
+                    <div className="text-sm mt-1 bg-destructive/5 p-3 rounded-md whitespace-pre-wrap">{candidate.rejectionReason}</div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Onboarding Info */}
+            {(candidate.nikKtp || candidate.npwpNumber || candidate.bankName || candidate.emergencyContactName) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Onboarding Data</CardTitle>
+                  <CardDescription>Data administrasi dari form onboarding</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">NIK KTP</div>
+                        <div className="font-medium">{candidate.nikKtp || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">NPWP</div>
+                        <div className="font-medium">{candidate.npwpNumber || "-"}</div>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">BPJS Kesehatan</div>
+                        <div className="font-medium">{candidate.bpjsKesehatan || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">BPJS Ketenagakerjaan</div>
+                        <div className="font-medium">{candidate.bpjsKetenagakerjaan || "-"}</div>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Bank Name</div>
+                        <div className="font-medium">{candidate.bankName || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Bank Account</div>
+                        <div className="font-medium">{candidate.bankAccountNumber || "-"}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Emergency Contact Name</div>
+                      <div className="font-medium">{candidate.emergencyContactName || "-"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wide">Emergency Contact Phone</div>
+                      <div className="font-medium">{candidate.emergencyContactPhone || "-"}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
