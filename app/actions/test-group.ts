@@ -128,6 +128,10 @@ export async function getNextTestInGroup(groupId: number, currentTestId: number,
 
 import { inArray } from "drizzle-orm";
 
+export async function getAllTestGroups() {
+  return db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.isActive, true)).orderBy(hcOnlineTestGroups.name);
+}
+
 export async function getTestGroupEntries(slug: string) {
   // 1. Get the group
   const groups = await db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.slug, slug)).limit(1);
@@ -244,5 +248,115 @@ export async function deleteTestGroupCandidate(groupId: number, candidateId: num
     console.error("deleteTestGroupCandidate error:", error);
     return { success: false, error: "Failed to delete candidate results." };
   }
+}
+
+export async function bulkAssignTestGroupToCandidates(groupId: number, candidateIds: number[], scheduledAt?: Date | null) {
+  const groupItems = await db
+    .select({ testId: hcOnlineTestGroupItems.testId, sortOrder: hcOnlineTestGroupItems.sortOrder, title: hcOnlineTests.title })
+    .from(hcOnlineTestGroupItems)
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestGroupItems.testId, hcOnlineTests.id))
+    .where(eq(hcOnlineTestGroupItems.groupId, groupId))
+    .orderBy(hcOnlineTestGroupItems.sortOrder);
+
+  if (groupItems.length === 0) return { results: [] };
+
+  const [group] = await db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.id, groupId)).limit(1);
+  const candidates = await db
+    .select({ id: hcCandidates.id, fullName: hcCandidates.fullName, email: hcCandidates.email })
+    .from(hcCandidates)
+    .where(inArray(hcCandidates.id, candidateIds));
+
+  const { getEmailSmtpSettingsData } = await import("@/lib/hero-admin");
+  const { sendEmailViaSmtp } = await import("@/lib/email-delivery");
+  const { getHcEmailTemplateByType } = await import("@/app/actions/hc-email-templates");
+  const { renderHcTemplate } = await import("@/lib/hc-email-utils");
+  const { ensureScheduledAtColumn } = await import("@/app/actions/recruitment-tests");
+  
+  await ensureScheduledAtColumn();
+  const smtpSettings = await getEmailSmtpSettingsData();
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const { format } = await import("date-fns");
+  const template = await getHcEmailTemplateByType("test_assigned");
+
+  const results: Array<{ candidateId: number; success: boolean; error?: string }> = [];
+
+  for (const candidate of candidates) {
+    try {
+      const testLinks: string[] = [];
+      for (const item of groupItems) {
+        const accessKey = randomUUID();
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        await db.insert(hcOnlineTestAssignments).values({
+          testId: item.testId,
+          candidateId: candidate.id,
+          accessKey,
+          expiresAt,
+          scheduledAt: scheduledAt || null,
+          status: "Pending",
+        });
+
+        testLinks.push(`${baseUrl}/test/${accessKey}?groupId=${groupId}`);
+      }
+
+      if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
+        const firstLink = testLinks[0];
+        const linksHtml = testLinks.map((link, i) => `<li><a href="${link}" target="_blank">${groupItems[i]?.title || `Tes ${i + 1}`}</a></li>`).join("");
+        const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
+        const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
+
+        const templateVars = {
+          candidateName: candidate.fullName,
+          jobTitle: group?.name || "Online Test",
+          companyName: "PT Chitra Paratama",
+          date: scheduledDate,
+          time: scheduledTime,
+          location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
+          interviewer: "",
+          duration: "7",
+          testLink: firstLink,
+        };
+
+        let subject: string, html: string, text: string;
+        if (template) {
+          const rendered = renderHcTemplate(template, templateVars);
+          subject = rendered.subject;
+          html = rendered.body;
+          text = rendered.body.replace(/<[^>]*>/g, "");
+        } else {
+          subject = `[HERO] Online Test - ${group?.name || "Assessment"}`;
+          html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
+  <h2 style="color:#0f172a;">Online Test Assignment</h2>
+  <p>Dear <strong>${candidate.fullName}</strong>,</p>
+  <p>You have been assigned the <strong>${group?.name || "Assessment"}</strong> test.</p>
+  ${scheduledDate ? `<p style="color:#92400e;">Akses mulai: <strong>${scheduledDate} at ${scheduledTime}</strong>.</p>` : ""}
+  <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
+    <p style="font-weight:600;margin-bottom:8px;">Tes yang harus dikerjakan:</p>
+    <ol style="text-align:left;">${linksHtml}</ol>
+  </div>
+  <p style="font-size:13px;color:#64748b;">Link berlaku 7 hari.</p>
+  <p>Best regards,<br/>Human Capital Team</p>
+</div>`;
+          text = `Dear ${candidate.fullName},\n\nTest: ${group?.name}\n\nLinks:\n${testLinks.join("\n")}\n\nBest regards,\nHuman Capital Team`;
+        }
+
+        await sendEmailViaSmtp(smtpSettings, {
+          to: candidate.email,
+          subject,
+          html,
+          text,
+          templateName: "Test Group Assigned",
+          templateCode: "test_assigned",
+        });
+      }
+      results.push({ candidateId: candidate.id, success: true });
+    } catch (error: any) {
+      results.push({ candidateId: candidate.id, success: false, error: error.message });
+    }
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return { results };
 }
 

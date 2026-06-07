@@ -11,7 +11,7 @@ import { randomUUID } from "crypto";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 
-async function ensureScheduledAtColumn() {
+export async function ensureScheduledAtColumn() {
   await db.execute(sql`
     DO $$
     BEGIN

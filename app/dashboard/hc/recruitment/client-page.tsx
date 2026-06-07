@@ -20,6 +20,7 @@ import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
+import { getAllTestGroups, bulkAssignTestGroupToCandidates } from "@/app/actions/test-group";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
 
@@ -141,6 +142,7 @@ export function RecruitmentClientPage({
   const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7, batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
+  const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
 
   // Batch Management
@@ -212,11 +214,10 @@ export function RecruitmentClientPage({
 
   const openTestInvite = async () => {
     try {
-      const { getOnlineTests } = await import("@/app/actions/recruitment-tests");
-      const tests = await getOnlineTests();
-      setAvailableTests(tests.filter((t: any) => t.isActive && !t.isApplicationForm));
+      const groups = await getAllTestGroups();
+      setAvailableTestGroups(groups);
     } catch (e) {
-      toast.error("Failed to load tests");
+      toast.error("Failed to load test groups");
     }
     // Load batches for the first selected candidate's job
     if (selectedIds.size > 0) {
@@ -243,10 +244,9 @@ export function RecruitmentClientPage({
       if (testInviteForm.scheduledDate && testInviteForm.scheduledTime) {
         scheduledAt = new Date(`${testInviteForm.scheduledDate}T${testInviteForm.scheduledTime}`);
       }
-      const result = await bulkAssignTestToCandidates(
+      const result = await bulkAssignTestGroupToCandidates(
         parseInt(testInviteForm.testId),
         Array.from(selectedIds),
-        testInviteForm.expiresInDays,
         scheduledAt,
       );
       const successCount = result.results.filter(r => r.success).length;
@@ -1200,17 +1200,22 @@ export function RecruitmentClientPage({
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
-            <Label>Select Test <span className="text-destructive">*</span></Label>
-            <Select value={testInviteForm.testId} onValueChange={(val) => setTestInviteForm({ ...testInviteForm, testId: val })}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih test..." />
-              </SelectTrigger>
-              <SelectContent>
-                {availableTests.map((t) => (
-                  <SelectItem key={t.id} value={String(t.id)}>{t.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Select Test Group <span className="text-destructive">*</span></Label>
+            <div className="grid grid-cols-2 gap-2">
+              {availableTestGroups.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setTestInviteForm({ ...testInviteForm, testId: String(g.id) })}
+                  className={`p-3 rounded-lg border text-center font-medium transition-colors ${testInviteForm.testId === String(g.id) ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-muted/50 border-border"}`}
+                >
+                  {g.name}
+                </button>
+              ))}
+              {availableTestGroups.length === 0 && (
+                <p className="text-sm text-muted-foreground col-span-2">No test groups found. Create test groups first.</p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -1278,11 +1283,6 @@ export function RecruitmentClientPage({
             <p className="text-xs text-muted-foreground">Leave empty for immediate access. If set, the test link will only work after this time.</p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Expiry (days)</Label>
-            <Input type="number" min={1} max={30} value={testInviteForm.expiresInDays} onChange={(e) => setTestInviteForm({ ...testInviteForm, expiresInDays: parseInt(e.target.value) || 7 })} />
-            <p className="text-xs text-muted-foreground">Test link will expire after this many days.</p>
-          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsTestInviteOpen(false)}>Cancel</Button>
