@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
@@ -1004,43 +1005,58 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               {testResults.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">Belum ada test yang dikerjakan.</p>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-8">
                   {testResults.map((result: any) => (
-                    <div key={result.id} className="border rounded-xl overflow-hidden">
-                      <div className="bg-muted/30 px-5 py-3 flex items-center justify-between">
+                    <div key={result.id}>
+                      <div className="flex items-center justify-between mb-3">
                         <div>
-                          <h4 className="font-semibold">{result.testTitle}</h4>
+                          <h3 className="font-bold text-base">{result.testTitle}</h3>
                           <p className="text-xs text-muted-foreground">
-                            {result.startedAt ? format(new Date(result.startedAt), "dd MMM yyyy HH:mm") : "Not started"}
-                            {result.completedAt ? ` → ${format(new Date(result.completedAt), "dd MMM yyyy HH:mm")}` : ""}
+                            {result.startedAt ? format(new Date(result.startedAt), "dd MMM yyyy HH:mm") : "-"}
+                            {result.completedAt ? ` → ${format(new Date(result.completedAt), "HH:mm")}` : ""}
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-3">
                           <Badge variant={result.status === "Completed" || result.status === "Graded" ? "default" : "secondary"}>{result.status}</Badge>
                           {result.totalMaxPoints > 0 && (
-                            <div className="text-lg font-bold mt-1 text-primary">
-                              {result.totalEarnedPoints} / {result.totalMaxPoints}
+                            <div className="text-right">
+                              <div className="text-xs text-muted-foreground">Total Skor</div>
+                              <div className="text-xl font-bold text-primary">{result.totalEarnedPoints}<span className="text-sm text-muted-foreground font-normal">/{result.totalMaxPoints}</span></div>
                             </div>
                           )}
                         </div>
                       </div>
+
                       {result.answers.length > 0 && (
-                        <div className="divide-y">
-                          {result.answers.map((ans: any) => (
-                            <div key={ans.id} className="px-5 py-3 flex items-start gap-4">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium">{ans.questionText}</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Jawaban: <span className="font-medium">{ans.answerText || "-"}</span>
-                                </p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <Badge variant={ans.isCorrect ? "default" : "destructive"} className="text-xs">
-                                  {ans.pointsAwarded} / {ans.maxPoints}
-                                </Badge>
-                              </div>
-                            </div>
-                          ))}
+                        <div className="rounded-lg border overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/30 hover:bg-muted/30">
+                                <TableHead className="w-12 text-center text-xs">#</TableHead>
+                                <TableHead className="text-xs">PERTANYAAN</TableHead>
+                                <TableHead className="text-xs w-48">JAWABAN</TableHead>
+                                <TableHead className="text-xs w-24 text-right">SKOR</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {result.answers.map((ans: any, idx: number) => (
+                                <TableRow key={ans.id} className="border-t">
+                                  <TableCell className="text-center text-muted-foreground text-xs">{idx + 1}</TableCell>
+                                  <TableCell className="text-sm">{ans.questionText}</TableCell>
+                                  <TableCell className="text-sm">
+                                    <span className={cn(ans.pointsAwarded > 0 ? "text-green-700 font-medium" : "text-destructive font-medium")}>
+                                      {ans.answerText || "-"}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
+                                      {ans.pointsAwarded}/{ans.maxPoints}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
                         </div>
                       )}
                     </div>
