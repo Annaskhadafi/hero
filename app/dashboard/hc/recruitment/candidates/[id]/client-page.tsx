@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, updateMcuResult } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
-import { hireAndCreateEmployee } from "@/app/actions/recruitment";
+import { hireAndCreateEmployee, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 
 export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[] }) {
@@ -42,6 +42,21 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
   const [isHireOpen, setIsHireOpen] = useState(false);
   const [isHiring, setIsHiring] = useState(false);
+  const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
+  const [cvLoading, setCvLoading] = useState(false);
+
+  const handleViewCv = async () => {
+    if (!candidate.cvUrl) return;
+    setCvLoading(true);
+    try {
+      const url = await getCvDownloadUrl(candidate.cvUrl);
+      setCvViewerUrl(url);
+    } catch {
+      toast.error("Failed to load CV");
+    } finally {
+      setCvLoading(false);
+    }
+  };
 
   const handleHire = async () => {
     setIsHiring(true);
@@ -180,8 +195,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             </Button>
             <Badge variant="secondary" className="text-sm px-3 py-1">{candidate.currentStage}</Badge>
             {candidate.cvUrl && (
-              <Button asChild variant="outline" size="sm">
-                <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+              <Button variant="outline" size="sm" onClick={handleViewCv} disabled={cvLoading}>
+                <IconFileText className="w-4 h-4 mr-2" />
+                View CV
               </Button>
             )}
             {candidate.currentStage === "Offering" && (
@@ -384,11 +400,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 </CardHeader>
                 <CardContent>
                   {candidate.cvUrl ? (
-                    <Button asChild variant="outline">
-                      <a href={candidate.cvUrl} target="_blank" rel="noreferrer">
-                        <IconFileText className="w-4 h-4 mr-2" />
-                        View CV Document
-                      </a>
+                    <Button variant="outline" onClick={handleViewCv} disabled={cvLoading}>
+                      <IconFileText className="w-4 h-4 mr-2" />
+                      {cvLoading ? "Loading..." : "View CV Document"}
                     </Button>
                   ) : (
                     <p className="text-sm text-muted-foreground">No CV uploaded</p>
@@ -976,6 +990,34 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             <Button onClick={handleMcuSubmit} disabled={isMcuSubmitting}>
               {isMcuSubmitting ? "Processing..." : "Schedule & Send Emails"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CV Viewer Dialog */}
+      <Dialog open={!!cvViewerUrl} onOpenChange={(open) => { if (!open) setCvViewerUrl(null); }}>
+        <DialogContent className="sm:max-w-4xl h-[85vh] p-0 gap-0">
+          <DialogHeader className="px-6 py-4 border-b">
+            <DialogTitle>CV / Resume — {candidate.fullName}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-muted/20">
+            {cvViewerUrl ? (
+              <iframe
+                src={cvViewerUrl}
+                className="w-full h-full border-0"
+                title={`CV of ${candidate.fullName}`}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+            )}
+          </div>
+          <DialogFooter className="px-6 py-3 border-t">
+            <Button variant="outline" onClick={() => setCvViewerUrl(null)}>Close</Button>
+            {cvViewerUrl && (
+              <Button asChild variant="default">
+                <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

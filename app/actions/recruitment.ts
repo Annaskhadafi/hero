@@ -828,6 +828,12 @@ export async function getCandidateEmailLogs(candidateId: number) {
     .orderBy(desc(emailDeliveryLogs.createdAt));
 }
 
+export async function getCvDownloadUrl(cvUrl: string | null) {
+  if (!cvUrl) return null;
+  const { getS3ObjectReadUrl } = await import("@/lib/s3-storage");
+  return getS3ObjectReadUrl(cvUrl, 3600);
+}
+
 // ─── AI Assessment ────────────────────────────────────────────────────────
 
 export async function assessCandidateCv(candidateId: number) {
