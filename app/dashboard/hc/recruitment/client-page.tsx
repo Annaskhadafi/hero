@@ -18,6 +18,7 @@ import {
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
+import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -132,6 +133,52 @@ export function RecruitmentClientPage({
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [cvViewerName, setCvViewerName] = useState("");
   const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
+
+  // Test Invitation Dialog
+  const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
+  const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7 });
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
+
+  const openTestInvite = async () => {
+    try {
+      const { getOnlineTests } = await import("@/app/actions/recruitment-tests");
+      const tests = await getOnlineTests();
+      setAvailableTests(tests.filter((t: any) => t.isActive && !t.isApplicationForm));
+    } catch (e) {
+      toast.error("Failed to load tests");
+    }
+    setTestInviteForm({ testId: "", scheduledDate: "", scheduledTime: "", expiresInDays: 7 });
+    setIsTestInviteOpen(true);
+  };
+
+  const handleSendTestInvitation = async () => {
+    if (!testInviteForm.testId || selectedIds.size === 0) {
+      toast.error("Pilih test dan minimal 1 kandidat");
+      return;
+    }
+    setIsSendingTest(true);
+    try {
+      let scheduledAt: Date | null = null;
+      if (testInviteForm.scheduledDate && testInviteForm.scheduledTime) {
+        scheduledAt = new Date(`${testInviteForm.scheduledDate}T${testInviteForm.scheduledTime}`);
+      }
+      const result = await bulkAssignTestToCandidates(
+        parseInt(testInviteForm.testId),
+        Array.from(selectedIds),
+        testInviteForm.expiresInDays,
+        scheduledAt,
+      );
+      const successCount = result.results.filter(r => r.success).length;
+      toast.success(`Test invitation sent to ${successCount} candidates${result.results.find(r => !r.success) ? `, ${result.results.filter(r => !r.success).length} failed` : ""}`);
+      setIsTestInviteOpen(false);
+      setSelectedIds(new Set());
+    } catch (e: any) {
+      toast.error(e.message || "Failed to send invitation");
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
 
   const handleViewCv = async (cvUrl: string, candidateName: string) => {
     setCvLoadingId(-1);
@@ -603,11 +650,14 @@ export function RecruitmentClientPage({
               
                {pipelineViewMode === "list" ? (
                 <MinimalTableShell label="Kandidat" filters={candidateFilters}>
-                  {selectedIds.size > 0 && (
+                   {selectedIds.size > 0 && (
                     <div className="flex items-center gap-3 px-4 py-2 bg-accent/5 border border-accent/20 rounded-lg mb-3">
                       <span className="text-sm font-medium">{selectedIds.size} selected</span>
                       <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
                         <IconTrash className="w-4 h-4 mr-1" /> Delete Selected
+                      </Button>
+                      <Button variant="default" size="sm" onClick={openTestInvite}>
+                        <IconMail className="w-4 h-4 mr-1" /> Send Test Invitation
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                         Clear
@@ -1052,6 +1102,60 @@ export function RecruitmentClientPage({
               <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
             </Button>
           )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Test Invitation Dialog */}
+    <Dialog open={isTestInviteOpen} onOpenChange={setIsTestInviteOpen}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Send Test Invitation</DialogTitle>
+          <DialogDescription>
+            Send online test invitations to {selectedIds.size} selected candidates.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label>Select Test <span className="text-destructive">*</span></Label>
+            <Select value={testInviteForm.testId} onValueChange={(val) => setTestInviteForm({ ...testInviteForm, testId: val })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih test..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTests.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Schedule Test (optional)</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <Input type="date" value={testInviteForm.scheduledDate} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledDate: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Time</Label>
+                <Input type="time" value={testInviteForm.scheduledTime} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledTime: e.target.value })} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Leave empty for immediate access. If set, the test link will only work after this time.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Expiry (days)</Label>
+            <Input type="number" min={1} max={30} value={testInviteForm.expiresInDays} onChange={(e) => setTestInviteForm({ ...testInviteForm, expiresInDays: parseInt(e.target.value) || 7 })} />
+            <p className="text-xs text-muted-foreground">Test link will expire after this many days.</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsTestInviteOpen(false)}>Cancel</Button>
+          <Button onClick={handleSendTestInvitation} disabled={isSendingTest || !testInviteForm.testId}>
+            {isSendingTest ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -76,7 +76,12 @@ export async function getTestByAccessKey(accessKey: string) {
     }
   }
 
-  return { assignment, test, questions: safeQuestions, previousAnswers };
+  const scheduledAt = assignment.scheduledAt;
+  if (scheduledAt && new Date() < scheduledAt) {
+    return { assignment: { ...assignment, scheduledAt }, test, questions: [], previousAnswers: null };
+  }
+
+  return { assignment: { ...assignment, scheduledAt }, test, questions: safeQuestions, previousAnswers };
 }
 
 export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {

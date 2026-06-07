@@ -2742,6 +2742,7 @@ export const hcOnlineTestAssignments = pgTable('hero_hc_online_test_assignments'
   candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
   accessKey: text('access_key').notNull().unique(), // Unique UUID or secure random string
   expiresAt: timestamp('expires_at').notNull(),
+  scheduledAt: timestamp('scheduled_at'), // Test only accessible after this time (null = immediate)
   status: text('status').notNull().default('Pending'), // Pending, In Progress, Completed, Expired
   score: integer('score'),
   durationSeconds: integer('duration_seconds'),
