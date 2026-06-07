@@ -31,12 +31,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get('sidebar_state')?.value === 'true'
-  const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications] = await Promise.all([
+  const [sidebarData, navbarSettings, employeeDisplay] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
     getEmployeeDisplayDataByEmail(session.user.email),
-    getRecipientUnreadNotificationCount(session.user.email),
   ])
+
+  let unreadNotifications = 0
+  try {
+    unreadNotifications = await getRecipientUnreadNotificationCount(session.user.email)
+  } catch (error) {
+    console.error('[dashboard] failed to fetch unread notification count', error)
+  }
 
   return (
     <SidebarProvider
