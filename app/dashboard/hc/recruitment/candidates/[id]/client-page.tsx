@@ -24,25 +24,57 @@ function AnswerCell({ text }: { text: string | null | undefined }) {
   if (!text) return <span className="text-muted-foreground">-</span>;
   try {
     const parsed = JSON.parse(text);
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+    return <AnswerValue value={parsed} />;
+  } catch {
+    return <span>{text}</span>;
+  }
+}
+
+function AnswerValue({ value }: { value: any }): React.ReactNode {
+  if (value === null || value === undefined) return <span className="text-muted-foreground">-</span>;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return <span>{String(value)}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground">-</span>;
+    if (value.every((v) => typeof v === "object" && v !== null && !Array.isArray(v))) {
+      const keys = Array.from(new Set(value.flatMap((v) => Object.keys(v))));
       return (
-        <table className="w-full text-xs">
+        <table className="w-full text-xs border border-border/40 rounded">
+          <thead>
+            <tr className="bg-muted/40">
+              {keys.map((k) => (
+                <th key={k} className="px-2 py-1 text-left font-medium text-muted-foreground capitalize">{k.replace(/([A-Z])/g, " $1").trim()}</th>
+              ))}
+            </tr>
+          </thead>
           <tbody>
-            {Object.entries(parsed).map(([k, v]) => (
-              <tr key={k} className="border-b border-border/30 last:border-0">
-                <td className="py-1 pr-3 font-medium text-muted-foreground whitespace-nowrap align-top capitalize">{k.replace(/([A-Z])/g, " $1").trim()}</td>
-                <td className="py-1">{typeof v === "object" ? JSON.stringify(v) : String(v ?? "-")}</td>
+            {value.map((item, i) => (
+              <tr key={i} className="border-t border-border/30">
+                {keys.map((k) => (
+                  <td key={k} className="px-2 py-1">{item[k] != null ? String(item[k]) : "-"}</td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
       );
     }
-    if (Array.isArray(parsed)) {
-      return <span>{parsed.map((v: any) => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ") || "-"}</span>;
-    }
-  } catch {}
-  return <span>{text}</span>;
+    return <span>{value.map((v: any) => typeof v === "object" ? JSON.stringify(v) : String(v)).join(", ") || "-"}</span>;
+  }
+  if (typeof value === "object") {
+    return (
+      <table className="w-full text-xs">
+        <tbody>
+          {Object.entries(value).map(([k, v]) => (
+            <tr key={k} className="border-b border-border/30 last:border-0">
+              <td className="py-1 pr-3 font-medium text-muted-foreground whitespace-nowrap align-top capitalize">{k.replace(/([A-Z])/g, " $1").trim()}</td>
+              <td className="py-1"><AnswerValue value={v} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+  return <span>{String(value)}</span>;
 }
 
 import { scheduleCandidateInterview, updateInterviewStatus } from "@/app/actions/interviews";
