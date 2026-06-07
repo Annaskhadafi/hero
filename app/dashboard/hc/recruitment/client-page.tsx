@@ -17,7 +17,7 @@ import {
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -129,6 +129,22 @@ export function RecruitmentClientPage({
   const [recruitments, setRecruitments] = useState(initialRecruitments);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [emailStatuses, setEmailStatuses] = useState<Record<number, { status: string; lastSentAt: Date | null; templateName: string | null }>>({});
+  const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
+  const [cvViewerName, setCvViewerName] = useState("");
+  const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
+
+  const handleViewCv = async (cvUrl: string, candidateName: string) => {
+    setCvLoadingId(-1);
+    try {
+      const url = await getCvDownloadUrl(cvUrl);
+      setCvViewerUrl(url);
+      setCvViewerName(candidateName);
+    } catch {
+      toast.error("Failed to load CV");
+    } finally {
+      setCvLoadingId(null);
+    }
+  };
 
   const refreshEmailStatuses = async (candList: Candidate[]) => {
     const ids = candList.map(c => c.id);
@@ -907,7 +923,7 @@ export function RecruitmentClientPage({
       </Dialog>
 
     <Dialog open={isCandidateListOpen} onOpenChange={(open) => { if (!open) setIsCandidateListOpen(false); }}>
-      <DialogContent className="sm:max-w-5xl">
+      <DialogContent className="w-[90vw] h-[85vh] max-w-none flex flex-col overflow-hidden" style={{ maxHeight: '85vh' }}>
         <DialogHeader>
           <DialogTitle>Daftar Kandidat</DialogTitle>
           <DialogDescription>
@@ -915,7 +931,7 @@ export function RecruitmentClientPage({
             {dialogCandidatesLoading ? " — Memuat..." : ` — ${dialogCandidatePage.total} total`}
           </DialogDescription>
         </DialogHeader>
-        <div className="py-4">
+        <div className="py-4 flex-1 overflow-auto min-h-0">
           {dialogCandidatesLoading ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">Memuat data...</div>
           ) : (
@@ -954,8 +970,8 @@ export function RecruitmentClientPage({
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             {candidate.cvUrl ? (
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={candidate.cvUrl} target="_blank" rel="noreferrer">View CV</a>
+                              <Button variant="outline" size="sm" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id}>
+                                {cvLoadingId === candidate.id ? "Loading..." : "View CV"}
                               </Button>
                             ) : null}
                             <Button variant="default" size="sm" onClick={() => window.location.href = `/dashboard/hc/recruitment/candidates/${candidate.id}`}>
@@ -1008,6 +1024,35 @@ export function RecruitmentClientPage({
             </>
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* CV Viewer Dialog */}
+    <Dialog open={!!cvViewerUrl} onOpenChange={(open) => { if (!open) setCvViewerUrl(null); }}>
+      <DialogContent className="w-[95vw] h-[95vh] max-w-none p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
+        <DialogHeader className="px-6 py-3 border-b shrink-0">
+          <DialogTitle>CV / Resume — {cvViewerName}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
+          {cvViewerUrl ? (
+            <iframe
+              src={cvViewerUrl}
+              className="w-full h-full border-0"
+              style={{ height: '100%', minHeight: 0 }}
+              title={`CV of ${cvViewerName}`}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+          )}
+        </div>
+        <DialogFooter className="px-6 py-3 border-t shrink-0">
+          <Button variant="outline" onClick={() => setCvViewerUrl(null)}>Close</Button>
+          {cvViewerUrl && (
+            <Button asChild variant="default">
+              <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 
