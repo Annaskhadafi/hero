@@ -8,7 +8,8 @@ import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { randomUUID } from "crypto";
-import { getHcEmailTemplateByType, renderHcTemplate } from "@/app/actions/hc-email-templates";
+import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
+import { renderHcTemplate } from "@/lib/hc-email-utils";
 
 
 export async function getRecruitmentTestCandidates() {

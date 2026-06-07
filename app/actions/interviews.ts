@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
-import { getHcEmailTemplateByType, renderHcTemplate } from "@/app/actions/hc-email-templates";
+import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
+import { renderHcTemplate } from "@/lib/hc-email-utils";
 
 const FALLBACK_HTML = (vars: Record<string, string>) => `
 <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
