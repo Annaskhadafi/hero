@@ -361,7 +361,6 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
       }
 
       if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
-        const firstLink = testLinks[0];
         const linksHtml = testLinks.map((link, i) => `<li><a href="${link}" target="_blank">${groupItems[i]?.title || `Tes ${i + 1}`}</a></li>`).join("");
         const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
         const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
@@ -375,7 +374,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
           interviewer: "",
           duration: "7",
-          testLink: firstLink,
+          testLink: `${baseUrl}/test-group/${group?.slug || groupId}`,
         };
 
         let subject: string, html: string, text: string;
@@ -386,6 +385,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           text = rendered.body.replace(/<[^>]*>/g, "");
         } else {
           subject = `[HERO] Online Test - ${group?.name || "Assessment"}`;
+          const groupUrl = `${baseUrl}/test-group/${group?.slug || groupId}`;
           html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
   <h2 style="color:#0f172a;">Online Test Assignment</h2>
   <p>Dear <strong>${candidate.fullName}</strong>,</p>
@@ -394,6 +394,9 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
   <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
     <p style="font-weight:600;margin-bottom:8px;">Tes yang harus dikerjakan:</p>
     <ol style="text-align:left;">${linksHtml}</ol>
+  </div>
+  <div style="text-align:center;margin:24px 0;">
+    <a href="${groupUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Start Test</a>
   </div>
   <p style="font-size:13px;color:#64748b;">Link berlaku 7 hari.</p>
   <p>Best regards,<br/>Human Capital Team</p>
@@ -449,7 +452,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
     interviewer: "",
     duration: "7",
-    testLink: "[Unique Link]",
+    testLink: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}`,
   };
 
   let subject: string, html: string;
@@ -464,6 +467,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     }
   } else {
     subject = `[HERO] Online Test - ${group.name}`;
+    const testGroupUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}`;
     html = `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;padding:24px;border-radius:12px">
   <h2 style="color:#0f172a;">Online Test Assignment</h2>
   <p>Dear <strong>[Candidate Name]</strong>,</p>
@@ -472,6 +476,9 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
   <div style="background:#f8fafc;padding:15px;border-radius:8px;margin:20px 0;border:1px solid #e2e8f0;">
     <p style="font-weight:600;margin-bottom:8px;">Tes yang harus dikerjakan:</p>
     <ol style="text-align:left;">${linksHtml}</ol>
+  </div>
+  <div style="text-align:center;margin:24px 0;">
+    <a href="${testGroupUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Start Test</a>
   </div>
   <p style="font-size:13px;color:#64748b;">Link berlaku 7 hari.</p>
   <p>Best regards,<br/>Human Capital Team</p>
