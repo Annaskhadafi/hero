@@ -19,6 +19,7 @@ import path from "path";
 
 export type RecruitmentFilter = {
   status?: string;
+  isPublic?: boolean;
 };
 
 export type RecruitmentData = {
@@ -83,6 +84,9 @@ export async function getRecruitments(filters?: RecruitmentFilter) {
 
   if (filters?.status) {
     conditions.push(eq(hcRecruitments.status, filters.status));
+  }
+  if (filters?.isPublic !== undefined) {
+    conditions.push(eq(hcRecruitments.isPublic, filters.isPublic));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
