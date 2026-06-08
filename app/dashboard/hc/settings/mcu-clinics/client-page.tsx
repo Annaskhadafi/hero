@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { saveMcuClinic, deleteMcuClinic } from "@/app/actions/hc-mcu-clinics";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
-import { HcWorkspaceBanner } from "@/components/hc/hc-workspace-banner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -100,8 +99,6 @@ export function McuClinicsClient({ initialClinics }: Props) {
     <AdminPageShell eyebrow="HC Settings" title="MCU Clinics" description="Manage medical clinic partners for candidate MCU">
       <RecruitmentTabBar />
       <div className="mt-8 space-y-6">
-        <HcWorkspaceBanner title="Master Klinik MCU"
-          description="Daftar klinik rekanan untuk Medical Check Up. Data ini akan muncul sebagai pilihan saat HR menjadwalkan MCU candidate." />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
