@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { IconBriefcase, IconUsers, IconFileText, IconStack2, IconMail, IconBuilding, IconCalendarEvent } from "@tabler/icons-react";
+import { IconBriefcase, IconUsers, IconFileText, IconStack2, IconMail, IconBuilding, IconCalendarEvent, IconStethoscope } from "@tabler/icons-react";
 
 const TABS = [
   { href: "/dashboard/hc/recruitment", icon: IconBriefcase, label: "Recruitment" },
   { href: "/dashboard/hc/recruitment/calendar", icon: IconCalendarEvent, label: "Calendar" },
+  { href: "/dashboard/hc/recruitment/mcu-results", icon: IconStethoscope, label: "MCU Results" },
   { href: "/dashboard/hc/recruitment/tests", icon: IconFileText, label: "Online Tests" },
   { href: "/dashboard/hc/recruitment/test-groups", icon: IconStack2, label: "Test Groups" },
   { href: "/dashboard/hc/settings/email-templates", icon: IconMail, label: "Email Templates" },

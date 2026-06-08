@@ -71,6 +71,28 @@ export async function getCandidateMcu(candidateId: number) {
     .orderBy(desc(hcCandidateMcu.scheduledDate));
 }
 
+export async function getAllMcuRecords() {
+  return await db.select({
+    id: hcCandidateMcu.id,
+    candidateId: hcCandidateMcu.candidateId,
+    klinikName: hcCandidateMcu.klinikName,
+    klinikEmail: hcCandidateMcu.klinikEmail,
+    paketMcu: hcCandidateMcu.paketMcu,
+    scheduledDate: hcCandidateMcu.scheduledDate,
+    status: hcCandidateMcu.status,
+    resultNotes: hcCandidateMcu.resultNotes,
+    resultFileUrl: hcCandidateMcu.resultFileUrl,
+    resultDate: hcCandidateMcu.resultDate,
+    resultBy: hcCandidateMcu.resultBy,
+    candidateName: hcCandidates.fullName,
+    jobTitle: hcRecruitments.jobTitle,
+  })
+  .from(hcCandidateMcu)
+  .innerJoin(hcCandidates, eq(hcCandidateMcu.candidateId, hcCandidates.id))
+  .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+  .orderBy(desc(hcCandidateMcu.scheduledDate));
+}
+
 export async function scheduleCandidateMcu(candidateId: number, data: {
   klinikName: string;
   klinikEmail: string;
