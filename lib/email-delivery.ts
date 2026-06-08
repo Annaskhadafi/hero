@@ -106,6 +106,7 @@ export async function sendEmailViaSmtp(
   });
 
   try {
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@${settings.fromEmail.split("@")[1] || "herochitra.com"}>`;
     const result = await transporter.sendMail({
       from: formatFromAddress(settings),
       to: payload.to,
@@ -113,6 +114,15 @@ export async function sendEmailViaSmtp(
       subject: payload.subject,
       html: payload.html,
       text: payload.text,
+      messageId,
+      headers: {
+        "X-Mailer": "HERO Recruitment System",
+        "Precedence": "normal",
+        "X-Priority": "3",
+        "X-MSMail-Priority": "Normal",
+        "Importance": "Normal",
+        "MIME-Version": "1.0",
+      },
     });
 
     await logEmailDelivery(payload, settings, "sent");
