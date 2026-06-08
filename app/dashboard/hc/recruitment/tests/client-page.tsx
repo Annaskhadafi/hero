@@ -121,14 +121,14 @@ export function RecruitmentTestsClientPage({ initialTests, testGroups = [] }: { 
         </div>
       )}
 
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-lg font-semibold">Test Banks</h2>
-        <Button onClick={() => setIsCreateOpen(true)} className="gap-2">
-          <IconPlus className="w-4 h-4" /> Create Test
-        </Button>
-      </div>
-
-      <MinimalTableShell label="online tests" title="Test Banks">
+      <MinimalTableShell
+        label="online tests"
+        primaryAction={(
+          <Button onClick={() => setIsCreateOpen(true)} className="h-9 gap-2 rounded-lg px-3 text-[13px] normal-case tracking-normal">
+            <IconPlus className="w-4 h-4" /> Create Test
+          </Button>
+        )}
+      >
         <Table>
           <TableHeader>
             <TableRow>

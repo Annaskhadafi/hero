@@ -956,12 +956,12 @@ export function SchedulingTimesheetWorkspace({
   )
   const site = sites.find((item) => String(item.id) === siteId)
   const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
-  const siteNameOptions = [...new Set(sites.map((item) => extractSiteNameLocal(item.name)).filter(Boolean))]
+  const siteNameOptions = [
+    ...new Set(sites.map((item) => extractSiteNameLocal(item.name)).filter(Boolean)),
+  ]
   const siteExtractedName = extractSiteNameLocal(site?.name)
   const rate =
-    allowanceVariables.find(
-      (item) => item.project === siteExtractedName
-    ) ??
+    allowanceVariables.find((item) => item.project === siteExtractedName) ??
     allowanceVariables.find(
       (item) => normalizeLocation(item.project) === normalizeLocation(siteExtractedName)
     ) ??
@@ -1103,12 +1103,20 @@ export function SchedulingTimesheetWorkspace({
             (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
           defaultClockIn: (fieldBreakConfig.defaultClockIn as string | undefined) ?? '07:00',
           defaultClockOut: (fieldBreakConfig.defaultClockOut as string | undefined) ?? '17:00',
-          defaultEarlyOvertimeHours:
-            Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
-          defaultOvertimeEnd: (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
+          defaultEarlyOvertimeHours: Number(fieldBreakConfig.defaultEarlyOvertimeHours ?? 1) || 0,
+          defaultOvertimeEnd:
+            (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
           lokasiKhususRate: Number(fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
-          lokasiKhususRateStaff: Number(fieldBreakConfig.lokasiKhususRateStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
-          lokasiKhususRateNonStaff: Number(fieldBreakConfig.lokasiKhususRateNonStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000) || 0,
+          lokasiKhususRateStaff:
+            Number(
+              fieldBreakConfig.lokasiKhususRateStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000
+            ) || 0,
+          lokasiKhususRateNonStaff:
+            Number(
+              fieldBreakConfig.lokasiKhususRateNonStaff ??
+                fieldBreakConfig.lokasiKhususRate ??
+                35000
+            ) || 0,
           lokasiKhususEnabled: Boolean(fieldBreakConfig.lokasiKhususEnabled ?? false),
         }
       : defaultSiteConfig
@@ -1160,7 +1168,10 @@ export function SchedulingTimesheetWorkspace({
     setScheduleSavedAt(new Date(savedPlan.updatedAt).toLocaleString('id-ID'))
     setSiteScheduleTypes((current) => ({
       ...current,
-      [siteId]: (savedPlan.siteScheduleType === 'shift' || savedPlan.siteScheduleType === 'hybrid') ? savedPlan.siteScheduleType as SiteScheduleType : 'office',
+      [siteId]:
+        savedPlan.siteScheduleType === 'shift' || savedPlan.siteScheduleType === 'hybrid'
+          ? (savedPlan.siteScheduleType as SiteScheduleType)
+          : 'office',
     }))
   }, [fieldBreakPlans, period, savedPlan, siteId])
 
@@ -2719,7 +2730,6 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
-
       // Apply ke cell UI langsung agar user lihat hasilnya
       setManualAttendance((current) => ({ ...current, ...cellUpdates }))
       setIsAttendanceDirty(true)
@@ -3160,9 +3170,8 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
-      const { generateDailyActivityPdf } = await import(
-        '@/lib/timesheet/generate-daily-activity-pdf'
-      )
+      const { generateDailyActivityPdf } =
+        await import('@/lib/timesheet/generate-daily-activity-pdf')
       const pdf = await generateDailyActivityPdf({
         period,
         employeeName: employee.name,
@@ -3388,7 +3397,10 @@ export function SchedulingTimesheetWorkspace({
               onValueChange={setSiteId}
               options={[
                 { value: 'all', label: 'Pilih site dahulu' },
-                ...sites.map((item) => ({ value: String(item.id), label: extractSiteNameLocal(item.name) || item.name })),
+                ...sites.map((item) => ({
+                  value: String(item.id),
+                  label: extractSiteNameLocal(item.name) || item.name,
+                })),
               ]}
             />
           </div>
@@ -4053,9 +4065,7 @@ export function SchedulingTimesheetWorkspace({
           <Card className="surface-module-card overflow-hidden rounded-[1.1rem] border-0">
             <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div>
-                <p className="font-display text-foreground text-base font-semibold">
-                  Sync Log
-                </p>
+                <p className="font-display text-foreground text-base font-semibold">Sync Log</p>
                 <p className="text-muted-foreground text-xs">
                   Log sinkronisasi attendance dari face/location, manual edit, dan import Excel.
                 </p>
@@ -4098,7 +4108,11 @@ export function SchedulingTimesheetWorkspace({
                     />
                   </Label>
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => void downloadAttendanceTemplate()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void downloadAttendanceTemplate()}
+                >
                   <Download className="mr-2 size-4" /> Template Excel
                 </Button>
                 <Button
@@ -4329,11 +4343,7 @@ export function SchedulingTimesheetWorkspace({
                   >
                     Pakai attendance (mark working)
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setConflictsDismissed(true)}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => setConflictsDismissed(true)}>
                     Tutup
                   </Button>
                 </div>
@@ -4562,12 +4572,14 @@ export function SchedulingTimesheetWorkspace({
                                         title="Generate Site Allowance PDF"
                                         onClick={() => generateEmployeeAllowancePdf(row.employee)}
                                       >
-                                      MSA
+                                        MSA
                                       </button>
                                       <button
                                         className="text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
                                         title="Generate Daily Activity PDF"
-                                        onClick={() => generateEmployeeDailyActivityPdf(row.employee)}
+                                        onClick={() =>
+                                          generateEmployeeDailyActivityPdf(row.employee)
+                                        }
                                       >
                                         DA
                                       </button>
@@ -4602,15 +4614,27 @@ export function SchedulingTimesheetWorkspace({
                                     // - Izin/Sakit/Alpha = tidak dapat
                                     // - Hari kerja kosong (bukan libur nasional) = tidak dapat
                                     // - Field Break period = tidak dapat
-                                    const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
+                                    const isRosterOff =
+                                      scheduleCode === 'OFF' || scheduleCode === 'Libur'
                                     const isNationalHoliday = Boolean(isHolidayDay)
                                     const isWorkDay = !isRosterOff
-                                    const isAbsent = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
+                                    const isAbsent =
+                                      cell.status === 'leave' ||
+                                      cell.status === 'sick' ||
+                                      cell.status === 'absent'
                                     // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
                                     // 'off' status = manual OFF, treated like roster OFF (not empty workday)
-                                    const isEmptyWorkDay = isWorkDay && !isNationalHoliday && cell.status === 'empty'
+                                    const isEmptyWorkDay =
+                                      isWorkDay && !isNationalHoliday && cell.status === 'empty'
                                     const noAllowance = isAbsent || isEmptyWorkDay
-                                    const absentLabel = cell.status === 'leave' ? 'Izin' : cell.status === 'sick' ? 'Sakit' : cell.status === 'absent' ? 'Alpha' : '-'
+                                    const absentLabel =
+                                      cell.status === 'leave'
+                                        ? 'Izin'
+                                        : cell.status === 'sick'
+                                          ? 'Sakit'
+                                          : cell.status === 'absent'
+                                            ? 'Alpha'
+                                            : '-'
 
                                     if (attendanceView === 'msa') {
                                       if (isFieldBreakDay && cell.status !== 'present') {
@@ -4648,7 +4672,9 @@ export function SchedulingTimesheetWorkspace({
                                         cellValue = absentLabel
                                         cellBg = 'bg-rose-50 text-rose-700'
                                       } else {
-                                        cellValue = staff ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
+                                        cellValue = staff
+                                          ? siteConfig.lokasiKhususRateStaff
+                                          : siteConfig.lokasiKhususRateNonStaff
                                         cellBg = isNationalHoliday
                                           ? 'bg-amber-50 text-foreground'
                                           : isRosterOff
@@ -4772,36 +4798,40 @@ export function SchedulingTimesheetWorkspace({
                                             {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}
                                           </span>
                                         ) : null}
-                                       {cell.status !== 'empty' && cell.source ? (
-                                         <span className="absolute right-1 bottom-1">
-                                           <AttendanceSourceIndicator
-                                             source={cell.source}
-                                             timestamp={
-                                               cell.clockIn
-                                                 ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
-                                                 : undefined
-                                             }
-                                           />
-                                         </span>
-                                       ) : null}
-                                       {(() => {
-                                         const activityKey = `${row.employee.id}-${period}-${day}`
-                                        const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
-                                         if (dayActivities.length === 0) return null
-                                         return (
+                                        {cell.status !== 'empty' && cell.source ? (
+                                          <span className="absolute right-1 bottom-1">
+                                            <AttendanceSourceIndicator
+                                              source={cell.source}
+                                              timestamp={
+                                                cell.clockIn
+                                                  ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
+                                                  : undefined
+                                              }
+                                            />
+                                          </span>
+                                        ) : null}
+                                        {(() => {
+                                          const activityKey = `${row.employee.id}-${period}-${day}`
+                                          const dayActivities =
+                                            activitiesByEmployeeDay.get(activityKey) || []
+                                          if (dayActivities.length === 0) return null
+                                          return (
                                             <div
-                                             onClick={(e) => {
-                                               e.stopPropagation()
-                                               setSelectedActivityCell({ employeeId: row.employee.id, day })
-                                             }}
-                                              className="absolute left-1 bottom-1 flex size-4 items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white cursor-pointer"
-                                             title={`${dayActivities.length} aktivitas`}
-                                           >
-                                             {dayActivities.length}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setSelectedActivityCell({
+                                                  employeeId: row.employee.id,
+                                                  day,
+                                                })
+                                              }}
+                                              className="absolute bottom-1 left-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
+                                              title={`${dayActivities.length} aktivitas`}
+                                            >
+                                              {dayActivities.length}
                                             </div>
-                                         )
-                                       })()}
-                                     </button>
+                                          )
+                                        })()}
+                                      </button>
                                     </td>
                                   )
                                 })}
@@ -4828,16 +4858,27 @@ export function SchedulingTimesheetWorkspace({
                                         const isRosterOff2 = code === 'OFF' || code === 'Libur'
                                         const isNationalHoliday2 = Boolean(hol)
                                         const isWorkDay2 = !isRosterOff2
-                                        const isAbsent2 = cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
-                                        const isEmptyWorkDay2 = isWorkDay2 && !isNationalHoliday2 && cell.status === 'empty'
+                                        const isAbsent2 =
+                                          cell.status === 'leave' ||
+                                          cell.status === 'sick' ||
+                                          cell.status === 'absent'
+                                        const isEmptyWorkDay2 =
+                                          isWorkDay2 &&
+                                          !isNationalHoliday2 &&
+                                          cell.status === 'empty'
                                         const noAllowance2 = isAbsent2 || isEmptyWorkDay2
 
                                         if (attendanceView === 'lokasi') {
                                           if (siteConfig.lokasiKhususEnabled) {
-                                            const isFbPeriodLokasi = fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false
+                                            const isFbPeriodLokasi =
+                                              fieldBreakDaysByEmployee
+                                                .get(row.employee.id)
+                                                ?.has(day) ?? false
                                             if (!isFbPeriodLokasi && !noAllowance2) {
                                               const isStaffSummary = isStaffRole(row.employee.role)
-                                              total += isStaffSummary ? siteConfig.lokasiKhususRateStaff : siteConfig.lokasiKhususRateNonStaff
+                                              total += isStaffSummary
+                                                ? siteConfig.lokasiKhususRateStaff
+                                                : siteConfig.lokasiKhususRateNonStaff
                                             }
                                           }
                                           continue
@@ -4854,7 +4895,10 @@ export function SchedulingTimesheetWorkspace({
                                           continue
 
                                         // Skip if no allowance (izin/sakit/alpha/empty workday)
-                                        if (noAllowance2 && (attendanceView === 'msa' || attendanceView === 'meals'))
+                                        if (
+                                          noAllowance2 &&
+                                          (attendanceView === 'msa' || attendanceView === 'meals')
+                                        )
                                           continue
 
                                         // OVT: only count present days
@@ -5441,9 +5485,7 @@ export function SchedulingTimesheetWorkspace({
                 const activityKey = `${selectedActivityCell.employeeId}-${period}-${selectedActivityCell.day}`
                 const dayActivities = activitiesByEmployeeDay.get(activityKey) || []
                 if (dayActivities.length === 0) {
-                  return (
-                    <p className="text-center text-sm text-slate-500">Tidak ada aktivitas.</p>
-                  )
+                  return <p className="text-center text-sm text-slate-500">Tidak ada aktivitas.</p>
                 }
                 return dayActivities.map((activity) => (
                   <div
