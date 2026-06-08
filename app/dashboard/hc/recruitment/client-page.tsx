@@ -29,7 +29,7 @@ import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "
 import Link from "next/link";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
-import { HcWorkspaceBanner, hcPrimaryActionClassName, hcTableRowClassName, hcMutedPanelClassName } from "@/components/hc/hc-workspace-banner";
+import { hcPrimaryActionClassName, hcTableRowClassName, hcMutedPanelClassName } from "@/components/hc/hc-workspace-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -634,11 +634,7 @@ export function RecruitmentClientPage({
       title="Recruitment Management"
       description="Manage open job vacancies, candidate pipeline, and AI assessments"
     >
-      <div className="space-y-8 pb-12 animate-in fade-in duration-500">
-        <HcWorkspaceBanner
-          title="Recruitment Studio"
-          description="AI-Powered Talent Acquisition & Candidate Pipeline"
-        />
+      <div className="space-y-8 pb-12">
 
         {/* Navigation Tab Bar */}
         <RecruitmentTabBar />
