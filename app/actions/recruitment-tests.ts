@@ -2,7 +2,7 @@
 
 import { db } from "@/db";
 import { hcOnlineTests, hcOnlineTestQuestions, hcOnlineTestAssignments, hcOnlineTestAnswers, hcCandidates, hcRecruitments } from "@/db/schema/hero";
-import { eq, desc, inArray, sql } from "drizzle-orm";
+import { eq, desc, inArray, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
@@ -10,6 +10,12 @@ import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { randomUUID } from "crypto";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
+import { getPublicAppUrl } from "@/lib/auth-config";
+import {
+  type CandidateApplicationIdentity,
+  extractCandidateIdentityFromAnswer,
+  mergeCandidateApplicationIdentity,
+} from "@/lib/hc-application-form-identity";
 
 export async function ensureScheduledAtColumn() {
   await db.execute(sql`
@@ -70,7 +76,7 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
     try {
       const smtpSettings = await getEmailSmtpSettingsData();
       if (smtpSettings.host && smtpSettings.fromEmail) {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const baseUrl = getPublicAppUrl();
         const testLink = `${baseUrl}/test/${accessKey}`;
         const { format } = await import("date-fns");
         const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
@@ -177,7 +183,7 @@ export async function bulkAssignTestToCandidates(testId: number, candidateIds: n
     .where(inArray(hcCandidates.id, candidateIds));
 
   const smtpSettings = await getEmailSmtpSettingsData();
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = getPublicAppUrl();
   const { format } = await import("date-fns");
   const template = await getHcEmailTemplateByType("test_assigned");
 
@@ -412,6 +418,44 @@ export async function getTestEntries(testId: number) {
     const existing = answersByAssignment.get(answer.assignmentId) ?? [];
     existing.push(answer);
     answersByAssignment.set(answer.assignmentId, existing);
+  }
+
+  // Resolve real names from application form answers for anonymous test-group candidates
+  const anonymousCandidateIds = Array.from(new Set(entries
+    .filter((entry) => (entry.candidate?.fullName ?? "").startsWith("Peserta Test Group") || (entry.candidate?.email ?? "").includes("@test.local"))
+    .map((entry) => entry.candidate.id)));
+
+  if (anonymousCandidateIds.length > 0) {
+    const appFormAnswers = await db.select({
+      candidateId: hcOnlineTestAssignments.candidateId,
+      questionText: hcOnlineTestQuestions.questionText,
+      answerText: hcOnlineTestAnswers.answerText,
+    })
+    .from(hcOnlineTestAnswers)
+    .innerJoin(hcOnlineTestAssignments, eq(hcOnlineTestAnswers.assignmentId, hcOnlineTestAssignments.id))
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestAssignments.testId, hcOnlineTests.id))
+    .innerJoin(hcOnlineTestQuestions, eq(hcOnlineTestAnswers.questionId, hcOnlineTestQuestions.id))
+    .where(
+      and(
+        inArray(hcOnlineTestAssignments.candidateId, anonymousCandidateIds),
+        eq(hcOnlineTestAssignments.status, "Completed"),
+        eq(hcOnlineTests.isApplicationForm, true)
+      )
+    );
+
+    const resolvedNames = new Map<number, CandidateApplicationIdentity>();
+    for (const row of appFormAnswers) {
+      const current = resolvedNames.get(row.candidateId) ?? {};
+      const next = extractCandidateIdentityFromAnswer(row.questionText ?? "", row.answerText ?? "");
+      resolvedNames.set(row.candidateId, mergeCandidateApplicationIdentity(current, next));
+    }
+
+    for (const entry of entries) {
+      const resolved = resolvedNames.get(entry.candidate.id);
+      if (!resolved) continue;
+      if (resolved.fullName) entry.candidate.fullName = resolved.fullName;
+      if (resolved.email) entry.candidate.email = resolved.email;
+    }
   }
 
   return entries.map((entry) => ({ ...entry, answers: answersByAssignment.get(entry.id) ?? [] }));

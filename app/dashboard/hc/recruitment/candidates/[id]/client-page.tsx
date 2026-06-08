@@ -1119,10 +1119,21 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                         </div>
                         <div className="flex items-center gap-3">
                           <Badge variant={result.status === "Completed" || result.status === "Graded" ? "default" : "secondary"}>{result.status}</Badge>
-                          {result.totalMaxPoints > 0 && (
+                          {result.answers.length > 0 && (
                             <div className="text-right">
-                              <div className="text-xs text-muted-foreground">Total Skor</div>
-                              <div className="text-xl font-bold text-primary">{result.totalEarnedPoints}<span className="text-sm text-muted-foreground font-normal">/{result.totalMaxPoints}</span></div>
+                              <div className="text-xs text-muted-foreground">Score</div>
+                              <div className="text-xl font-bold text-primary">{result.percentage}%</div>
+                              {result.passingScore > 0 && (
+                                <Badge variant={result.passed ? "default" : "destructive"} className={result.passed ? "bg-emerald-600" : ""}>
+                                  {result.passed ? "LULUS" : "TIDAK LULUS"} · PG: {result.passingScore}%
+                                </Badge>
+                              )}
+                              <div className="text-xs text-muted-foreground">
+                                Benar <span className="text-emerald-600 font-semibold">{result.correctCount}</span>/{result.totalQuestions} soal
+                                {result.totalMaxPoints > 0 && (
+                                  <span> · <span className="font-mono">{result.totalEarnedPoints}/{result.totalMaxPoints} pts</span></span>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>

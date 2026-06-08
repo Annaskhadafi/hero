@@ -86,14 +86,6 @@ export default function CareerApplicationPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cvFile) {
-      toast.error("Mohon unggah CV Anda (Format PDF).");
-      return;
-    }
-    if (cvFile.type !== "application/pdf" && !cvFile.name.toLowerCase().endsWith(".pdf")) {
-      toast.error("Format file tidak didukung. Mohon unggah file PDF.");
-      return;
-    }
     if (!fullName || !email || !phone || !dateOfBirth || !gender || !address) {
       toast.error("Mohon lengkapi Data Diri.");
       return;
@@ -101,13 +93,24 @@ export default function CareerApplicationPage() {
 
     setSubmitting(true);
     try {
-      // 1. Upload CV
-      const form = new FormData();
-      form.append("file", cvFile);
-      const uploadResult = await uploadFile(form);
+      let cvUrl = "";
 
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error || "Gagal mengunggah CV");
+      if (cvFile) {
+        if (cvFile.type !== "application/pdf" && !cvFile.name.toLowerCase().endsWith(".pdf")) {
+          toast.error("Format file tidak didukung. Mohon unggah file PDF.");
+          setSubmitting(false);
+          return;
+        }
+        const form = new FormData();
+        form.append("file", cvFile);
+        const uploadResult = await uploadFile(form);
+        if (!uploadResult.success) {
+          toast.warning("CV gagal diunggah: " + (uploadResult.error || "Kendala teknis") + ". Data Anda tetap akan dikirim tanpa CV.");
+        } else {
+          cvUrl = uploadResult.url || "";
+        }
+      } else {
+        toast.warning("Anda belum mengunggah CV. Aplikasi tetap akan dikirim.");
       }
 
       // 2. Clean up arrays (remove empty entries)
@@ -130,7 +133,7 @@ export default function CareerApplicationPage() {
         drivingLicenses,
         achievements,
         source: "Careers Page",
-        cvUrl: uploadResult.url,
+        cvUrl,
       });
 
       toast.success("Aplikasi berhasil dikirim!");

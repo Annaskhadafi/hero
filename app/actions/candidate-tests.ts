@@ -6,6 +6,12 @@ import { eq, and, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { randomUUID } from "crypto";
+import {
+  type CandidateApplicationIdentity,
+  extractCandidateIdentityFromAnswer,
+  hasCandidateApplicationIdentity,
+  mergeCandidateApplicationIdentity,
+} from "@/lib/hc-application-form-identity";
 
 export async function getTestByAccessKey(accessKey: string) {
   const [assignment] = await db.select().from(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.accessKey, accessKey)).limit(1);
@@ -85,7 +91,20 @@ export async function getTestByAccessKey(accessKey: string) {
     return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: [], previousAnswers: null };
   }
 
-  return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: safeQuestions, previousAnswers };
+  // Compute score breakdown for completed assignments
+  let scoreBreakdown: { score: number | null; correctCount: number; totalQuestions: number; percentage: number; passingScore: number; passed: boolean | null } | null = null;
+  if (assignment.status === "Completed") {
+    const ansRows = await db.select({ isCorrect: hcOnlineTestAnswers.isCorrect, pointsAwarded: hcOnlineTestAnswers.pointsAwarded })
+      .from(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignment.id));
+    const correctCount = ansRows.filter((a) => a.isCorrect === true).length;
+    const totalQuestions = ansRows.length;
+    const percentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+    const passingScore = test.passingScore ?? 0;
+    const passed = totalQuestions > 0 ? percentage >= passingScore : null;
+    scoreBreakdown = { score: assignment.score, correctCount, totalQuestions, percentage, passingScore, passed };
+  }
+
+  return { assignment: { ...assignment, scheduledAt, scheduledEndAt }, test, questions: safeQuestions, previousAnswers, scoreBreakdown };
 }
 
 export async function submitTestAnswer(assignmentId: number, questionId: number, answerText: string) {
@@ -116,36 +135,29 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
     if (answerRows.length) await db.insert(hcOnlineTestAnswers).values(answerRows);
   }
 
-  const savedAnswers = await db.select({ pointsAwarded: hcOnlineTestAnswers.pointsAwarded }).from(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignmentId));
+  const savedAnswers = await db.select({ pointsAwarded: hcOnlineTestAnswers.pointsAwarded, isCorrect: hcOnlineTestAnswers.isCorrect }).from(hcOnlineTestAnswers).where(eq(hcOnlineTestAnswers.assignmentId, assignmentId));
   const score = savedAnswers.reduce((total, answer) => total + answer.pointsAwarded, 0);
+  const correctCount = savedAnswers.filter((a) => a.isCorrect === true).length;
+  const totalQuestions = savedAnswers.length;
+  const percentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
   const completedAt = new Date();
   const durationSeconds = assignment.startedAt ? Math.max(0, Math.round((completedAt.getTime() - assignment.startedAt.getTime()) / 1000)) : null;
 
   const [test] = await db.select().from(hcOnlineTests).where(eq(hcOnlineTests.id, assignment.testId)).limit(1);
 
   if (test?.isApplicationForm && answers) {
-    let fullName = "";
-    let email = "";
-    let phone = "";
+    let identity: CandidateApplicationIdentity = {};
     
     for (const [qIdStr, text] of Object.entries(answers)) {
-      const qText = questionById.get(Number(qIdStr))?.questionText.toLowerCase() || "";
-      if (!text) continue;
-      
-      if (qText.includes("nama") && !qText.includes("perusahaan") && !qText.includes("sekolah") && !qText.includes("universitas")) {
-        fullName = text;
-      } else if (qText.includes("email")) {
-        email = text;
-      } else if (qText.includes("telepon") || qText.includes("hp") || qText.includes("whatsapp")) {
-        phone = text;
-      }
+      const questionText = questionById.get(Number(qIdStr))?.questionText ?? "";
+      identity = mergeCandidateApplicationIdentity(identity, extractCandidateIdentityFromAnswer(questionText, text));
     }
     
-    if (fullName || email || phone) {
+    if (hasCandidateApplicationIdentity(identity)) {
       const updateData: any = {};
-      if (fullName) updateData.fullName = fullName;
-      if (email) updateData.email = email;
-      if (phone) updateData.phone = phone;
+      if (identity.fullName) updateData.fullName = identity.fullName;
+      if (identity.email) updateData.email = identity.email;
+      if (identity.phone) updateData.phone = identity.phone;
       
       await db.update(hcCandidates)
         .set(updateData)
@@ -158,6 +170,10 @@ export async function finishTestAssignment(assignmentId: number, answers?: Recor
     .where(eq(hcOnlineTestAssignments.id, assignmentId));
   
   revalidatePath("/dashboard/hc/recruitment");
+
+  const passingScore = test?.passingScore ?? 0;
+  const passed = totalQuestions > 0 ? percentage >= passingScore : null;
+  return { score, correctCount, totalQuestions, percentage, passingScore, passed };
 }
 
 export async function startTestAssignment(assignmentId: number) {
@@ -221,6 +237,7 @@ export async function getCandidateTestResults(candidateId: number) {
       testTitle: hcOnlineTests.title,
       status: hcOnlineTestAssignments.status,
       score: hcOnlineTestAssignments.score,
+      passingScore: hcOnlineTests.passingScore,
       startedAt: hcOnlineTestAssignments.startedAt,
       completedAt: hcOnlineTestAssignments.completedAt,
       createdAt: hcOnlineTestAssignments.createdAt,
@@ -250,15 +267,22 @@ export async function getCandidateTestResults(candidateId: number) {
 
     const totalMax = answers.reduce((sum, ans) => sum + ans.maxPoints, 0);
     const totalEarned = answers.reduce((sum, ans) => sum + ans.pointsAwarded, 0);
+    const correctCount = answers.filter((ans) => ans.isCorrect === true).length;
+    const percentage = answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0;
+    const passingScore = a.passingScore ?? 0;
+    const passed = answers.length > 0 ? percentage >= passingScore : null;
 
     results.push({
       ...a,
       answers,
       totalMaxPoints: totalMax,
       totalEarnedPoints: totalEarned,
+      correctCount,
+      totalQuestions: answers.length,
+      percentage,
+      passed,
     });
   }
 
   return results;
 }
-

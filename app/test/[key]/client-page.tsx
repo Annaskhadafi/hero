@@ -32,9 +32,10 @@ const getDisplayOptions = (question: any) => {
   return savedOptions.length ? savedOptions : getDefaultOptionsForType(question.questionType);
 };
 
-export function CandidateTestClientPage({ assignment, test, questions, previousAnswers }: { assignment: any, test: any, questions: any[], previousAnswers?: any }) {
+export function CandidateTestClientPage({ assignment, test, questions, previousAnswers, scoreBreakdown }: { assignment: any, test: any, questions: any[], previousAnswers?: any, scoreBreakdown?: any }) {
   const [hasStarted, setHasStarted] = useState(assignment.status !== "Pending");
   const [isFinished, setIsFinished] = useState(assignment.status === "Completed");
+  const [testResult, setTestResult] = useState<any>(scoreBreakdown || null);
   const storageKey = `hero_test_timer_${assignment.id}`;
   const [timeLeft, setTimeLeft] = useState(() => {
     if (typeof window !== "undefined") {
@@ -52,12 +53,15 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
 
   const [answers, setAnswers] = useState<Record<number, string>>(previousAnswers || {});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [unansweredIds, setUnansweredIds] = useState<Set<number>>(new Set());
   const [tabLeaveCount, setTabLeaveCount] = useState(0);
   const [refreshCount] = useState(() => { if (typeof window === "undefined") return 0; const key = `test-refresh-${assignment.id}`; const next = Number(sessionStorage.getItem(key) || "0") + 1; sessionStorage.setItem(key, String(next)); return Math.max(0, next - 1); });
-  
-  // Test Group Flow
   const [groupId, setGroupId] = useState<number | null>(null);
   const [nextTestInfo, setNextTestInfo] = useState<{ hasNext: boolean; nextAccessKey?: string }>({ hasNext: false });
+
+  useEffect(() => {
+    if (unansweredIds.size > 0) setUnansweredIds(new Set());
+  }, [answers]);
   
   useEffect(() => {
     // Check if there is a groupId in URL query params
@@ -106,16 +110,45 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
     if (isFinished) return;
 
     if (!isAutoSubmit && !test.isApplicationForm) {
-      const unanswered = questions.some(q => !answers[q.id] || answers[q.id].trim() === "" || answers[q.id] === ",");
-      if (unanswered) {
-        toast.error("Mohon isi semua jawaban sebelum menyelesaikan tes.");
+      const unansweredList = questions.filter(q => !answers[q.id] || answers[q.id].trim() === "" || answers[q.id] === ",");
+      if (unansweredList.length > 0) {
+        const ids = new Set(unansweredList.map(q => q.id));
+        setUnansweredIds(ids);
+        const numbers = unansweredList.map((_, i) => {
+          const idx = questions.findIndex(qq => qq.id === unansweredList[i].id);
+          return idx + 1;
+        });
+        const label = numbers.length <= 5 ? numbers.join(", ") : `${numbers.slice(0, 5).join(", ")} + ${numbers.length - 5} lainnya`;
+        toast.error(`Soal belum diisi: No. ${label}`, { duration: 5000 });
+        setTimeout(() => {
+          const el = document.getElementById(`question-${unansweredList[0].id}`);
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+        return;
+      }
+    }
+
+    if (!isAutoSubmit && test.isApplicationForm) {
+      let formData: Record<string, any> = {};
+      try {
+        formData = JSON.parse(answers[questions[0]?.id] || "{}");
+      } catch {
+        formData = {};
+      }
+
+      const fullName = typeof formData.fullName === "string" ? formData.fullName.trim() : "";
+      const email = typeof formData.email === "string" ? formData.email.trim() : "";
+
+      if (!fullName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        toast.error("Nama lengkap dan email wajib diisi sebelum submit application form.");
         return;
       }
     }
 
     setIsSubmitting(true);
     try {
-      await finishTestAssignment(assignment.id, answers, { tabLeaveCount, refreshCount });
+      const result = await finishTestAssignment(assignment.id, answers, { tabLeaveCount, refreshCount });
+      setTestResult(result);
       setIsFinished(true);
       if (typeof window !== "undefined") localStorage.removeItem(`hero_test_timer_${assignment.id}`);
       toast.success("Test submitted successfully!");
@@ -208,7 +241,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
         <CardHeader>
           <div className="mx-auto bg-green-100 text-green-700 w-16 h-16 rounded-full flex items-center justify-center mb-4 text-2xl">✓</div>
           <CardTitle className="text-2xl">Assessment Completed</CardTitle>
-          <CardDescription>Thank you for completing the test. You may now close this window.</CardDescription>
+          <CardDescription>Jawaban Anda telah tersimpan. Tim HR akan meninjau hasil tes ini. Anda dapat menutup halaman ini.</CardDescription>
         </CardHeader>
         {nextTestInfo.hasNext && nextTestInfo.nextAccessKey && (
           <CardFooter className="flex justify-center mt-4">
@@ -276,7 +309,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
           questions.map((q, index) => {
             const isAnswered = answers[q.id] && answers[q.id].trim() !== "" && answers[q.id] !== ",";
             return (
-            <Card key={q.id}>
+            <Card key={q.id} id={`question-${q.id}`} className={unansweredIds.has(q.id) ? "ring-2 ring-destructive ring-offset-2" : ""}>
             <CardHeader className="flex flex-col bg-muted/20 border-b pb-4 space-y-4 min-w-0">
               <div className="flex gap-3 w-full min-w-0">
                 <Badge className={`h-6 w-6 shrink-0 flex items-center justify-center p-0 rounded-full text-white border-0 ${isAnswered ? 'bg-green-600 hover:bg-green-700' : 'bg-red-500 hover:bg-red-600'}`}>{index + 1}</Badge>

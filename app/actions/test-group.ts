@@ -1,10 +1,16 @@
 "use server";
 
 import { db } from "@/db";
-import { hcCandidates, hcOnlineTestAssignments, hcOnlineTestGroupItems, hcOnlineTests, hcOnlineTestGroups } from "@/db/schema/hero";
-import { eq, and, desc } from "drizzle-orm";
+import { hcCandidates, hcOnlineTestAssignments, hcOnlineTestGroupItems, hcOnlineTests, hcOnlineTestGroups, hcOnlineTestQuestions, hcOnlineTestAnswers } from "@/db/schema/hero";
+import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { getPublicAppUrl } from "@/lib/auth-config";
+import {
+  type CandidateApplicationIdentity,
+  extractCandidateIdentityFromAnswer,
+  mergeCandidateApplicationIdentity,
+} from "@/lib/hc-application-form-identity";
 
 export async function registerTestGroup(groupId: number) {
   try {
@@ -126,8 +132,6 @@ export async function getNextTestInGroup(groupId: number, currentTestId: number,
   }
 }
 
-import { inArray } from "drizzle-orm";
-
 export async function getAllTestGroups() {
   return db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.isActive, true)).orderBy(hcOnlineTestGroups.name);
 }
@@ -229,6 +233,36 @@ export async function getTestGroupEntries(slug: string) {
   .innerJoin(hcCandidates, eq(hcOnlineTestAssignments.candidateId, hcCandidates.id))
   .where(inArray(hcOnlineTestAssignments.testId, testIds));
 
+  // 3b. Get answer stats and question counts for these tests
+  const allAssignmentIds = assignments.map(a => a.id);
+  const answers = allAssignmentIds.length > 0 ? await db.select({
+    assignmentId: hcOnlineTestAnswers.assignmentId,
+    isCorrect: hcOnlineTestAnswers.isCorrect,
+  })
+  .from(hcOnlineTestAnswers)
+  .where(inArray(hcOnlineTestAnswers.assignmentId, allAssignmentIds)) : [];
+
+  const answerStats = new Map<number, { correctCount: number; answerCount: number }>();
+  for (const ans of answers) {
+    const stats = answerStats.get(ans.assignmentId) || { correctCount: 0, answerCount: 0 };
+    stats.answerCount++;
+    if (ans.isCorrect) stats.correctCount++;
+    answerStats.set(ans.assignmentId, stats);
+  }
+
+  const questionCounts = await db.select({
+    testId: hcOnlineTestQuestions.testId,
+    count: count(hcOnlineTestQuestions.id),
+  })
+  .from(hcOnlineTestQuestions)
+  .where(inArray(hcOnlineTestQuestions.testId, testIds))
+  .groupBy(hcOnlineTestQuestions.testId);
+
+  const questionCountMap = new Map<number, number>();
+  for (const qc of questionCounts) {
+    questionCountMap.set(qc.testId, Number(qc.count));
+  }
+
   // 4. Group by candidate
   const candidateMap = new Map<number, any>();
 
@@ -249,11 +283,54 @@ export async function getTestGroupEntries(slug: string) {
     
     // We only keep the best/latest assignment if there are duplicates.
     if (!c.tests[a.testId] || c.tests[a.testId].status !== "Completed") {
+      const stats = answerStats.get(a.id) || { correctCount: 0, answerCount: 0 };
       c.tests[a.testId] = {
         id: a.id,
         status: a.status,
         score: a.score || 0,
+        correctCount: stats.correctCount,
+        answerCount: stats.answerCount,
+        totalQuestions: questionCountMap.get(a.testId) || 0,
       };
+    }
+  }
+
+  // 5. Resolve real names from application form answers for anonymous candidates
+  const anonymousCandidateIds = Array.from(candidateMap.values())
+    .filter((c) => c.fullName.startsWith("Peserta Test Group") || c.email.includes("@test.local"))
+    .map((c) => c.candidateId);
+
+  if (anonymousCandidateIds.length > 0) {
+    const appFormAnswers = await db
+      .select({
+        candidateId: hcOnlineTestAssignments.candidateId,
+        questionText: hcOnlineTestQuestions.questionText,
+        answerText: hcOnlineTestAnswers.answerText,
+      })
+      .from(hcOnlineTestAnswers)
+      .innerJoin(hcOnlineTestAssignments, eq(hcOnlineTestAnswers.assignmentId, hcOnlineTestAssignments.id))
+      .innerJoin(hcOnlineTests, eq(hcOnlineTestAssignments.testId, hcOnlineTests.id))
+      .innerJoin(hcOnlineTestQuestions, eq(hcOnlineTestAnswers.questionId, hcOnlineTestQuestions.id))
+      .where(
+        and(
+          inArray(hcOnlineTestAssignments.candidateId, anonymousCandidateIds),
+          eq(hcOnlineTestAssignments.status, "Completed"),
+          eq(hcOnlineTests.isApplicationForm, true)
+        )
+      );
+
+    const resolvedNames = new Map<number, CandidateApplicationIdentity>();
+    for (const row of appFormAnswers) {
+      const current = resolvedNames.get(row.candidateId) ?? {};
+      const next = extractCandidateIdentityFromAnswer(row.questionText ?? "", row.answerText ?? "");
+      resolvedNames.set(row.candidateId, mergeCandidateApplicationIdentity(current, next));
+    }
+
+    for (const c of candidateMap.values()) {
+      const resolved = resolvedNames.get(c.candidateId);
+      if (!resolved) continue;
+      if (resolved.fullName) c.fullName = resolved.fullName;
+      if (resolved.email) c.email = resolved.email;
     }
   }
 
@@ -334,7 +411,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
   
   await ensureScheduledAtColumn();
   const smtpSettings = await getEmailSmtpSettingsData();
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = getPublicAppUrl();
   const { format } = await import("date-fns");
   const template = await getHcEmailTemplateByType("test_assigned");
 
@@ -487,7 +564,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     location: scheduledDate ? `Online - dapat diakses mulai ${scheduledDate} ${scheduledTime}` : "Online",
     interviewer: "",
     duration: "7",
-    testLink: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
+    testLink: `${getPublicAppUrl()}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
   };
 
   let subject: string, html: string;
@@ -502,7 +579,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     }
   } else {
     subject = `[HERO] Undangan Tes Online — ${group.name}`;
-    const testGroupUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
+    const testGroupUrl = `${getPublicAppUrl()}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
     const scheduleInfo = scheduledDate
       ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
           <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
@@ -545,3 +622,52 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
   return { subject, html };
 }
 
+export async function getTestAssignmentDetail(assignmentId: number) {
+  const [assignment] = await db.select({
+    id: hcOnlineTestAssignments.id,
+    testId: hcOnlineTestAssignments.testId,
+    status: hcOnlineTestAssignments.status,
+    score: hcOnlineTestAssignments.score,
+    candidateId: hcOnlineTestAssignments.candidateId,
+    startedAt: hcOnlineTestAssignments.startedAt,
+    completedAt: hcOnlineTestAssignments.completedAt,
+    durationSeconds: hcOnlineTestAssignments.durationSeconds,
+  })
+  .from(hcOnlineTestAssignments)
+  .where(eq(hcOnlineTestAssignments.id, assignmentId));
+
+  if (!assignment) return null;
+
+  const [test] = await db.select({
+    id: hcOnlineTests.id,
+    title: hcOnlineTests.title,
+    isApplicationForm: hcOnlineTests.isApplicationForm,
+  })
+  .from(hcOnlineTests)
+  .where(eq(hcOnlineTests.id, assignment.testId));
+
+  const questions = await db.select({
+    id: hcOnlineTestQuestions.id,
+    questionText: hcOnlineTestQuestions.questionText,
+    questionType: hcOnlineTestQuestions.questionType,
+    correctAnswer: hcOnlineTestQuestions.correctAnswer,
+    points: hcOnlineTestQuestions.points,
+    sortOrder: hcOnlineTestQuestions.sortOrder,
+    options: hcOnlineTestQuestions.options,
+  })
+  .from(hcOnlineTestQuestions)
+  .where(eq(hcOnlineTestQuestions.testId, assignment.testId))
+  .orderBy(hcOnlineTestQuestions.sortOrder);
+
+  const answers = await db.select({
+    id: hcOnlineTestAnswers.id,
+    questionId: hcOnlineTestAnswers.questionId,
+    answerText: hcOnlineTestAnswers.answerText,
+    isCorrect: hcOnlineTestAnswers.isCorrect,
+    pointsAwarded: hcOnlineTestAnswers.pointsAwarded,
+  })
+  .from(hcOnlineTestAnswers)
+  .where(eq(hcOnlineTestAnswers.assignmentId, assignmentId));
+
+  return { assignment, test, questions, answers };
+}

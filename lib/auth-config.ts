@@ -49,3 +49,15 @@ export function getTrustedOrigins(request?: Request) {
         (value, index, list): value is string => Boolean(value) && list.indexOf(value) === index,
     );
 }
+
+export function getPublicAppUrl() {
+    const candidates = [
+        process.env.NEXT_PUBLIC_APP_URL,
+        process.env.VERCEL_PROJECT_PRODUCTION_URL,
+        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+        process.env.APP_URL,
+        process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.replace(/\/api\/auth\/?$/, ""),
+    ]
+    const origin = candidates.map(normalizeOrigin).find(Boolean)
+    return origin || "http://localhost:3000"
+}

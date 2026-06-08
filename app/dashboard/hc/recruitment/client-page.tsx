@@ -731,7 +731,7 @@ export function RecruitmentClientPage({
                            <span className="font-medium">{job.totalRequested}</span>
                          </TableCell>
                          <TableCell className="text-center">
-                           <span className="font-bold text-accent">{job.candidateCount}</span>
+                            <span className="font-bold text-foreground">{job.candidateCount}</span>
                          </TableCell>
                          <TableCell>
                            <Badge variant={job.isPublic ? "default" : "secondary"} className="rounded-full">

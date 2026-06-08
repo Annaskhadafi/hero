@@ -2,6 +2,7 @@
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
+import { getPublicAppUrl } from "@/lib/auth-config";
 
 export function generateInvitationToken() {
   return randomBytes(32).toString("hex");
@@ -137,11 +138,11 @@ export async function verifyEmail(token: string) {
 }
 
 export function getInvitationUrl(token: string, baseUrl?: string) {
-  const base = baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = baseUrl ?? getPublicAppUrl();
   return `${base}/auth/accept-invitation?token=${token}`;
 }
 
 export function getVerificationUrl(token: string, baseUrl?: string) {
-  const base = baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const base = baseUrl ?? getPublicAppUrl();
   return `${base}/auth/verify-email?token=${token}`;
 }

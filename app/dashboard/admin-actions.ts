@@ -2458,48 +2458,59 @@ async function upsertCredentialAccount({
   email,
   password,
   now,
+  employeeSn,
 }: {
   authUserId: string
   email: string
   password: string
   now: Date
+  employeeSn?: string | null
 }) {
   const normalizedEmail = normalizeAuthEmail(email)
   const passwordHash = await hashPassword(password)
 
-  const [existingCredential] = await db
-    .select({ id: account.id })
-    .from(account)
-    .where(
-      and(
-        eq(account.providerId, 'credential'),
-        or(
-          eq(account.userId, authUserId),
-          eq(account.accountId, normalizedEmail),
-          eq(account.accountId, authUserId)
+  const upsertOne = async (accountId: string) => {
+    const [existingCredential] = await db
+      .select({ id: account.id })
+      .from(account)
+      .where(
+        and(
+          eq(account.providerId, 'credential'),
+          or(
+            eq(account.userId, authUserId),
+            eq(account.accountId, accountId)
+          )
         )
       )
-    )
-    .limit(1)
+      .limit(1)
 
-  const credentialValues = {
-    accountId: normalizedEmail,
-    providerId: 'credential' as const,
-    userId: authUserId,
-    password: passwordHash,
-    updatedAt: now,
+    const credentialValues = {
+      accountId,
+      providerId: 'credential' as const,
+      userId: authUserId,
+      password: passwordHash,
+      updatedAt: now,
+    }
+
+    if (existingCredential) {
+      await db.update(account).set(credentialValues).where(eq(account.id, existingCredential.id))
+    } else {
+      await db.insert(account).values({
+        id: randomUUID(),
+        ...credentialValues,
+        createdAt: now,
+      })
+    }
   }
 
-  if (existingCredential) {
-    await db.update(account).set(credentialValues).where(eq(account.id, existingCredential.id))
-    return
-  }
+  // Create credential for email login
+  await upsertOne(normalizedEmail)
 
-  await db.insert(account).values({
-    id: randomUUID(),
-    ...credentialValues,
-    createdAt: now,
-  })
+  // Create credential for SN login (supports login with SN as username)
+  const normalizedSn = (employeeSn ?? '').trim()
+  if (normalizedSn && normalizedSn !== normalizedEmail) {
+    await upsertOne(normalizedSn)
+  }
 }
 
 // ─── Bulk Provisioning Types & Helpers ───────────────────────────────────────
@@ -2712,6 +2723,7 @@ export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionRe
           email: normalizedEmail,
           password: plainPassword,
           now: new Date(),
+          employeeSn: emp.employeeId,
         })
       } catch (credErr: any) {
         if (isConnectionError(credErr)) {
@@ -3620,7 +3632,7 @@ export async function manageSecurityUserAction(
         updatedAt: now,
       })
 
-      await upsertCredentialAccount({ authUserId, email, password, now })
+      await upsertCredentialAccount({ authUserId, email, password, now, employeeSn })
 
       await db.insert(hrEmployees).values({
         authUserId,
@@ -3969,6 +3981,7 @@ export async function manageSecurityUserAction(
         email: latestEmployee.email,
         password: newPassword,
         now,
+        employeeSn: employee.employeeSn,
       })
 
       await db.delete(session).where(eq(session.userId, authUserId))

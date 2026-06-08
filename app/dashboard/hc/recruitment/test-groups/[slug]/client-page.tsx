@@ -6,10 +6,42 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { IconExternalLink, IconArrowLeft, IconTrash } from "@tabler/icons-react";
-import { deleteTestGroupCandidate } from "@/app/actions/test-group";
+import { IconArrowLeft, IconTrash, IconEye } from "@tabler/icons-react";
+import { deleteTestGroupCandidate, getTestAssignmentDetail } from "@/app/actions/test-group";
 import { toast } from "sonner";
 import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+
+function AnswerDisplay({ text }: { text?: string }) {
+  if (!text) return <p className="mt-1 text-muted-foreground">Belum dijawab</p>;
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null) parsed = null;
+  } catch {
+    parsed = null;
+  }
+  if (!parsed) return <p className="mt-1 whitespace-pre-wrap">{text}</p>;
+  if (Array.isArray(parsed)) {
+    return (
+      <div className="space-y-1">
+        {parsed.map((item, idx) => (
+          <span key={idx} className="block text-sm">{String(item)}</span>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1 space-y-1 text-sm">
+      {Object.entries(parsed).map(([key, value]) => (
+        <div key={key} className="flex items-start gap-2 border-b border-border/40 py-1 last:border-0">
+          <span className="min-w-[140px] shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide">{key.replace(/([A-Z])/g, " $1").trim()}</span>
+          <div className="font-medium flex-1">{String(value)}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface Props {
   group: any;
@@ -19,6 +51,8 @@ interface Props {
 
 export function TestGroupResultsClientPage({ group, testHeaders, entries }: Props) {
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<any | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
   const handleDelete = async (candidateId: number) => {
     if (!confirm("Are you sure you want to delete this candidate's test results for this group? This action cannot be undone.")) return;
@@ -35,6 +69,22 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
       toast.error("Failed to delete candidate results.");
     } finally {
       setIsDeleting(null);
+    }
+  };
+
+  const handleViewDetail = async (assignmentId: number) => {
+    setIsLoadingDetail(true);
+    try {
+      const data = await getTestAssignmentDetail(assignmentId);
+      if (data) {
+        setSelectedDetail(data);
+      } else {
+        toast.error("Assignment not found.");
+      }
+    } catch (err: any) {
+      toast.error("Failed to load assignment details.");
+    } finally {
+      setIsLoadingDetail(false);
     }
   };
 
@@ -91,7 +141,24 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
                       <div className="flex flex-col gap-1">
                         <span className="text-xs font-medium">{testData.status}</span>
                         {th.isApplicationForm ? null : (
-                          <span className="text-sm">{testData.score} pts</span>
+                          (testData.status === "Completed" || testData.status === "Graded") && testData.answerCount > 0 ? (
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold">{Math.round((testData.correctCount / testData.answerCount) * 100)}%</span>
+                              <span className="text-xs text-muted-foreground">{testData.correctCount}/{testData.answerCount} benar</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )
+                        )}
+                        {testData.id && (
+                          <button
+                            onClick={() => handleViewDetail(testData.id)}
+                            disabled={isLoadingDetail}
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-accent transition-colors mt-1"
+                            title="Lihat detail jawaban"
+                          >
+                            <IconEye className="w-3 h-3" /> Detail
+                          </button>
                         )}
                       </div>
                     </TableCell>
@@ -100,12 +167,6 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
                 
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <Button variant="ghost" size="sm" asChild className="gap-1">
-                      {/* Link to the specific test detail pages for this candidate's answers */}
-                      <Link href={`/dashboard/hc/recruitment/tests/${testHeaders[0]?.testId}`}>
-                        View Details <IconExternalLink className="w-4 h-4" />
-                      </Link>
-                    </Button>
                     <Button 
                       variant="ghost" 
                       size="icon" 
@@ -130,6 +191,58 @@ export function TestGroupResultsClientPage({ group, testHeaders, entries }: Prop
           </TableBody>
         </Table>
       </MinimalTableShell>
+
+      <Dialog open={!!selectedDetail} onOpenChange={(open) => !open && setSelectedDetail(null)}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Detail Hasil: {selectedDetail?.test?.title || "Test"}</DialogTitle>
+            <DialogDescription>
+              {selectedDetail?.assignment?.status}
+              {selectedDetail?.answers?.length > 0 ? (() => {
+                const correct = selectedDetail.answers.filter((a: any) => a.isCorrect === true).length;
+                const total = selectedDetail.answers.length;
+                return ` · Score: ${correct}/${total} (${Math.round((correct / total) * 100)}%)`;
+              })() : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+            {selectedDetail?.questions?.map((question: any, index: number) => {
+              const answer = selectedDetail?.answers?.find((item: any) => item.questionId === question.id);
+              return (
+                <div key={question.id} className="rounded-xl border bg-background p-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">Soal {index + 1}</Badge>
+                    <Badge variant="outline">{question.questionType}</Badge>
+                    {answer && answer.isCorrect !== null && answer.isCorrect !== undefined ? (
+                      <Badge variant={answer.isCorrect ? "default" : "destructive"} className={answer.isCorrect ? "bg-emerald-600" : ""}>
+                        {answer.isCorrect ? "Benar" : "Salah"} · {answer.pointsAwarded}/{question.points || 1} pts
+                      </Badge>
+                    ) : answer ? (
+                      <Badge variant="outline">Belum dinilai</Badge>
+                    ) : null}
+                  </div>
+                  <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} />
+                  <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                    <div className="rounded-lg bg-muted/20 p-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p>
+                      <AnswerDisplay text={answer?.answerText} />
+                    </div>
+                    {question.correctAnswer && (
+                      <div className="rounded-lg bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar</p>
+                        <p className="mt-1 whitespace-pre-wrap font-medium">{question.correctAnswer}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {(!selectedDetail?.questions || selectedDetail.questions.length === 0) && (
+              <div className="text-center text-muted-foreground py-8">Tidak ada soal untuk test ini.</div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminPageShell>
   );
 }

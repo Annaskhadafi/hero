@@ -1,5 +1,6 @@
 import { emailDeliveryLogs } from "@/db/schema/hero";
 import { db } from "@/db";
+import { getPublicAppUrl } from "@/lib/auth-config";
 
 type AuthEmailPayload = {
     to: string;
@@ -11,7 +12,7 @@ type AuthEmailPayload = {
 };
 
 function getBaseUrl() {
-    return process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "http://localhost:3000";
+    return getPublicAppUrl();
 }
 
 function getFromEmail() {

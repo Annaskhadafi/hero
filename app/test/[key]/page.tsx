@@ -21,7 +21,8 @@ export default async function CandidateTestPage({ params }: { params: Promise<{ 
           assignment={data.assignment} 
           test={data.test} 
           questions={data.questions}
-          previousAnswers={data.previousAnswers} 
+          previousAnswers={data.previousAnswers}
+          scoreBreakdown={data.scoreBreakdown}
         />
       </div>
     </div>

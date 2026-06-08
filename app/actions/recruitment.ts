@@ -572,7 +572,7 @@ export async function createCandidate(data: CandidateData) {
     notes: "Candidate applied/added",
   });
 
-  revalidatePath("/dashboard/hc/recruitment");
+  try { revalidatePath("/dashboard/hc/recruitment") } catch {}
   return created;
 }
 

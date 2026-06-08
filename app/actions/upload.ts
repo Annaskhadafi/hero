@@ -19,7 +19,7 @@ export async function uploadFile(formData: FormData) {
     }
     const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
 
-    if (process.env.UPLOAD_DRIVER === "s3" || isS3UploadConfigured()) {
+    if (isS3UploadConfigured()) {
       const result =
         uploadTarget === "attendance"
           ? await uploadAttendancePhotoToS3(file)
@@ -37,7 +37,7 @@ export async function uploadFile(formData: FormData) {
 
 export async function uploadImageFromUrl(imageUrl: string) {
   try {
-    if (process.env.UPLOAD_DRIVER !== "s3" && !isS3UploadConfigured()) {
+    if (!isS3UploadConfigured()) {
       return { success: false, error: "S3 Upload Driver is not properly configured." };
     }
 

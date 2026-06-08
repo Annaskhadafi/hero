@@ -25,43 +25,52 @@ async function upsertCredentialAccount(params: {
   email: string
   password: string
   now: Date
+  employeeSn: string
 }) {
   const normalizedEmail = normalizeEmail(params.email)
   const passwordHash = await hashPassword(params.password)
 
-  const [existingCredential] = await db
-    .select({ id: account.id })
-    .from(account)
-    .where(
-      and(
-        eq(account.providerId, 'credential'),
-        or(
-          eq(account.userId, params.authUserId),
-          eq(account.accountId, normalizedEmail),
-          eq(account.accountId, params.authUserId)
+  const upsertOne = async (accountId: string) => {
+    const [existingCredential] = await db
+      .select({ id: account.id })
+      .from(account)
+      .where(
+        and(
+          eq(account.providerId, 'credential'),
+          or(
+            eq(account.userId, params.authUserId),
+            eq(account.accountId, accountId)
+          )
         )
       )
-    )
-    .limit(1)
+      .limit(1)
 
-  const credentialValues = {
-    accountId: normalizedEmail,
-    providerId: 'credential' as const,
-    userId: params.authUserId,
-    password: passwordHash,
-    updatedAt: params.now,
+    const credentialValues = {
+      accountId,
+      providerId: 'credential' as const,
+      userId: params.authUserId,
+      password: passwordHash,
+      updatedAt: params.now,
+    }
+
+    if (existingCredential) {
+      await db.update(account).set(credentialValues).where(eq(account.id, existingCredential.id))
+      return
+    }
+
+    await db.insert(account).values({
+      id: randomUUID(),
+      ...credentialValues,
+      createdAt: params.now,
+    })
   }
 
-  if (existingCredential) {
-    await db.update(account).set(credentialValues).where(eq(account.id, existingCredential.id))
-    return
-  }
+  await upsertOne(normalizedEmail)
 
-  await db.insert(account).values({
-    id: randomUUID(),
-    ...credentialValues,
-    createdAt: params.now,
-  })
+  const normalizedSn = params.employeeSn.trim()
+  if (normalizedSn && normalizedSn !== normalizedEmail) {
+    await upsertOne(normalizedSn)
+  }
 }
 
 async function syncUserManagementPasswords() {
@@ -154,6 +163,7 @@ async function syncUserManagementPasswords() {
       email,
       password: defaultPassword(employeeSn),
       now,
+      employeeSn,
     })
 
     updated++
