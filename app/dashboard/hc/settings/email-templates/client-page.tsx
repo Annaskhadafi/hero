@@ -39,6 +39,7 @@ type HcEmailTemplate = {
   type: string;
   subject: string;
   body: string;
+  format: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -70,16 +71,16 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
   useEffect(() => {
     getHcEmailDeliveryLogs(10).then(setLogs).catch(() => {});
   }, []);
-  const [form, setForm] = useState({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY });
+  const [form, setForm] = useState({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY, format: "html" });
   const [showPreview, setShowPreview] = useState(false);
 
   const openEdit = (t?: HcEmailTemplate) => {
     if (t) {
       setEditing(t);
-      setForm({ name: t.name, type: t.type, subject: t.subject, body: t.body });
+      setForm({ name: t.name, type: t.type, subject: t.subject, body: t.body, format: t.format || "html" });
     } else {
       setEditing(null);
-      setForm({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY });
+      setForm({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY, format: "html" });
     }
     setOpen(true);
     setShowPreview(false);
@@ -97,6 +98,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
         type: form.type,
         subject: form.subject,
         body: form.body,
+        format: form.format,
       });
       if (editing) {
         setTemplates(prev => prev.map(t => t.id === editing.id ? { ...t, ...saved } as HcEmailTemplate : t));
@@ -141,24 +143,26 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Format</TableHead>
+                <TableHead>Subject</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
               </TableHeader>
               <TableBody>
                 {templates.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="h-24 text-center text-muted-foreground">No email templates yet. Create one to get started.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">No email templates yet. Create one to get started.</TableCell></TableRow>
                 )}
                 {templates.map(t => (
                   <TableRow key={t.id}>
                     <TableCell className="font-medium">{t.name}</TableCell>
                     <TableCell><Badge variant="outline">{TEMPLATE_TYPES.find(tt => tt.value === t.type)?.label || t.type}</Badge></TableCell>
+                    <TableCell><Badge variant={t.format === "plain_text" ? "secondary" : "default"} className="text-xs">{t.format === "plain_text" ? "Plain Text" : "HTML"}</Badge></TableCell>
                     <TableCell className="text-muted-foreground max-w-[300px] truncate">{t.subject}</TableCell>
-                    <TableCell><Badge variant={t.isActive ? "default" : "secondary"}>{t.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell><Badge variant={t.isActive ? "default" : "secondary">{t.isActive ? "Active" : "Inactive"}</Badge></TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(t)}><IconSettings className="w-4 h-4" /></Button>
@@ -252,6 +256,14 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
                   {TEMPLATE_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
                 </select>
               </div>
+              <div className="space-y-2">
+                <Label>Format <span className="text-destructive">*</span></Label>
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
+                  <option value="html">HTML (Rich Email)</option>
+                  <option value="plain_text">Plain Text (No HTML)</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Email Subject <span className="text-destructive">*</span></Label>
@@ -260,7 +272,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Email Body (HTML supported) <span className="text-destructive">*</span></Label>
+                <Label>Email Body {form.format === "html" ? "(HTML supported)" : "(Plain Text only)"} <span className="text-destructive">*</span></Label>
                 <div className="flex items-center gap-2">
                   <IconCode className="w-4 h-4 text-muted-foreground" />
                   <Switch checked={showPreview} onCheckedChange={setShowPreview} />

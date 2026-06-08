@@ -134,11 +134,12 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
       // 1. Email ke Klinik — Surat Pengantar MCU
       const clinicTmpl = await getHcEmailTemplateByType("mcu_pengantar");
       let clinicSubject: string, clinicHtml: string, clinicText: string;
+      const clinicEmailFormat = clinicTmpl?.format || null;
       if (clinicTmpl) {
         const r = renderHcTemplate(clinicTmpl, templateVars);
         clinicSubject = r.subject;
-        clinicHtml = r.body;
-        clinicText = r.body.replace(/<[^>]*>/g, "");
+        clinicHtml = r.html;
+        clinicText = r.text;
       } else {
         clinicSubject = `[HERO] Surat Pengantar Medical Check Up - ${candidate.fullName}`;
         clinicHtml = MCU_CLINIC_FALLBACK_HTML(templateVars);
@@ -149,6 +150,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         subject: clinicSubject,
         html: clinicHtml,
         text: clinicText,
+        format: clinicEmailFormat,
         templateName: "Surat Pengantar MCU",
         templateCode: "mcu_pengantar",
       });
@@ -156,11 +158,12 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
       // 2. Email ke Kandidat — MCU Invitation
       const candTmpl = await getHcEmailTemplateByType("mcu_invitation");
       let candSubject: string, candHtml: string, candText: string;
+      const candEmailFormat = candTmpl?.format || null;
       if (candTmpl) {
         const r = renderHcTemplate(candTmpl, templateVars);
         candSubject = r.subject;
-        candHtml = r.body;
-        candText = r.body.replace(/<[^>]*>/g, "");
+        candHtml = r.html;
+        candText = r.text;
       } else {
         candSubject = `[HERO] Undangan Medical Check Up — ${vacancyTitle}`;
         candHtml = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
@@ -171,6 +174,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         subject: candSubject,
         html: candHtml,
         text: candText,
+        format: candEmailFormat,
         templateName: "MCU Invitation",
         templateCode: "mcu_invitation",
       });
@@ -227,12 +231,13 @@ export async function previewMcuEmail(data: {
   };
 
   const template = await getHcEmailTemplateByType("mcu_invitation");
-  let subject: string, html: string;
+  let subject: string, html: string, text: string;
 
   if (template) {
     const rendered = renderHcTemplate(template, templateVars);
     subject = rendered.subject;
-    html = rendered.body;
+    html = rendered.html;
+    text = rendered.text;
   } else {
     subject = `[HERO] Undangan Medical Check Up — ${data.jobTitle}`;
     html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
@@ -292,9 +297,10 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
 
         const template = await getHcEmailTemplateByType("mcu_invitation");
         let subject: string, html: string, text: string;
+        const emailFormat = template?.format || null;
         if (template) {
           const r = renderHcTemplate(template, templateVars);
-          subject = r.subject; html = r.body; text = r.body.replace(/<[^>]*>/g, "");
+          subject = r.subject; html = r.html; text = r.text;
         } else {
           subject = `[HERO] Undangan Medical Check Up — ${vacancyTitle}`;
           html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
@@ -303,6 +309,7 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
 
         await sendEmailViaSmtp(smtpSettings, {
           to: candidate.email, subject, html, text,
+          format: emailFormat,
           templateName: "MCU Invitation", templateCode: "mcu_invitation",
         });
       }

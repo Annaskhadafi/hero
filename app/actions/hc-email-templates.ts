@@ -11,6 +11,7 @@ export type HcEmailTemplateData = {
   type: string;
   subject: string;
   body: string;
+  format?: string;
   isActive?: boolean;
 };
 
@@ -23,6 +24,7 @@ async function ensureHcEmailTemplatesTable() {
         type TEXT NOT NULL,
         subject TEXT NOT NULL,
         body TEXT NOT NULL,
+        format TEXT NOT NULL DEFAULT 'html',
         is_active BOOLEAN NOT NULL DEFAULT true,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -30,6 +32,16 @@ async function ensureHcEmailTemplatesTable() {
     `);
   } catch {
     // table already exists or race condition, ignore
+  }
+
+  // Ensure format column exists for older schemas
+  try {
+    await db.execute(sql`
+      ALTER TABLE hero_hc_email_templates
+      ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'html'
+    `);
+  } catch {
+    // ignore
   }
 }
 
@@ -99,11 +111,12 @@ export async function getHcEmailDeliveryLogs(limit = 20) {
 export async function ensureDefaultTemplates() {
   await ensureHcEmailTemplatesTable();
 
-  const defaults: Array<{ type: string; name: string; subject: string; body: string }> = [
+  const defaults: Array<{ type: string; name: string; subject: string; body: string; format: string }> = [
     {
       type: "test_assigned",
       name: "Undangan Tes Online",
       subject: `[HERO] Undangan Tes Online — {jobTitle}`,
+      format: "html",
       body: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
 <tr><td align="center">
@@ -141,6 +154,7 @@ export async function ensureDefaultTemplates() {
       type: "interview_invitation",
       name: "Undangan Interview",
       subject: `[HERO] Undangan Interview — {jobTitle}`,
+      format: "html",
       body: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
 <tr><td align="center">
@@ -178,6 +192,7 @@ export async function ensureDefaultTemplates() {
       type: "mcu_invitation",
       name: "Undangan Medical Check Up",
       subject: `[HERO] Undangan Medical Check Up — {jobTitle}`,
+      format: "html",
       body: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
 <tr><td align="center">
@@ -219,6 +234,7 @@ export async function ensureDefaultTemplates() {
       type: "mcu_pengantar",
       name: "Surat Pengantar MCU ke Klinik",
       subject: `[HERO] Surat Pengantar Medical Check Up - {candidateName}`,
+      format: "html",
       body: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
 <tr><td align="center">
@@ -259,6 +275,7 @@ export async function ensureDefaultTemplates() {
         type: def.type,
         subject: def.subject,
         body: def.body,
+        format: def.format,
         isActive: true,
       });
     }

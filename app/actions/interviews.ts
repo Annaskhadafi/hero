@@ -121,15 +121,16 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
 
       const template = await getHcEmailTemplateByType("interview_invitation");
       let subject: string, html: string, text: string;
+      const emailFormat = template?.format || null;
 
       if (template) {
         const rendered = renderHcTemplate(template, templateVars);
         subject = rendered.subject;
-        html = rendered.body;
+        html = rendered.html;
         html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
 </div>` + html;
-        text = rendered.body.replace(/<[^>]*>/g, "");
+        text = rendered.text;
       } else {
         subject = `[HERO] Undangan Interview — ${vacancyTitle}`;
         html = FALLBACK_HTML(templateVars);
@@ -141,6 +142,7 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
         subject,
         html,
         text,
+        format: emailFormat,
         templateName: "Interview Invitation",
         templateCode: "interview_invitation",
       });
@@ -177,12 +179,13 @@ export async function previewInterviewEmail(data: {
   };
 
   const template = await getHcEmailTemplateByType("interview_invitation");
-  let subject: string, html: string;
+  let subject: string, html: string, text: string;
 
   if (template) {
     const rendered = renderHcTemplate(template, templateVars);
     subject = rendered.subject;
-    html = rendered.body;
+    html = rendered.html;
+    text = rendered.text;
     html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Interview:</strong> ${data.scheduledDate} · ${data.scheduledTime}
 </div>` + html;
@@ -246,14 +249,15 @@ export async function bulkScheduleInterviews(candidateIds: number[], data: {
         };
 
         let subject: string, html: string, text: string;
+        const emailFormat = template?.format || null;
         if (template) {
           const rendered = renderHcTemplate(template, templateVars);
           subject = rendered.subject;
-          html = rendered.body;
+          html = rendered.html;
           html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
 </div>` + html;
-          text = rendered.body.replace(/<[^>]*>/g, "");
+          text = rendered.text;
         } else {
           subject = `[HERO] Undangan Interview — ${vacancyTitle}`;
           html = FALLBACK_HTML(templateVars);
@@ -262,6 +266,7 @@ export async function bulkScheduleInterviews(candidateIds: number[], data: {
 
         await sendEmailViaSmtp(smtpSettings, {
           to: candidate.email, subject, html, text,
+          format: emailFormat,
           templateName: "Interview Invitation", templateCode: "interview_invitation",
         });
       }

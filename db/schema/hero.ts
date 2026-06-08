@@ -2690,6 +2690,7 @@ export const hcEmailTemplates = pgTable('hero_hc_email_templates', {
   type: text('type').notNull(), // e.g. "application_received", "interview_invitation", "test_assigned"
   subject: text('subject').notNull(),
   body: text('body').notNull(),
+  format: text('format').notNull().default('html'), // html | plain_text
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

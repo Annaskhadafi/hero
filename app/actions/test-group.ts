@@ -458,11 +458,12 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
         };
 
         let subject: string, html: string, text: string;
+        const emailFormat = template?.format || null;
         if (template) {
           const rendered = renderHcTemplate(template, templateVars);
           subject = rendered.subject;
-          html = rendered.body;
-          text = rendered.body.replace(/<[^>]*>/g, "");
+          html = rendered.html;
+          text = rendered.text;
         } else {
           subject = `[HERO] Undangan Tes Online — ${group?.name || "Assessment"}`;
           const groupUrl = `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
@@ -523,6 +524,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           subject,
           html,
           text,
+          format: emailFormat,
           templateName: "Test Group Assigned",
           templateCode: "test_assigned",
         });
@@ -570,11 +572,12 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     testLink: `${getPublicAppUrl()}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
   };
 
-  let subject: string, html: string;
+  let subject: string, html: string, text: string;
   if (template) {
     const rendered = renderHcTemplate(template, templateVars);
     subject = rendered.subject;
-    html = rendered.body;
+    html = rendered.html;
+    text = rendered.text;
     if (scheduledDate) {
       html = `<div style="font-family:Arial,sans-serif;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>Jadwal:</strong> Tes hanya dapat diakses mulai <strong>${scheduledDate}</strong> pukul <strong>${scheduledTime}</strong>.

@@ -97,19 +97,21 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
         };
 
         const template = await getHcEmailTemplateByType("test_assigned");
-        let subject: string, html: string, text: string;
+        let subject: string, html: string | undefined, text: string;
+        let emailFormat: string | null = null;
 
         if (template) {
           const rendered = renderHcTemplate(template, templateVars);
           subject = rendered.subject;
-          html = rendered.body;
+          html = rendered.html;
+          text = rendered.text;
+          emailFormat = template.format || null;
           const scheduledDateA = scheduledDate; const scheduledTimeA = scheduledTime;
-          if (scheduledDateA) {
+          if (scheduledDateA && html) {
             html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Tes:</strong> ${scheduledDateA} · ${scheduledTimeA}
 </div>` + html;
           }
-          text = rendered.body.replace(/<[^>]*>/g, "");
         } else {
           subject = `[HERO] Undangan Tes Online — ${test.title}`;
           html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
@@ -154,6 +156,7 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
           subject,
           html,
           text,
+          format: emailFormat,
           templateName: "Online Test Assigned",
           templateCode: "test_assigned",
         });
@@ -223,17 +226,19 @@ export async function bulkAssignTestToCandidates(testId: number, candidateIds: n
           testLink,
         };
 
-        let subject: string, html: string, text: string;
+        let subject: string, html: string | undefined, text: string;
+        let emailFormat: string | null = null;
         if (template) {
           const rendered = renderHcTemplate(template, templateVars);
           subject = rendered.subject;
-          html = rendered.body;
-          if (scheduledDate) {
+          html = rendered.html;
+          text = rendered.text;
+          emailFormat = template.format || null;
+          if (scheduledDate && html) {
             html = `<div style="font-family:Arial,sans-serif;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Tes:</strong> ${scheduledDate} · ${scheduledTime}
 </div>` + html;
           }
-          text = rendered.body.replace(/<[^>]*>/g, "");
         } else {
           subject = `[HERO] Undangan Tes Online — ${test.title}`;
           html = `<!DOCTYPE html>...`;
@@ -279,6 +284,7 @@ export async function bulkAssignTestToCandidates(testId: number, candidateIds: n
           subject,
           html,
           text,
+          format: emailFormat,
           templateName: "Online Test Assigned",
           templateCode: "test_assigned",
         });

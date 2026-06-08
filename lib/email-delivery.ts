@@ -18,8 +18,9 @@ export type EmailTransportSettings = {
 export type EmailDeliveryPayload = {
   to: string;
   subject: string;
-  html: string;
+  html?: string;
   text: string;
+  format?: string | null;
   templateName?: string | null;
   templateCode?: string | null;
   actorEmail?: string | null;
@@ -107,13 +108,15 @@ export async function sendEmailViaSmtp(
 
   try {
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@${settings.fromEmail.split("@")[1] || "herochitra.com"}>`;
+    const isPlainText = payload.format === "plain_text";
     const result = await transporter.sendMail({
       from: formatFromAddress(settings),
       to: payload.to,
       replyTo: settings.replyToEmail.trim() || undefined,
       subject: payload.subject,
-      html: payload.html,
-      text: payload.text,
+      ...(isPlainText
+        ? { text: payload.text }
+        : { html: payload.html, text: payload.text }),
       messageId,
       headers: {
         "X-Mailer": "HERO Recruitment System",
