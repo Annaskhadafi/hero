@@ -162,7 +162,7 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
                     <TableCell><Badge variant="outline">{TEMPLATE_TYPES.find(tt => tt.value === t.type)?.label || t.type}</Badge></TableCell>
                     <TableCell><Badge variant={t.format === "plain_text" ? "secondary" : "default"} className="text-xs">{t.format === "plain_text" ? "Plain Text" : "HTML"}</Badge></TableCell>
                     <TableCell className="text-muted-foreground max-w-[300px] truncate">{t.subject}</TableCell>
-                    <TableCell><Badge variant={t.isActive ? "default" : "secondary">{t.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell><Badge variant={t.isActive ? "default" : "secondary"}>{t.isActive ? "Active" : "Inactive"}</Badge></TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(t)}><IconSettings className="w-4 h-4" /></Button>
