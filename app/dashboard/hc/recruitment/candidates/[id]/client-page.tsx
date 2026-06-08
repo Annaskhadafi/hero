@@ -97,7 +97,7 @@ function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
 }
 
 import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
-import { scheduleCandidateMcu, updateMcuResult, previewMcuEmail } from "@/app/actions/mcu";
+import { scheduleCandidateMcu, recordMcuResult, uploadMcuResultFile, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
 import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
@@ -140,6 +140,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     concerns: "",
     notes: "",
   });
+
+  const [mcuResultDialog, setMcuResultDialog] = useState<{ open: boolean; mcuId: number | null; result: "Fit" | "Unfit"; notes: string; file: File | null; resultBy: string }>({
+    open: false, mcuId: null, result: "Fit", notes: "", file: null, resultBy: "",
+  });
+  const [isMcuResultSubmitting, setIsMcuResultSubmitting] = useState(false);
 
   const handleViewCv = async () => {
     if (!candidate.cvUrl) return;
@@ -292,13 +297,29 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     }
   };
 
-  const handleMcuResult = async (mcuId: number, status: string, notes: string) => {
+  const handleMcuResult = async () => {
+    if (!mcuResultDialog.mcuId) return;
+    setIsMcuResultSubmitting(true);
     try {
-      await updateMcuResult(mcuId, status, notes);
-      toast.success(`MCU marked as ${status}.`);
+      let fileUrl = "";
+      if (mcuResultDialog.file) {
+        const bytes = await mcuResultDialog.file.arrayBuffer();
+        const base64 = Buffer.from(bytes).toString("base64");
+        fileUrl = await uploadMcuResultFile(mcuResultDialog.mcuId, base64, mcuResultDialog.file.name);
+      }
+      await recordMcuResult(mcuResultDialog.mcuId, {
+        result: mcuResultDialog.result,
+        notes: mcuResultDialog.notes,
+        resultBy: mcuResultDialog.resultBy,
+        resultFileUrl: fileUrl || undefined,
+      });
+      toast.success(`MCU marked as ${mcuResultDialog.result}.`);
+      setMcuResultDialog({ open: false, mcuId: null, result: "Fit", notes: "", file: null, resultBy: "" });
       router.refresh();
     } catch (e: any) {
       toast.error(e.message || "Failed to update MCU result.");
+    } finally {
+      setIsMcuResultSubmitting(false);
     }
   };
 
@@ -1175,10 +1196,29 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                         <span className="text-muted-foreground block text-xs">MCU Package</span>
                         <span className="font-medium">{mcu.paketMcu}</span>
                       </div>
+                      {mcu.resultDate && (
+                        <div>
+                          <span className="text-muted-foreground block text-xs">Result Date</span>
+                          <span className="font-medium">{format(new Date(mcu.resultDate), "dd MMM yyyy")}</span>
+                        </div>
+                      )}
+                      {mcu.resultBy && (
+                        <div>
+                          <span className="text-muted-foreground block text-xs">Recorded By</span>
+                          <span className="font-medium">{mcu.resultBy}</span>
+                        </div>
+                      )}
                       {mcu.resultNotes && (
                         <div className="md:col-span-2 mt-2 bg-muted/50 p-3 rounded-md">
                           <span className="text-muted-foreground block text-xs mb-1">Result Notes</span>
                           {mcu.resultNotes}
+                        </div>
+                      )}
+                      {mcu.resultFileUrl && (
+                        <div className="md:col-span-2">
+                          <a href={mcu.resultFileUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                            <IconFileText className="w-4 h-4" /> View Result File
+                          </a>
                         </div>
                       )}
                     </div>
@@ -1188,17 +1228,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     <div className="bg-muted/30 p-4 border-t flex items-center justify-end gap-2">
                       <span className="text-sm text-muted-foreground mr-auto">Mark MCU Result:</span>
                       <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" 
-                        onClick={() => {
-                          const notes = prompt("Any notes for FIT result?");
-                          if (notes !== null) handleMcuResult(mcu.id, 'Fit', notes);
-                        }}>
+                        onClick={() => setMcuResultDialog({ open: true, mcuId: mcu.id, result: "Fit", notes: "", file: null, resultBy: "" })}>
                         <IconCheck className="w-4 h-4 mr-1" /> Fit
                       </Button>
                       <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={() => {
-                          const notes = prompt("Reason for UNFIT result?");
-                          if (notes !== null) handleMcuResult(mcu.id, 'Unfit', notes);
-                        }}>
+                        onClick={() => setMcuResultDialog({ open: true, mcuId: mcu.id, result: "Unfit", notes: "", file: null, resultBy: "" })}>
                         <IconX className="w-4 h-4 mr-1" /> Unfit
                       </Button>
                     </div>
@@ -1724,6 +1758,38 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </div>
           <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setEmailPreviewOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MCU Result Dialog */}
+      <Dialog open={mcuResultDialog.open} onOpenChange={(open) => { if (!open) setMcuResultDialog({ open: false, mcuId: null, result: "Fit", notes: "", file: null, resultBy: "" }); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record MCU Result — {mcuResultDialog.result}</DialogTitle>
+            <DialogDescription>
+              {mcuResultDialog.result === "Fit" ? "Confirm candidate is FIT for the position." : "Record reason for UNFIT result."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Recorded By</Label>
+              <Input placeholder="Your name" value={mcuResultDialog.resultBy} onChange={e => setMcuResultDialog(prev => ({ ...prev, resultBy: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea placeholder={mcuResultDialog.result === "Fit" ? "Optional notes..." : "Reason for unfit result..."} value={mcuResultDialog.notes} onChange={e => setMcuResultDialog(prev => ({ ...prev, notes: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Result File (PDF)</Label>
+              <Input type="file" accept="application/pdf" onChange={e => setMcuResultDialog(prev => ({ ...prev, file: e.target.files?.[0] ?? null }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMcuResultDialog({ open: false, mcuId: null, result: "Fit", notes: "", file: null, resultBy: "" })}>Cancel</Button>
+            <Button onClick={handleMcuResult} disabled={isMcuResultSubmitting} className={mcuResultDialog.result === "Unfit" ? "bg-red-600 hover:bg-red-700" : ""}>
+              {isMcuResultSubmitting ? "Saving..." : `Confirm ${mcuResultDialog.result}`}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

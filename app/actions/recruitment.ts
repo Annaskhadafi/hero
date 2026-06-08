@@ -7,6 +7,8 @@ import {
   hcCandidateStages,
   hcCandidatePanelEvaluations,
   hrEmployees,
+  hrDepartments,
+  hrSections,
   masterDepartments,
   masterSections,
   emailDeliveryLogs,
@@ -803,6 +805,52 @@ export async function updateCandidateStage(
     })
     .where(eq(hcCandidates.id, candidateId))
     .returning();
+
+  // 5. Auto-create employee master when hired
+  if (nextStage === "Hired") {
+    try {
+      const existing = await db.select().from(hrEmployees).where(eq(hrEmployees.email, updated.email)).limit(1);
+      if (existing.length === 0) {
+        // Find department & section IDs by name
+        let departmentId: number | null = null;
+        let sectionId: number | null = null;
+        if (updated.recruitmentId) {
+          const [rec] = await db.select().from(hcRecruitments).where(eq(hcRecruitments.id, updated.recruitmentId)).limit(1);
+          if (rec) {
+            if (rec.department) {
+              const d = await db.select().from(hrDepartments).where(eq(hrDepartments.name, rec.department)).limit(1);
+              if (d.length > 0) departmentId = d[0].id;
+            }
+            if (rec.section) {
+              const s = await db.select().from(hrSections).where(eq(hrSections.name, rec.section)).limit(1);
+              if (s.length > 0) sectionId = s[0].id;
+            }
+          }
+        }
+        // Generate next employee ID
+        const maxRow = await db.select({ maxId: sql<number>`MAX(CAST(${hrEmployees.employeeId} AS INTEGER))` }).from(hrEmployees);
+        const nextId = (maxRow[0]?.maxId ?? 0) + 1;
+        const genderMap: Record<string, string> = { "Laki-laki": "1", "Perempuan": "2", Male: "1", Female: "2", M: "1", F: "2" };
+        const { format } = await import("date-fns");
+        await db.insert(hrEmployees).values({
+          employeeId: nextId.toString(),
+          fullName: updated.fullName,
+          email: updated.email || null,
+          departmentId,
+          sectionId,
+          joinDate: format(now, "yyyy-MM-dd"),
+          contractStart: format(now, "yyyy-MM-dd"),
+          birthDate: updated.dateOfBirth ? format(updated.dateOfBirth, "yyyy-MM-dd") : null,
+          genderCode: genderMap[updated.gender] || null,
+          accountStatus: "active",
+          isActive: true,
+        });
+        revalidatePath("/dashboard/hc/employee");
+      }
+    } catch (empErr) {
+      console.error("Auto-create employee failed:", empErr);
+    }
+  }
 
   revalidatePath("/dashboard/hc/recruitment");
   return updated;

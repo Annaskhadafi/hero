@@ -313,3 +313,23 @@ export async function updateInterviewStatus(interviewId: number, status: string,
   revalidatePath(`/dashboard/hc/recruitment/candidates/${interview.candidateId}`);
   return interview;
 }
+
+export async function getAllScheduledInterviews() {
+  return await db.select({
+    id: hcCandidateInterviews.id,
+    candidateId: hcCandidateInterviews.candidateId,
+    scheduledAt: hcCandidateInterviews.scheduledAt,
+    durationMinutes: hcCandidateInterviews.durationMinutes,
+    interviewType: hcCandidateInterviews.interviewType,
+    locationOrLink: hcCandidateInterviews.locationOrLink,
+    interviewerName: hcCandidateInterviews.interviewerName,
+    status: hcCandidateInterviews.status,
+    candidateName: hcCandidates.fullName,
+    jobTitle: hcRecruitments.jobTitle,
+  })
+  .from(hcCandidateInterviews)
+  .innerJoin(hcCandidates, eq(hcCandidateInterviews.candidateId, hcCandidates.id))
+  .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+  .where(eq(hcCandidateInterviews.status, "Scheduled"))
+  .orderBy(hcCandidateInterviews.scheduledAt);
+}

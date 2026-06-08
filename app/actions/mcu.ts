@@ -455,3 +455,91 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
   revalidatePath("/dashboard/hc/recruitment");
   return { results };
 }
+
+export async function recordMcuResult(
+  candidateMcuId: number,
+  data: {
+    result: "Fit" | "Unfit";
+    notes?: string;
+    resultBy?: string;
+    resultFileUrl?: string;
+  }
+) {
+  const [mcuRecord] = await db
+    .select()
+    .from(hcCandidateMcu)
+    .where(eq(hcCandidateMcu.id, candidateMcuId))
+    .limit(1);
+  if (!mcuRecord) throw new Error("MCU record not found");
+
+  const { format } = await import("date-fns");
+  const today = format(new Date(), "yyyy-MM-dd");
+
+  await db
+    .update(hcCandidateMcu)
+    .set({
+      status: data.result,
+      resultNotes: data.notes ?? "",
+      resultDate: today,
+      resultBy: data.resultBy ?? "",
+      resultFileUrl: data.resultFileUrl ?? mcuRecord.resultFileUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(hcCandidateMcu.id, candidateMcuId));
+
+  // Update candidate stage based on result
+  const candidate = await db
+    .select()
+    .from(hcCandidates)
+    .where(eq(hcCandidates.id, mcuRecord.candidateId))
+    .limit(1);
+  if (candidate.length > 0) {
+    if (data.result === "Fit") {
+      if (candidate[0].currentStage !== "Hired" && candidate[0].currentStage !== "Offering") {
+        await db
+          .update(hcCandidates)
+          .set({ currentStage: "Offering", updatedAt: new Date() })
+          .where(eq(hcCandidates.id, mcuRecord.candidateId));
+      }
+    } else if (data.result === "Unfit") {
+      await db
+        .update(hcCandidates)
+        .set({
+          currentStage: "Rejected",
+          rejectionReason: `MCU Unfit: ${data.notes ?? ""}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(hcCandidates.id, mcuRecord.candidateId));
+    }
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${mcuRecord.candidateId}`);
+  return { success: true };
+}
+
+export async function uploadMcuResultFile(candidateMcuId: number, base64File: string, fileName: string) {
+  const { uploadBufferToS3 } = await import("@/lib/s3-storage");
+  const buffer = Buffer.from(base64File.split(",")[1] ?? base64File, "base64");
+  const key = `mcu-results/${candidateMcuId}-${Date.now()}-${fileName}`;
+  const result = await uploadBufferToS3(buffer, key, "application/pdf");
+  return result.url;
+}
+
+export async function getAllScheduledMcus() {
+  return await db.select({
+    id: hcCandidateMcu.id,
+    candidateId: hcCandidateMcu.candidateId,
+    scheduledDate: hcCandidateMcu.scheduledDate,
+    klinikName: hcCandidateMcu.klinikName,
+    paketMcu: hcCandidateMcu.paketMcu,
+    status: hcCandidateMcu.status,
+    candidateName: hcCandidates.fullName,
+    jobTitle: hcRecruitments.jobTitle,
+  })
+  .from(hcCandidateMcu)
+  .innerJoin(hcCandidates, eq(hcCandidateMcu.candidateId, hcCandidates.id))
+  .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+  .where(eq(hcCandidateMcu.status, "Scheduled"))
+  .orderBy(hcCandidateMcu.scheduledDate);
+}

@@ -2500,6 +2500,8 @@ export const hcCandidateMcu = pgTable('hero_hc_candidate_mcu', {
   status: text('status').notNull().default('Scheduled'), // Scheduled, Fit, Unfit
   resultNotes: text('result_notes').notNull().default(''),
   resultFileUrl: text('result_file_url').notNull().default(''),
+  resultDate: date('result_date'),
+  resultBy: text('result_by').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
