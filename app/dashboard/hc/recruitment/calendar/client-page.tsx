@@ -51,15 +51,24 @@ export function RecruitmentCalendarClientPage({
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
+  const parseDate = (d: Date | string) => {
+    if (typeof d === "string") {
+      // Handle "2026-06-10 00:00:00" format from PostgreSQL
+      const normalized = d.includes(" ") ? d.replace(" ", "T") : d;
+      return new Date(normalized);
+    }
+    return d;
+  };
+
   const eventsByDate = useMemo(() => {
     const map = new Map<string, { interviews: InterviewEvent[]; mcus: McuEvent[] }>();
     for (const iv of interviews) {
-      const key = format(new Date(iv.scheduledAt), "yyyy-MM-dd");
+      const key = format(parseDate(iv.scheduledAt), "yyyy-MM-dd");
       if (!map.has(key)) map.set(key, { interviews: [], mcus: [] });
       map.get(key)!.interviews.push(iv);
     }
     for (const m of mcus) {
-      const key = format(new Date(m.scheduledDate), "yyyy-MM-dd");
+      const key = format(parseDate(m.scheduledDate), "yyyy-MM-dd");
       if (!map.has(key)) map.set(key, { interviews: [], mcus: [] });
       map.get(key)!.mcus.push(m);
     }
@@ -177,7 +186,7 @@ export function RecruitmentCalendarClientPage({
                           </div>
                           <p className="text-xs text-muted-foreground">{iv.jobTitle || "Unknown Position"}</p>
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <span>{format(new Date(iv.scheduledAt), "HH:mm")}</span>
+                            <span>{format(parseDate(iv.scheduledAt), "HH:mm")}</span>
                             <span>{iv.durationMinutes} min</span>
                             <span className="flex items-center gap-1"><IconMapPin className="w-3 h-3" />{iv.locationOrLink || "-"}</span>
                           </div>
@@ -223,7 +232,7 @@ export function RecruitmentCalendarClientPage({
                       <div key={iv.id} className="p-3 rounded-lg border text-sm">
                         <div className="flex items-center justify-between">
                           <Link href={`/dashboard/hc/recruitment/candidates/${iv.candidateId}`} className="font-medium hover:underline">{iv.candidateName}</Link>
-                          <span className="text-xs text-muted-foreground">{format(new Date(iv.scheduledAt), "dd MMM yyyy HH:mm")}</span>
+                          <span className="text-xs text-muted-foreground">{format(parseDate(iv.scheduledAt), "dd MMM yyyy HH:mm")}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">{iv.jobTitle || "Unknown Position"}</p>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
@@ -254,7 +263,7 @@ export function RecruitmentCalendarClientPage({
                       <div key={mcu.id} className="p-3 rounded-lg border text-sm">
                         <div className="flex items-center justify-between">
                           <Link href={`/dashboard/hc/recruitment/candidates/${mcu.candidateId}`} className="font-medium hover:underline">{mcu.candidateName}</Link>
-                          <span className="text-xs text-muted-foreground">{format(new Date(mcu.scheduledDate), "dd MMM yyyy")}</span>
+                          <span className="text-xs text-muted-foreground">{format(parseDate(mcu.scheduledDate), "dd MMM yyyy")}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">{mcu.jobTitle || "Unknown Position"}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{mcu.klinikName} — {mcu.paketMcu}</p>
