@@ -9,8 +9,16 @@ export const metadata = {
   description: "Lowongan kerja terbaru di PT Chitra Paratama",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function CareersPage() {
-  const jobs = await getRecruitments({ isPublic: true });
+  let jobs: any[] = [];
+  try {
+    jobs = await getRecruitments({ isPublic: true });
+  } catch (err) {
+    console.error("Failed to fetch recruitments:", err);
+  }
+
   const activeJobs = jobs.filter((job) => {
     if (!job.endDate) return true;
     const end = new Date(job.endDate);
