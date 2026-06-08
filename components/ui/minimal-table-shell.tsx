@@ -883,35 +883,37 @@ export function MinimalTableShell({
           summaryClassName,
         )}
       >
-        <span className="tabular-nums">
-          Showing {pageStart}-{pageEnd} of {filteredCount} {label}
-          {filteredCount !== totalCount ? ` (total ${totalCount})` : ""}
-        </span>
-        {dateFilterSupported && dateRange?.from ? (
-          <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low px-3 py-1">
-            {dateRange.to
-              ? `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
-              : format(dateRange.from, "dd MMM yyyy")}
-          </Badge>
-        ) : null}
-      </div>
+        <div className="flex items-center gap-2">
+          <span>Rows</span>
+          <select
+            value={pageSize}
+            onChange={(event) => setPageSize(Number(event.target.value))}
+            className="h-8 rounded-lg border border-border/70 bg-muted/30 px-2 text-[13px] text-foreground shadow-none"
+            disabled={filteredCount === 0}
+          >
+            {[25, 50, 100].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      {filteredCount > 0 ? (
-        <div className="flex flex-col gap-2 rounded-[0.95rem] border border-border/70 bg-white px-3 py-2.5 text-sm text-muted-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <span>Rows</span>
-            <select
-              value={pageSize}
-              onChange={(event) => setPageSize(Number(event.target.value))}
-              className="h-8 rounded-lg border border-border/70 bg-muted/30 px-2 text-[13px] text-foreground shadow-none"
-            >
-              {[25, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex flex-col gap-1 text-left sm:items-center sm:text-center">
+          <span className="tabular-nums">
+            Showing {pageStart}-{pageEnd} of {filteredCount} {label}
+            {filteredCount !== totalCount ? ` (total ${totalCount})` : ""}
+          </span>
+          {dateFilterSupported && dateRange?.from ? (
+            <Badge variant="outline" className="w-fit rounded-full border-0 bg-surface-container-low px-3 py-1">
+              {dateRange.to
+                ? `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
+                : format(dateRange.from, "dd MMM yyyy")}
+            </Badge>
+          ) : null}
+        </div>
+
+        {filteredCount > 0 ? (
           <div className="flex items-center justify-end gap-2">
             <span className="tabular-nums text-xs font-medium text-muted-foreground">
               Page {Math.min(pageIndex + 1, totalPages)} / {totalPages}
@@ -939,8 +941,8 @@ export function MinimalTableShell({
               <IconChevronRight className="size-4" />
             </Button>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {scorecards?.length ? <EnterpriseScorecards items={scorecards} /> : null}
 

@@ -2564,7 +2564,6 @@ export function SchedulingTimesheetWorkspace({
       const buffer = await file.arrayBuffer()
       const workbook = XLSX.read(buffer, { type: 'array' })
       const allEmployeesForMatch = employees.length > 0 ? employees : visibleEmployees
-      console.log('[Import] period:', period, 'employees:', allEmployeesForMatch.length)
 
       // Parse with current period first
       let activePeriod = period
@@ -2600,7 +2599,6 @@ export function SchedulingTimesheetWorkspace({
           if (dateMatch) {
             const detected = `${dateMatch[3]}-${monthMap[dateMatch[2].toLowerCase()] ?? '01'}`
             if (detected !== activePeriod) {
-              console.log('[Import] Period mismatch! UI:', activePeriod, 'Excel:', detected)
               activePeriod = detected
               setPeriod(detected)
               parsed = parseAttendanceWorkbook({
@@ -2615,7 +2613,6 @@ export function SchedulingTimesheetWorkspace({
         }
       }
 
-      console.log('[Import] Result:', parsed.detection.kind, 'rows:', parsed.rows.length)
       if (parsed.rows.length === 0) {
         toast.error(
           `Tidak ada data terbaca. Pastikan periode "${period}" sesuai dengan isi Excel.`,
@@ -2716,23 +2713,12 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (matchedCount === 0) {
-        console.log(
-          '[Import] No matches. unmatchedCount:',
-          unmatchedCount,
-          'Sample names from Excel:',
-          parsed.rows.slice(0, 5).map((r) => r.employeeName)
-        )
-        console.log(
-          '[Import] Sample employee names in system:',
-          allEmployeesForMatch.slice(0, 5).map((e) => e.name)
-        )
         toast.error('Tidak ada karyawan yang cocok dengan data HERO.', {
           description: `${unmatchedCount} nama tidak ditemukan. Cek console untuk detail.`,
         })
         return
       }
 
-      console.log('[Import] Matched:', matchedCount, 'Unmatched:', unmatchedCount, 'Saving...')
 
       // Apply ke cell UI langsung agar user lihat hasilnya
       setManualAttendance((current) => ({ ...current, ...cellUpdates }))

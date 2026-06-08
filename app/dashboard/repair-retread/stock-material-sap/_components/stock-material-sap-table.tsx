@@ -452,9 +452,9 @@ export function StockMaterialSapTable({ defaultRate }: StockMaterialSapTableProp
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-[0.95rem] border border-border/70 bg-white px-3 py-2.5 text-sm text-muted-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Rows per page</span>
+          <span>Rows</span>
           <Select
             value={String(pageSize)}
             onValueChange={(value) => {
@@ -462,7 +462,7 @@ export function StockMaterialSapTable({ defaultRate }: StockMaterialSapTableProp
               setPageIndex(0)
             }}
           >
-            <SelectTrigger className="h-8 w-[110px]">
+            <SelectTrigger className="h-8 w-[110px] rounded-lg border border-border/70 bg-muted/30 shadow-none">
               <SelectValue placeholder="Page size" />
             </SelectTrigger>
             <SelectContent>
@@ -473,21 +473,20 @@ export function StockMaterialSapTable({ defaultRate }: StockMaterialSapTableProp
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+        <span className="tabular-nums">
+          Showing {data.length.toLocaleString("id-ID")} of {(apiStats?.totalCount ?? 0).toLocaleString("id-ID")} Repair Warehouse records
+        </span>
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="h-8 rounded-lg border border-border/70 bg-white px-2 text-[13px] shadow-none">
             Previous
           </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of {Math.max(table.getPageCount(), 1)}
+          <span className="tabular-nums text-xs font-medium text-muted-foreground">
+            Page {table.getState().pagination.pageIndex + 1} / {Math.max(table.getPageCount(), 1)}
           </span>
-          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+          <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="h-8 rounded-lg border border-border/70 bg-white px-2 text-[13px] shadow-none">
             Next
           </Button>
         </div>
-      </div>
-
-      <div className="text-sm text-muted-foreground">
-        Showing {data.length.toLocaleString("id-ID")} of {(apiStats?.totalCount ?? 0).toLocaleString("id-ID")} Repair Warehouse records
       </div>
     </div>
   )

@@ -7,7 +7,8 @@ import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,9 +17,10 @@ import {
   deleteTestGroup,
   addTestToGroup,
   removeTestFromGroup,
+  setTestsForGroup,
   getGroupWithTests,
 } from "@/app/actions/test-group";
-import { IconPlus, IconTrash, IconLink, IconX } from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconX, IconPencil } from "@tabler/icons-react";
 import Link from "next/link";
 
 export function TestGroupsClientPage({
@@ -36,6 +38,9 @@ export function TestGroupsClientPage({
   const [expandedGroupId, setExpandedGroupId] = useState<number | null>(null);
   const [groupDetail, setGroupDetail] = useState<any>(null);
   const [availableTests, setAvailableTests] = useState(allTests);
+  const [editingGroup, setEditingGroup] = useState<any>(null);
+  const [selectedTestIds, setSelectedTestIds] = useState<number[]>([]);
+  const [isSavingTests, setIsSavingTests] = useState(false);
 
   const handleExpand = async (groupId: number) => {
     if (expandedGroupId === groupId) {
@@ -91,6 +96,38 @@ export function TestGroupsClientPage({
     toast.success("Test removed from group");
   };
 
+  const openEditTests = async (group: any) => {
+    const detail = await getGroupWithTests(group.id);
+    setEditingGroup(detail?.group || group);
+    setSelectedTestIds((detail?.items || []).map((item: any) => item.testId));
+  };
+
+  const toggleSelectedTest = (testId: number, checked: boolean) => {
+    setSelectedTestIds((current) =>
+      checked ? [...current, testId] : current.filter((id) => id !== testId),
+    );
+  };
+
+  const handleSaveTests = async () => {
+    if (!editingGroup) return;
+    setIsSavingTests(true);
+    try {
+      await setTestsForGroup(editingGroup.id, selectedTestIds);
+      if (expandedGroupId === editingGroup.id) {
+        const detail = await getGroupWithTests(editingGroup.id);
+        setGroupDetail(detail);
+        const existingIds = (detail?.items || []).map((item: any) => item.testId);
+        setAvailableTests(allTests.filter((test: any) => !existingIds.includes(test.id)));
+      }
+      setEditingGroup(null);
+      toast.success("Test group updated");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update test group");
+    } finally {
+      setIsSavingTests(false);
+    }
+  };
+
   return (
     <AdminPageShell eyebrow="Human Capital" title="Test Groups" description="Kelola kelompok tes online (Test 1, Test 2)">
       <RecruitmentTabBar />
@@ -122,6 +159,10 @@ export function TestGroupsClientPage({
                     </Badge>
                   </div>
                   <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => openEditTests(group)}>
+                      <IconPencil className="w-4 h-4" />
+                      Edit Tests
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => handleToggleActive(group)}>
                       {group.isActive ? "Deactivate" : "Activate"}
                     </Button>
@@ -161,8 +202,8 @@ export function TestGroupsClientPage({
                       )}
                     </div>
                   ) : (
-                    <button onClick={() => handleExpand(group.id)} className="text-sm text-muted-foreground hover:text-foreground">
-                      {group.slug ? `${group.slug}` : "Click to manage tests..."}
+                    <button onClick={() => openEditTests(group)} className="text-sm text-muted-foreground hover:text-foreground">
+                      {group.slug ? `${group.slug} — edit online tests` : "Edit online tests..."}
                     </button>
                   )}
                 </CardContent>
@@ -191,6 +232,52 @@ export function TestGroupsClientPage({
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={isSubmitting || !newGroupName.trim()}>
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingGroup)} onOpenChange={(open) => !open && setEditingGroup(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Online Tests — {editingGroup?.name}</DialogTitle>
+            <DialogDescription>
+              Pilih Online Test yang masuk ke Test Group ini. Urutan mengikuti daftar pilihan di bawah.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto py-2">
+            {allTests.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Belum ada Online Test aktif yang bisa dipilih.
+              </div>
+            ) : (
+              allTests.map((test: any) => {
+                const checked = selectedTestIds.includes(test.id);
+                return (
+                  <label
+                    key={test.id}
+                    className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-white p-3 shadow-sm transition-colors hover:bg-muted/30"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) => toggleSelectedTest(test.id, value === true)}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-foreground">{test.title}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {test.description || "Tanpa deskripsi"}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingGroup(null)} disabled={isSavingTests}>Cancel</Button>
+            <Button onClick={handleSaveTests} disabled={isSavingTests || allTests.length === 0}>
+              Save Tests
             </Button>
           </DialogFooter>
         </DialogContent>

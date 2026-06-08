@@ -120,17 +120,21 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
       };
 
       const template = await getHcEmailTemplateByType("interview_invitation");
-      let subject: string, html: string, text: string;
+      let subject: string, html: string | undefined, text: string;
       const emailFormat = template?.format || null;
 
       if (template) {
         const rendered = renderHcTemplate(template, templateVars);
         subject = rendered.subject;
         html = rendered.html;
-        html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
-  <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
-</div>` + html;
         text = rendered.text;
+        if (emailFormat === "plain_text") {
+          text = `🗓 Jadwal Interview: ${interviewDate} · ${interviewTime}\n\n` + text;
+        } else {
+          html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
+</div>` + (html || "");
+        }
       } else {
         subject = `[HERO] Undangan Interview — ${vacancyTitle}`;
         html = FALLBACK_HTML(templateVars);
@@ -179,22 +183,28 @@ export async function previewInterviewEmail(data: {
   };
 
   const template = await getHcEmailTemplateByType("interview_invitation");
-  let subject: string, html: string, text: string;
+  let subject: string, html: string | undefined, text: string;
+  const emailFormat = template?.format || null;
 
   if (template) {
     const rendered = renderHcTemplate(template, templateVars);
     subject = rendered.subject;
     html = rendered.html;
     text = rendered.text;
-    html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+    if (emailFormat === "plain_text") {
+      text = `🗓 Jadwal Interview: ${data.scheduledDate} · ${data.scheduledTime}\n\n` + text;
+    } else {
+      html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Interview:</strong> ${data.scheduledDate} · ${data.scheduledTime}
-</div>` + html;
+</div>` + (html || "");
+    }
   } else {
     subject = `[HERO] Undangan Interview — ${data.jobTitle}`;
     html = FALLBACK_HTML(templateVars);
+    text = FALLBACK_TEXT(templateVars);
   }
 
-  return { subject, html };
+  return { subject, html, text };
 }
 
 export async function bulkScheduleInterviews(candidateIds: number[], data: {
@@ -248,16 +258,20 @@ export async function bulkScheduleInterviews(candidateIds: number[], data: {
           interviewType: data.interviewType,
         };
 
-        let subject: string, html: string, text: string;
+        let subject: string, html: string | undefined, text: string;
         const emailFormat = template?.format || null;
         if (template) {
           const rendered = renderHcTemplate(template, templateVars);
           subject = rendered.subject;
           html = rendered.html;
-          html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
-  <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
-</div>` + html;
           text = rendered.text;
+          if (emailFormat === "plain_text") {
+            text = `🗓 Jadwal Interview: ${interviewDate} · ${interviewTime}\n\n` + text;
+          } else {
+            html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+  <strong>🗓 Jadwal Interview:</strong> ${interviewDate} · ${interviewTime}
+</div>` + (html || "");
+          }
         } else {
           subject = `[HERO] Undangan Interview — ${vacancyTitle}`;
           html = FALLBACK_HTML(templateVars);

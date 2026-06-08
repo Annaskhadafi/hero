@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -103,8 +103,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [cvLoading, setCvLoading] = useState(false);
   const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
-  const [emailPreviewData, setEmailPreviewData] = useState({ subject: "", html: "" });
+  const [emailPreviewData, setEmailPreviewData] = useState<{ subject: string; html?: string | null; text?: string | null }>({ subject: "", html: "", text: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  const [selectedTestResult, setSelectedTestResult] = useState<any>(null);
 
   const handleViewCv = async () => {
     if (!candidate.cvUrl) return;
@@ -1106,23 +1107,25 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               {testResults.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">Belum ada test yang dikerjakan.</p>
               ) : (
-                <div className="space-y-8">
-                  {testResults.map((result: any) => (
-                    <div key={result.id}>
-                      <div className="flex items-center justify-between mb-3">
+                <div className="space-y-3">
+                  {testResults.map((result: any) => {
+                    const isSubmitted = result.status === "Completed" || result.status === "Graded" || result.completedAt;
+                    return (
+                      <div key={result.id} className="rounded-xl border border-border/70 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h3 className="font-bold text-base">{result.testTitle}</h3>
                           <p className="text-xs text-muted-foreground">
-                            {result.startedAt ? format(new Date(result.startedAt), "dd MMM yyyy HH:mm") : "-"}
+                            {result.startedAt ? format(new Date(result.startedAt), "dd MMM yyyy HH:mm") : "Belum mulai"}
                             {result.completedAt ? ` → ${format(new Date(result.completedAt), "HH:mm")}` : ""}
                           </p>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <Badge variant={result.status === "Completed" || result.status === "Graded" ? "default" : "secondary"}>{result.status}</Badge>
+                        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                          <Badge variant={isSubmitted ? "default" : "secondary"}>{result.status}</Badge>
                           {result.answers.length > 0 && (
                             <div className="text-right">
                               <div className="text-xs text-muted-foreground">Score</div>
-                              <div className="text-xl font-bold text-primary">{result.percentage}%</div>
+                              <div className="text-xl font-bold text-primary tabular-nums">{result.percentage}%</div>
                               {result.passingScore > 0 && (
                                 <Badge variant={result.passed ? "default" : "destructive"} className={result.passed ? "bg-emerald-600" : ""}>
                                   {result.passed ? "LULUS" : "TIDAK LULUS"} · PG: {result.passingScore}%
@@ -1136,49 +1139,87 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                               </div>
                             </div>
                           )}
+                          {isSubmitted && result.answers.length > 0 && (
+                            <Button variant="outline" size="sm" onClick={() => setSelectedTestResult(result)}>
+                              <IconEye className="w-4 h-4" />
+                              Detail
+                            </Button>
+                          )}
                         </div>
                       </div>
 
-                      {result.answers.length > 0 && (
-                        <div className="rounded-lg border overflow-hidden">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                                <TableHead className="w-12 text-center text-xs">#</TableHead>
-                                <TableHead className="text-xs">PERTANYAAN</TableHead>
-                                <TableHead className="text-xs w-48">JAWABAN</TableHead>
-                                <TableHead className="text-xs w-24 text-right">SKOR</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {result.answers.map((ans: any, idx: number) => (
-                                <TableRow key={ans.id} className="border-t">
-                                  <TableCell className="text-center text-muted-foreground text-xs">{idx + 1}</TableCell>
-                                  <TableCell className="text-sm">{ans.questionText}</TableCell>
-                              <TableCell className="text-sm">
-                                <span className={cn(ans.pointsAwarded > 0 ? "text-green-700 font-medium" : "text-destructive font-medium")}>
-                                  <AnswerCell text={ans.answerText} />
-                                </span>
-                              </TableCell>
-                                  <TableCell className="text-right">
-                                    <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
-                                      {ans.pointsAwarded}/{ans.maxPoints}
-                                    </Badge>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={Boolean(selectedTestResult)} onOpenChange={(open) => !open && setSelectedTestResult(null)}>
+        <DialogContent className="sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Detail Result — {selectedTestResult?.testTitle}</DialogTitle>
+            <DialogDescription>
+              Jawaban dan skor dari test yang sudah disubmit kandidat.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTestResult && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-4 text-sm sm:grid-cols-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Status</div>
+                  <Badge variant={selectedTestResult.status === "Completed" || selectedTestResult.status === "Graded" ? "default" : "secondary"}>{selectedTestResult.status}</Badge>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Score</div>
+                  <div className="text-xl font-bold text-primary tabular-nums">{selectedTestResult.percentage}%</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Correct</div>
+                  <div className="font-semibold">{selectedTestResult.correctCount}/{selectedTestResult.totalQuestions} soal</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Points</div>
+                  <div className="font-mono font-semibold">{selectedTestResult.totalEarnedPoints}/{selectedTestResult.totalMaxPoints}</div>
+                </div>
+              </div>
+              <div className="max-h-[60vh] overflow-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead className="w-12 text-center text-xs">#</TableHead>
+                      <TableHead className="text-xs">PERTANYAAN</TableHead>
+                      <TableHead className="text-xs w-56">JAWABAN</TableHead>
+                      <TableHead className="text-xs w-24 text-right">SKOR</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedTestResult.answers.map((ans: any, idx: number) => (
+                      <TableRow key={ans.id} className="border-t">
+                        <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
+                        <TableCell className="text-sm">{ans.questionText}</TableCell>
+                        <TableCell className="text-sm">
+                          <span className={cn(ans.pointsAwarded > 0 ? "font-medium text-green-700" : "font-medium text-destructive")}>
+                            <AnswerCell text={ans.answerText} />
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
+                            {ans.pointsAwarded}/{ans.maxPoints}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Schedule Interview Dialog */}
       <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
@@ -1376,7 +1417,13 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             <DialogDescription>Subject: {emailPreviewData.subject}</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-auto min-h-0 border rounded-lg bg-white">
-            <iframe srcDoc={emailPreviewData.html} className="w-full h-full border-0" style={{ minHeight: '500px' }} title="Email Preview" />
+            {emailPreviewData.html ? (
+              <iframe srcDoc={emailPreviewData.html} className="w-full h-full border-0" style={{ minHeight: '500px' }} title="Email Preview" />
+            ) : (
+              <pre className="min-h-[500px] whitespace-pre-wrap break-words p-6 font-mono text-sm leading-6 text-slate-900">
+                {emailPreviewData.text || "No preview content."}
+              </pre>
+            )}
           </div>
           <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setEmailPreviewOpen(false)}>Close</Button>

@@ -14,6 +14,26 @@ import {
   mergeCandidateApplicationIdentity,
 } from "@/lib/hc-application-form-identity";
 
+function buildStructuredTestInvitationText(candidateName: string, testLink: string) {
+  return [
+    "PT Chitra Paratama",
+    "Sistem Rekrutmen & Assessment Online",
+    "",
+    `Selamat, ${candidateName}! 🎉`,
+    "",
+    "Selamat! Anda lolos ke tahap selanjutnya dan diundang untuk mengikuti Test 1.",
+    "",
+    "Silakan klik tombol di bawah untuk memulai tes Anda:",
+    "",
+    `🔗 Mulai Tes Sekarang: ${testLink}`,
+    "",
+    "Link berlaku selama 1 hari. Mohon diselesaikan sebelum batas waktu. Jika mengalami kendala, silakan hubungi Tim Human Capital.",
+    "",
+    "PT Chitra Paratama · Human Capital Division",
+    "Email ini dikirim otomatis. Mohon tidak membalas email ini.",
+  ].join("\n");
+}
+
 export async function registerTestGroup(groupId: number) {
   try {
     // 1. Create anonymous candidate
@@ -180,6 +200,26 @@ export async function addTestToGroup(groupId: number, testId: number) {
 
 export async function removeTestFromGroup(groupItemId: number) {
   await db.delete(hcOnlineTestGroupItems).where(eq(hcOnlineTestGroupItems.id, groupItemId));
+  revalidatePath("/dashboard/hc/recruitment/test-groups");
+}
+
+export async function setTestsForGroup(groupId: number, testIds: number[]) {
+  const uniqueTestIds = Array.from(new Set(testIds.filter((id) => Number.isInteger(id) && id > 0)));
+
+  await db.transaction(async (tx) => {
+    await tx.delete(hcOnlineTestGroupItems).where(eq(hcOnlineTestGroupItems.groupId, groupId));
+
+    if (uniqueTestIds.length === 0) return;
+
+    await tx.insert(hcOnlineTestGroupItems).values(
+      uniqueTestIds.map((testId, index) => ({
+        groupId,
+        testId,
+        sortOrder: index,
+      })),
+    );
+  });
+
   revalidatePath("/dashboard/hc/recruitment/test-groups");
 }
 
@@ -457,16 +497,17 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           testLink: `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
         };
 
-        let subject: string, html: string, text: string;
+        let subject: string, html: string | undefined, text: string;
         const emailFormat = template?.format || null;
+        const testLink = `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
         if (template) {
           const rendered = renderHcTemplate(template, templateVars);
           subject = rendered.subject;
           html = rendered.html;
-          text = rendered.text;
+          text = buildStructuredTestInvitationText(candidate.fullName, testLink);
         } else {
           subject = `[HERO] Undangan Tes Online — ${group?.name || "Assessment"}`;
-          const groupUrl = `${baseUrl}/test-group/${group?.slug || groupId}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`;
+          const groupUrl = testLink;
           const scheduleInfo = scheduledDate
             ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
                 <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
@@ -516,7 +557,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
 </td></tr>
 </table>
 </body></html>`;
-          text = `Halo ${candidate.fullName},\n\nSelamat! Anda lolos ke tahap selanjutnya dan diundang untuk mengikuti ${group?.name}.\n\nRangkaian Tes:\n${testLinks.map((l, i) => `${i + 1}. ${groupItems[i]?.title}: ${l}`).join("\n")}\n\nTotal Tes: ${testLinks.map((l, i) => `${i + 1}. ${groupItems[i]?.title}`).join(", ")}.\n\nAkses melalui link ini: ${groupUrl}\n\nLink berlaku 7 hari.\n\nTerima kasih,\nTim Human Capital\nPT Chitra Paratama`;
+          text = buildStructuredTestInvitationText(candidate.fullName, groupUrl);
         }
 
         await sendEmailViaSmtp(smtpSettings, {
@@ -548,7 +589,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     .orderBy(hcOnlineTestGroupItems.sortOrder);
 
   const [group] = await db.select().from(hcOnlineTestGroups).where(eq(hcOnlineTestGroups.id, groupId)).limit(1);
-  if (!group) return { subject: "", html: "" };
+  if (!group) return { subject: "", html: "", text: "" };
 
   const { getHcEmailTemplateByType } = await import("@/app/actions/hc-email-templates");
   const { renderHcTemplate } = await import("@/lib/hc-email-utils");
@@ -572,13 +613,13 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     testLink: `${getPublicAppUrl()}/test-group/${group.slug}${scheduledAt ? `?scheduledAt=${scheduledAt.toISOString()}${scheduledEndAt ? `&scheduledEndAt=${scheduledEndAt.toISOString()}` : ""}` : ""}`,
   };
 
-  let subject: string, html: string, text: string;
+  let subject: string, html: string | undefined, text: string;
   if (template) {
     const rendered = renderHcTemplate(template, templateVars);
     subject = rendered.subject;
     html = rendered.html;
-    text = rendered.text;
-    if (scheduledDate) {
+    text = buildStructuredTestInvitationText("[Candidate Name]", templateVars.testLink);
+    if (scheduledDate && html) {
       html = `<div style="font-family:Arial,sans-serif;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>Jadwal:</strong> Tes hanya dapat diakses mulai <strong>${scheduledDate}</strong> pukul <strong>${scheduledTime}</strong>.
 </div>` + html;
@@ -623,9 +664,10 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
 </td></tr>
 </table>
 </body></html>`;
+    text = buildStructuredTestInvitationText("[Candidate Name]", testGroupUrl);
   }
 
-  return { subject, html };
+  return { subject, html, text };
 }
 
 export async function getTestAssignmentDetail(assignmentId: number) {

@@ -133,7 +133,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
 
       // 1. Email ke Klinik — Surat Pengantar MCU
       const clinicTmpl = await getHcEmailTemplateByType("mcu_pengantar");
-      let clinicSubject: string, clinicHtml: string, clinicText: string;
+      let clinicSubject: string, clinicHtml: string | undefined, clinicText: string;
       const clinicEmailFormat = clinicTmpl?.format || null;
       if (clinicTmpl) {
         const r = renderHcTemplate(clinicTmpl, templateVars);
@@ -157,7 +157,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
 
       // 2. Email ke Kandidat — MCU Invitation
       const candTmpl = await getHcEmailTemplateByType("mcu_invitation");
-      let candSubject: string, candHtml: string, candText: string;
+      let candSubject: string, candHtml: string | undefined, candText: string;
       const candEmailFormat = candTmpl?.format || null;
       if (candTmpl) {
         const r = renderHcTemplate(candTmpl, templateVars);
@@ -231,7 +231,8 @@ export async function previewMcuEmail(data: {
   };
 
   const template = await getHcEmailTemplateByType("mcu_invitation");
-  let subject: string, html: string, text: string;
+  let subject: string, html: string | undefined, text: string;
+  const emailFormat = template?.format || null;
 
   if (template) {
     const rendered = renderHcTemplate(template, templateVars);
@@ -241,9 +242,26 @@ export async function previewMcuEmail(data: {
   } else {
     subject = `[HERO] Undangan Medical Check Up — ${data.jobTitle}`;
     html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
+    text = `Halo ${data.candidateName},
+
+Selamat! Anda lolos ke tahap Medical Check Up (MCU) untuk posisi ${data.jobTitle}.
+
+🏥 Detail MCU:
+Klinik: ${data.klinikName}
+Tanggal: ${data.scheduledDate}
+Paket: ${data.paketMcu}
+
+Persiapan:
+- Puasa 10-12 jam sebelum MCU (boleh air putih).
+- Bawa KTP asli.
+- Sebut Anda dari PT Chitra Paratama.
+
+Terima kasih,
+Tim Human Capital
+PT Chitra Paratama`;
   }
 
-  return { subject, html };
+  return { subject, html, text };
 }
 
 export async function bulkScheduleMcus(candidateIds: number[], data: {
@@ -296,7 +314,7 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
         };
 
         const template = await getHcEmailTemplateByType("mcu_invitation");
-        let subject: string, html: string, text: string;
+        let subject: string, html: string | undefined, text: string;
         const emailFormat = template?.format || null;
         if (template) {
           const r = renderHcTemplate(template, templateVars);

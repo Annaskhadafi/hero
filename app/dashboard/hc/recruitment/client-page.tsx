@@ -150,7 +150,7 @@ export function RecruitmentClientPage({
   const [testInviteForm, setTestInviteForm] = useState({ testId: "", scheduledDate: "", scheduledTime: "", scheduledEndDate: "", scheduledEndTime: "", batchId: "" });
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false);
-  const [emailPreview, setEmailPreview] = useState({ subject: "", html: "" });
+  const [emailPreview, setEmailPreview] = useState<{ subject: string; html?: string | null; text?: string | null }>({ subject: "", html: "", text: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
 
   // Bulk Interview State
@@ -379,7 +379,7 @@ export function RecruitmentClientPage({
         scheduledEndAt = new Date(`${testInviteForm.scheduledEndDate}T${testInviteForm.scheduledEndTime}`);
       }
       const preview = await previewTestGroupEmail(parseInt(testInviteForm.testId), scheduledAt, scheduledEndAt);
-      setEmailPreview(preview);
+      setEmailPreview({ subject: preview.subject, text: preview.text, html: null });
       setIsEmailPreviewOpen(true);
     } catch (e: any) {
       toast.error("Failed to generate preview");
@@ -1539,13 +1539,17 @@ export function RecruitmentClientPage({
             Subject: {emailPreview.subject}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-1 overflow-auto min-h-0 border rounded-lg bg-white">
-          <iframe
-            srcDoc={emailPreview.html}
-            className="w-full h-full border-0"
-            style={{ minHeight: '500px' }}
-            title="Email Preview"
-          />
+        <div className="flex-1 overflow-auto min-h-0 rounded-lg bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.08)]">
+          {emailPreview.html ? (
+            <iframe
+              srcDoc={emailPreview.html}
+              className="w-full h-full border-0"
+              style={{ minHeight: '500px' }}
+              title="Email Preview"
+            />
+          ) : (
+            <pre className="min-h-[500px] whitespace-pre-wrap break-words p-6 font-mono text-sm leading-7 text-left text-slate-900">{emailPreview.text || "No preview content."}</pre>
+          )}
         </div>
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => setIsEmailPreviewOpen(false)}>Close</Button>

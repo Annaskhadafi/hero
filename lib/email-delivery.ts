@@ -41,6 +41,20 @@ function formatFromAddress(settings: EmailTransportSettings) {
   return `"${fromName.replaceAll('"', '\\"')}" <${settings.fromEmail}>`;
 }
 
+const NOT_SPAM_NOTICE_TEXT = "Jika email ini masuk folder Spam/Junk, silakan tandai sebagai Report not spam/Bukan spam agar email berikutnya masuk ke Inbox.";
+const NOT_SPAM_NOTICE_HTML = `<p style="margin:12px 0 0;color:#94a3b8;font-size:11px;line-height:1.6;">Jika email ini masuk folder Spam/Junk, silakan tandai sebagai <strong>Report not spam</strong>/<strong>Bukan spam</strong> agar email berikutnya masuk ke Inbox.</p>`;
+
+function appendNotSpamNoticeToText(text: string) {
+  if (text.includes("Report not spam") || text.includes("Bukan spam")) return text;
+  return `${text.trimEnd()}\n\n${NOT_SPAM_NOTICE_TEXT}`;
+}
+
+function appendNotSpamNoticeToHtml(html?: string) {
+  if (!html || html.includes("Report not spam") || html.includes("Bukan spam")) return html;
+  if (html.includes("</body>")) return html.replace("</body>", `${NOT_SPAM_NOTICE_HTML}</body>`);
+  return `${html}${NOT_SPAM_NOTICE_HTML}`;
+}
+
 async function resolveActorEmployeeId(actorEmail?: string | null) {
   if (!actorEmail?.trim()) {
     return null;
@@ -109,14 +123,17 @@ export async function sendEmailViaSmtp(
   try {
     const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@${settings.fromEmail.split("@")[1] || "herochitra.com"}>`;
     const isPlainText = payload.format === "plain_text";
+    const html = appendNotSpamNoticeToHtml(payload.html);
+    const text = appendNotSpamNoticeToText(payload.text);
+    const deliveredPayload = { ...payload, html, text };
     const result = await transporter.sendMail({
       from: formatFromAddress(settings),
       to: payload.to,
       replyTo: settings.replyToEmail.trim() || undefined,
       subject: payload.subject,
       ...(isPlainText
-        ? { text: payload.text }
-        : { html: payload.html, text: payload.text }),
+        ? { text }
+        : { html, text }),
       messageId,
       headers: {
         "X-Mailer": "HERO Recruitment System",
@@ -128,7 +145,7 @@ export async function sendEmailViaSmtp(
       },
     });
 
-    await logEmailDelivery(payload, settings, "sent");
+    await logEmailDelivery(deliveredPayload, settings, "sent");
 
     return {
       accepted: result.accepted,

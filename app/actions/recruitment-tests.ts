@@ -107,10 +107,14 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
           text = rendered.text;
           emailFormat = template.format || null;
           const scheduledDateA = scheduledDate; const scheduledTimeA = scheduledTime;
-          if (scheduledDateA && html) {
-            html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+          if (scheduledDateA) {
+            if (emailFormat === "plain_text") {
+              text = `🗓 Jadwal Tes: ${scheduledDateA} · ${scheduledTimeA}\n\n` + text;
+            } else {
+              html = `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Tes:</strong> ${scheduledDateA} · ${scheduledTimeA}
-</div>` + html;
+</div>` + (html || "");
+            }
           }
         } else {
           subject = `[HERO] Undangan Tes Online — ${test.title}`;
@@ -234,10 +238,14 @@ export async function bulkAssignTestToCandidates(testId: number, candidateIds: n
           html = rendered.html;
           text = rendered.text;
           emailFormat = template.format || null;
-          if (scheduledDate && html) {
-            html = `<div style="font-family:Arial,sans-serif;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
+          if (scheduledDate) {
+            if (emailFormat === "plain_text") {
+              text = `🗓 Jadwal Tes: ${scheduledDate} · ${scheduledTime}\n\n` + text;
+            } else {
+              html = `<div style="font-family:Arial,sans-serif;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin-bottom:16px;color:#92400e;font-size:14px;">
   <strong>🗓 Jadwal Tes:</strong> ${scheduledDate} · ${scheduledTime}
-</div>` + html;
+</div>` + (html || "");
+            }
           }
         } else {
           subject = `[HERO] Undangan Tes Online — ${test.title}`;
