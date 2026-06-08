@@ -5,6 +5,7 @@ import {
   hcRecruitments,
   hcCandidates,
   hcCandidateStages,
+  hcCandidatePanelEvaluations,
   hrEmployees,
   masterDepartments,
   masterSections,
@@ -14,6 +15,9 @@ import { eq, desc, and, sql, count, isNull, or, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import fs from "fs";
 import path from "path";
+import { getCandidateTestResults } from "@/app/actions/candidate-tests";
+import { getCandidateInterviews } from "@/app/actions/interviews";
+import { getCandidateMcu } from "@/app/actions/mcu";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -36,6 +40,8 @@ export type RecruitmentData = {
   requirements?: string;
   qualifications?: string[];
   mandatoryFields?: string[];
+  scoringCriteria?: Array<{ id: string; label: string; weight: number; description?: string }>;
+  knockoutCriteria?: Array<{ id: string; label: string; enabled: boolean; description?: string }>;
   emailTemplateId?: number | null;
 };
 
@@ -107,6 +113,8 @@ export async function getRecruitments(filters?: RecruitmentFilter) {
       requirements: hcRecruitments.requirements,
       qualifications: hcRecruitments.qualifications,
       mandatoryFields: hcRecruitments.mandatoryFields,
+      scoringCriteria: hcRecruitments.scoringCriteria,
+      knockoutCriteria: hcRecruitments.knockoutCriteria,
       emailTemplateId: hcRecruitments.emailTemplateId,
       candidateCount: sql<number>`cast(count(${hcCandidates.id}) as int)`,
     })
@@ -134,6 +142,8 @@ export async function getRecruitments(filters?: RecruitmentFilter) {
       hcRecruitments.requirements,
       hcRecruitments.qualifications,
       hcRecruitments.mandatoryFields,
+      hcRecruitments.scoringCriteria,
+      hcRecruitments.knockoutCriteria,
       hcRecruitments.emailTemplateId
     )
     .orderBy(desc(hcRecruitments.createdAt));
@@ -219,7 +229,9 @@ export async function createRecruitment(data: RecruitmentData) {
       jobDescription: data.jobDescription || "",
       requirements: data.requirements || "",
       qualifications: data.qualifications || [],
-      mandatoryFields: data.mandatoryFields || ["ktp", "cv"],
+      mandatoryFields: data.mandatoryFields || ["dateOfBirth", "address", "gender", "cv"],
+      scoringCriteria: data.scoringCriteria || [],
+      knockoutCriteria: data.knockoutCriteria || [],
       emailTemplateId: data.emailTemplateId || null,
     })
     .returning();
@@ -244,6 +256,8 @@ export async function updateRecruitment(id: number, data: Partial<RecruitmentDat
   if (data.requirements !== undefined) updatePayload.requirements = data.requirements;
   if (data.qualifications !== undefined) updatePayload.qualifications = data.qualifications;
   if (data.mandatoryFields !== undefined) updatePayload.mandatoryFields = data.mandatoryFields;
+  if (data.scoringCriteria !== undefined) updatePayload.scoringCriteria = data.scoringCriteria;
+  if (data.knockoutCriteria !== undefined) updatePayload.knockoutCriteria = data.knockoutCriteria;
   if (data.emailTemplateId !== undefined) updatePayload.emailTemplateId = data.emailTemplateId;
 
   const [updated] = await db
@@ -330,6 +344,7 @@ export async function getCandidatesPaginated(filters: CandidateFilter = {}): Pro
       cvUrl: hcCandidates.cvUrl,
       aiScore: hcCandidates.aiScore,
       aiSummary: hcCandidates.aiSummary,
+      aiDetails: hcCandidates.aiDetails,
       rejectionReason: hcCandidates.rejectionReason,
       createdAt: hcCandidates.createdAt,
     })
@@ -364,6 +379,7 @@ type CandidateRow = {
   cvUrl: string;
   aiScore: number | null;
   aiSummary: string;
+  aiDetails?: { breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }>; recommendation?: string } | null;
   rejectionReason: string;
   createdAt: Date;
 };
@@ -468,6 +484,7 @@ export async function getCandidates() {
       cvUrl: hcCandidates.cvUrl,
       aiScore: hcCandidates.aiScore,
       aiSummary: hcCandidates.aiSummary,
+      aiDetails: hcCandidates.aiDetails,
       rejectionReason: hcCandidates.rejectionReason,
       createdAt: hcCandidates.createdAt,
     })
@@ -504,6 +521,7 @@ export async function getCandidateById(id: number) {
       rejectedAtStage: hcCandidates.rejectedAtStage,
       aiScore: hcCandidates.aiScore,
       aiSummary: hcCandidates.aiSummary,
+      aiDetails: hcCandidates.aiDetails,
       aiAssessmentDate: hcCandidates.aiAssessmentDate,
       createdAt: hcCandidates.createdAt,
       updatedAt: hcCandidates.updatedAt,
@@ -545,7 +563,141 @@ export async function getCandidateById(id: number) {
   return { ...candidate, stages };
 }
 
+export type PanelEvaluationData = {
+  interviewId?: number | null;
+  panelistName: string;
+  panelistRole?: string;
+  technicalScore: number;
+  communicationScore: number;
+  cultureScore: number;
+  problemSolvingScore: number;
+  attitudeScore: number;
+  overallRecommendation: string;
+  strengths?: string;
+  concerns?: string;
+  notes?: string;
+};
+
+function clampPanelScore(value: number) {
+  return Math.max(1, Math.min(5, Math.round(Number(value) || 0)));
+}
+
+export async function getCandidatePanelEvaluations(candidateId: number) {
+  return db
+    .select()
+    .from(hcCandidatePanelEvaluations)
+    .where(eq(hcCandidatePanelEvaluations.candidateId, candidateId))
+    .orderBy(desc(hcCandidatePanelEvaluations.submittedAt));
+}
+
+export async function createCandidatePanelEvaluation(candidateId: number, data: PanelEvaluationData) {
+  const [candidate] = await db
+    .select({ id: hcCandidates.id })
+    .from(hcCandidates)
+    .where(eq(hcCandidates.id, candidateId))
+    .limit(1);
+
+  if (!candidate) throw new Error("Candidate not found");
+  if (!data.panelistName?.trim()) throw new Error("Nama panelis wajib diisi.");
+
+  const [created] = await db
+    .insert(hcCandidatePanelEvaluations)
+    .values({
+      candidateId,
+      interviewId: data.interviewId || null,
+      panelistName: data.panelistName.trim(),
+      panelistRole: data.panelistRole?.trim() || "",
+      technicalScore: clampPanelScore(data.technicalScore),
+      communicationScore: clampPanelScore(data.communicationScore),
+      cultureScore: clampPanelScore(data.cultureScore),
+      problemSolvingScore: clampPanelScore(data.problemSolvingScore),
+      attitudeScore: clampPanelScore(data.attitudeScore),
+      overallRecommendation: data.overallRecommendation || "Review",
+      strengths: data.strengths?.trim() || "",
+      concerns: data.concerns?.trim() || "",
+      notes: data.notes?.trim() || "",
+      submittedAt: new Date(),
+    })
+    .returning();
+
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);
+  revalidatePath("/dashboard/hc/recruitment");
+  return created;
+}
+
+function summarizePanelEvaluations(evaluations: Awaited<ReturnType<typeof getCandidatePanelEvaluations>>) {
+  if (!evaluations.length) {
+    return { count: 0, averageScore: null as number | null, recommendation: "-" };
+  }
+
+  const total = evaluations.reduce((sum, item) => {
+    return sum + item.technicalScore + item.communicationScore + item.cultureScore + item.problemSolvingScore + item.attitudeScore;
+  }, 0);
+  const averageScore = Number((total / (evaluations.length * 5)).toFixed(1));
+  const recommendationCounts = evaluations.reduce<Record<string, number>>((acc, item) => {
+    acc[item.overallRecommendation] = (acc[item.overallRecommendation] || 0) + 1;
+    return acc;
+  }, {});
+  const recommendation = Object.entries(recommendationCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Review";
+
+  return { count: evaluations.length, averageScore, recommendation };
+}
+
+export async function getCandidateComparisonData(candidateIds: number[]) {
+  const ids = Array.from(new Set(candidateIds.map(Number).filter(Boolean))).slice(0, 5);
+  if (ids.length < 2) throw new Error("Pilih minimal 2 kandidat untuk compare.");
+  if (ids.length > 5) throw new Error("Maksimal 5 kandidat untuk compare.");
+
+  const rows = await Promise.all(
+    ids.map(async (id) => {
+      const [candidate, testResults, interviews, mcuRecords, panelEvaluations] = await Promise.all([
+        getCandidateById(id),
+        getCandidateTestResults(id),
+        getCandidateInterviews(id),
+        getCandidateMcu(id),
+        getCandidatePanelEvaluations(id),
+      ]);
+
+      if (!candidate) return null;
+
+      return {
+        candidate,
+        testResults,
+        interviews,
+        mcuRecords,
+        panelEvaluations,
+        panelSummary: summarizePanelEvaluations(panelEvaluations),
+      };
+    })
+  );
+
+  return rows.filter(Boolean);
+}
+
 export async function createCandidate(data: CandidateData) {
+  if (!data.fullName || !data.email || !data.phone) {
+    throw new Error("Mohon lengkapi nama, email, dan nomor telepon.");
+  }
+
+  const recruitment = await getRecruitmentById(data.recruitmentId);
+  if (!recruitment || !recruitment.isPublic) {
+    throw new Error("Lowongan tidak aktif atau tidak tersedia.");
+  }
+
+  const mandatoryFields = new Set(recruitment.mandatoryFields || ["dateOfBirth", "address", "gender", "cv"]);
+  const missingFields = [];
+  if (mandatoryFields.has("dateOfBirth") && !data.dateOfBirth) missingFields.push("Tanggal lahir");
+  if (mandatoryFields.has("address") && !data.address) missingFields.push("Alamat");
+  if (mandatoryFields.has("gender") && !data.gender) missingFields.push("Jenis kelamin");
+  if (mandatoryFields.has("drivingLicenses") && (!data.drivingLicenses || data.drivingLicenses.length === 0)) missingFields.push("SIM");
+  if (mandatoryFields.has("certificates") && (!data.certificates || data.certificates.length === 0)) missingFields.push("Sertifikat");
+  if (mandatoryFields.has("workExperience") && (!data.workExperience || data.workExperience.length === 0)) missingFields.push("Pengalaman kerja");
+  if (mandatoryFields.has("education") && (!data.education || data.education.length === 0)) missingFields.push("Riwayat pendidikan");
+  if (mandatoryFields.has("cv") && !data.cvUrl) missingFields.push("CV");
+  if (missingFields.length > 0) {
+    throw new Error(`Mohon lengkapi field wajib: ${missingFields.join(", ")}.`);
+  }
+
   // Validate dateOfBirth
   let parsedDateOfBirth: Date | null = null;
   if (data.dateOfBirth) {
@@ -942,6 +1094,8 @@ export async function assessCandidateCv(candidateId: number) {
       description: job.jobDescription,
       requirementsText: job.requirements,
       qualificationsChecklist: job.qualifications,
+      scoringCriteria: job.scoringCriteria || [],
+      knockoutCriteria: (job.knockoutCriteria || []).filter((criterion) => criterion.enabled),
     };
 
     // 4. Call Ollama API
@@ -950,8 +1104,9 @@ export async function assessCandidateCv(candidateId: number) {
     const ollamaKey = process.env.OLLAMA_API_KEY;
 
     const promptSystem = `You are an expert HR Assessor. You will be provided with a Candidate Profile (JSON) and Job Requirements (JSON).
-Your task is to critically analyze how well the candidate's structured data (Education, Experience, Licenses, CV) matches the Job Requirements and specific Qualifications Checklist.
-Return a JSON object strictly following this format: {"score": 85, "summary": "Brief explanation here"}. The score should be an integer from 0 to 100 representing suitability.`;
+Your task is to critically analyze how well the candidate's structured data (Education, Experience, Licenses, CV) matches the Job Requirements, Qualifications Checklist, Scoring Criteria, and enabled Knockout Criteria.
+Return a JSON object strictly following this format: {"score": 85, "summary": "Brief explanation here", "breakdown": [{"criterion": "Experience", "score": 80, "weight": 30, "reason": "Reason"}], "knockout": [{"criterion": "SIM A", "passed": true, "reason": "Reason"}], "recommendation": "Shortlist"}.
+The final score must be 0-100. If any knockout criterion fails, keep score realistic and set recommendation to "Reject" or "Manual Review".`;
 
     const response = await fetch(ollamaUrl, {
       method: "POST",
@@ -979,19 +1134,26 @@ Return a JSON object strictly following this format: {"score": 85, "summary": "B
 
     const aiData = await response.json();
     const aiContent = JSON.parse(aiData.message.content);
+    const normalizedScore = Math.max(0, Math.min(100, Number(aiContent.score) || 0));
+    const aiDetails = {
+      breakdown: Array.isArray(aiContent.breakdown) ? aiContent.breakdown : [],
+      knockout: Array.isArray(aiContent.knockout) ? aiContent.knockout : [],
+      recommendation: typeof aiContent.recommendation === "string" ? aiContent.recommendation : "Manual Review",
+    };
 
     // 5. Update Candidate
     await db
       .update(hcCandidates)
       .set({
-        aiScore: aiContent.score,
-        aiSummary: aiContent.summary,
+        aiScore: normalizedScore,
+        aiSummary: typeof aiContent.summary === "string" ? aiContent.summary : "AI assessment completed.",
+        aiDetails,
         aiAssessmentDate: new Date(),
       })
       .where(eq(hcCandidates.id, candidateId));
 
     revalidatePath("/dashboard/hc/recruitment");
-    return { success: true, score: aiContent.score, summary: aiContent.summary };
+    return { success: true, score: normalizedScore, summary: aiContent.summary, details: aiDetails };
   } catch (error: any) {
     console.error("AI Assessment Error:", error);
     return { success: false, error: error.message };

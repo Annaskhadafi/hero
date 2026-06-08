@@ -46,6 +46,10 @@ export default function CareerApplicationPage() {
   const SIM_OPTIONS = ["SIM A", "SIM B1", "SIM B2", "SIM C"];
   const JENJANG_OPTIONS = ["SMA/SMK", "D3", "D4", "S1", "S2"];
 
+  const mandatoryFields = new Set<string>(job?.mandatoryFields || ["dateOfBirth", "address", "gender", "cv"]);
+  const isRequired = (field: string) => mandatoryFields.has(field);
+  const requiredMark = (field: string) => isRequired(field) ? <span className="text-destructive">*</span> : null;
+
   useEffect(() => {
     async function loadJob() {
       try {
@@ -94,7 +98,27 @@ export default function CareerApplicationPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !email || !phone || !dateOfBirth || !gender || !address) {
+    const cleanEducation = education.filter(e => e.institution && e.jenjang);
+    const cleanWork = workExperience.filter(w => w.company && w.role);
+    const cleanCerts = certificates.filter(c => c.name);
+    const missing = [];
+    if (!fullName) missing.push("Nama lengkap");
+    if (!email) missing.push("Email");
+    if (!phone) missing.push("Nomor telepon");
+    if (isRequired("dateOfBirth") && !dateOfBirth) missing.push("Tanggal lahir");
+    if (isRequired("gender") && !gender) missing.push("Jenis kelamin");
+    if (isRequired("address") && !address) missing.push("Alamat");
+    if (isRequired("education") && cleanEducation.length === 0) missing.push("Riwayat pendidikan");
+    if (isRequired("workExperience") && cleanWork.length === 0) missing.push("Pengalaman kerja");
+    if (isRequired("drivingLicenses") && drivingLicenses.length === 0) missing.push("SIM");
+    if (isRequired("certificates") && cleanCerts.length === 0) missing.push("Sertifikat");
+    if (isRequired("cv") && !cvFile) missing.push("CV");
+    if (missing.length > 0) {
+      toast.error(`Mohon lengkapi field wajib: ${missing.join(", ")}.`);
+      return;
+    }
+
+    if (!fullName || !email || !phone) {
       toast.error("Mohon lengkapi Data Diri.");
       return;
     }
@@ -126,6 +150,11 @@ export default function CareerApplicationPage() {
         } else {
           cvUrl = uploadResult.url || "";
         }
+      } else if (isRequired("cv")) {
+        toast.error("CV wajib diunggah.");
+        clearTimeout(timeout);
+        setSubmitting(false);
+        return;
       } else {
         toast.warning("Anda belum mengunggah CV. Aplikasi tetap akan dikirim.");
       }
@@ -135,11 +164,6 @@ export default function CareerApplicationPage() {
     }
 
     try {
-      // 2. Clean up arrays (remove empty entries)
-      const cleanEducation = education.filter(e => e.institution && e.jenjang);
-      const cleanWork = workExperience.filter(w => w.company && w.role);
-      const cleanCerts = certificates.filter(c => c.name);
-
       // 3. Create Candidate
       await createCandidate({
         recruitmentId: id,
@@ -258,13 +282,13 @@ export default function CareerApplicationPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Tanggal Lahir <span className="text-destructive">*</span></Label>
-                          <Input type="date" required value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
+                          <Label>Tanggal Lahir {requiredMark("dateOfBirth")}</Label>
+                          <Input type="date" required={isRequired("dateOfBirth")} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                          <Label>Jenis Kelamin <span className="text-destructive">*</span></Label>
+                          <Label>Jenis Kelamin {requiredMark("gender")}</Label>
                           <select 
-                            required 
+                            required={isRequired("gender")}
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                             value={gender}
                             onChange={(e) => setGender(e.target.value)}
@@ -284,8 +308,8 @@ export default function CareerApplicationPage() {
                         <Input required value={phone} onChange={(e) => setPhone(e.target.value)} />
                       </div>
                       <div className="space-y-2 md:col-span-2">
-                        <Label>Alamat Lengkap (Domisili) <span className="text-destructive">*</span></Label>
-                        <Textarea required rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
+                        <Label>Alamat Lengkap (Domisili) {requiredMark("address")}</Label>
+                        <Textarea required={isRequired("address")} rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
                       </div>
                     </div>
                   </section>
@@ -293,7 +317,7 @@ export default function CareerApplicationPage() {
                   {/* --- PENDIDIKAN --- */}
                   <section className="space-y-4">
                     <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="text-lg font-semibold">2. Riwayat Pendidikan</h3>
+                      <h3 className="text-lg font-semibold">2. Riwayat Pendidikan {requiredMark("education")}</h3>
                       <Button type="button" variant="outline" size="sm" onClick={() => setEducation([...education, { jenjang: "", institution: "", major: "", yearIn: "", yearOut: "" }])}>
                         <Plus className="w-4 h-4 mr-2" /> Tambah
                       </Button>
@@ -353,7 +377,7 @@ export default function CareerApplicationPage() {
                   {/* --- PENGALAMAN KERJA --- */}
                   <section className="space-y-4">
                     <div className="flex justify-between items-center border-b pb-2">
-                      <h3 className="text-lg font-semibold">3. Pengalaman Kerja</h3>
+                      <h3 className="text-lg font-semibold">3. Pengalaman Kerja {requiredMark("workExperience")}</h3>
                       <Button type="button" variant="outline" size="sm" onClick={() => setWorkExperience([...workExperience, { company: "", role: "", yearIn: "", yearOut: "", description: "" }])}>
                         <Plus className="w-4 h-4 mr-2" /> Tambah
                       </Button>
@@ -410,7 +434,7 @@ export default function CareerApplicationPage() {
                     </h3>
                     
                     <div className="space-y-3">
-                      <Label className="text-base font-medium">Lisensi Mengemudi (SIM)</Label>
+                      <Label className="text-base font-medium">Lisensi Mengemudi (SIM) {requiredMark("drivingLicenses")}</Label>
                       <div className="flex flex-wrap gap-6">
                         {SIM_OPTIONS.map((sim) => (
                           <div key={sim} className="flex items-center space-x-2">
@@ -427,7 +451,7 @@ export default function CareerApplicationPage() {
 
                     <div className="space-y-4 pt-4 border-t">
                       <div className="flex justify-between items-center">
-                        <Label className="text-base font-medium">Sertifikat/Pelatihan (Opsional)</Label>
+                        <Label className="text-base font-medium">Sertifikat/Pelatihan {isRequired("certificates") ? requiredMark("certificates") : "(Opsional)"}</Label>
                         <Button type="button" variant="outline" size="sm" onClick={() => setCertificates([...certificates, { name: "", publisher: "", year: "" }])}>
                           <Plus className="w-4 h-4 mr-2" /> Tambah Sertifikat
                         </Button>
@@ -482,7 +506,7 @@ export default function CareerApplicationPage() {
                       5. Upload Berkas
                     </h3>
                     <div className="space-y-2">
-                      <Label>Curriculum Vitae (CV) <span className="text-destructive">*</span></Label>
+                      <Label>Curriculum Vitae (CV) {requiredMark("cv")}</Label>
                       <div className="border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center bg-muted/5 hover:bg-muted/10 transition-colors">
                         <UploadCloud className="h-8 w-8 text-muted-foreground mb-4" />
                         <Input

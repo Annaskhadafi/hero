@@ -9,6 +9,8 @@ import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
+import { generateMcuReferralPdf } from "@/lib/mcu-referral-pdf";
+import { uploadBufferToS3 } from "@/lib/s3-storage";
 
 const MCU_CLINIC_FALLBACK_HTML = (vars: Record<string, string>) => `
 <div style="font-family:Arial,sans-serif;line-height:1.6;color:#000;padding:20px;border:1px solid #ddd;max-width:800px;margin:0 auto;">
@@ -110,6 +112,8 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
       .where(eq(hcCandidates.id, candidateId));
   }
 
+  let pdfUrl: string | null = null;
+
   try {
     const smtpSettings = await getEmailSmtpSettingsData();
     if (smtpSettings.host && smtpSettings.fromEmail) {
@@ -130,6 +134,37 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         testLink: "",
         duration: "",
       };
+
+      // Generate Surat Pengantar PDF
+      let pdfBuffer: Buffer | null = null;
+      try {
+        const pdfBytes = await generateMcuReferralPdf({
+          clinicName: data.klinikName,
+          clinicAddress,
+          clinicCity,
+          candidateName: candidate.fullName,
+          candidatePhone: candidate.phone,
+          scheduledDate: scheduledDateStr,
+          packageName: data.paketMcu,
+          companyName: "PT Chitra Paratama",
+          letterNumber: `MCU/${candidate.id}/${Date.now()}`,
+          signatoryName: "Muhammad Iqbal",
+          signatoryTitle: "HR-GA Admin",
+        });
+        pdfBuffer = Buffer.from(pdfBytes);
+        const s3Result = await uploadBufferToS3(
+          pdfBuffer,
+          `mcu-referral-letters/${candidate.id}-${Date.now()}.pdf`,
+          "application/pdf"
+        );
+        pdfUrl = s3Result.url;
+      } catch (pdfErr) {
+        console.error("Failed to generate or upload MCU PDF:", pdfErr);
+      }
+
+      const pdfAttachment = pdfBuffer
+        ? { filename: `Surat-Pengantar-MCU-${candidate.fullName}.pdf`, content: pdfBuffer, contentType: "application/pdf" }
+        : undefined;
 
       // 1. Email ke Klinik — Surat Pengantar MCU
       const clinicTmpl = await getHcEmailTemplateByType("mcu_pengantar");
@@ -153,6 +188,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         format: clinicEmailFormat,
         templateName: "Surat Pengantar MCU",
         templateCode: "mcu_pengantar",
+        attachments: pdfAttachment ? [pdfAttachment] : undefined,
       });
 
       // 2. Email ke Kandidat — MCU Invitation
@@ -177,6 +213,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         format: candEmailFormat,
         templateName: "MCU Invitation",
         templateCode: "mcu_invitation",
+        attachments: pdfAttachment ? [pdfAttachment] : undefined,
       });
     }
   } catch (error) {
@@ -273,7 +310,17 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
 }) {
   const smtpSettings = await getEmailSmtpSettingsData();
   const { format } = await import("date-fns");
-  const results: Array<{ candidateId: number; fullName: string; success: boolean; error?: string }> = [];
+  const results: Array<{ candidateId: number; fullName: string; success: boolean; error?: string; pdfUrl?: string | null }> = [];
+
+  let clinicAddress = "";
+  let clinicCity = "";
+  if (data.clinicId) {
+    const clinic = await db.select().from(hcMcuClinics).where(eq(hcMcuClinics.id, data.clinicId)).limit(1);
+    if (clinic.length > 0) {
+      clinicAddress = clinic[0].address;
+      clinicCity = clinic[0].city;
+    }
+  }
 
   for (const cid of candidateIds) {
     try {
@@ -295,43 +342,111 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
         status: "Scheduled",
       });
 
-      if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
+      if (candidate.currentStage !== "Hired" && candidate.currentStage !== "Offering") {
+        await db.update(hcCandidates)
+          .set({ currentStage: "Medical Checkup", updatedAt: new Date() })
+          .where(eq(hcCandidates.id, cid));
+      }
+
+      let pdfUrl: string | null = null;
+
+      if (smtpSettings.host && smtpSettings.fromEmail) {
         const scheduledDateStr = format(data.scheduledDate, "EEEE, dd MMMM yyyy");
+
         const templateVars = {
           candidateName: candidate.fullName,
           jobTitle: vacancyTitle,
           companyName: "PT Chitra Paratama",
           date: scheduledDateStr,
           time: "",
-          location: "",
+          location: `${data.klinikName}${clinicAddress ? ", " + clinicAddress : ""}${clinicCity ? ", " + clinicCity : ""}`,
           interviewer: "",
           clinicName: data.klinikName,
-          clinicAddress: "",
-          clinicCity: "",
+          clinicAddress,
+          clinicCity,
           paket: data.paketMcu,
           testLink: "",
           duration: "",
         };
 
-        const template = await getHcEmailTemplateByType("mcu_invitation");
-        let subject: string, html: string | undefined, text: string;
-        const emailFormat = template?.format || null;
-        if (template) {
-          const r = renderHcTemplate(template, templateVars);
-          subject = r.subject; html = r.html; text = r.text;
-        } else {
-          subject = `[HERO] Undangan Medical Check Up — ${vacancyTitle}`;
-          html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
-          text = `Halo ${candidate.fullName},\n\nMCU untuk ${vacancyTitle}\nKlinik: ${data.klinikName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nPuasa 10-12 jam. Bawa KTP.\n\nHC Team`;
+        // Generate Surat Pengantar PDF
+        let pdfBuffer: Buffer | null = null;
+        try {
+          const pdfBytes = await generateMcuReferralPdf({
+            clinicName: data.klinikName,
+            clinicAddress,
+            clinicCity,
+            candidateName: candidate.fullName,
+            candidatePhone: candidate.phone,
+            scheduledDate: scheduledDateStr,
+            packageName: data.paketMcu,
+            companyName: "PT Chitra Paratama",
+            letterNumber: `MCU/${candidate.id}/${Date.now()}`,
+            signatoryName: "Muhammad Iqbal",
+            signatoryTitle: "HR-GA Admin",
+          });
+          pdfBuffer = Buffer.from(pdfBytes);
+          const s3Result = await uploadBufferToS3(
+            pdfBuffer,
+            `mcu-referral-letters/${candidate.id}-${Date.now()}.pdf`,
+            "application/pdf"
+          );
+          pdfUrl = s3Result.url;
+        } catch (pdfErr) {
+          console.error("Failed to generate or upload MCU PDF:", pdfErr);
         }
 
+        const pdfAttachment = pdfBuffer
+          ? { filename: `Surat-Pengantar-MCU-${candidate.fullName}.pdf`, content: pdfBuffer, contentType: "application/pdf" }
+          : undefined;
+
+        // 1. Email ke Klinik — Surat Pengantar MCU
+        const clinicTmpl = await getHcEmailTemplateByType("mcu_pengantar");
+        let clinicSubject: string, clinicHtml: string | undefined, clinicText: string;
+        const clinicEmailFormat = clinicTmpl?.format || null;
+        if (clinicTmpl) {
+          const r = renderHcTemplate(clinicTmpl, templateVars);
+          clinicSubject = r.subject;
+          clinicHtml = r.html;
+          clinicText = r.text;
+        } else {
+          clinicSubject = `[HERO] Surat Pengantar Medical Check Up - ${candidate.fullName}`;
+          clinicHtml = MCU_CLINIC_FALLBACK_HTML(templateVars);
+          clinicText = `SURAT PENGANTAR MCU\n\nKepada Yth. Pimpinan/Admin ${data.klinikName}\n\nNama: ${candidate.fullName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nBiaya ditagihkan ke perusahaan.\n\nHC PT Chitra Paratama`;
+        }
         await sendEmailViaSmtp(smtpSettings, {
-          to: candidate.email, subject, html, text,
-          format: emailFormat,
-          templateName: "MCU Invitation", templateCode: "mcu_invitation",
+          to: data.klinikEmail,
+          subject: clinicSubject,
+          html: clinicHtml,
+          text: clinicText,
+          attachments: pdfAttachment ? [pdfAttachment] : undefined,
+          format: clinicEmailFormat,
+          templateName: "MCU Referral Letter",
+          templateCode: "mcu_pengantar",
         });
+
+        // 2. Email ke Kandidat — Undangan MCU
+        if (candidate.email) {
+          const candTmpl = await getHcEmailTemplateByType("mcu_invitation");
+          let subject: string, html: string | undefined, text: string;
+          const emailFormat = candTmpl?.format || null;
+          if (candTmpl) {
+            const r = renderHcTemplate(candTmpl, templateVars);
+            subject = r.subject; html = r.html; text = r.text;
+          } else {
+            subject = `[HERO] Undangan Medical Check Up — ${vacancyTitle}`;
+            html = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
+            text = `Halo ${candidate.fullName},\n\nMCU untuk ${vacancyTitle}\nKlinik: ${data.klinikName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nPuasa 10-12 jam. Bawa KTP.\n\nHC Team`;
+          }
+
+          await sendEmailViaSmtp(smtpSettings, {
+            to: candidate.email, subject, html, text,
+            format: emailFormat,
+            templateName: "MCU Invitation", templateCode: "mcu_invitation",
+          });
+        }
       }
-      results.push({ candidateId: cid, fullName: candidate.fullName, success: true });
+      results.push({ candidateId: cid, fullName: candidate.fullName, success: true, pdfUrl });
     } catch (error: any) {
       results.push({ candidateId: cid, fullName: "", success: false, error: error.message });
     }

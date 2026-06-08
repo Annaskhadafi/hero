@@ -77,13 +77,32 @@ function AnswerValue({ value }: { value: any }): React.ReactNode {
   return <span>{String(value)}</span>;
 }
 
+function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
+  if (!text) return <span className="text-muted-foreground">-</span>;
+  try {
+    const parsed = JSON.parse(text);
+    return (
+      <div className="rounded-lg border bg-muted/20 p-3 text-sm space-y-2">
+        {Object.entries(parsed).map(([key, value]) => (
+          <div key={key} className="grid grid-cols-[140px_1fr] gap-2">
+            <span className="text-xs font-medium text-muted-foreground capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</span>
+            <span className="text-xs text-foreground"><AnswerValue value={value} /></span>
+          </div>
+        ))}
+      </div>
+    );
+  } catch {
+    return <span className="text-xs">{text}</span>;
+  }
+}
+
 import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, updateMcuResult, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
-import { hireAndCreateEmployee, getCvDownloadUrl } from "@/app/actions/recruitment";
+import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 
-export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[] }) {
+export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [], panelEvaluations = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[], panelEvaluations?: any[] }) {
   const router = useRouter();
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
@@ -106,6 +125,21 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [emailPreviewData, setEmailPreviewData] = useState<{ subject: string; html?: string | null; text?: string | null }>({ subject: "", html: "", text: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [selectedTestResult, setSelectedTestResult] = useState<any>(null);
+  const [isPanelSubmitting, setIsPanelSubmitting] = useState(false);
+  const [panelForm, setPanelForm] = useState({
+    interviewId: "",
+    panelistName: "",
+    panelistRole: "",
+    technicalScore: 3,
+    communicationScore: 3,
+    cultureScore: 3,
+    problemSolvingScore: 3,
+    attitudeScore: 3,
+    overallRecommendation: "Review",
+    strengths: "",
+    concerns: "",
+    notes: "",
+  });
 
   const handleViewCv = async () => {
     if (!candidate.cvUrl) return;
@@ -281,6 +315,42 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     }
   };
 
+  const handlePanelSubmit = async () => {
+    if (!panelForm.panelistName.trim()) {
+      toast.error("Nama panelis wajib diisi.");
+      return;
+    }
+
+    setIsPanelSubmitting(true);
+    try {
+      await createCandidatePanelEvaluation(candidate.id, {
+        interviewId: panelForm.interviewId ? parseInt(panelForm.interviewId, 10) : null,
+        panelistName: panelForm.panelistName,
+        panelistRole: panelForm.panelistRole,
+        technicalScore: panelForm.technicalScore,
+        communicationScore: panelForm.communicationScore,
+        cultureScore: panelForm.cultureScore,
+        problemSolvingScore: panelForm.problemSolvingScore,
+        attitudeScore: panelForm.attitudeScore,
+        overallRecommendation: panelForm.overallRecommendation,
+        strengths: panelForm.strengths,
+        concerns: panelForm.concerns,
+        notes: panelForm.notes,
+      });
+      toast.success("Panel evaluation saved.");
+      setPanelForm({ ...panelForm, panelistName: "", panelistRole: "", strengths: "", concerns: "", notes: "" });
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save panel evaluation.");
+    } finally {
+      setIsPanelSubmitting(false);
+    }
+  };
+
+  const panelAverage = panelEvaluations.length
+    ? (panelEvaluations.reduce((sum, item) => sum + item.technicalScore + item.communicationScore + item.cultureScore + item.problemSolvingScore + item.attitudeScore, 0) / (panelEvaluations.length * 5)).toFixed(1)
+    : null;
+
   const onboardingUrl = candidate.onboardingToken 
     ? `${window.location.origin}/onboarding/${candidate.onboardingToken}` 
     : "";
@@ -317,6 +387,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interviews">Interviews ({interviews.length})</TabsTrigger>
+          <TabsTrigger value="panel-evaluation">Panelist ({panelEvaluations.length})</TabsTrigger>
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
@@ -600,6 +671,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     <div className="flex items-center gap-3">
                       <div className="text-3xl font-bold">{candidate.aiScore}%</div>
                       <div className="text-sm text-muted-foreground">Match Score</div>
+                      {candidate.aiDetails?.recommendation && (
+                        <Badge variant="secondary" className="uppercase tracking-wide">
+                          {candidate.aiDetails.recommendation}
+                        </Badge>
+                      )}
                       {candidate.aiAssessmentDate && (
                         <div className="text-xs text-muted-foreground ml-auto">
                           Assessed: {format(new Date(candidate.aiAssessmentDate), "dd MMM yyyy HH:mm")}
@@ -608,6 +684,41 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     </div>
                     {candidate.aiSummary && (
                       <div className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">{candidate.aiSummary}</div>
+                    )}
+                    {candidate.aiDetails?.knockout?.length > 0 && (
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Knockout Check</div>
+                        <div className="space-y-2">
+                          {candidate.aiDetails.knockout.map((item: any, idx: number) => (
+                            <div key={`${item.criterion}-${idx}`} className="flex items-start justify-between gap-3 text-sm">
+                              <div>
+                                <div className="font-medium">{item.criterion}</div>
+                                <div className="text-xs text-muted-foreground">{item.reason}</div>
+                              </div>
+                              <Badge variant={item.passed ? "default" : "destructive"}>{item.passed ? "Pass" : "Fail"}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {candidate.aiDetails?.breakdown?.length > 0 && (
+                      <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Scoring Breakdown</div>
+                        <div className="space-y-3">
+                          {candidate.aiDetails.breakdown.map((item: any, idx: number) => (
+                            <div key={`${item.criterion}-${idx}`} className="space-y-1">
+                              <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="font-medium">{item.criterion}</span>
+                                <span className="text-xs text-muted-foreground">{item.score}% / weight {item.weight}</span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, Number(item.score) || 0))}%` }} />
+                              </div>
+                              <div className="text-xs text-muted-foreground">{item.reason}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </>
                 ) : (
@@ -857,6 +968,161 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="panel-evaluation">
+          <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Panelist Evaluation</CardTitle>
+                <CardDescription>Isi kelayakan kandidat saat proses interview. Skor 1-5 per dimensi.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Nama Panelis *</Label>
+                    <Input value={panelForm.panelistName} onChange={(e) => setPanelForm({ ...panelForm, panelistName: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role/Jabatan</Label>
+                    <Input placeholder="User, HC, Dept Head" value={panelForm.panelistRole} onChange={(e) => setPanelForm({ ...panelForm, panelistRole: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Interview terkait</Label>
+                  <Select value={panelForm.interviewId || "none"} onValueChange={(value) => setPanelForm({ ...panelForm, interviewId: value === "none" ? "" : value })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Tidak spesifik</SelectItem>
+                      {interviews.map((interview) => (
+                        <SelectItem key={interview.id} value={String(interview.id)}>
+                          {interview.interviewType} · {format(new Date(interview.scheduledAt), "dd MMM yyyy HH:mm")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    ["technicalScore", "Technical"],
+                    ["communicationScore", "Communication"],
+                    ["cultureScore", "Culture Fit"],
+                    ["problemSolvingScore", "Problem Solving"],
+                    ["attitudeScore", "Attitude"],
+                  ].map(([key, label]) => (
+                    <div key={key} className="space-y-2">
+                      <Label>{label}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={(panelForm as any)[key]}
+                        onChange={(e) => setPanelForm({ ...panelForm, [key]: Math.max(1, Math.min(5, parseInt(e.target.value, 10) || 1)) } as any)}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Recommendation</Label>
+                  <Select value={panelForm.overallRecommendation} onValueChange={(value) => setPanelForm({ ...panelForm, overallRecommendation: value })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Strong Hire">Strong Hire</SelectItem>
+                      <SelectItem value="Hire">Hire</SelectItem>
+                      <SelectItem value="Review">Review</SelectItem>
+                      <SelectItem value="Hold">Hold</SelectItem>
+                      <SelectItem value="Reject">Reject</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Strengths</Label>
+                  <Textarea rows={2} value={panelForm.strengths} onChange={(e) => setPanelForm({ ...panelForm, strengths: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Concerns</Label>
+                  <Textarea rows={2} value={panelForm.concerns} onChange={(e) => setPanelForm({ ...panelForm, concerns: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Textarea rows={3} value={panelForm.notes} onChange={(e) => setPanelForm({ ...panelForm, notes: e.target.value })} />
+                </div>
+
+                <Button onClick={handlePanelSubmit} disabled={isPanelSubmitting} className="w-full">
+                  {isPanelSubmitting ? "Saving..." : "Save Evaluation"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Panel Summary</CardTitle>
+                  <CardDescription>{panelEvaluations.length} panelist submissions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="rounded-lg bg-muted/40 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Average</div>
+                      <div className="text-2xl font-bold">{panelAverage ? `${panelAverage}/5` : "-"}</div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Latest</div>
+                      <div className="text-lg font-semibold">{panelEvaluations[0]?.overallRecommendation || "-"}</div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-3">
+                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Panelists</div>
+                      <div className="text-2xl font-bold">{panelEvaluations.length}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {panelEvaluations.length === 0 ? (
+                <Card>
+                  <CardContent className="py-10 text-center text-sm text-muted-foreground">Belum ada penilaian panelis.</CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {panelEvaluations.map((evaluation) => {
+                    const avg = ((evaluation.technicalScore + evaluation.communicationScore + evaluation.cultureScore + evaluation.problemSolvingScore + evaluation.attitudeScore) / 5).toFixed(1);
+                    return (
+                      <Card key={evaluation.id}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <CardTitle className="text-base">{evaluation.panelistName}</CardTitle>
+                              <CardDescription>{evaluation.panelistRole || "Panelist"} · {format(new Date(evaluation.submittedAt), "dd MMM yyyy HH:mm")}</CardDescription>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary">{avg}/5</Badge>
+                              <Badge>{evaluation.overallRecommendation}</Badge>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                            <div className="rounded bg-muted/40 p-2">Technical<br/><b>{evaluation.technicalScore}</b></div>
+                            <div className="rounded bg-muted/40 p-2">Communication<br/><b>{evaluation.communicationScore}</b></div>
+                            <div className="rounded bg-muted/40 p-2">Culture<br/><b>{evaluation.cultureScore}</b></div>
+                            <div className="rounded bg-muted/40 p-2">Problem<br/><b>{evaluation.problemSolvingScore}</b></div>
+                            <div className="rounded bg-muted/40 p-2">Attitude<br/><b>{evaluation.attitudeScore}</b></div>
+                          </div>
+                          {evaluation.strengths && <div><b>Strengths:</b> {evaluation.strengths}</div>}
+                          {evaluation.concerns && <div><b>Concerns:</b> {evaluation.concerns}</div>}
+                          {evaluation.notes && <div className="rounded bg-muted/40 p-3 whitespace-pre-wrap">{evaluation.notes}</div>}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="mcu">
@@ -1159,7 +1425,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
       </Tabs>
 
       <Dialog open={Boolean(selectedTestResult)} onOpenChange={(open) => !open && setSelectedTestResult(null)}>
-        <DialogContent className="sm:max-w-5xl">
+        <DialogContent className="sm:max-w-[72rem] w-[92vw]">
           <DialogHeader>
             <DialogTitle>Detail Result — {selectedTestResult?.testTitle}</DialogTitle>
             <DialogDescription>
@@ -1168,54 +1434,85 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </DialogHeader>
           {selectedTestResult && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-4 text-sm sm:grid-cols-4">
-                <div>
-                  <div className="text-xs text-muted-foreground">Status</div>
-                  <Badge variant={selectedTestResult.status === "Completed" || selectedTestResult.status === "Graded" ? "default" : "secondary"}>{selectedTestResult.status}</Badge>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Score</div>
-                  <div className="text-xl font-bold text-primary tabular-nums">{selectedTestResult.percentage}%</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Correct</div>
-                  <div className="font-semibold">{selectedTestResult.correctCount}/{selectedTestResult.totalQuestions} soal</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Points</div>
-                  <div className="font-mono font-semibold">{selectedTestResult.totalEarnedPoints}/{selectedTestResult.totalMaxPoints}</div>
-                </div>
-              </div>
-              <div className="max-h-[60vh] overflow-auto rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30 hover:bg-muted/30">
-                      <TableHead className="w-12 text-center text-xs">#</TableHead>
-                      <TableHead className="text-xs">PERTANYAAN</TableHead>
-                      <TableHead className="text-xs w-56">JAWABAN</TableHead>
-                      <TableHead className="text-xs w-24 text-right">SKOR</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              {selectedTestResult.isApplicationForm ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-4 text-sm sm:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Status</div>
+                      <Badge variant={selectedTestResult.status === "Completed" ? "default" : "secondary"}>{selectedTestResult.status}</Badge>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Tipe</div>
+                      <div className="font-semibold">Application Form</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Diselesaikan</div>
+                      <div className="font-semibold">{selectedTestResult.completedAt ? format(new Date(selectedTestResult.completedAt), "dd MMM yyyy HH:mm") : "-"}</div>
+                    </div>
+                  </div>
+                  <div className="max-h-[60vh] overflow-auto rounded-lg border p-4 space-y-4">
                     {selectedTestResult.answers.map((ans: any, idx: number) => (
-                      <TableRow key={ans.id} className="border-t">
-                        <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
-                        <TableCell className="text-sm">{ans.questionText}</TableCell>
-                        <TableCell className="text-sm">
-                          <span className={cn(ans.pointsAwarded > 0 ? "font-medium text-green-700" : "font-medium text-destructive")}>
-                            <AnswerCell text={ans.answerText} />
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
-                            {ans.pointsAwarded}/{ans.maxPoints}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
+                      <div key={ans.id} className="rounded-xl border bg-muted/20 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Application Form Data</div>
+                        <ApplicationFormAnswer text={ans.answerText} />
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 gap-3 rounded-xl bg-muted/30 p-4 text-sm sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Status</div>
+                      <Badge variant={selectedTestResult.status === "Completed" || selectedTestResult.status === "Graded" ? "default" : "secondary"}>{selectedTestResult.status}</Badge>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Score</div>
+                      <div className="text-xl font-bold text-primary tabular-nums">{selectedTestResult.percentage}%</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Correct</div>
+                      <div className="font-semibold">{selectedTestResult.correctCount}/{selectedTestResult.totalQuestions} soal</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Points</div>
+                      <div className="font-mono font-semibold">{selectedTestResult.totalEarnedPoints}/{selectedTestResult.totalMaxPoints}</div>
+                    </div>
+                  </div>
+                  <div className="max-h-[60vh] overflow-auto rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableHead className="w-10 text-center text-xs">#</TableHead>
+                          <TableHead className="text-xs min-w-[320px]">PERTANYAAN</TableHead>
+                          <TableHead className="text-xs w-56">JAWABAN</TableHead>
+                          <TableHead className="text-xs w-20 text-right">SKOR</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedTestResult.answers.map((ans: any, idx: number) => (
+                          <TableRow key={ans.id} className="border-t">
+                            <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell className="text-sm align-top">
+                            <div className="prose prose-sm max-w-none text-foreground break-words whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: ans.questionText }} />
+                          </TableCell>
+                            <TableCell className="text-sm align-top">
+                              <span className={cn(ans.pointsAwarded > 0 ? "font-medium text-green-700" : "font-medium text-destructive")}>
+                                <AnswerCell text={ans.answerText} />
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right align-top">
+                              <Badge variant={ans.pointsAwarded > 0 ? "default" : "destructive"} className={cn("text-xs font-mono", ans.pointsAwarded > 0 ? "bg-green-600" : "")}>
+                                {ans.pointsAwarded}/{ans.maxPoints}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </DialogContent>

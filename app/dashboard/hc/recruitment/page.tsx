@@ -1,4 +1,5 @@
 import { getRecruitments, getCandidatesPaginated, getRecruitmentStats, getRecruitmentFormOptions } from "@/app/actions/recruitment";
+import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 import { RecruitmentClientPage } from "./client-page";
 
 export const metadata = {
@@ -6,11 +7,12 @@ export const metadata = {
 };
 
 export default async function RecruitmentPage() {
-  const [recruitments, candidatesPaginated, stats, formOptions] = await Promise.all([
+  const [recruitments, candidatesPaginated, stats, formOptions, clinics] = await Promise.all([
     getRecruitments(),
     getCandidatesPaginated({ page: 1, pageSize: 25 }),
     getRecruitmentStats(),
     getRecruitmentFormOptions(),
+    getActiveMcuClinics(),
   ]);
 
   return (
@@ -19,6 +21,7 @@ export default async function RecruitmentPage() {
       initialCandidates={candidatesPaginated}
       stats={stats}
       formOptions={formOptions}
+      clinics={clinics}
     />
   );
 }

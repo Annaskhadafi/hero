@@ -2272,6 +2272,8 @@ export const hcRecruitments = pgTable('hero_hc_recruitments', {
   requirements: text('requirements').notNull().default(''),
   qualifications: jsonb('qualifications').$type<string[]>(), // Array of checked qualification strings
   mandatoryFields: jsonb('mandatory_fields').$type<string[]>(), // Array of mandatory field names for public form
+  scoringCriteria: jsonb('scoring_criteria').$type<Array<{ id: string; label: string; weight: number; description?: string }>>(),
+  knockoutCriteria: jsonb('knockout_criteria').$type<Array<{ id: string; label: string; enabled: boolean; description?: string }>>(),
   emailTemplateId: integer('email_template_id'), // Reference to hcEmailTemplates (optional override)
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -2419,6 +2421,7 @@ export const hcCandidates = pgTable('hero_hc_candidates', {
   // AI Assessment
   aiScore: integer('ai_score'),
   aiSummary: text('ai_summary').notNull().default(''),
+  aiDetails: jsonb('ai_details').$type<{ breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }>; recommendation?: string }>(),
   aiAssessmentDate: timestamp('ai_assessment_date'),
 
   notes: text('notes').notNull().default(''),
@@ -2463,6 +2466,26 @@ export const hcCandidateInterviews = pgTable('hero_hc_candidate_interviews', {
   status: text('status').notNull().default('Scheduled'), // Scheduled, Completed, Cancelled, No-Show
   result: text('result').notNull().default('Pending'), // Pending, Pass, Fail
   notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcCandidatePanelEvaluations = pgTable('hero_hc_candidate_panel_evaluations', {
+  id: serial('id').primaryKey(),
+  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }),
+  interviewId: integer('interview_id').references(() => hcCandidateInterviews.id, { onDelete: 'set null' }),
+  panelistName: text('panelist_name').notNull(),
+  panelistRole: text('panelist_role').notNull().default(''),
+  technicalScore: integer('technical_score').notNull().default(0),
+  communicationScore: integer('communication_score').notNull().default(0),
+  cultureScore: integer('culture_score').notNull().default(0),
+  problemSolvingScore: integer('problem_solving_score').notNull().default(0),
+  attitudeScore: integer('attitude_score').notNull().default(0),
+  overallRecommendation: text('overall_recommendation').notNull().default('Review'),
+  strengths: text('strengths').notNull().default(''),
+  concerns: text('concerns').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  submittedAt: timestamp('submitted_at').notNull().defaultNow(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

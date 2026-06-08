@@ -15,6 +15,12 @@ export type EmailTransportSettings = {
   timeoutSeconds: number;
 };
 
+export type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
 export type EmailDeliveryPayload = {
   to: string;
   subject: string;
@@ -24,6 +30,7 @@ export type EmailDeliveryPayload = {
   templateName?: string | null;
   templateCode?: string | null;
   actorEmail?: string | null;
+  attachments?: EmailAttachment[];
 };
 
 function usesSecureTransport(encryption: string, port: number) {
@@ -135,6 +142,11 @@ export async function sendEmailViaSmtp(
         ? { text }
         : { html, text }),
       messageId,
+      attachments: payload.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType || "application/pdf",
+      })),
       headers: {
         "X-Mailer": "HERO Recruitment System",
         "Precedence": "normal",

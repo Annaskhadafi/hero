@@ -220,6 +220,24 @@ export async function uploadAttendancePhotoToS3(file: File) {
   return uploadAnyFileToS3(file, ATTENDANCE_PHOTO_PREFIX);
 }
 
+export async function uploadBufferToS3(
+  buffer: Buffer,
+  key: string,
+  contentType = "application/octet-stream"
+) {
+  const client = getS3Client();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: serverEnv.s3BucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "private, max-age=86400",
+    }),
+  );
+  return { key, url: buildS3PublicUrl(key) };
+}
+
 export async function getS3ObjectReadUrl(objectUrl: string | null, expiresIn = 3600) {
   if (!objectUrl) {
     return null;

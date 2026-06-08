@@ -17,12 +17,13 @@ import {
   IconCalendarEvent,
   IconStack2,
   IconStethoscope,
+  IconArrowsExchange,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -81,8 +82,26 @@ type Recruitment = {
   requirements?: string;
   qualifications?: string[] | null;
   mandatoryFields?: string[] | null;
+  scoringCriteria?: Array<{ id: string; label: string; weight: number; description?: string }> | null;
+  knockoutCriteria?: Array<{ id: string; label: string; enabled: boolean; description?: string }> | null;
   emailTemplateId?: number | null;
 };
+
+const DEFAULT_SCORING_CRITERIA = [
+  { id: "education", label: "Education", weight: 20, description: "Minimum education and major relevance" },
+  { id: "experience", label: "Experience", weight: 30, description: "Relevant role and years of experience" },
+  { id: "certification", label: "Certification", weight: 15, description: "Required or relevant certificates" },
+  { id: "license", label: "License", weight: 10, description: "Required driving or operating licenses" },
+  { id: "skill", label: "Skill Match", weight: 20, description: "Technical and practical skill fit" },
+  { id: "availability", label: "Availability", weight: 5, description: "Location, schedule, and readiness" },
+];
+
+const DEFAULT_KNOCKOUT_CRITERIA = [
+  { id: "education", label: "Minimum education met", enabled: false, description: "Candidate must meet the stated minimum education" },
+  { id: "experience", label: "Minimum experience met", enabled: false, description: "Candidate must meet the stated minimum years of experience" },
+  { id: "license", label: "Required license available", enabled: false, description: "Candidate must hold required SIM/operator license" },
+  { id: "certification", label: "Required certificate available", enabled: false, description: "Candidate must hold required certificate" },
+];
 
 type Candidate = {
   id: number;
@@ -99,6 +118,7 @@ type Candidate = {
   cvUrl: string;
   aiScore: number | null;
   aiSummary: string;
+  aiDetails?: { recommendation?: string; breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }> } | null;
   rejectionReason: string;
   createdAt: Date;
 };
@@ -124,6 +144,7 @@ interface RecruitmentClientPageProps {
     departments: { id: number; name: string }[];
     sections: { id: number; name: string; departmentId: number | null }[];
   };
+  clinics: { id: number; name: string; email: string; address: string; city: string }[];
 }
 
 export function RecruitmentClientPage({
@@ -131,6 +152,7 @@ export function RecruitmentClientPage({
   initialCandidates: paginatedCandidates,
   stats,
   formOptions,
+  clinics,
 }: RecruitmentClientPageProps) {
   const [candidates, setCandidates] = useState<Candidate[]>(paginatedCandidates.data as Candidate[]);
   const [candidatePage, setCandidatePage] = useState(paginatedCandidates);
@@ -144,6 +166,9 @@ export function RecruitmentClientPage({
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [cvViewerName, setCvViewerName] = useState("");
   const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [compareRows, setCompareRows] = useState<any[]>([]);
+  const [compareLoading, setCompareLoading] = useState(false);
 
   // Test Invitation Dialog
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
@@ -160,7 +185,7 @@ export function RecruitmentClientPage({
 
   // Bulk MCU State
   const [isBulkMcuOpen, setIsBulkMcuOpen] = useState(false);
-  const [bulkMcuForm, setBulkMcuForm] = useState({ clinicName: "", clinicEmail: "", paket: "", date: "" });
+  const [bulkMcuForm, setBulkMcuForm] = useState({ clinicId: "", clinicName: "", clinicEmail: "", paket: "", date: "" });
   const [isBulkMcuSending, setIsBulkMcuSending] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
   const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
@@ -281,6 +306,7 @@ export function RecruitmentClientPage({
       const result = await bulkScheduleMcus(Array.from(selectedIds), {
         klinikName: bulkMcuForm.clinicName, klinikEmail: bulkMcuForm.clinicEmail,
         paketMcu: bulkMcuForm.paket, scheduledDate: d,
+        clinicId: bulkMcuForm.clinicId ? parseInt(bulkMcuForm.clinicId) : null,
       });
       const ok = result.results.filter(r => r.success).length;
       toast.success(`MCU scheduled for ${ok} candidates`);
@@ -419,6 +445,20 @@ export function RecruitmentClientPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (bulkMcuForm.clinicId) {
+      const clinic = clinics.find(c => c.id.toString() === bulkMcuForm.clinicId);
+      if (clinic) {
+        setBulkMcuForm(prev => ({
+          ...prev,
+          clinicName: clinic.name,
+          clinicEmail: clinic.email,
+        }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkMcuForm.clinicId]);
+
   const visibleCandidates = pipelineJobIdFilter
     ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter)
     : candidates;
@@ -452,6 +492,24 @@ export function RecruitmentClientPage({
     }
   };
 
+  const openCandidateComparison = async () => {
+    if (selectedIds.size < 2 || selectedIds.size > 5) {
+      toast.error("Pilih 2-5 kandidat untuk compare.");
+      return;
+    }
+    setCompareLoading(true);
+    setIsCompareOpen(true);
+    try {
+      const rows = await getCandidateComparisonData(Array.from(selectedIds));
+      setCompareRows(rows as any[]);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal load comparison");
+      setCompareRows([]);
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
   // Settings Dialog State
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -476,6 +534,8 @@ export function RecruitmentClientPage({
     requirements: "",
     qualifications: [] as string[],
     mandatoryFields: [] as string[],
+    scoringCriteria: DEFAULT_SCORING_CRITERIA,
+    knockoutCriteria: DEFAULT_KNOCKOUT_CRITERIA,
     emailTemplateId: null as number | null,
   });
 
@@ -524,7 +584,9 @@ export function RecruitmentClientPage({
       jobDescription: job.jobDescription || "",
       requirements: job.requirements || "",
       qualifications: job.qualifications || [],
-      mandatoryFields: job.mandatoryFields || ["ktp", "cv"],
+      mandatoryFields: job.mandatoryFields || ["dateOfBirth", "address", "gender", "cv"],
+      scoringCriteria: (job.scoringCriteria?.length ? job.scoringCriteria : DEFAULT_SCORING_CRITERIA).map((criterion) => ({ ...criterion, description: criterion.description || "" })),
+      knockoutCriteria: (job.knockoutCriteria?.length ? job.knockoutCriteria : DEFAULT_KNOCKOUT_CRITERIA).map((criterion) => ({ ...criterion, description: criterion.description || "" })),
       emailTemplateId: job.emailTemplateId || null,
     });
     setIsSettingsOpen(true);
@@ -564,6 +626,8 @@ export function RecruitmentClientPage({
         requirements: settingsForm.requirements,
         qualifications: settingsForm.qualifications,
         mandatoryFields: settingsForm.mandatoryFields,
+        scoringCriteria: settingsForm.scoringCriteria,
+        knockoutCriteria: settingsForm.knockoutCriteria,
         emailTemplateId: settingsForm.emailTemplateId,
       } as any);
       
@@ -630,6 +694,27 @@ export function RecruitmentClientPage({
     }
   };
 
+  const getLatestTestSummary = (testResults: any[]) => {
+    if (!testResults?.length) return "-";
+    const completed = testResults.find((test) => test.status === "Completed") || testResults[0];
+    const passLabel = completed.passed === true ? "Pass" : completed.passed === false ? "Fail" : completed.status;
+    return `${completed.testTitle || "Test"}: ${completed.percentage ?? completed.score ?? "-"}% (${passLabel})`;
+  };
+
+  const getLatestInterviewSummary = (interviews: any[]) => {
+    if (!interviews?.length) return "-";
+    const latest = interviews[0];
+    const date = latest.scheduledAt ? format(new Date(latest.scheduledAt), "dd MMM yyyy") : "-";
+    return `${latest.result || latest.status || "-"} · ${latest.interviewerName || "-"} · ${date}`;
+  };
+
+  const getLatestMcuSummary = (mcuRecords: any[]) => {
+    if (!mcuRecords?.length) return "-";
+    const latest = mcuRecords[0];
+    const date = latest.scheduledDate ? format(new Date(latest.scheduledDate), "dd MMM yyyy") : "-";
+    return `${latest.status || "-"} · ${latest.klinikName || "-"} · ${date}`;
+  };
+
   return (
     <AdminPageShell
       eyebrow="Human Capital"
@@ -668,6 +753,17 @@ export function RecruitmentClientPage({
               <IconUsers className="w-4 h-4" />
               Candidate Pipeline
             </button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={openCandidateComparison}
+              disabled={activeView !== "pipeline" || selectedIds.size < 2 || selectedIds.size > 5}
+              className="ml-1 h-10 rounded-xl bg-background/80 px-4 text-sm shadow-sm"
+            >
+              <IconArrowsExchange className="w-4 h-4 mr-2" />
+              Compare
+            </Button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -920,9 +1016,16 @@ export function RecruitmentClientPage({
                           </TableCell>
                           <TableCell>
                             {candidate.aiScore !== null ? (
-                              <div className="flex items-center gap-2">
-                                <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
-                                <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                  <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
+                                  <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                                </div>
+                                {candidate.aiDetails?.recommendation && (
+                                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    {candidate.aiDetails.recommendation}
+                                  </span>
+                                )}
                               </div>
                             ) : "-"}
                           </TableCell>
@@ -1149,6 +1252,7 @@ export function RecruitmentClientPage({
               <Label>Form Builder: Mandatory Fields</Label>
               <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
                 {[
+                  { id: "cv", label: "Curriculum Vitae (CV)" },
                   { id: "dateOfBirth", label: "Date of Birth" },
                   { id: "address", label: "Full Address" },
                   { id: "gender", label: "Gender" },
@@ -1176,8 +1280,66 @@ export function RecruitmentClientPage({
               </div>
               <p className="text-xs text-muted-foreground mt-2">
                 Selected fields will be required when candidates fill out the public application form.
-                Name, Email, Phone, and CV are always required.
+                Name, Email, and Phone are always required. CV follows this configuration.
               </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <Label>AI Scoring Matrix</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Weight guides AI match score. Keep total near 100 for clean comparison.
+                </p>
+              </div>
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
+                {settingsForm.scoringCriteria.map((criterion, idx) => (
+                  <div key={criterion.id} className="grid grid-cols-[1fr_88px] gap-3 items-center rounded-md bg-background/70 p-3">
+                    <div>
+                      <div className="text-sm font-medium">{criterion.label}</div>
+                      <div className="text-xs text-muted-foreground">{criterion.description}</div>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={criterion.weight}
+                      onChange={(e) => {
+                        const next = [...settingsForm.scoringCriteria];
+                        next[idx] = { ...criterion, weight: parseInt(e.target.value, 10) || 0 };
+                        setSettingsForm({ ...settingsForm, scoringCriteria: next });
+                      }}
+                    />
+                  </div>
+                ))}
+                <div className="text-xs text-muted-foreground text-right">
+                  Total weight: {settingsForm.scoringCriteria.reduce((sum, item) => sum + item.weight, 0)}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Knockout Criteria</Label>
+              <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-4">
+                {settingsForm.knockoutCriteria.map((criterion, idx) => (
+                  <div key={criterion.id} className="flex items-start gap-3 rounded-md bg-background/70 p-3">
+                    <Checkbox
+                      id={`knockout-${criterion.id}`}
+                      checked={criterion.enabled}
+                      onCheckedChange={(checked) => {
+                        const next = [...settingsForm.knockoutCriteria];
+                        next[idx] = { ...criterion, enabled: checked === true };
+                        setSettingsForm({ ...settingsForm, knockoutCriteria: next });
+                      }}
+                    />
+                    <div>
+                      <Label htmlFor={`knockout-${criterion.id}`} className="cursor-pointer text-sm font-medium">
+                        {criterion.label}
+                      </Label>
+                      <div className="text-xs text-muted-foreground">{criterion.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1228,9 +1390,16 @@ export function RecruitmentClientPage({
                         </TableCell>
                         <TableCell>
                           {candidate.aiScore !== null ? (
-                            <div className="flex items-center gap-2">
-                              <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
-                              <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                            <div className="flex flex-col gap-1 items-start">
+                              <div className="flex items-center gap-2">
+                                <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
+                                <span className="text-xs font-medium">{candidate.aiScore}%</span>
+                              </div>
+                              {candidate.aiDetails?.recommendation && (
+                                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  {candidate.aiDetails.recommendation}
+                                </span>
+                              )}
                             </div>
                           ) : "-"}
                         </TableCell>
@@ -1291,6 +1460,136 @@ export function RecruitmentClientPage({
             </>
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={isCompareOpen} onOpenChange={setIsCompareOpen}>
+      <DialogContent className="w-[96vw] h-[88vh] max-w-none flex flex-col overflow-hidden" style={{ maxHeight: '88vh' }}>
+        <DialogHeader className="shrink-0">
+          <DialogTitle>Candidate Comparison</DialogTitle>
+          <DialogDescription>
+            Compare 2-5 selected candidates before offering decision.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-auto min-h-0 rounded-xl border bg-muted/20 p-3">
+          {compareLoading ? (
+            <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">Loading comparison...</div>
+          ) : compareRows.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">No comparison data.</div>
+          ) : (
+            <div className="grid gap-3 min-w-max" style={{ gridTemplateColumns: `repeat(${compareRows.length}, minmax(300px, 1fr))` }}>
+              {compareRows.map((row) => {
+                const candidate = row.candidate;
+                const breakdown = candidate.aiDetails?.breakdown || [];
+                const knockout = candidate.aiDetails?.knockout || [];
+                return (
+                  <div key={candidate.id} className="rounded-xl border bg-background p-4 shadow-sm space-y-4">
+                    <div className="space-y-1">
+                      <div className="text-base font-semibold leading-tight">{candidate.fullName}</div>
+                      <div className="text-xs text-muted-foreground">{candidate.jobTitle || "-"} · {candidate.currentStage}</div>
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {candidate.aiScore !== null ? <Badge>{candidate.aiScore}% AI</Badge> : <Badge variant="secondary">No AI score</Badge>}
+                        {candidate.aiDetails?.recommendation ? <Badge variant="outline">{candidate.aiDetails.recommendation}</Badge> : null}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI Score Breakdown</div>
+                      {breakdown.length > 0 ? breakdown.map((item: any, idx: number) => (
+                        <div key={`${item.criterion}-${idx}`} className="space-y-1 rounded-md bg-muted/30 p-2">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-medium">{item.criterion}</span>
+                            <span className="text-muted-foreground">{item.score}% / w{item.weight}</span>
+                          </div>
+                          <div className="h-1 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, Number(item.score) || 0))}%` }} />
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">{item.reason}</div>
+                        </div>
+                      )) : <div className="text-xs text-muted-foreground">No AI breakdown.</div>}
+                      {knockout.length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          {knockout.map((item: any, idx: number) => (
+                            <div key={`${item.criterion}-${idx}`} className="flex items-start justify-between gap-2 text-xs">
+                              <span>{item.criterion}</span>
+                              <Badge variant={item.passed ? "default" : "destructive"} className="text-[10px]">{item.passed ? "Pass" : "Fail"}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Education</div>
+                      {candidate.education?.length > 0 ? candidate.education.map((edu: any, idx: number) => (
+                        <div key={idx} className="text-xs rounded-md bg-muted/30 p-2">
+                          <div className="font-medium">{edu.level || edu.jenjang || "-"} · {edu.major || "-"}</div>
+                          <div className="text-muted-foreground">{edu.institution || "-"} · {edu.yearIn || "-"}-{edu.yearOut || "-"}</div>
+                        </div>
+                      )) : <div className="text-xs text-muted-foreground">-</div>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Experience</div>
+                      {candidate.workExperience?.length > 0 ? candidate.workExperience.map((work: any, idx: number) => (
+                        <div key={idx} className="text-xs rounded-md bg-muted/30 p-2">
+                          <div className="font-medium">{work.role || "-"}</div>
+                          <div className="text-muted-foreground">{work.company || "-"} · {work.yearIn || "-"}-{work.yearOut || "-"}</div>
+                        </div>
+                      )) : <div className="text-xs text-muted-foreground">-</div>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Certifications</div>
+                      {candidate.certificates?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {candidate.certificates.map((cert: any, idx: number) => (
+                            <Badge key={idx} variant="secondary" className="text-[10px]">{cert.name || "Certificate"}</Badge>
+                          ))}
+                        </div>
+                      ) : <div className="text-xs text-muted-foreground">-</div>}
+                    </div>
+
+                    <div className="grid gap-2 text-xs">
+                      <div className="rounded-md bg-muted/30 p-2">
+                        <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Test Result</div>
+                        <div>{getLatestTestSummary(row.testResults)}</div>
+                      </div>
+                      <div className="rounded-md bg-muted/30 p-2">
+                        <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Interview Result</div>
+                        <div>{getLatestInterviewSummary(row.interviews)}</div>
+                      </div>
+                      <div className="rounded-md bg-muted/30 p-2">
+                        <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Panelist Evaluation</div>
+                        <div>
+                          {row.panelSummary?.count
+                            ? `${row.panelSummary.averageScore}/5 · ${row.panelSummary.recommendation} (${row.panelSummary.count} panelis)`
+                            : "-"}
+                        </div>
+                      </div>
+                      <div className="rounded-md bg-muted/30 p-2">
+                        <div className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">MCU Result</div>
+                        <div>{getLatestMcuSummary(row.mcuRecords)}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes</div>
+                      <div className="min-h-16 rounded-md bg-muted/30 p-2 text-xs whitespace-pre-wrap">{candidate.notes || candidate.aiSummary || "-"}</div>
+                    </div>
+
+                    <Button variant="outline" size="sm" asChild className="w-full">
+                      <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>Open Details</Link>
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => setIsCompareOpen(false)}>Close</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 
@@ -1601,8 +1900,20 @@ export function RecruitmentClientPage({
           <DialogDescription>Jadwal Medical Check Up akan dikirim via email ke semua kandidat terpilih.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="space-y-2"><Label>Clinic Name *</Label><Input placeholder="Nama klinik" value={bulkMcuForm.clinicName} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicName: e.target.value})} /></div>
-          <div className="space-y-2"><Label>Clinic Email *</Label><Input type="email" placeholder="Email klinik" value={bulkMcuForm.clinicEmail} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicEmail: e.target.value})} /></div>
+          <div className="space-y-2">
+            <Label>Select Clinic</Label>
+            <Select value={bulkMcuForm.clinicId} onValueChange={v => setBulkMcuForm(prev => ({ ...prev, clinicId: v, clinicName: v ? prev.clinicName : "", clinicEmail: v ? prev.clinicEmail : "" }))}>
+              <SelectTrigger><SelectValue placeholder="Pilih klinik atau isi manual" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Manual (isi sendiri)</SelectItem>
+                {clinics.map(c => (
+                  <SelectItem key={c.id} value={c.id.toString()}>{c.name} — {c.city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2"><Label>Clinic Name *</Label><Input placeholder="Nama klinik" value={bulkMcuForm.clinicName} disabled={!!bulkMcuForm.clinicId} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicName: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Clinic Email *</Label><Input type="email" placeholder="Email klinik" value={bulkMcuForm.clinicEmail} disabled={!!bulkMcuForm.clinicId} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicEmail: e.target.value})} /></div>
           <div className="space-y-2"><Label>MCU Package *</Label><Input placeholder="cth: Paket Executive" value={bulkMcuForm.paket} onChange={e => setBulkMcuForm({...bulkMcuForm, paket: e.target.value})} /></div>
           <div className="space-y-2"><Label>Date *</Label><Input type="date" value={bulkMcuForm.date} onChange={e => setBulkMcuForm({...bulkMcuForm, date: e.target.value})} /></div>
         </div>

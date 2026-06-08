@@ -235,6 +235,7 @@ export async function getCandidateTestResults(candidateId: number) {
       id: hcOnlineTestAssignments.id,
       testId: hcOnlineTestAssignments.testId,
       testTitle: hcOnlineTests.title,
+      isApplicationForm: hcOnlineTests.isApplicationForm,
       status: hcOnlineTestAssignments.status,
       score: hcOnlineTestAssignments.score,
       passingScore: hcOnlineTests.passingScore,
