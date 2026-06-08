@@ -2,12 +2,13 @@
 
 import { useState, useMemo } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek } from "date-fns";
-import { IconChevronLeft, IconChevronRight, IconVideo, IconMapPin, IconStethoscope, IconCalendarEvent } from "@tabler/icons-react";
+import { IconChevronLeft, IconChevronRight, IconVideo, IconMapPin, IconStethoscope, IconCalendarEvent, IconArrowLeft } from "@tabler/icons-react";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RecruitmentTabBar } from "@/components/hc/recruitment-tab-bar";
 import Link from "next/link";
 
 interface InterviewEvent {
@@ -77,7 +78,16 @@ export function RecruitmentCalendarClientPage({
       title="Interview & MCU Calendar"
       description="Jadwal interview dan medical check up untuk melihat conflict dan ketersediaan."
       badge={`${interviews.length + mcus.length} events`}
+      actions={
+        <Button asChild variant="outline" size="sm" className="gap-2">
+          <Link href="/dashboard/hc/recruitment">
+            <IconArrowLeft className="w-4 h-4" />
+            Back to Recruitment
+          </Link>
+        </Button>
+      }
     >
+      <RecruitmentTabBar />
       <Tabs defaultValue="calendar" className="space-y-4">
         <TabsList>
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
