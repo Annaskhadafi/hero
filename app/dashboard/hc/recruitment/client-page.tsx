@@ -445,20 +445,6 @@ export function RecruitmentClientPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (bulkMcuForm.clinicId) {
-      const clinic = clinics.find(c => c.id.toString() === bulkMcuForm.clinicId);
-      if (clinic) {
-        setBulkMcuForm(prev => ({
-          ...prev,
-          clinicName: clinic.name,
-          clinicEmail: clinic.email,
-        }));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulkMcuForm.clinicId]);
-
   const visibleCandidates = pipelineJobIdFilter
     ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter)
     : candidates;
@@ -1902,18 +1888,25 @@ export function RecruitmentClientPage({
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
             <Label>Select Clinic</Label>
-            <Select value={bulkMcuForm.clinicId} onValueChange={v => setBulkMcuForm(prev => ({ ...prev, clinicId: v, clinicName: v ? prev.clinicName : "", clinicEmail: v ? prev.clinicEmail : "" }))}>
+            <Select value={bulkMcuForm.clinicId || "manual"} onValueChange={v => {
+              if (v === "manual") {
+                setBulkMcuForm(prev => ({ ...prev, clinicId: "", clinicName: "", clinicEmail: "" }));
+              } else {
+                const clinic = clinics.find(c => c.id.toString() === v);
+                setBulkMcuForm(prev => ({ ...prev, clinicId: v, clinicName: clinic?.name ?? "", clinicEmail: clinic?.email ?? "" }));
+              }
+            }}>
               <SelectTrigger><SelectValue placeholder="Pilih klinik atau isi manual" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Manual (isi sendiri)</SelectItem>
+                <SelectItem value="manual">Manual (isi sendiri)</SelectItem>
                 {clinics.map(c => (
                   <SelectItem key={c.id} value={c.id.toString()}>{c.name} — {c.city}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2"><Label>Clinic Name *</Label><Input placeholder="Nama klinik" value={bulkMcuForm.clinicName} disabled={!!bulkMcuForm.clinicId} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicName: e.target.value})} /></div>
-          <div className="space-y-2"><Label>Clinic Email *</Label><Input type="email" placeholder="Email klinik" value={bulkMcuForm.clinicEmail} disabled={!!bulkMcuForm.clinicId} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicEmail: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Clinic Name *</Label><Input placeholder="Nama klinik" value={bulkMcuForm.clinicName} disabled={!!bulkMcuForm.clinicId && bulkMcuForm.clinicId !== "manual"} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicName: e.target.value})} /></div>
+          <div className="space-y-2"><Label>Clinic Email *</Label><Input type="email" placeholder="Email klinik" value={bulkMcuForm.clinicEmail} disabled={!!bulkMcuForm.clinicId && bulkMcuForm.clinicId !== "manual"} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicEmail: e.target.value})} /></div>
           <div className="space-y-2"><Label>MCU Package *</Label><Input placeholder="cth: Paket Executive" value={bulkMcuForm.paket} onChange={e => setBulkMcuForm({...bulkMcuForm, paket: e.target.value})} /></div>
           <div className="space-y-2"><Label>Date *</Label><Input type="date" value={bulkMcuForm.date} onChange={e => setBulkMcuForm({...bulkMcuForm, date: e.target.value})} /></div>
         </div>
