@@ -303,8 +303,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     try {
       let fileUrl = "";
       if (mcuResultDialog.file) {
-        const bytes = await mcuResultDialog.file.arrayBuffer();
-        const base64 = Buffer.from(bytes).toString("base64");
+        const bytes = new Uint8Array(await mcuResultDialog.file.arrayBuffer());
+        const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join("");
+        const base64 = btoa(binary);
         fileUrl = await uploadMcuResultFile(mcuResultDialog.mcuId, base64, mcuResultDialog.file.name);
       }
       await recordMcuResult(mcuResultDialog.mcuId, {

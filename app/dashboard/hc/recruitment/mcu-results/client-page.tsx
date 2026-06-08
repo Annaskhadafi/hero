@@ -70,8 +70,9 @@ export function RecruitmentMcuResultsClientPage({ records }: { records: McuRecor
     try {
       let fileUrl = "";
       if (resultDialog.file) {
-        const bytes = await resultDialog.file.arrayBuffer();
-        const base64 = Buffer.from(bytes).toString("base64");
+        const bytes = new Uint8Array(await resultDialog.file.arrayBuffer());
+        const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join("");
+        const base64 = btoa(binary);
         fileUrl = await uploadMcuResultFile(resultDialog.record.id, base64, resultDialog.file.name);
       }
       await recordMcuResult(resultDialog.record.id, {
