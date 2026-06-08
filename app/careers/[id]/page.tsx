@@ -25,6 +25,7 @@ export default function CareerApplicationPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
+  const [submitTimeout, setSubmitTimeout] = useState<NodeJS.Timeout | null>(null);
   
   // -- Form State --
   const [fullName, setFullName] = useState("");
@@ -74,7 +75,14 @@ export default function CareerApplicationPage() {
       }
     }
     loadJob();
-  }, [id]);
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (submitTimeout) {
+        clearTimeout(submitTimeout);
+      }
+    };
+  }, [id, submitTimeout]);
 
   const handleSimChange = (sim: string, checked: boolean) => {
     if (checked) {
@@ -92,12 +100,21 @@ export default function CareerApplicationPage() {
     }
 
     setSubmitting(true);
-    try {
-      let cvUrl = "";
+    let cvUrl = "";
 
+    // Set timeout to prevent stuck button
+    const timeout = setTimeout(() => {
+      setSubmitting(false);
+      toast.error("Waktu pengiriman habis. Silakan coba lagi.");
+    }, 30000); // 30 seconds timeout
+    setSubmitTimeout(timeout);
+
+    try {
+      // 1. Upload CV
       if (cvFile) {
         if (cvFile.type !== "application/pdf" && !cvFile.name.toLowerCase().endsWith(".pdf")) {
           toast.error("Format file tidak didukung. Mohon unggah file PDF.");
+          clearTimeout(timeout);
           setSubmitting(false);
           return;
         }
@@ -112,7 +129,12 @@ export default function CareerApplicationPage() {
       } else {
         toast.warning("Anda belum mengunggah CV. Aplikasi tetap akan dikirim.");
       }
+    } catch (uploadErr: any) {
+      console.error("Upload CV error:", uploadErr);
+      toast.warning("CV gagal diunggah. Data Anda tetap akan dikirim tanpa CV.");
+    }
 
+    try {
       // 2. Clean up arrays (remove empty entries)
       const cleanEducation = education.filter(e => e.institution && e.jenjang);
       const cleanWork = workExperience.filter(w => w.company && w.role);
@@ -136,12 +158,13 @@ export default function CareerApplicationPage() {
         cvUrl,
       });
 
+      clearTimeout(timeout);
       toast.success("Aplikasi berhasil dikirim!");
       router.push("/careers/success");
     } catch (e: any) {
-      console.error(e);
-      toast.error(e.message || "Gagal mengirim aplikasi");
-    } finally {
+      clearTimeout(timeout);
+      console.error("Create candidate error:", e);
+      toast.error(e.message || "Gagal mengirim aplikasi. Silakan coba lagi.");
       setSubmitting(false);
     }
   };

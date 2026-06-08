@@ -542,6 +542,15 @@ export async function getCandidateById(id: number) {
 }
 
 export async function createCandidate(data: CandidateData) {
+  // Validate dateOfBirth
+  let parsedDateOfBirth: Date | null = null;
+  if (data.dateOfBirth) {
+    parsedDateOfBirth = new Date(data.dateOfBirth);
+    if (isNaN(parsedDateOfBirth.getTime())) {
+      throw new Error("Format tanggal lahir tidak valid.");
+    }
+  }
+
   const [created] = await db
     .insert(hcCandidates)
     .values({
@@ -549,7 +558,7 @@ export async function createCandidate(data: CandidateData) {
       fullName: data.fullName,
       email: data.email || "",
       phone: data.phone || "",
-      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      dateOfBirth: parsedDateOfBirth,
       address: data.address || "",
       gender: data.gender || "",
       workExperience: data.workExperience || [],
