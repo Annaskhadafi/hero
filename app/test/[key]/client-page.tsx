@@ -186,7 +186,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
               {scheduledTime.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             </div>
             <div className="text-4xl font-bold text-amber-700">
-              {scheduledTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
+              {scheduledTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WITA
             </div>
             <p className="text-sm text-muted-foreground">
               Silakan kembali pada waktu yang telah ditentukan.

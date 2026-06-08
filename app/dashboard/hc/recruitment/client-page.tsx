@@ -19,6 +19,8 @@ import {
   IconStethoscope,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
@@ -1383,7 +1385,7 @@ export function RecruitmentClientPage({
                               });
                             }}
                             className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80 text-foreground"}`}
-                            title={`${format(new Date(b.scheduledAt), "dd/MM/yy HH:mm")}${b.scheduledEndAt ? ` → ${format(new Date(b.scheduledEndAt), "HH:mm")}` : ""}`}
+                            title={`${formatInTimeZone(new Date(b.scheduledAt), WITA_TZ, "dd/MM/yy HH:mm") + " WITA"}${b.scheduledEndAt ? ` → ${formatInTimeZone(new Date(b.scheduledEndAt), WITA_TZ, "HH:mm") + " WITA"}` : ""}`}
                           >
                             {b.batchName}
                           </button>
@@ -1407,14 +1409,14 @@ export function RecruitmentClientPage({
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Mulai</Label>
+                <Label className="text-xs text-muted-foreground">Mulai (WITA)</Label>
                 <div className="grid grid-cols-2 gap-2 mt-1">
                   <Input type="date" value={testInviteForm.scheduledDate} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledDate: e.target.value })} />
                   <Input type="time" value={testInviteForm.scheduledTime} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledTime: e.target.value })} />
                 </div>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Selesai (optional)</Label>
+                <Label className="text-xs text-muted-foreground">Selesai (optional, WITA)</Label>
                 <div className="grid grid-cols-2 gap-2 mt-1">
                   <Input type="date" value={testInviteForm.scheduledEndDate} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledEndDate: e.target.value })} />
                   <Input type="time" value={testInviteForm.scheduledEndTime} onChange={(e) => setTestInviteForm({ ...testInviteForm, scheduledEndTime: e.target.value })} />
@@ -1508,8 +1510,8 @@ export function RecruitmentClientPage({
                           <div>
                             <div className="font-medium">{b.batchName}</div>
                             <div className="text-xs text-muted-foreground">
-                              {format(new Date(b.scheduledAt), "dd MMM yyyy HH:mm")}
-                              {b.scheduledEndAt && ` — ${format(new Date(b.scheduledEndAt), "HH:mm")}`}
+                              {formatInTimeZone(new Date(b.scheduledAt), WITA_TZ, "dd MMM yyyy HH:mm") + " WITA"}
+                              {b.scheduledEndAt && ` — ${formatInTimeZone(new Date(b.scheduledEndAt), WITA_TZ, "HH:mm") + " WITA"}`}
                             </div>
                           </div>
                           <div className="flex gap-1">

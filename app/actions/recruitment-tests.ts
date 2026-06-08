@@ -11,6 +11,8 @@ import { randomUUID } from "crypto";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 import { getPublicAppUrl } from "@/lib/auth-config";
+import { formatInTimeZone } from "date-fns-tz";
+const WITA_TZ = "Asia/Makassar";
 import {
   type CandidateApplicationIdentity,
   extractCandidateIdentityFromAnswer,
@@ -78,9 +80,10 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
       if (smtpSettings.host && smtpSettings.fromEmail) {
         const baseUrl = getPublicAppUrl();
         const testLink = `${baseUrl}/test/${accessKey}`;
-        const { format } = await import("date-fns");
-        const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
-        const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
+        const { formatInTimeZone } = await import("date-fns-tz");
+        const WITA_TZ = "Asia/Makassar";
+        const scheduledDate = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "dd MMMM yyyy") : "";
+        const scheduledTime = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "HH:mm") + " WITA" : "";
         const templateVars = {
           candidateName: candidate.fullName,
           jobTitle: candidate.jobTitle || "Position",
@@ -204,8 +207,10 @@ export async function bulkAssignTestToCandidates(testId: number, candidateIds: n
 
       if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
         const testLink = `${baseUrl}/test/${accessKey}`;
-        const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
-        const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
+        const { formatInTimeZone } = await import("date-fns-tz");
+        const WITA_TZ = "Asia/Makassar";
+        const scheduledDate = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "dd MMMM yyyy") : "";
+        const scheduledTime = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "HH:mm") + " WITA" : "";
         const templateVars = {
           candidateName: candidate.fullName,
           jobTitle: candidate.jobTitle || "Position",

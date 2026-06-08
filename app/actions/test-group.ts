@@ -5,6 +5,8 @@ import { hcCandidates, hcOnlineTestAssignments, hcOnlineTestGroupItems, hcOnline
 import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { formatInTimeZone } from "date-fns-tz";
+const WITA_TZ = "Asia/Makassar";
 import { getPublicAppUrl } from "@/lib/auth-config";
 import {
   type CandidateApplicationIdentity,
@@ -440,8 +442,8 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
 
       if (candidate.email && smtpSettings.host && smtpSettings.fromEmail) {
         const linksHtml = testLinks.map((link, i) => `<li><a href="${link}" target="_blank">${groupItems[i]?.title || `Tes ${i + 1}`}</a></li>`).join("");
-        const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
-        const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
+        const scheduledDate = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "dd MMMM yyyy") : "";
+        const scheduledTime = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "HH:mm") + " WITA" : "";
 
         const templateVars = {
           candidateName: candidate.fullName,
@@ -467,7 +469,7 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
           const scheduleInfo = scheduledDate
             ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
                 <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
-                <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}${scheduledEndAt ? ` s/d ${format(scheduledEndAt, "HH:mm")}` : ""}</p>
+                <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}${scheduledEndAt ? ` s/d ${formatInTimeZone(scheduledEndAt, WITA_TZ, "HH:mm") + " WITA"}` : ""}</p>
                 <p style="margin:4px 0 0;font-size:12px;color:#a16207;">Link tes hanya dapat diakses pada rentang waktu di atas.</p>
               </div>`
             : "";
@@ -548,10 +550,11 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
 
   const { getHcEmailTemplateByType } = await import("@/app/actions/hc-email-templates");
   const { renderHcTemplate } = await import("@/lib/hc-email-utils");
-  const { format } = await import("date-fns");
+  const { formatInTimeZone } = await import("date-fns-tz");
+  const WITA_TZ = "Asia/Makassar";
 
-  const scheduledDate = scheduledAt ? format(scheduledAt, "dd MMMM yyyy") : "";
-  const scheduledTime = scheduledAt ? format(scheduledAt, "HH:mm") : "";
+  const scheduledDate = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "dd MMMM yyyy") : "";
+  const scheduledTime = scheduledAt ? formatInTimeZone(scheduledAt, WITA_TZ, "HH:mm") + " WITA" : "";
   const linksHtml = groupItems.map((item, i) => `<li>${item.title}</li>`).join("");
 
   const template = await getHcEmailTemplateByType("test_assigned");
@@ -583,7 +586,7 @@ export async function previewTestGroupEmail(groupId: number, scheduledAt?: Date 
     const scheduleInfo = scheduledDate
       ? `<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:12px;padding:16px 20px;margin:20px 0;">
           <p style="margin:0;font-size:14px;color:#92400e;"><strong>🗓 Jadwal Tes:</strong></p>
-          <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}${scheduledEndAt ? ` s/d ${format(scheduledEndAt, "HH:mm")}` : ""}</p>
+          <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#92400e;">${scheduledDate} · ${scheduledTime}${scheduledEndAt ? ` s/d ${formatInTimeZone(scheduledEndAt, WITA_TZ, "HH:mm") + " WITA"}` : ""}</p>
           <p style="margin:4px 0 0;font-size:12px;color:#a16207;">Link tes hanya dapat diakses pada rentang waktu di atas.</p>
         </div>`
       : "";
