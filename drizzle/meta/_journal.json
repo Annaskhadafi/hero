@@ -232,6 +232,62 @@
       "when": 1780390442918,
       "tag": "0032_short_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780390442919,
+      "tag": "0033_hr_position_leader_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780390442920,
+      "tag": "0034_hc_online_test_schema_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1780390442921,
+      "tag": "0035_recruitment_smart_requirements",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1780390442922,
+      "tag": "0036_hc_panel_evaluations",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1780390442923,
+      "tag": "0037_hc_mcu_result_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1780390442924,
+      "tag": "0038_hc_candidate_offerings",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1780390442925,
+      "tag": "0039_hc_onboarding_docs",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780390442926,
+      "tag": "0040_recruitment_section_templates",
+      "breakpoints": true
     }
   ]
 }
