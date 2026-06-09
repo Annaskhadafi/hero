@@ -4,6 +4,7 @@ import { db } from "@/db";
 import {
   hcRecruitments,
   hcCandidates,
+  hcCandidateInterviews,
   hcCandidateStages,
   hcCandidatePanelEvaluations,
   hrEmployees,
@@ -218,6 +219,315 @@ export async function getRecruitmentStats() {
     totalCandidates: totalCandidatesResult?.value ?? 0,
     hired: hiredResult?.value ?? 0,
     overdue: overdueResult?.value ?? 0,
+  };
+}
+
+export async function getRecruitmentDashboardData(filters?: { year?: number; month?: number | null }) {
+  const now = new Date();
+  const selectedYear = filters?.year ?? now.getFullYear();
+  const selectedMonth = filters?.month ?? null;
+  const periodStart = selectedMonth
+    ? new Date(selectedYear, selectedMonth - 1, 1)
+    : new Date(selectedYear, 0, 1);
+  const periodEnd = selectedMonth
+    ? new Date(selectedYear, selectedMonth, 1)
+    : new Date(selectedYear + 1, 0, 1);
+  const candidatePeriodWhere = sql`${hcCandidates.createdAt} >= ${periodStart} AND ${hcCandidates.createdAt} < ${periodEnd}`;
+  const recruitmentPeriodWhere = sql`${hcRecruitments.createdAt} >= ${periodStart} AND ${hcRecruitments.createdAt} < ${periodEnd}`;
+
+  // ─── KPIs ───────────────────────────────────────────────────────
+  const [activeVacancies] = await db
+    .select({ value: count() })
+    .from(hcRecruitments)
+    .where(and(sql`${hcRecruitments.status} NOT IN ('Completed', 'Cancelled')`, recruitmentPeriodWhere));
+
+  const [totalCandidates] = await db
+    .select({ value: count() })
+    .from(hcCandidates)
+    .where(candidatePeriodWhere);
+
+  const [hiredThisMonth] = await db
+    .select({ value: count() })
+    .from(hcCandidates)
+    .where(
+      and(
+        eq(hcCandidates.currentStage, "Hired"),
+        candidatePeriodWhere
+      )
+    );
+
+  const [overdueVacancies] = await db
+    .select({ value: count() })
+    .from(hcRecruitments)
+    .where(
+      and(
+        sql`${hcRecruitments.endDate} < now()`,
+        sql`${hcRecruitments.status} NOT IN ('Completed', 'Cancelled')`,
+        recruitmentPeriodWhere
+      )
+    );
+
+  // Avg time to fill (days from recruitment created to candidate hired)
+  const timeToFillResult = await db.execute(sql`
+    SELECT AVG(EXTRACT(EPOCH FROM (hired.entered_at - sourcing.entered_at)) / 86400) as avg_days
+    FROM hero_hc_candidates c
+    JOIN hero_hc_candidate_stages sourcing
+      ON sourcing.candidate_id = c.id
+      AND sourcing.stage = 'Sourcing'
+    JOIN hero_hc_candidate_stages hired
+      ON hired.candidate_id = c.id
+      AND hired.stage = 'Hired'
+    WHERE c.current_stage = 'Hired'
+      AND hired.entered_at >= ${periodStart}
+      AND hired.entered_at < ${periodEnd}
+      AND hired.entered_at >= sourcing.entered_at
+  `);
+  const avgTimeToFill = Math.round(Number((timeToFillResult.rows[0] as { avg_days: number | null })?.avg_days ?? 0));
+
+  // Email delivery rate
+  const [emailSent] = await db
+    .select({ value: count() })
+    .from(emailDeliveryLogs)
+    .where(eq(emailDeliveryLogs.status, "sent"));
+  const [emailTotal] = await db
+    .select({ value: count() })
+    .from(emailDeliveryLogs);
+  const emailDeliveryRate = emailTotal?.value ? Math.round((emailSent?.value ?? 0) / emailTotal.value * 100) : 0;
+
+  // ─── Pipeline ───────────────────────────────────────────────────
+  const pipelineStages = ["Sourcing", "Screening", "Psikotes", "Interview", "Offering", "Hired"];
+  const pipeline = await Promise.all(
+    pipelineStages.map(async (stage) => {
+      const [result] = await db
+        .select({ value: count() })
+        .from(hcCandidates)
+        .where(and(eq(hcCandidates.currentStage, stage), candidatePeriodWhere));
+      return { stage, count: result?.value ?? 0 };
+    })
+  );
+
+  // Current-stage buckets are not chronological flow counts, so show stage share.
+  const pipelineTotal = pipeline.reduce((sum, item) => sum + item.count, 0);
+  const pipelineWithRates = pipeline.map((p, i) => {
+    const rate = pipelineTotal > 0 ? Math.round((p.count / pipelineTotal) * 100) : 0;
+    return { ...p, conversionRate: rate };
+  });
+
+  // ─── Source Breakdown ───────────────────────────────────────────
+  const sourceRows = await db
+    .select({
+      source: hcCandidates.source,
+      count: count(),
+    })
+    .from(hcCandidates)
+    .where(candidatePeriodWhere)
+    .groupBy(hcCandidates.source);
+
+  const totalCandidatesValue = totalCandidates?.value ?? 1;
+  const sources = sourceRows.map((s) => ({
+    source: s.source || "Unknown",
+    count: s.count,
+    percentage: Math.round((s.count / totalCandidatesValue) * 100),
+  }));
+
+  // ─── Top Vacancies ──────────────────────────────────────────────
+  const topVacancies = await db
+    .select({
+      id: hcRecruitments.id,
+      title: hcRecruitments.jobTitle,
+      department: hcRecruitments.department,
+      quota: hcRecruitments.totalRequested,
+      applied: sql<number>`cast(count(${hcCandidates.id}) as int)`,
+    })
+    .from(hcRecruitments)
+    .leftJoin(hcCandidates, and(eq(hcCandidates.recruitmentId, hcRecruitments.id), candidatePeriodWhere))
+    .where(and(sql`${hcRecruitments.status} NOT IN ('Completed', 'Cancelled')`, recruitmentPeriodWhere))
+    .groupBy(hcRecruitments.id, hcRecruitments.jobTitle, hcRecruitments.department, hcRecruitments.totalRequested)
+    .orderBy(desc(sql`count(${hcCandidates.id})`))
+    .limit(10);
+
+  // ─── Time-to-Fill Trend (last 6 months) ─────────────────────────
+  const months: string[] = [];
+  const monthStart = selectedMonth ?? 1;
+  const monthEnd = selectedMonth ?? 12;
+  for (let i = monthStart; i <= monthEnd; i++) {
+    const d = new Date(selectedYear, i - 1, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  const timeToFillTrend = await Promise.all(
+    months.map(async (month) => {
+      const [vacancyCount] = await db
+        .select({ value: count() })
+        .from(hcRecruitments)
+        .where(
+          and(sql`TO_CHAR(${hcRecruitments.createdAt}, 'YYYY-MM') = ${month}`, recruitmentPeriodWhere)
+        );
+
+      const avgResult = await db.execute(sql`
+        SELECT AVG(EXTRACT(EPOCH FROM (hired.entered_at - sourcing.entered_at)) / 86400) as avg_days
+        FROM hero_hc_candidates c
+        JOIN hero_hc_candidate_stages sourcing
+          ON sourcing.candidate_id = c.id
+          AND sourcing.stage = 'Sourcing'
+        JOIN hero_hc_candidate_stages hired
+          ON hired.candidate_id = c.id
+          AND hired.stage = 'Hired'
+        WHERE c.current_stage = 'Hired'
+          AND TO_CHAR(hired.entered_at, 'YYYY-MM') = ${month}
+          AND hired.entered_at >= sourcing.entered_at
+      `);
+
+      return {
+        month,
+        avgDays: Math.round(Number((avgResult.rows[0] as { avg_days: number | null })?.avg_days ?? 0)),
+        vacancyCount: vacancyCount?.value ?? 0,
+      };
+    })
+  );
+
+  // ─── Conversion Rates ─────────────────────────────────────────
+  const conversionPairs = pipelineStages.slice(0, -1).map((from, index) => ({
+    from,
+    to: pipelineStages[index + 1],
+  }));
+  const stageIndex = new Map(pipelineStages.map((stage, index) => [stage, index]));
+  const conversionRates = await Promise.all(
+    conversionPairs.map(async ({ from, to }) => {
+      const fromIndex = stageIndex.get(from) ?? 0;
+      const toIndex = stageIndex.get(to) ?? 0;
+      const [enteredResult] = await db
+        .select({ value: count() })
+        .from(hcCandidates)
+        .where(and(inArray(hcCandidates.currentStage, pipelineStages.filter((stage) => (stageIndex.get(stage) ?? 0) >= fromIndex)), candidatePeriodWhere));
+      const [progressedResult] = await db
+        .select({ value: count() })
+        .from(hcCandidates)
+        .where(and(inArray(hcCandidates.currentStage, pipelineStages.filter((stage) => (stageIndex.get(stage) ?? 0) >= toIndex)), candidatePeriodWhere));
+      const entered = enteredResult?.value ?? 0;
+      const progressed = progressedResult?.value ?? 0;
+      return {
+        from,
+        to,
+        rate: entered > 0 ? Math.round((progressed / entered) * 100) : 0,
+        entered,
+        progressed,
+      };
+    })
+  );
+
+  // ─── AI Score Distribution ─────────────────────────────────────
+  const aiScoreBuckets = [
+    { range: "0-30", min: 0, max: 30, color: "#ef4444" },
+    { range: "31-50", min: 31, max: 50, color: "#f97316" },
+    { range: "51-70", min: 51, max: 70, color: "#eab308" },
+    { range: "71-85", min: 71, max: 85, color: "#22c55e" },
+    { range: "86-100", min: 86, max: 100, color: "#059669" },
+  ];
+  const aiScoreDistribution = await Promise.all(
+    aiScoreBuckets.map(async (bucket) => {
+      const [result] = await db
+        .select({ value: count() })
+        .from(hcCandidates)
+        .where(and(sql`${hcCandidates.aiScore} BETWEEN ${bucket.min} AND ${bucket.max}`, candidatePeriodWhere));
+      return { range: bucket.range, count: result?.value ?? 0, color: bucket.color };
+    })
+  );
+
+  // ─── Interview Result Breakdown ────────────────────────────────
+  const interviewResultRows = await db
+    .select({ result: hcCandidateInterviews.result, count: count() })
+    .from(hcCandidateInterviews)
+    .where(sql`${hcCandidateInterviews.scheduledAt} >= ${periodStart} AND ${hcCandidateInterviews.scheduledAt} < ${periodEnd}`)
+    .groupBy(hcCandidateInterviews.result);
+
+  const interviewResultColors: Record<string, string> = {
+    Pass: "#059669",
+    Pending: "#d97706",
+    Fail: "#dc2626",
+  };
+  const interviewResults = interviewResultRows.map((row) => ({
+    result: row.result || "Unknown",
+    count: row.count,
+    color: interviewResultColors[row.result || "Unknown"] ?? "#64748b",
+  }));
+
+  // ─── Vacancy Fulfillment ───────────────────────────────────────
+  const vacancyFulfillmentRows = await db.execute(sql`
+    SELECT
+      r.id,
+      r.job_title as title,
+      r.total_requested as quota,
+      count(c.id)::int as hired
+    FROM hero_hc_recruitments r
+    LEFT JOIN hero_hc_candidates c
+      ON c.recruitment_id = r.id
+      AND c.current_stage = 'Hired'
+      AND c.created_at >= ${periodStart}
+      AND c.created_at < ${periodEnd}
+    WHERE r.created_at >= ${periodStart}
+      AND r.created_at < ${periodEnd}
+    GROUP BY r.id, r.job_title, r.total_requested
+    ORDER BY count(c.id) DESC, r.id ASC
+    LIMIT 8
+  `);
+  const vacancyFulfillment = vacancyFulfillmentRows.rows.map((row) => {
+    const typedRow = row as { id: number; title: string; quota: number; hired: number };
+    const quota = typedRow.quota || 1;
+    const hired = Number(typedRow.hired ?? 0);
+    return {
+      id: typedRow.id,
+      title: typedRow.title,
+      quota,
+      hired,
+      fulfillment: Math.round((hired / quota) * 100),
+    };
+  });
+
+  // ─── Recent Activity ───────────────────────────────────────────
+  const recentActivity: {
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    timestamp: string;
+    icon?: string;
+  }[] = [];
+
+  // ─── Upcoming Events ─────────────────────────────────────────────
+  const upcomingEvents: {
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    date: string;
+    time?: string;
+    status: string;
+  }[] = [];
+
+  return {
+    activeVacancies: activeVacancies?.value ?? 0,
+    totalCandidates: totalCandidates?.value ?? 0,
+    hiredThisMonth: hiredThisMonth?.value ?? 0,
+    avgTimeToFill,
+    overdueVacancies: overdueVacancies?.value ?? 0,
+    emailDeliveryRate,
+    pipeline: pipelineWithRates,
+    sources,
+    topVacancies: topVacancies.map((v) => ({
+      id: v.id,
+      title: v.title,
+      department: v.department,
+      quota: v.quota,
+      applied: v.applied,
+    })),
+    timeToFillTrend,
+    conversionRates,
+    aiScoreDistribution,
+    interviewResults,
+    vacancyFulfillment,
+    recentActivity,
+    upcomingEvents,
   };
 }
 
