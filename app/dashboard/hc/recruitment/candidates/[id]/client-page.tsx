@@ -133,6 +133,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
   const [isHireOpen, setIsHireOpen] = useState(false);
   const [isHiring, setIsHiring] = useState(false);
+  const [hireStartDate, setHireStartDate] = useState("");
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [cvLoading, setCvLoading] = useState(false);
@@ -218,9 +219,10 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const handleHire = async () => {
     setIsHiring(true);
     try {
-      const result = await hireAndCreateEmployee(candidate.id);
+      const result = await hireAndCreateEmployee(candidate.id, hireStartDate);
       toast.success(`Hired! Employee ID: ${result.employeeId}`);
       setIsHireOpen(false);
+      setHireStartDate("");
       router.refresh();
     } catch (e: any) {
       toast.error(e.message || "Failed to hire candidate");
@@ -1960,9 +1962,14 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <DialogHeader>
             <DialogTitle>Confirm Hire</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4">
             <p>Hire <strong>{candidate.fullName}</strong> for <strong>{candidate.jobTitle || "the position"}</strong>?</p>
-            <p className="text-sm text-muted-foreground mt-2">
+            <div className="space-y-2">
+              <Label className="text-sm">Tanggal Mulai Kerja</Label>
+              <Input type="date" value={hireStartDate} onChange={e => setHireStartDate(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Tanggal ini akan dikirim ke kandidat via email onboarding.</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
               This will create an Employee record with auto-generated NIK and move the candidate to Hired stage.
             </p>
           </div>

@@ -297,7 +297,12 @@ export default function OnboardingPage({ params }: { params: Promise<{ token: st
                     type="date"
                     value={formData.startDate}
                     onChange={e => setFormData({...formData, startDate: e.target.value})}
+                    disabled={Boolean(data?.candidate?.startDate)}
+                    readOnly={Boolean(data?.candidate?.startDate)}
                   />
+                  {data?.candidate?.startDate && (
+                    <p className="text-xs text-muted-foreground">Tanggal ditentukan oleh HR.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
