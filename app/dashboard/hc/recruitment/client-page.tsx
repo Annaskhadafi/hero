@@ -167,6 +167,7 @@ interface RecruitmentClientPageProps {
     id: number;
     sectionId: number | null;
     sectionName: string;
+    jobDescription: string;
     requirements: string;
     qualifications: string[];
     mandatoryFields: string[];
@@ -1339,6 +1340,7 @@ export function RecruitmentClientPage({
                       if (val === "clear") {
                         setSettingsForm((prev) => ({
                           ...prev,
+                          jobDescription: "",
                           requirements: "",
                           qualifications: [],
                           mandatoryFields: ["dateOfBirth", "address", "gender", "cv"],
@@ -1349,6 +1351,7 @@ export function RecruitmentClientPage({
                       if (template) {
                         setSettingsForm((prev) => ({
                           ...prev,
+                          jobDescription: template.jobDescription,
                           requirements: template.requirements,
                           qualifications: template.qualifications,
                           mandatoryFields: template.mandatoryFields,

@@ -243,17 +243,31 @@ export default function CareerApplicationPage() {
 
         <div className="grid gap-8 md:grid-cols-3">
           <div className="md:col-span-3 space-y-6">
-            <Card className="bg-card/50 border-primary/20 shadow-sm">
+            <Card className="bg-card/50 border-primary/20 shadow-sm rounded-2xl">
               <CardContent className="p-6">
-                <h3 className="font-semibold text-lg mb-4 text-primary">Deskripsi Pekerjaan & Persyaratan</h3>
-                <div className="grid md:grid-cols-2 gap-8 text-sm text-muted-foreground">
-                  <div className="whitespace-pre-wrap">
-                    <span className="font-semibold text-foreground block mb-2">Deskripsi:</span>
-                    {job.jobDescription || "Tidak ada deskripsi spesifik."}
+                <h3 className="font-semibold text-lg mb-5 text-primary">Deskripsi Pekerjaan & Persyaratan</h3>
+                <div className="grid md:grid-cols-2 gap-8 text-sm">
+                  <div>
+                    <span className="font-semibold text-foreground block mb-3">Deskripsi:</span>
+                    <ul className="space-y-2 text-muted-foreground">
+                      {(job.jobDescription || "Tidak ada deskripsi spesifik.").split('\n').filter(Boolean).map((line: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-primary mt-1">-</span>
+                          <span>{line.replace(/^- /, '')}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <div className="whitespace-pre-wrap">
-                    <span className="font-semibold text-foreground block mb-2">Persyaratan:</span>
-                    {job.requirements || "Tidak ada persyaratan spesifik."}
+                  <div>
+                    <span className="font-semibold text-foreground block mb-3">Persyaratan:</span>
+                    <ul className="space-y-2 text-muted-foreground">
+                      {(job.requirements || "Tidak ada persyaratan spesifik.").split('\n').filter(Boolean).map((line: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-primary mt-1">-</span>
+                          <span>{line.replace(/^- /, '')}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </CardContent>

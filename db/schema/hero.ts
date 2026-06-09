@@ -1139,6 +1139,7 @@ export const masterPositions = pgTable('hero_master_positions', {
 export const recruitmentSectionTemplates = pgTable('hero_recruitment_section_templates', {
   id: serial('id').primaryKey(),
   sectionId: integer('section_id').references(() => masterSections.id, { onDelete: 'cascade' }),
+  jobDescription: text('job_description').notNull().default(''),
   requirements: text('requirements').notNull().default(''),
   qualifications: jsonb('qualifications').$type<string[]>().default([]),
   mandatoryFields: jsonb('mandatory_fields').$type<string[]>().default([]),
