@@ -134,6 +134,26 @@ export default function OnboardingPage({ params }: { params: Promise<{ token: st
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <UserCircle className="h-5 w-5 text-primary" />
+                  <CardTitle>Informasi Kandidat</CardTitle>
+                </div>
+                <CardDescription>Nama dan email terisi otomatis dari lamaran</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Nama</Label>
+                  <Input value={data.candidate.fullName || ""} disabled readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={data.candidate.email || ""} disabled readOnly />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <UserCircle className="h-5 w-5 text-primary" />
                   <CardTitle>Personal Identification</CardTitle>
                 </div>
               </CardHeader>
