@@ -1307,3 +1307,88 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
     return { success: false, error: error.message };
   }
 }
+
+export async function sendStartDateEmails(candidateIds: number[], startDate: string) {
+  const smtpSettings = await getEmailSmtpSettingsData();
+  const results: Array<{ candidateId: number; success: boolean; error?: string }> = [];
+
+  for (const cid of candidateIds) {
+    try {
+      const [candidate] = await db
+        .select({ id: hcCandidates.id, fullName: hcCandidates.fullName, email: hcCandidates.email, onboardingToken: hcCandidates.onboardingToken, recruitmentId: hcCandidates.recruitmentId })
+        .from(hcCandidates)
+        .where(eq(hcCandidates.id, cid))
+        .limit(1);
+
+      if (!candidate) {
+        results.push({ candidateId: cid, success: false, error: "Candidate not found" });
+        continue;
+      }
+      if (!candidate.email) {
+        results.push({ candidateId: cid, success: false, error: "Candidate has no email" });
+        continue;
+      }
+
+      let token = candidate.onboardingToken;
+      if (!token) {
+        token = crypto.randomBytes(32).toString("hex");
+        await db.update(hcCandidates).set({ onboardingToken: token }).where(eq(hcCandidates.id, cid));
+      }
+
+      await db.update(hcCandidates).set({ startDate }).where(eq(hcCandidates.id, cid));
+
+      let jobTitle = "Posisi";
+      if (candidate.recruitmentId) {
+        const [rec] = await db.select({ jobTitle: hcRecruitments.jobTitle }).from(hcRecruitments).where(eq(hcRecruitments.id, candidate.recruitmentId)).limit(1);
+        if (rec) jobTitle = rec.jobTitle;
+      }
+
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://hero.chitraparatama.com";
+      const onboardingUrl = `${baseUrl}/onboarding/${token}`;
+      const startDateLabel = new Date(startDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+
+      const html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <h2 style="color:#0f172a;">Secara Resmi Kami Menyambut Anda</h2>
+          <p>Halo <strong>${candidate.fullName}</strong>,</p>
+          <p>Kami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai <strong>Karyawan PT Chitra Paratama</strong>.</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f8fafc;border-radius:8px;">
+            <tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">Posisi</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${jobTitle}</td></tr>
+            <tr><td style="padding:8px 12px;font-weight:600;">Tanggal Mulai Kerja</td><td style="padding:8px 12px;">${startDateLabel}</td></tr>
+          </table>
+          <p>Sebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:</p>
+          <p style="text-align:center;margin:24px 0;">
+            <a href="${onboardingUrl}" style="background:#0f172a;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">Lengkapi Data Onboarding</a>
+          </p>
+          <p>Dokumen yang perlu diupload:</p>
+          <ul>
+            <li>Kartu Keluarga (KK)</li>
+            <li>Kartu Tanda Penduduk (KTP)</li>
+            <li>Scan Buku Tabungan</li>
+          </ul>
+          <p>Pastikan data diisi sebelum tanggal mulai kerja.</p>
+          <p>Salam hangat,<br/>HR Team PT Chitra Paratama</p>
+        </div>
+      `;
+
+      const text = `Secara Resmi Kami Menyambut Anda\n\nHalo ${candidate.fullName},\n\nKami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai Karyawan PT Chitra Paratama.\n\nPosisi: ${jobTitle}\nTanggal Mulai Kerja: ${startDateLabel}\n\nSebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:\n${onboardingUrl}\n\nDokumen yang perlu diupload:\n- Kartu Keluarga (KK)\n- Kartu Tanda Penduduk (KTP)\n- Scan Buku Tabungan\n\nPastikan data diisi sebelum tanggal mulai kerja.\n\nSalam hangat,\nHR Team PT Chitra Paratama`;
+
+      await sendEmailViaSmtp(smtpSettings, {
+        to: candidate.email,
+        subject: "Selamat Datang — PT Chitra Paratama",
+        html,
+        text,
+        templateName: "Start Date Email",
+        templateCode: "start_date_email",
+      });
+
+      results.push({ candidateId: cid, success: true });
+    } catch (e: any) {
+      console.error(`Failed to send start date email for candidate ${cid}:`, e);
+      results.push({ candidateId: cid, success: false, error: e.message });
+    }
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return { results };
+}

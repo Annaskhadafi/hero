@@ -23,7 +23,7 @@ import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -197,6 +197,10 @@ export function RecruitmentClientPage({
   const [bulkMcuForm, setBulkMcuForm] = useState({ clinicId: "", clinicName: "", clinicEmail: "", paket: "", date: "", signatoryName: MCU_SIGNERS[0].name, signatoryTitle: MCU_SIGNERS[0].title, signatureUrl: MCU_SIGNERS[0].signatureUrl });
   const [isBulkMcuSending, setIsBulkMcuSending] = useState(false);
 
+  const [isMulaiKerjaOpen, setIsMulaiKerjaOpen] = useState(false);
+  const [mulaiKerjaDate, setMulaiKerjaDate] = useState("");
+  const [isMulaiKerjaSending, setIsMulaiKerjaSending] = useState(false);
+
   // Bulk Offering State
   const [isBulkOfferingOpen, setIsBulkOfferingOpen] = useState(false);
   const [isBulkOfferingSending, setIsBulkOfferingSending] = useState(false);
@@ -352,6 +356,20 @@ export function RecruitmentClientPage({
       setSelectedIds(new Set());
     } catch (e: any) { toast.error(e.message); }
     finally { setIsBulkMcuSending(false); }
+  };
+
+  const handleMulaiKerja = async () => {
+    if (!mulaiKerjaDate) { toast.error("Isi tanggal mulai kerja dulu"); return; }
+    setIsMulaiKerjaSending(true);
+    try {
+      const result = await sendStartDateEmails(Array.from(selectedIds), mulaiKerjaDate);
+      const ok = result.results.filter((r: any) => r.success).length;
+      toast.success(`Mulai kerja email sent to ${ok} candidates`);
+      setIsMulaiKerjaOpen(false);
+      setMulaiKerjaDate("");
+      setSelectedIds(new Set());
+    } catch (e: any) { toast.error(e.message); }
+    finally { setIsMulaiKerjaSending(false); }
   };
 
   const handleBulkOffering = async () => {
@@ -995,6 +1013,9 @@ export function RecruitmentClientPage({
                       </Button>
                       <Button variant="default" size="sm" onClick={() => setIsBulkMcuOpen(true)}>
                         <IconStethoscope className="w-4 h-4 mr-1" /> Send MCU Email
+                      </Button>
+                      <Button variant="default" size="sm" onClick={() => setIsMulaiKerjaOpen(true)}>
+                        <IconBriefcase className="w-4 h-4 mr-1" /> Send Mulai Kerja
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                         Clear
@@ -1996,6 +2017,29 @@ export function RecruitmentClientPage({
           </Button>
           <Button onClick={handleBulkMcu} disabled={isBulkMcuSending}>
             {isBulkMcuSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Mulai Kerja Dialog */}
+    <Dialog open={isMulaiKerjaOpen} onOpenChange={setIsMulaiKerjaOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Send Mulai Kerja to {selectedIds.size} Candidates</DialogTitle>
+          <DialogDescription>Kirim email selamat datang + link onboarding ke kandidat yang sudah hired.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label>Tanggal Mulai Kerja *</Label>
+            <Input type="date" value={mulaiKerjaDate} onChange={e => setMulaiKerjaDate(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Tanggal akan disimpan ke kandidat dan dikirim via email.</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsMulaiKerjaOpen(false)}>Cancel</Button>
+          <Button onClick={handleMulaiKerja} disabled={isMulaiKerjaSending}>
+            {isMulaiKerjaSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
         </DialogFooter>
       </DialogContent>
