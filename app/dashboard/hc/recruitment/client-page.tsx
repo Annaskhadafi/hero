@@ -28,6 +28,7 @@ import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
 import { bulkScheduleMcus, previewMcuEmail } from "@/app/actions/mcu";
+import { sendOfferingEmail } from "@/app/actions/offering";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
 
@@ -187,6 +188,10 @@ export function RecruitmentClientPage({
   const [isBulkMcuOpen, setIsBulkMcuOpen] = useState(false);
   const [bulkMcuForm, setBulkMcuForm] = useState({ clinicId: "", clinicName: "", clinicEmail: "", paket: "", date: "" });
   const [isBulkMcuSending, setIsBulkMcuSending] = useState(false);
+
+  // Bulk Offering State
+  const [isBulkOfferingOpen, setIsBulkOfferingOpen] = useState(false);
+  const [isBulkOfferingSending, setIsBulkOfferingSending] = useState(false);
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
   const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
@@ -314,6 +319,24 @@ export function RecruitmentClientPage({
       setSelectedIds(new Set());
     } catch (e: any) { toast.error(e.message); }
     finally { setIsBulkMcuSending(false); }
+  };
+
+  const handleBulkOffering = async () => {
+    setIsBulkOfferingSending(true);
+    try {
+      let sent = 0;
+      for (const cid of selectedIds) {
+        try {
+          await sendOfferingEmail(cid);
+          sent++;
+        } catch {}
+      }
+      toast.success(`Offering email sent to ${sent} candidates`);
+      setIsBulkOfferingOpen(false);
+      setSelectedIds(new Set());
+      window.location.reload();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setIsBulkOfferingSending(false); }
   };
 
   const handlePreviewBulkInterview = async () => {
@@ -927,6 +950,9 @@ export function RecruitmentClientPage({
                       </Button>
                       <Button variant="default" size="sm" onClick={() => setIsBulkMcuOpen(true)}>
                         <IconStethoscope className="w-4 h-4 mr-1" /> Send MCU Email
+                      </Button>
+                      <Button variant="default" size="sm" onClick={() => setIsBulkOfferingOpen(true)}>
+                        <IconFileText className="w-4 h-4 mr-1" /> Send Offering
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                         Clear
@@ -1919,6 +1945,26 @@ export function RecruitmentClientPage({
           </Button>
           <Button onClick={handleBulkMcu} disabled={isBulkMcuSending}>
             {isBulkMcuSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Bulk Offering Dialog */}
+    <Dialog open={isBulkOfferingOpen} onOpenChange={setIsBulkOfferingOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Send Offering Email to {selectedIds.size} Candidates</DialogTitle>
+          <DialogDescription>Surat Penawaran Kerja + PDF akan dikirim ke email kandidat. Pastikan data offering sudah diisi di detail masing-masing kandidat.</DialogDescription>
+        </DialogHeader>
+        <div className="py-4 text-sm text-muted-foreground">
+          <p>Setiap kandidat akan menerima email dengan lampiran Surat Penawaran Kerja (PDF). Data jabatan, gaji, dan benefit diambil dari tab Offering di detail kandidat.</p>
+          <p className="mt-2">Jika ada kandidat yang belum memiliki data offering, email tetap akan dikirim dengan data default.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsBulkOfferingOpen(false)}>Cancel</Button>
+          <Button onClick={handleBulkOffering} disabled={isBulkOfferingSending}>
+            {isBulkOfferingSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
         </DialogFooter>
       </DialogContent>
