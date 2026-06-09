@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ApplicationForm } from "@/components/candidate/ApplicationForm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,24 +32,58 @@ const getDisplayOptions = (question: any) => {
   return savedOptions.length ? savedOptions : getDefaultOptionsForType(question.questionType);
 };
 
-export function CandidateTestClientPage({ assignment, test, questions, previousAnswers, scoreBreakdown }: { assignment: any, test: any, questions: any[], previousAnswers?: any, scoreBreakdown?: any }) {
-  const [hasStarted, setHasStarted] = useState(assignment.status !== "Pending");
-  const [isFinished, setIsFinished] = useState(assignment.status === "Completed");
-  const [testResult, setTestResult] = useState<any>(scoreBreakdown || null);
-  const storageKey = `hero_test_timer_${assignment.id}`;
+const formatTime = (seconds: number) => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
+function TestTimer({ storageKey, totalSeconds, active, onExpire }: { storageKey: string; totalSeconds: number; active: boolean; onExpire: () => void }) {
+  const onExpireRef = useRef(onExpire);
+  const expiredRef = useRef(false);
   const [timeLeft, setTimeLeft] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(storageKey);
       if (saved) return parseInt(saved, 10);
     }
-    return test.timeLimitMinutes * 60;
+    return totalSeconds;
   });
 
   useEffect(() => {
-    if (hasStarted && !isFinished) {
-      localStorage.setItem(storageKey, timeLeft.toString());
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
+
+  useEffect(() => {
+    if (active) localStorage.setItem(storageKey, timeLeft.toString());
+  }, [active, storageKey, timeLeft]);
+
+  useEffect(() => {
+    if (!active || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [active, timeLeft]);
+
+  useEffect(() => {
+    if (active && timeLeft === 0 && !expiredRef.current) {
+      expiredRef.current = true;
+      onExpireRef.current();
     }
-  }, [timeLeft, hasStarted, isFinished, storageKey]);
+  }, [active, timeLeft]);
+
+  return (
+    <div className={`text-2xl font-mono font-bold ${timeLeft < 300 ? 'text-destructive' : ''}`}>
+      {formatTime(timeLeft)}
+    </div>
+  );
+}
+
+export function CandidateTestClientPage({ assignment, test, questions, previousAnswers, scoreBreakdown }: { assignment: any, test: any, questions: any[], previousAnswers?: any, scoreBreakdown?: any }) {
+  const [hasStarted, setHasStarted] = useState(assignment.status !== "Pending");
+  const [isFinished, setIsFinished] = useState(assignment.status === "Completed");
+  const [testResult, setTestResult] = useState<any>(scoreBreakdown || null);
+  const storageKey = `hero_test_timer_${assignment.id}`;
 
   const [answers, setAnswers] = useState<Record<number, string>>(previousAnswers || {});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,18 +117,6 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [hasStarted, isFinished]);
-
-  useEffect(() => {
-    let timer: any;
-    if (hasStarted && !isFinished && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && !isFinished) {
-      handleFinishTest(true);
-    }
-    return () => clearInterval(timer);
-  }, [hasStarted, isFinished, timeLeft]);
 
   const handleStart = async () => {
     try {
@@ -156,12 +178,6 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
       toast.error("Failed to submit test.");
       setIsSubmitting(false);
     }
-  };
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
   // Test not yet started or already ended (scheduled)
@@ -297,9 +313,7 @@ export function CandidateTestClientPage({ assignment, test, questions, previousA
             <p className="text-sm text-muted-foreground">Candidate ID: {assignment.candidateId}</p>
           </div>
         </div>
-        <div className={`text-2xl font-mono font-bold ${timeLeft < 300 ? 'text-destructive' : ''}`}>
-          {formatTime(timeLeft)}
-        </div>
+        <TestTimer storageKey={storageKey} totalSeconds={test.timeLimitMinutes * 60} active={hasStarted && !isFinished} onExpire={() => handleFinishTest(true)} />
       </div>
 
       <div className="space-y-6">
