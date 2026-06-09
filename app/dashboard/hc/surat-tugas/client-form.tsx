@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -16,6 +17,7 @@ import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
+const KEPERLUAN_OPTIONS = ['Penunjukan Baru', 'Reguler Site Visit', 'Inspecton Tire Repair']
 
 type EmployeeForLetter = {
   id: number
@@ -371,10 +373,14 @@ export function SuratTugasClient({
                 </div>
                 <div>
                   <Label className="mb-2 block">Keperluan</Label>
-                  <Input
+                  <Combobox
                     value={keperluan}
-                    onChange={(e) => setKeperluan(e.target.value)}
-                    placeholder="Contoh: Inspeksi K3 Tahunan"
+                    onChange={setKeperluan}
+                    options={KEPERLUAN_OPTIONS}
+                    placeholder="Pilih / tambah keperluan"
+                    emptyText="Keperluan tidak ditemukan."
+                    className="h-10 bg-white text-sm"
+                    allowCustom
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -16,6 +17,7 @@ import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
+const ALASAN_KELUAR_OPTIONS = ['Contract Complete', 'Resign']
 
 type EmployeeForLetter = {
   id: number
@@ -78,7 +80,7 @@ export function SuratPengalamanKerjaClient({
   
   // Custom states
   const [panggilan, setPanggilan] = useState('Mr.')
-  const [alasanKeluar, setAlasanKeluar] = useState('contract complete')
+  const [alasanKeluar, setAlasanKeluar] = useState('Contract Complete')
   const [tanggalMulai, setTanggalMulai] = useState('')
   const [tanggalSelesai, setTanggalSelesai] = useState('')
 
@@ -384,11 +386,14 @@ export function SuratPengalamanKerjaClient({
                 </div>
                 <div>
                   <Label className="text-xs text-slate-500 mb-2 block">Alasan Keluar (Eng)</Label>
-                  <Input 
+                  <Combobox
                     value={alasanKeluar} 
-                    onChange={e => setAlasanKeluar(e.target.value)} 
-                    placeholder="e.g. contract complete" 
-                    className="bg-white text-sm h-10" 
+                    onChange={setAlasanKeluar}
+                    options={ALASAN_KELUAR_OPTIONS}
+                    placeholder="Pilih / tambah alasan"
+                    emptyText="Alasan tidak ditemukan."
+                    className="bg-white text-sm h-10"
+                    allowCustom
                   />
                 </div>
                 <div>
