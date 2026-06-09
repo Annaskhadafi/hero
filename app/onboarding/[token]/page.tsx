@@ -141,11 +141,11 @@ export default function OnboardingPage({ params }: { params: Promise<{ token: st
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Nama</Label>
-                  <Input value={data.candidate.fullName || ""} disabled readOnly />
+                  <Input value={data?.candidate?.fullName ?? ""} disabled readOnly />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input value={data.candidate.email || ""} disabled readOnly />
+                  <Input value={data?.candidate?.email ?? ""} disabled readOnly />
                 </div>
               </CardContent>
             </Card>
