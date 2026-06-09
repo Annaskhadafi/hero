@@ -194,7 +194,7 @@ export function RecruitmentClientPage({
 
   // Bulk MCU State
   const [isBulkMcuOpen, setIsBulkMcuOpen] = useState(false);
-  const [bulkMcuForm, setBulkMcuForm] = useState({ clinicId: "", clinicName: "", clinicEmail: "", paket: "", date: "" });
+  const [bulkMcuForm, setBulkMcuForm] = useState({ clinicId: "", clinicName: "", clinicEmail: "", paket: "", date: "", signatoryName: MCU_SIGNERS[0].name, signatoryTitle: MCU_SIGNERS[0].title, signatureUrl: MCU_SIGNERS[0].signatureUrl });
   const [isBulkMcuSending, setIsBulkMcuSending] = useState(false);
 
   // Bulk Offering State
@@ -342,6 +342,9 @@ export function RecruitmentClientPage({
         klinikName: bulkMcuForm.clinicName, klinikEmail: bulkMcuForm.clinicEmail,
         paketMcu: bulkMcuForm.paket, scheduledDate: d,
         clinicId: bulkMcuForm.clinicId ? parseInt(bulkMcuForm.clinicId) : null,
+        signatoryName: bulkMcuForm.signatoryName,
+        signatoryTitle: bulkMcuForm.signatoryTitle,
+        signatureUrl: bulkMcuForm.signatureUrl,
       });
       const ok = result.results.filter(r => r.success).length;
       toast.success(`MCU scheduled for ${ok} candidates`);
@@ -1976,6 +1979,15 @@ export function RecruitmentClientPage({
           <div className="space-y-2"><Label>Clinic Email *</Label><Input type="email" placeholder="Email klinik" value={bulkMcuForm.clinicEmail} disabled={!!bulkMcuForm.clinicId && bulkMcuForm.clinicId !== "manual"} onChange={e => setBulkMcuForm({...bulkMcuForm, clinicEmail: e.target.value})} /></div>
           <div className="space-y-2"><Label>MCU Package *</Label><Input placeholder="cth: Paket Executive" value={bulkMcuForm.paket} onChange={e => setBulkMcuForm({...bulkMcuForm, paket: e.target.value})} /></div>
           <div className="space-y-2"><Label>Date *</Label><Input type="date" value={bulkMcuForm.date} onChange={e => setBulkMcuForm({...bulkMcuForm, date: e.target.value})} /></div>
+          <div className="space-y-2">
+            <Label>Penandatangan</Label>
+            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={bulkMcuForm.signatoryName} onChange={e => {
+              const signer = MCU_SIGNERS.find(s => s.name === e.target.value) || MCU_SIGNERS[0];
+              setBulkMcuForm({...bulkMcuForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
+            }}>
+              {MCU_SIGNERS.map(s => <option key={s.name} value={s.name}>{s.name} — {s.title}</option>)}
+            </select>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsBulkMcuOpen(false)}>Cancel</Button>
