@@ -59,6 +59,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -154,6 +163,14 @@ interface RecruitmentClientPageProps {
     sections: { id: number; name: string; departmentId: number | null }[];
   };
   clinics: { id: number; name: string; email: string; address: string; city: string }[];
+  sectionTemplates: Array<{
+    id: number;
+    sectionId: number | null;
+    sectionName: string;
+    requirements: string;
+    qualifications: string[];
+    mandatoryFields: string[];
+  }>;
 }
 
 export function RecruitmentClientPage({
@@ -162,6 +179,7 @@ export function RecruitmentClientPage({
   stats,
   formOptions,
   clinics,
+  sectionTemplates,
 }: RecruitmentClientPageProps) {
   const [candidates, setCandidates] = useState<Candidate[]>(paginatedCandidates.data as Candidate[]);
   const [candidatePage, setCandidatePage] = useState(paginatedCandidates);
@@ -871,10 +889,31 @@ export function RecruitmentClientPage({
                    </TableHeader>
                    <TableBody>
                      {recruitments.map((job, idx) => (
-                       <TableRow key={job.id} className={hcTableRowClassName}>
-                         <TableCell className="text-center text-muted-foreground font-medium">{idx + 1}</TableCell>
-                         <TableCell className="font-semibold">{job.jobTitle}</TableCell>
-                         <TableCell>{job.section || "-"}</TableCell>
+                        <TableRow key={job.id} className={hcTableRowClassName}>
+                          <TableCell className="text-center text-muted-foreground font-medium">{idx + 1}</TableCell>
+                          <TableCell className="align-top">
+                            <div className="space-y-1">
+                              <p className="font-semibold">{job.jobTitle}</p>
+                              <div className="flex flex-wrap gap-1">
+                                {job.qualifications && job.qualifications.length > 0 && (
+                                  <span className="text-[10px] font-medium bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                                    {job.qualifications.length} qualifications
+                                  </span>
+                                )}
+                                {job.knockoutCriteria && job.knockoutCriteria.filter(c => c.enabled).length > 0 && (
+                                  <span className="text-[10px] font-medium bg-red-50 text-red-600 px-1.5 py-0.5 rounded">
+                                    {job.knockoutCriteria.filter(c => c.enabled).length} knockouts
+                                  </span>
+                                )}
+                                {job.mandatoryFields && job.mandatoryFields.length > 0 && (
+                                  <span className="text-[10px] font-medium bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">
+                                    {job.mandatoryFields.length} mandatory fields
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{job.section || "-"}</TableCell>
                          <TableCell className="whitespace-nowrap">
                            {job.startDate ? format(new Date(job.startDate), "dd MMM yyyy") : "?"} -{" "}
                            {job.endDate ? format(new Date(job.endDate), "dd MMM yyyy") : "?"}
@@ -1170,263 +1209,318 @@ export function RecruitmentClientPage({
         </div>
       </div>
 
-      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Job Vacancy Settings</DialogTitle>
-            <DialogDescription>
+      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <SheetContent side="right" className="w-[95vw] sm:max-w-xl lg:max-w-2xl p-0 flex flex-col gap-0 overflow-hidden">
+          <SheetHeader className="px-6 py-5 border-b">
+            <SheetTitle className="text-lg font-semibold">Job Vacancy Settings</SheetTitle>
+            <SheetDescription>
               Configure the public link and application form settings for this recruitment.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto px-1">
-            <div className="flex items-center justify-between rounded-lg border p-4 bg-accent/5">
-              <div className="space-y-0.5">
-                <Label className="text-base text-accent font-semibold">Publish to Careers Page</Label>
-                <div className="text-sm text-muted-foreground">
-                  Allow candidates to apply using the public link.
-                </div>
-              </div>
-              <Switch
-                checked={settingsForm.isPublic}
-                onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, isPublic: checked })}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2 col-span-2">
-                <Label>Job Title</Label>
-                <Input
-                  value={settingsForm.jobTitle}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, jobTitle: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Total Quota</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={settingsForm.totalRequested}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, totalRequested: parseInt(e.target.value) || 1 })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Select
-                  value={settingsForm.department}
-                  onValueChange={(val) => setSettingsForm({ ...settingsForm, department: val, section: "" })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {formOptions.departments.map((d) => (
-                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Section</Label>
-                <Select
-                  value={settingsForm.section}
-                  onValueChange={(val) => setSettingsForm({ ...settingsForm, section: val })}
-                  disabled={!settingsForm.department}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={settingsForm.department ? "Select Section" : "Select Dept First"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSections.map((s) => (
-                      <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Location</Label>
-                <Input
-                  placeholder="e.g. Head Office, Bintaro"
-                  value={settingsForm.location}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, location: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Open Date</Label>
-                <Input
-                  type="date"
-                  value={settingsForm.startDate}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, startDate: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Expiry Date</Label>
-                <Input
-                  type="date"
-                  value={settingsForm.endDate}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, endDate: e.target.value })}
-                />
-              </div>
-            </div>
+            </SheetDescription>
+          </SheetHeader>
 
-            <div className="space-y-2">
-              <Label>Job Description</Label>
-              <Textarea
-                placeholder="Describe the responsibilities and scope of this role..."
-                rows={3}
-                value={settingsForm.jobDescription}
-                onChange={(e) => setSettingsForm({ ...settingsForm, jobDescription: e.target.value })}
-              />
-            </div>
+          <Tabs defaultValue="info" className="flex flex-col flex-1 min-h-0">
+            <TabsList className="mx-6 mt-4 w-auto self-start">
+              <TabsTrigger value="info">Basic Info</TabsTrigger>
+              <TabsTrigger value="requirements">Requirements</TabsTrigger>
+              <TabsTrigger value="scoring">Scoring</TabsTrigger>
+              <TabsTrigger value="knockout">Knockout</TabsTrigger>
+            </TabsList>
 
-            <div className="space-y-2">
-              <Label>Requirements (General Text)</Label>
-              <Textarea
-                placeholder="General description of what you are looking for..."
-                rows={3}
-                value={settingsForm.requirements}
-                onChange={(e) => setSettingsForm({ ...settingsForm, requirements: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label>AI Assessment Qualifications (Checklist)</Label>
-              <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
-                {[
-                  "Pendidikan Min. SMA/SMK",
-                  "Pendidikan Min. D3",
-                  "Pendidikan Min. S1",
-                  "Pengalaman Min. 1 Tahun",
-                  "Pengalaman Min. 2 Tahun",
-                  "Pengalaman Min. 3 Tahun",
-                  "Bahasa Inggris Aktif",
-                  "Menguasai Microsoft Office",
-                  "Memiliki SIM A",
-                  "Memiliki SIM C",
-                ].map((qual) => (
-                  <div key={qual} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={qual}
-                      checked={settingsForm.qualifications.includes(qual)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSettingsForm({ ...settingsForm, qualifications: [...settingsForm.qualifications, qual] });
-                        } else {
-                          setSettingsForm({ ...settingsForm, qualifications: settingsForm.qualifications.filter((q) => q !== qual) });
-                        }
-                      }}
-                    />
-                    <Label htmlFor={qual} className="font-normal text-sm cursor-pointer">{qual}</Label>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                AI will strictly check the candidate's CV and Form against these specific points. 
-                (Checked points will be analyzed).
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <Label>Form Builder: Mandatory Fields</Label>
-              <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
-                {[
-                  { id: "cv", label: "Curriculum Vitae (CV)" },
-                  { id: "dateOfBirth", label: "Date of Birth" },
-                  { id: "address", label: "Full Address" },
-                  { id: "gender", label: "Gender" },
-                  { id: "drivingLicenses", label: "Driving Licenses (SIM)" },
-                  { id: "certificates", label: "Certifications" },
-                  { id: "workExperience", label: "Detailed Work Experience" },
-                  { id: "education", label: "Detailed Education History" },
-                ].map((field) => (
-                  <div key={field.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`mandatory-${field.id}`}
-                      checked={settingsForm.mandatoryFields?.includes(field.id) || false}
-                      onCheckedChange={(checked) => {
-                        const current = settingsForm.mandatoryFields || [];
-                        if (checked) {
-                          setSettingsForm({ ...settingsForm, mandatoryFields: [...current, field.id] });
-                        } else {
-                          setSettingsForm({ ...settingsForm, mandatoryFields: current.filter((q) => q !== field.id) });
-                        }
-                      }}
-                    />
-                    <Label htmlFor={`mandatory-${field.id}`} className="font-normal text-sm cursor-pointer">{field.label}</Label>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                Selected fields will be required when candidates fill out the public application form.
-                Name, Email, and Phone are always required. CV follows this configuration.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <Label>AI Scoring Matrix</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Weight guides AI match score. Keep total near 100 for clean comparison.
-                </p>
-              </div>
-              <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
-                {settingsForm.scoringCriteria.map((criterion, idx) => (
-                  <div key={criterion.id} className="grid grid-cols-[1fr_88px] gap-3 items-center rounded-md bg-background/70 p-3">
-                    <div>
-                      <div className="text-sm font-medium">{criterion.label}</div>
-                      <div className="text-xs text-muted-foreground">{criterion.description}</div>
+            <ScrollArea className="flex-1 px-6 py-4">
+              <TabsContent value="info" className="space-y-5 mt-0">
+                <div className="flex items-center justify-between rounded-lg border p-4 bg-accent/5">
+                  <div className="space-y-0.5">
+                    <Label className="text-base text-accent font-semibold">Publish to Careers Page</Label>
+                    <div className="text-sm text-muted-foreground">
+                      Allow candidates to apply using the public link.
                     </div>
+                  </div>
+                  <Switch
+                    checked={settingsForm.isPublic}
+                    onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, isPublic: checked })}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2 col-span-2">
+                    <Label>Job Title</Label>
+                    <Input
+                      value={settingsForm.jobTitle}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, jobTitle: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Total Quota</Label>
                     <Input
                       type="number"
-                      min={0}
-                      max={100}
-                      value={criterion.weight}
-                      onChange={(e) => {
-                        const next = [...settingsForm.scoringCriteria];
-                        next[idx] = { ...criterion, weight: parseInt(e.target.value, 10) || 0 };
-                        setSettingsForm({ ...settingsForm, scoringCriteria: next });
-                      }}
+                      min="1"
+                      value={settingsForm.totalRequested}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, totalRequested: parseInt(e.target.value) || 1 })}
                     />
                   </div>
-                ))}
-                <div className="text-xs text-muted-foreground text-right">
-                  Total weight: {settingsForm.scoringCriteria.reduce((sum, item) => sum + item.weight, 0)}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label>Knockout Criteria</Label>
-              <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-4">
-                {settingsForm.knockoutCriteria.map((criterion, idx) => (
-                  <div key={criterion.id} className="flex items-start gap-3 rounded-md bg-background/70 p-3">
-                    <Checkbox
-                      id={`knockout-${criterion.id}`}
-                      checked={criterion.enabled}
-                      onCheckedChange={(checked) => {
-                        const next = [...settingsForm.knockoutCriteria];
-                        next[idx] = { ...criterion, enabled: checked === true };
-                        setSettingsForm({ ...settingsForm, knockoutCriteria: next });
-                      }}
+                  <div className="space-y-2">
+                    <Label>Department</Label>
+                    <Select
+                      value={settingsForm.department}
+                      onValueChange={(val) => setSettingsForm({ ...settingsForm, department: val, section: "" })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formOptions.departments.map((d) => (
+                          <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Section</Label>
+                    <Select
+                      value={settingsForm.section}
+                      onValueChange={(val) => setSettingsForm({ ...settingsForm, section: val })}
+                      disabled={!settingsForm.department}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={settingsForm.department ? "Select Section" : "Select Dept First"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableSections.map((s) => (
+                          <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Location</Label>
+                    <Input
+                      placeholder="e.g. Head Office, Bintaro"
+                      value={settingsForm.location}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, location: e.target.value })}
                     />
-                    <div>
-                      <Label htmlFor={`knockout-${criterion.id}`} className="cursor-pointer text-sm font-medium">
-                        {criterion.label}
-                      </Label>
-                      <div className="text-xs text-muted-foreground">{criterion.description}</div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Open Date</Label>
+                    <Input
+                      type="date"
+                      value={settingsForm.startDate}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, startDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Expiry Date</Label>
+                    <Input
+                      type="date"
+                      value={settingsForm.endDate}
+                      onChange={(e) => setSettingsForm({ ...settingsForm, endDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Job Description</Label>
+                  <Textarea
+                    placeholder="Describe the responsibilities and scope of this role..."
+                    rows={3}
+                    value={settingsForm.jobDescription}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, jobDescription: e.target.value })}
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="requirements" className="space-y-5 mt-0">
+                <div className="rounded-lg border bg-surface-container-lowest p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Quick Template</Label>
+                    <span className="text-xs text-muted-foreground">Apply preset to auto-fill below</span>
+                  </div>
+                  <Select
+                    onValueChange={(val) => {
+                      if (val === "clear") {
+                        setSettingsForm((prev) => ({
+                          ...prev,
+                          requirements: "",
+                          qualifications: [],
+                          mandatoryFields: ["dateOfBirth", "address", "gender", "cv"],
+                        }));
+                        return;
+                      }
+                      const template = sectionTemplates.find((t) => t.id.toString() === val);
+                      if (template) {
+                        setSettingsForm((prev) => ({
+                          ...prev,
+                          requirements: template.requirements,
+                          qualifications: template.qualifications,
+                          mandatoryFields: template.mandatoryFields,
+                        }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select a template..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {sectionTemplates.map((t) => (
+                        <SelectItem key={t.id} value={t.id.toString()}>{t.sectionName}</SelectItem>
+                      ))}
+                      <SelectItem value="clear">Clear All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Requirements (General Text)</Label>
+                  <Textarea
+                    placeholder="General description of what you are looking for..."
+                    rows={4}
+                    value={settingsForm.requirements}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, requirements: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <Label>AI Assessment Qualifications</Label>
+                  <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
+                    {[
+                      "Pendidikan Min. SMA/SMK",
+                      "Pendidikan Min. D3",
+                      "Pendidikan Min. S1",
+                      "Pengalaman Min. 1 Tahun",
+                      "Pengalaman Min. 2 Tahun",
+                      "Pengalaman Min. 3 Tahun",
+                      "Bahasa Inggris Aktif",
+                      "Menguasai Microsoft Office",
+                      "Memiliki SIM A",
+                      "Memiliki SIM C",
+                    ].map((qual) => (
+                      <div key={qual} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={qual}
+                          checked={settingsForm.qualifications.includes(qual)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSettingsForm({ ...settingsForm, qualifications: [...settingsForm.qualifications, qual] });
+                            } else {
+                              setSettingsForm({ ...settingsForm, qualifications: settingsForm.qualifications.filter((q) => q !== qual) });
+                            }
+                          }}
+                        />
+                        <Label htmlFor={qual} className="font-normal text-sm cursor-pointer">{qual}</Label>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    AI will strictly check the candidate's CV and Form against these specific points.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Form Builder: Mandatory Fields</Label>
+                  <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
+                    {[
+                      { id: "cv", label: "Curriculum Vitae (CV)" },
+                      { id: "dateOfBirth", label: "Date of Birth" },
+                      { id: "address", label: "Full Address" },
+                      { id: "gender", label: "Gender" },
+                      { id: "drivingLicenses", label: "Driving Licenses (SIM)" },
+                      { id: "certificates", label: "Certifications" },
+                      { id: "workExperience", label: "Detailed Work Experience" },
+                      { id: "education", label: "Detailed Education History" },
+                    ].map((field) => (
+                      <div key={field.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`mandatory-${field.id}`}
+                          checked={settingsForm.mandatoryFields?.includes(field.id) || false}
+                          onCheckedChange={(checked) => {
+                            const current = settingsForm.mandatoryFields || [];
+                            if (checked) {
+                              setSettingsForm({ ...settingsForm, mandatoryFields: [...current, field.id] });
+                            } else {
+                              setSettingsForm({ ...settingsForm, mandatoryFields: current.filter((q) => q !== field.id) });
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`mandatory-${field.id}`} className="font-normal text-sm cursor-pointer">{field.label}</Label>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Selected fields will be required when candidates fill out the public application form.
+                    Name, Email, and Phone are always required.
+                  </p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="scoring" className="space-y-5 mt-0">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>AI Scoring Matrix</Label>
+                    <span className="text-xs text-muted-foreground">Keep total near 100</span>
+                  </div>
+                  <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
+                    {settingsForm.scoringCriteria.map((criterion, idx) => (
+                      <div key={criterion.id} className="grid grid-cols-[1fr_88px] gap-3 items-center rounded-md bg-background/70 p-3">
+                        <div>
+                          <div className="text-sm font-medium">{criterion.label}</div>
+                          <div className="text-xs text-muted-foreground">{criterion.description}</div>
+                        </div>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={criterion.weight}
+                          onChange={(e) => {
+                            const next = [...settingsForm.scoringCriteria];
+                            next[idx] = { ...criterion, weight: parseInt(e.target.value, 10) || 0 };
+                            setSettingsForm({ ...settingsForm, scoringCriteria: next });
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <div className="text-xs text-muted-foreground text-right">
+                      Total weight: {settingsForm.scoringCriteria.reduce((sum, item) => sum + item.weight, 0)}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="knockout" className="space-y-5 mt-0">
+                <div className="space-y-2">
+                  <Label>Knockout Criteria</Label>
+                  <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-4">
+                    {settingsForm.knockoutCriteria.map((criterion, idx) => (
+                      <div key={criterion.id} className="flex items-start gap-3 rounded-md bg-background/70 p-3">
+                        <Checkbox
+                          id={`knockout-${criterion.id}`}
+                          checked={criterion.enabled}
+                          onCheckedChange={(checked) => {
+                            const next = [...settingsForm.knockoutCriteria];
+                            next[idx] = { ...criterion, enabled: checked === true };
+                            setSettingsForm({ ...settingsForm, knockoutCriteria: next });
+                          }}
+                        />
+                        <div>
+                          <Label htmlFor={`knockout-${criterion.id}`} className="cursor-pointer text-sm font-medium">
+                            {criterion.label}
+                          </Label>
+                          <div className="text-xs text-muted-foreground">{criterion.description}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+            </ScrollArea>
+          </Tabs>
+
+          <SheetFooter className="px-6 py-4 border-t">
             <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveSettings} disabled={isSubmitting}>
               {isSubmitting ? "Saving..." : "Save Settings"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
     <Dialog open={isCandidateListOpen} onOpenChange={(open) => { if (!open) setIsCandidateListOpen(false); }}>
       <DialogContent className="w-[90vw] h-[85vh] max-w-none flex flex-col overflow-hidden" style={{ maxHeight: '85vh' }}>

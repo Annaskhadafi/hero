@@ -27,6 +27,7 @@
     "db:import:data-hero": "tsx scripts/import-data-hero.ts",
     "db:import:safety-dashboard": "tsx scripts/import-safety-dashboard.ts",
     "db:import:hiradc": "tsx scripts/import-hiradc.ts",
+    "db:seed:recruitment-templates": "tsx scripts/seed-recruitment-templates.ts",
     "db:migrate:hse": "tsx scratch/migrate-hse-inventories.ts",
     "db:up": "docker compose up postgres -d",
     "db:down": "docker compose down postgres",

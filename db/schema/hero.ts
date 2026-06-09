@@ -1136,6 +1136,17 @@ export const masterPositions = pgTable('hero_master_positions', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const recruitmentSectionTemplates = pgTable('hero_recruitment_section_templates', {
+  id: serial('id').primaryKey(),
+  sectionId: integer('section_id').references(() => masterSections.id, { onDelete: 'cascade' }),
+  requirements: text('requirements').notNull().default(''),
+  qualifications: jsonb('qualifications').$type<string[]>().default([]),
+  mandatoryFields: jsonb('mandatory_fields').$type<string[]>().default([]),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const masterAttendanceShifts = pgTable('hero_master_attendance_shifts', {
   id: serial('id').primaryKey(),
   code: text('code').notNull().unique(),

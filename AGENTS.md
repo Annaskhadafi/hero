@@ -34,6 +34,12 @@
 - Untuk script pre-hydration / anti-extension / DOM cleanup di root layout, gunakan root `<head>` atau inline `<script dangerouslySetInnerHTML>` di `<head>`; jangan pakai `next/script strategy="beforeInteractive"` sebagai sibling `<body>` di bawah `<html>`.
 - Setelah mengubah layout/root shell, wajib cek ulang agar tidak muncul error hydration/console seperti `<html> cannot contain a nested <script>` atau `Cannot render a sync or defer <script> outside the main document without knowing its order`.
 
+### Git Commit & Push Guard
+
+- Dilarang melakukan `git commit` dan `git push` tanpa perintah eksplisit dari user.
+- Selalu minta konfirmasi sebelum setiap `git commit` atau `git push`, meskipun user pernah menyetujui di sesi/percakapan sebelumnya.
+- Operasi git read-only seperti `git status`, `git diff`, `git log`, `git branch` boleh dilakukan tanpa konfirmasi.
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.

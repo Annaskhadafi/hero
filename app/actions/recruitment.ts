@@ -12,6 +12,7 @@ import {
   masterDepartments,
   masterSections,
   emailDeliveryLogs,
+  recruitmentSectionTemplates,
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count, isNull, or, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -1433,4 +1434,28 @@ export async function sendStartDateEmails(candidateIds: number[], startDate: str
 
   revalidatePath("/dashboard/hc/recruitment");
   return { results };
+}
+
+export async function getRecruitmentSectionTemplates() {
+  const templates = await db
+    .select({
+      id: recruitmentSectionTemplates.id,
+      sectionId: recruitmentSectionTemplates.sectionId,
+      sectionName: masterSections.name,
+      requirements: recruitmentSectionTemplates.requirements,
+      qualifications: recruitmentSectionTemplates.qualifications,
+      mandatoryFields: recruitmentSectionTemplates.mandatoryFields,
+    })
+    .from(recruitmentSectionTemplates)
+    .leftJoin(masterSections, eq(masterSections.id, recruitmentSectionTemplates.sectionId))
+    .where(eq(recruitmentSectionTemplates.isActive, true));
+
+  return templates.map((t) => ({
+    id: t.id,
+    sectionId: t.sectionId,
+    sectionName: t.sectionName || `Section ${t.sectionId}`,
+    requirements: t.requirements || "",
+    qualifications: (t.qualifications as string[]) || [],
+    mandatoryFields: (t.mandatoryFields as string[]) || [],
+  }));
 }
