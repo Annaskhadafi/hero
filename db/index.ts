@@ -16,8 +16,6 @@ function getSslConfig(connectionString: string) {
     process.env.PGSSLMODE?.trim().toLowerCase() ||
     process.env.DATABASE_SSL_MODE?.trim().toLowerCase();
   const sslOverride = process.env.DATABASE_SSL?.trim().toLowerCase();
-  const isLocal = ["localhost", "127.0.0.1"].includes(url.hostname);
-
   if (sslOverride === "false" || sslOverride === "0" || sslOverride === "no") {
     return false;
   }
@@ -34,7 +32,7 @@ function getSslConfig(connectionString: string) {
     return { rejectUnauthorized: false };
   }
 
-  return isLocal ? false : { rejectUnauthorized: false };
+  return false;
 }
 
 function getPool() {
