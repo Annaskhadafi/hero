@@ -1156,12 +1156,15 @@ Your task is to critically analyze how well the candidate's structured data (Edu
 Return a JSON object strictly following this format: {"score": 85, "summary": "Brief explanation here", "breakdown": [{"criterion": "Experience", "score": 80, "weight": 30, "reason": "Reason"}], "knockout": [{"criterion": "SIM A", "passed": true, "reason": "Reason"}], "recommendation": "Shortlist"}.
 The final score must be 0-100. If any knockout criterion fails, keep score realistic and set recommendation to "Reject" or "Manual Review".`;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90_000);
     const response = await fetch(ollamaUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(ollamaKey ? { "Authorization": `Bearer ${ollamaKey}` } : {}),
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: ollamaModel,
         messages: [
@@ -1174,7 +1177,7 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
         stream: false,
         format: "json",
       })
-    });
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       throw new Error(`Ollama API returned ${response.status}`);
@@ -1204,6 +1207,9 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
     return { success: true, score: normalizedScore, summary: aiContent.summary, details: aiDetails };
   } catch (error: any) {
     console.error("AI Assessment Error:", error);
+    if (error?.name === "AbortError") {
+      return { success: false, error: "AI assessment timed out after 90 seconds. Check OLLAMA_URL / model availability." };
+    }
     return { success: false, error: error.message };
   }
 }

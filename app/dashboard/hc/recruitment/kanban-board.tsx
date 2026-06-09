@@ -14,15 +14,17 @@ import {
   useDroppable,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { updateCandidateStage } from "@/app/actions/recruitment";
+import { assessCandidateCv, updateCandidateStage } from "@/app/actions/recruitment";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   IconEye,
   IconBrain,
   IconFileText,
   IconMail,
+  IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,8 +73,10 @@ export function KanbanBoard({
   onCandidateUpdate: (id: number, stage: string) => void;
   emailStatuses: Record<number, EmailStatus>;
 }) {
+  const router = useRouter();
   const [activeId, setActiveId] = useState<number | null>(null);
   const [reverting, setReverting] = useState<Record<number, boolean>>({});
+  const [aiLoadingIds, setAiLoadingIds] = useState<Set<number>>(new Set());
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -108,6 +112,28 @@ export function KanbanBoard({
     }
   };
 
+  const handleRunAiAssessment = async (candidate: Candidate) => {
+    setAiLoadingIds((prev) => new Set(prev).add(candidate.id));
+    const toastId = toast.loading(`Running AI assessment for ${candidate.fullName}...`);
+    try {
+      const result = await assessCandidateCv(candidate.id);
+      if (result.success) {
+        toast.success(`AI assessment completed: ${result.score}%`, { id: toastId });
+        router.refresh();
+      } else {
+        toast.error(result.error || "AI assessment failed.", { id: toastId });
+      }
+    } catch (error: any) {
+      toast.error(error.message || "AI assessment failed.", { id: toastId });
+    } finally {
+      setAiLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(candidate.id);
+        return next;
+      });
+    }
+  };
+
   const activeCandidate = activeId
     ? filtered.find((c) => c.id === activeId)
     : null;
@@ -127,6 +153,8 @@ export function KanbanBoard({
               stage={stage}
               candidates={filtered.filter((c) => c.currentStage === stage)}
               emailStatuses={emailStatuses}
+              aiLoadingIds={aiLoadingIds}
+              onRunAiAssessment={handleRunAiAssessment}
             />
           ))}
         </div>
@@ -148,10 +176,14 @@ function KanbanColumn({
   stage,
   candidates,
   emailStatuses,
+  aiLoadingIds,
+  onRunAiAssessment,
 }: {
   stage: string;
   candidates: Candidate[];
   emailStatuses: Record<number, EmailStatus>;
+  aiLoadingIds: Set<number>;
+  onRunAiAssessment: (candidate: Candidate) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   return (
@@ -179,6 +211,8 @@ function KanbanColumn({
             key={c.id}
             candidate={c}
             emailStatus={emailStatuses[c.id]}
+            isAiLoading={aiLoadingIds.has(c.id)}
+            onRunAiAssessment={onRunAiAssessment}
           />
         ))}
         {candidates.length === 0 && (
@@ -197,10 +231,14 @@ function KanbanCard({
   candidate,
   emailStatus,
   isOverlay,
+  isAiLoading = false,
+  onRunAiAssessment,
 }: {
   candidate: Candidate;
   emailStatus?: EmailStatus;
   isOverlay?: boolean;
+  isAiLoading?: boolean;
+  onRunAiAssessment?: (candidate: Candidate) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: candidate.id, data: { candidate } });
@@ -281,9 +319,19 @@ function KanbanCard({
             variant="outline"
             size="sm"
             className="w-full text-xs rounded-xl border-dashed hover:border-accent hover:text-accent hover:bg-accent/5"
+            disabled={isAiLoading || !onRunAiAssessment}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRunAiAssessment?.(candidate);
+            }}
           >
-            <IconBrain className="w-3.5 h-3.5 mr-2" />
-            Run AI Assessment
+            {isAiLoading ? (
+              <IconLoader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+            ) : (
+              <IconBrain className="w-3.5 h-3.5 mr-2" />
+            )}
+            {isAiLoading ? "Running AI..." : "Run AI Assessment"}
           </Button>
         </div>
       )}
