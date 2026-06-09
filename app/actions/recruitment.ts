@@ -79,8 +79,8 @@ const STAGE_PIPELINE = [
   "Screening",
   "Psikotes",
   "Interview",
-  "Medical Checkup",
   "Offering",
+  "Medical Checkup",
 ] as const;
 
 export type StageName = (typeof STAGE_PIPELINE)[number] | "Hired" | "Rejected";
@@ -536,6 +536,11 @@ export async function getCandidateById(id: number) {
       bankAccountNumber: hcCandidates.bankAccountNumber,
       emergencyContactName: hcCandidates.emergencyContactName,
       emergencyContactPhone: hcCandidates.emergencyContactPhone,
+      onboardingToken: hcCandidates.onboardingToken,
+      kkUrl: hcCandidates.kkUrl,
+      ktpUrl: hcCandidates.ktpUrl,
+      bankBookUrl: hcCandidates.bankBookUrl,
+      onboardingCompletedAt: hcCandidates.onboardingCompletedAt,
       // Vacancy fields (from hcRecruitments via join)
       jobTitle: hcRecruitments.jobTitle,
       department: hcRecruitments.department,
@@ -707,6 +712,22 @@ export async function createCandidate(data: CandidateData) {
     if (isNaN(parsedDateOfBirth.getTime())) {
       throw new Error("Format tanggal lahir tidak valid.");
     }
+  }
+
+  // Check for duplicate candidate (same email + same recruitment)
+  const existingCandidate = await db
+    .select({ id: hcCandidates.id })
+    .from(hcCandidates)
+    .where(
+      and(
+        eq(hcCandidates.email, data.email),
+        eq(hcCandidates.recruitmentId, data.recruitmentId)
+      )
+    )
+    .limit(1);
+
+  if (existingCandidate.length > 0) {
+    throw new Error("Anda sudah melamar untuk lowongan ini sebelumnya.");
   }
 
   const [created] = await db
@@ -1082,9 +1103,12 @@ export async function assessCandidateCv(candidateId: number) {
     return { success: false, error: "Candidate not found." };
   }
 
-  const job = await getRecruitmentById(candidate.recruitmentId!);
+  let job = null;
+  if (candidate.recruitmentId) {
+    job = await getRecruitmentById(candidate.recruitmentId);
+  }
   if (!job) {
-    return { success: false, error: "Job vacancy not found." };
+    return { success: false, error: "Kandidat belum dilink ke lowongan (recruitmentId kosong). Hubungkan kandidat ke lowongan terlebih dahulu." };
   }
 
   try {
@@ -1146,10 +1170,14 @@ export async function assessCandidateCv(candidateId: number) {
       knockoutCriteria: (job.knockoutCriteria || []).filter((criterion) => criterion.enabled),
     };
 
-    // 4. Call Ollama API
-    const ollamaUrl = process.env.OLLAMA_URL || "https://ollama.com/api/chat";
-    const ollamaModel = process.env.OLLAMA_MODEL || "qwen3.5:397b-cloud";
+    // 4. Call AI API (OpenRouter fallback)
+    const ollamaUrl = process.env.OLLAMA_URL || "https://openrouter.ai/api/v1/chat/completions";
+    const ollamaModel = process.env.OLLAMA_MODEL || "openai/gpt-4o-mini";
     const ollamaKey = process.env.OLLAMA_API_KEY;
+
+    if (!ollamaKey) {
+      return { success: false, error: "AI API key belum dikonfigurasi. Set OLLAMA_API_KEY di .env.local (OpenRouter API key)" };
+    }
 
     const promptSystem = `You are an expert HR Assessor. You will be provided with a Candidate Profile (JSON) and Job Requirements (JSON).
 Your task is to critically analyze how well the candidate's structured data (Education, Experience, Licenses, CV) matches the Job Requirements, Qualifications Checklist, Scoring Criteria, and enabled Knockout Criteria.
@@ -1162,7 +1190,9 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(ollamaKey ? { "Authorization": `Bearer ${ollamaKey}` } : {}),
+        "Authorization": `Bearer ${ollamaKey}`,
+        "HTTP-Referer": "https://hero.chitraparatama.com",
+        "X-Title": "HERO HC Assessment",
       },
       signal: controller.signal,
       body: JSON.stringify({
@@ -1175,7 +1205,6 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
           }
         ],
         stream: false,
-        format: "json",
       })
     }).finally(() => clearTimeout(timeout));
 
@@ -1184,7 +1213,9 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
     }
 
     const aiData = await response.json();
-    const aiContent = JSON.parse(aiData.message.content);
+    const rawContent = aiData.choices?.[0]?.message?.content || aiData.message?.content || "{}";
+    const cleanedContent = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const aiContent = JSON.parse(cleanedContent);
     const normalizedScore = Math.max(0, Math.min(100, Number(aiContent.score) || 0));
     const aiDetails = {
       breakdown: Array.isArray(aiContent.breakdown) ? aiContent.breakdown : [],

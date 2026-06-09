@@ -143,7 +143,7 @@ export function SuratKeteranganClient({
               width: 210mm;
               min-height: 297mm;
               margin: 0 auto;
-              padding: 45mm 25mm 30mm;
+              padding: 55mm 25mm 30mm;
               background-image: url("${letterheadUrl}");
               background-size: 210mm 297mm;
               background-position: center top;
@@ -423,7 +423,7 @@ export function SuratKeteranganClient({
                 fontSize: '12pt',
                 lineHeight: '1.5',
                 color: 'black',
-                paddingTop: '45mm',
+                paddingTop: '55mm',
                 paddingBottom: '30mm',
                 paddingLeft: '25mm',
                 paddingRight: '25mm',

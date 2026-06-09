@@ -100,6 +100,7 @@ const LETTER_TYPE_LABELS: Record<string, string> = {
   surat_perintah_kerja: "Surat Perintah Kerja",
   surat_perubahan_status: "Surat Perubahan Status",
   surat_pengalaman_kerja: "Surat Pengalaman Kerja",
+  surat_penawaran_kerja: "Surat Penawaran Kerja",
 };
 
 function formatDate(dateStr: string | Date | null): string {
@@ -206,6 +207,7 @@ export function SuratArchiveClient({
       { value: "surat_keterangan", label: "Surat Keterangan" },
       { value: "surat_tugas", label: "Surat Tugas" },
       { value: "surat_mcu", label: "Surat Pengantar MCU" },
+      { value: "surat_penawaran_kerja", label: "Surat Penawaran Kerja" },
       { value: "surat_perubahan_status", label: "Surat Perubahan Status" },
     ],
     [],

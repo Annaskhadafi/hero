@@ -59,8 +59,11 @@ export async function submitOnboardingData(token: string, formData: any) {
         bankAccountNumber: formData.bankAccountNumber,
         emergencyContactName: formData.emergencyContactName,
         emergencyContactPhone: formData.emergencyContactPhone,
-        // Optional: clear token so it can only be used once?
-        // onboardingToken: null
+        kkUrl: formData.kkUrl || null,
+        ktpUrl: formData.ktpUrl || null,
+        bankBookUrl: formData.bankBookUrl || null,
+        startDate: formData.startDate || null,
+        onboardingCompletedAt: new Date(),
       })
       .where(eq(hcCandidates.id, data[0].id))
 

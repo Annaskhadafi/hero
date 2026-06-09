@@ -302,7 +302,7 @@ export async function updateInterviewStatus(interviewId: number, status: string,
 
   if (status === "Completed" && result === "Pass") {
     await db.update(hcCandidates)
-      .set({ currentStage: "Medical Checkup", updatedAt: new Date() })
+      .set({ currentStage: "Offering", updatedAt: new Date() })
       .where(eq(hcCandidates.id, interview.candidateId));
   } else if (status === "Completed" && result === "Fail") {
      await db.update(hcCandidates)

@@ -112,6 +112,8 @@ const MCU_SIGNERS = [
 
 export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [], panelEvaluations = [], offering = null }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[], panelEvaluations?: any[], offering?: any }) {
   const router = useRouter();
+  const [appOrigin, setAppOrigin] = useState("");
+  const [onboardingToken, setOnboardingToken] = useState<string | null>(candidate.onboardingToken ?? null);
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -124,6 +126,10 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     interviewerName: "",
     notes: ""
   });
+
+  useEffect(() => {
+    setAppOrigin(window.location.origin);
+  }, []);
 
   const [isHireOpen, setIsHireOpen] = useState(false);
   const [isHiring, setIsHiring] = useState(false);
@@ -403,7 +409,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     try {
       const res = await generateOnboardingToken(candidate.id);
       if (res.success) {
+        setOnboardingToken(res.token ?? null);
         toast.success("Onboarding link generated successfully");
+        router.refresh();
       } else {
         toast.error(res.error || "Failed to generate link");
       }
@@ -448,9 +456,8 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     ? (panelEvaluations.reduce((sum, item) => sum + item.technicalScore + item.communicationScore + item.cultureScore + item.problemSolvingScore + item.attitudeScore, 0) / (panelEvaluations.length * 5)).toFixed(1)
     : null;
 
-  const onboardingUrl = candidate.onboardingToken 
-    ? `${window.location.origin}/onboarding/${candidate.onboardingToken}` 
-    : "";
+  const onboardingPath = onboardingToken ? `/onboarding/${onboardingToken}` : "";
+  const onboardingUrl = onboardingPath && appOrigin ? `${appOrigin}${onboardingPath}` : onboardingPath;
 
   return (
     <>
@@ -470,7 +477,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 View CV
               </Button>
             )}
-            {candidate.currentStage === "Offering" && (
+            {candidate.currentStage === "Medical Checkup" && (
               <Button size="sm" onClick={() => setIsHireOpen(true)}>
                 <IconCheck className="w-4 h-4 mr-2" /> Hire
               </Button>
@@ -488,6 +495,8 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="panel-evaluation">Panelist ({panelEvaluations.length})</TabsTrigger>
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+          <TabsTrigger value="form-public">Form Public</TabsTrigger>
+          <TabsTrigger value="dokumen">Dokumen</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
           <TabsTrigger value="emails">Emails ({emailLogs.length})</TabsTrigger>
           <TabsTrigger value="test-results">Test Results ({testResults.length})</TabsTrigger>
@@ -1478,7 +1487,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
         <TabsContent value="onboarding">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">Onboarding Data</h3>
-            {!candidate.onboardingToken ? (
+            {!onboardingToken ? (
               <Button onClick={handleGenerateOnboardingToken}>
                 <IconLink className="w-4 h-4 mr-2" />
                 Generate Onboarding Link
@@ -1493,7 +1502,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   Copy Link
                 </Button>
                 <Button asChild variant="secondary">
-                  <a href={onboardingUrl} target="_blank" rel="noreferrer">
+                  <a href={onboardingPath} target="_blank" rel="noreferrer">
                     <IconLink className="w-4 h-4 mr-2" />
                     Open Form
                   </a>
@@ -1551,9 +1560,101 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                   <IconLink className="w-12 h-12 mb-4 opacity-20" />
                   <p>Candidate has not submitted their onboarding data yet.</p>
-                  {!candidate.onboardingToken && (
+                  {!onboardingToken && (
                     <p className="text-sm mt-1">Generate a link first to send to the candidate.</p>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="form-public">
+          <Card>
+            <CardHeader>
+              <CardTitle>Form Public Link</CardTitle>
+              <CardDescription>Link untuk kandidat mengisi data onboarding</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {onboardingToken ? (
+                <>
+                  <div className="p-3 bg-muted/50 rounded-lg break-all text-sm font-mono">
+                    {onboardingUrl}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => {
+                      navigator.clipboard.writeText(onboardingUrl);
+                      toast.success("Link copied!");
+                    }}>
+                      <IconCopy className="w-4 h-4 mr-2" /> Copy Link
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                      <a href={onboardingPath} target="_blank" rel="noreferrer">
+                        <IconLink className="w-4 h-4 mr-2" /> Open Form
+                      </a>
+                    </Button>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    <p>Form ini meminta kandidat mengisi:</p>
+                    <ul className="list-disc list-inside mt-1 space-y-0.5">
+                      <li>NIK KTP & NPWP</li>
+                      <li>BPJS Kesehatan & Ketenagakerjaan</li>
+                      <li>Rekening Bank & Scan Buku Tabungan</li>
+                      <li>Kartu Keluarga (KK)</li>
+                      <li>Kartu Tanda Penduduk (KTP)</li>
+                      <li>Kontak Darurat</li>
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6">
+                  <IconLink className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-muted-foreground">Belum ada link onboarding.</p>
+                  <Button onClick={handleGenerateOnboardingToken} className="mt-3">
+                    <IconLink className="w-4 h-4 mr-2" /> Generate Link
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="dokumen">
+          <Card>
+            <CardHeader>
+              <CardTitle>Dokumen Pendukung</CardTitle>
+              <CardDescription>Dokumen yang di-upload kandidat melalui form onboarding</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {candidate.kkUrl || candidate.ktpUrl || candidate.bankBookUrl ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {candidate.kkUrl && (
+                    <div className="border rounded-lg p-4 text-center">
+                      <IconFileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm font-medium">Kartu Keluarga</p>
+                      <a href={candidate.kkUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Lihat Dokumen</a>
+                    </div>
+                  )}
+                  {candidate.ktpUrl && (
+                    <div className="border rounded-lg p-4 text-center">
+                      <IconFileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm font-medium">KTP</p>
+                      <a href={candidate.ktpUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Lihat Dokumen</a>
+                    </div>
+                  )}
+                  {candidate.bankBookUrl && (
+                    <div className="border rounded-lg p-4 text-center">
+                      <IconFileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm font-medium">Buku Tabungan</p>
+                      <a href={candidate.bankBookUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Lihat Dokumen</a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                  <IconFileText className="w-12 h-12 mb-4 opacity-20" />
+                  <p>Belum ada dokumen yang di-upload.</p>
+                  <p className="text-sm mt-1">Dokumen akan muncul setelah kandidat mengisi form onboarding.</p>
                 </div>
               )}
             </CardContent>

@@ -28,7 +28,8 @@ import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
 import { bulkScheduleMcus, previewMcuEmail } from "@/app/actions/mcu";
-import { sendOfferingEmail } from "@/app/actions/offering";
+import { sendOfferingEmail, saveOffering } from "@/app/actions/offering";
+import { getNextLetterNumber, getActiveEmployees } from "@/app/actions/surat";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
 
@@ -102,6 +103,13 @@ const DEFAULT_KNOCKOUT_CRITERIA = [
   { id: "experience", label: "Minimum experience met", enabled: false, description: "Candidate must meet the stated minimum years of experience" },
   { id: "license", label: "Required license available", enabled: false, description: "Candidate must hold required SIM/operator license" },
   { id: "certification", label: "Required certificate available", enabled: false, description: "Candidate must hold required certificate" },
+];
+
+const MCU_SIGNERS = [
+  { name: "Muhammad Iqbal", title: "HR-GA Supervisor", signatureUrl: "/ttd Muhammad Iqbal.png" },
+  { name: "Adila Tri Arizona", title: "HR-GA Admin", signatureUrl: "/ttd Adila Tri Arizona.png" },
+  { name: "Kesuma Bagaskara", title: "HR-GA Admin", signatureUrl: "/ttd Kesuma Bagaskara.png" },
+  { name: "Rendra Rachman", title: "Human Capital Manager", signatureUrl: "" },
 ];
 
 type Candidate = {
@@ -192,6 +200,28 @@ export function RecruitmentClientPage({
   // Bulk Offering State
   const [isBulkOfferingOpen, setIsBulkOfferingOpen] = useState(false);
   const [isBulkOfferingSending, setIsBulkOfferingSending] = useState(false);
+  const [isOfferingPreviewOpen, setIsOfferingPreviewOpen] = useState(false);
+  const [offeringLetterNo, setOfferingLetterNo] = useState("");
+  const [offeringEmployees, setOfferingEmployees] = useState<Array<{ id: number; name: string; section: string; jobTitle: string }>>([]);
+  const [supervisorSearch, setSupervisorSearch] = useState("");
+  const [bulkOfferingForm, setBulkOfferingForm] = useState({
+    position: "",
+    directSupervisor: "",
+    salary: "",
+    contractDurationMonths: 12,
+    startDate: "",
+    outpatientBenefit: "Penusahaan memberikan bantuan biaya pengobatan rawat jalan sebesar Rp 3.500.000,-",
+    inpatientBenefit: "Penusahaan akan memberikan biaya penggatan/Pengobatan sepengetahuan bagi karyawan beserta istri & 3 (tiga) anak yang sah secara hukum, apabila telah ditanggung menjadi tanggungan karyawan tetap",
+    maternityBenefit: "Penusahaan akan memberikan bantuan sebesar Rp 8.000.000,-. Dan apabila dilakukan operasi caesar perusahaan akan mengganti biaya peralatan sebesar Rp 15.000.000, setelah ditanggung menjadi tanggungan karyawan tetap",
+    accidentInsurance: "Penusahaan akan menanggung premi asuransi sepengetahuannya",
+    bpjsEmployment: "Wajib berdasarkan Peraturan Pemerintah",
+    bpjsHealth: "Wajib berdasarkan Peraturan Pemerintah",
+    thr: "Penusahaan akan memberikan THR setahun upah, dan apabila Saudara belum mencapai masa kerja 1 (satu) tahun tetapi sudah lebih dari 1 (satu) bulan, maka akan dihitung secara proporsional.",
+    otherTerms: "Ketentuan-ketentuan lain yang tidak secara khusus diatur dalam penawaran diatas (Biaya Perjalanan Dinas, Bantuan dan fasilitas lain dan perusahaan) akan tunduk pada peraturan/perjanjian karyawan yang berlaku. Pokok-pokok Musyawarah serta tetapkan pelaksanaan perusahaan",
+    signatoryName: MCU_SIGNERS[0].name,
+    signatoryTitle: MCU_SIGNERS[0].title,
+    signatureUrl: MCU_SIGNERS[0].signatureUrl,
+  });
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
   const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
@@ -327,6 +357,7 @@ export function RecruitmentClientPage({
       let sent = 0;
       for (const cid of selectedIds) {
         try {
+          await saveOffering(cid, bulkOfferingForm);
           await sendOfferingEmail(cid);
           sent++;
         } catch {}
@@ -948,11 +979,19 @@ export function RecruitmentClientPage({
                       <Button variant="default" size="sm" onClick={() => setIsBulkInterviewOpen(true)}>
                         <IconCalendarEvent className="w-4 h-4 mr-1" /> Send Interview Email
                       </Button>
+                      <Button variant="default" size="sm" onClick={async () => {
+                        const num = await getNextLetterNumber('surat_penawaran_kerja');
+                        setOfferingLetterNo(num);
+                        try {
+                          const emps = await getActiveEmployees();
+                          setOfferingEmployees(emps.map((e: any) => ({ id: e.id, name: e.fullName || e.name, section: e.section || '-', jobTitle: e.jobTitle || '-' })));
+                        } catch {}
+                        setIsBulkOfferingOpen(true);
+                      }}>
+                        <IconFileText className="w-4 h-4 mr-1" /> Send Offering
+                      </Button>
                       <Button variant="default" size="sm" onClick={() => setIsBulkMcuOpen(true)}>
                         <IconStethoscope className="w-4 h-4 mr-1" /> Send MCU Email
-                      </Button>
-                      <Button variant="default" size="sm" onClick={() => setIsBulkOfferingOpen(true)}>
-                        <IconFileText className="w-4 h-4 mr-1" /> Send Offering
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                         Clear
@@ -1952,20 +1991,169 @@ export function RecruitmentClientPage({
 
     {/* Bulk Offering Dialog */}
     <Dialog open={isBulkOfferingOpen} onOpenChange={setIsBulkOfferingOpen}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Send Offering Email to {selectedIds.size} Candidates</DialogTitle>
-          <DialogDescription>Surat Penawaran Kerja + PDF akan dikirim ke email kandidat. Pastikan data offering sudah diisi di detail masing-masing kandidat.</DialogDescription>
+          <DialogDescription>Isi data penawaran kerja, lalu kirim email + PDF ke kandidat.</DialogDescription>
         </DialogHeader>
-        <div className="py-4 text-sm text-muted-foreground">
-          <p>Setiap kandidat akan menerima email dengan lampiran Surat Penawaran Kerja (PDF). Data jabatan, gaji, dan benefit diambil dari tab Offering di detail kandidat.</p>
-          <p className="mt-2">Jika ada kandidat yang belum memiliki data offering, email tetap akan dikirim dengan data default.</p>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Jabatan / Level / POH *</Label>
+              <Input placeholder="HSE Officer / Staff / Balikpapan" value={bulkOfferingForm.position} onChange={e => setBulkOfferingForm({...bulkOfferingForm, position: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Atasan Langsung</Label>
+              <Input placeholder="Ketik nama karyawan..." value={supervisorSearch || bulkOfferingForm.directSupervisor} onChange={e => { setSupervisorSearch(e.target.value); setBulkOfferingForm({...bulkOfferingForm, directSupervisor: ""}); }} />
+              {supervisorSearch && !bulkOfferingForm.directSupervisor && (
+                <div className="border rounded-lg bg-white shadow-sm max-h-48 overflow-y-auto">
+                  {offeringEmployees.filter(emp => emp.name.toLowerCase().includes(supervisorSearch.toLowerCase())).slice(0, 8).length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">Tidak ada karyawan ditemukan</div>
+                  ) : (
+                    offeringEmployees.filter(emp => emp.name.toLowerCase().includes(supervisorSearch.toLowerCase())).slice(0, 8).map(emp => (
+                      <button key={emp.id} type="button" className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b last:border-0 text-sm" onClick={() => {
+                        setBulkOfferingForm({...bulkOfferingForm, directSupervisor: emp.name});
+                        setSupervisorSearch("");
+                      }}>
+                        <span className="font-medium">{emp.name}</span>
+                        <span className="text-muted-foreground ml-2">— {emp.section || emp.jobTitle}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Gaji Pokok *</Label>
+              <Input placeholder="Rp. 8.000.000,-" value={bulkOfferingForm.salary} onChange={e => setBulkOfferingForm({...bulkOfferingForm, salary: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Masa Kontrak (bulan)</Label>
+              <Input type="number" value={bulkOfferingForm.contractDurationMonths} onChange={e => setBulkOfferingForm({...bulkOfferingForm, contractDurationMonths: parseInt(e.target.value) || 12})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Tanggal Mulai Kerja</Label>
+              <Input type="date" value={bulkOfferingForm.startDate} onChange={e => setBulkOfferingForm({...bulkOfferingForm, startDate: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>Penandatangan</Label>
+              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={bulkOfferingForm.signatoryName} onChange={e => {
+                const signer = MCU_SIGNERS.find(s => s.name === e.target.value) || MCU_SIGNERS[0];
+                setBulkOfferingForm({...bulkOfferingForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
+              }}>
+                {MCU_SIGNERS.map(s => <option key={s.name} value={s.name}>{s.name} — {s.title}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>5. Biaya Rawat Jalan</Label>
+            <Textarea rows={2} value={bulkOfferingForm.outpatientBenefit} onChange={e => setBulkOfferingForm({...bulkOfferingForm, outpatientBenefit: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>6. Biaya Rawat Inap</Label>
+            <Textarea rows={2} value={bulkOfferingForm.inpatientBenefit} onChange={e => setBulkOfferingForm({...bulkOfferingForm, inpatientBenefit: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>7. Biaya Melahirkan</Label>
+            <Textarea rows={2} value={bulkOfferingForm.maternityBenefit} onChange={e => setBulkOfferingForm({...bulkOfferingForm, maternityBenefit: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>8. Asuransi Kecelakaan</Label>
+            <Textarea rows={2} value={bulkOfferingForm.accidentInsurance} onChange={e => setBulkOfferingForm({...bulkOfferingForm, accidentInsurance: e.target.value})} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>9. BPJS Ketenagakerjaan</Label>
+              <Input value={bulkOfferingForm.bpjsEmployment} onChange={e => setBulkOfferingForm({...bulkOfferingForm, bpjsEmployment: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label>10. BPJS Kesehatan</Label>
+              <Input value={bulkOfferingForm.bpjsHealth} onChange={e => setBulkOfferingForm({...bulkOfferingForm, bpjsHealth: e.target.value})} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>11. THR</Label>
+            <Textarea rows={2} value={bulkOfferingForm.thr} onChange={e => setBulkOfferingForm({...bulkOfferingForm, thr: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>12. Ketentuan-ketentuan Lain</Label>
+            <Textarea rows={3} value={bulkOfferingForm.otherTerms} onChange={e => setBulkOfferingForm({...bulkOfferingForm, otherTerms: e.target.value})} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsBulkOfferingOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => setIsOfferingPreviewOpen(true)}>Preview Surat</Button>
           <Button onClick={handleBulkOffering} disabled={isBulkOfferingSending}>
-            {isBulkOfferingSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+            {isBulkOfferingSending ? "Sending..." : `Save & Send to ${selectedIds.size} Candidates`}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Offering Letter Preview Dialog */}
+    <Dialog open={isOfferingPreviewOpen} onOpenChange={setIsOfferingPreviewOpen}>
+      <DialogContent className="sm:max-w-[210mm] h-[95vh] flex flex-col overflow-hidden p-0">
+        <DialogHeader className="px-6 py-3 border-b shrink-0">
+          <DialogTitle>Preview Surat Penawaran Kerja</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto p-4 bg-muted/20">
+          <div
+            className="mx-auto w-[210mm] max-w-full bg-white bg-[length:210mm_297mm] bg-top bg-no-repeat shadow-sm"
+            style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', minHeight: '297mm' }}
+          >
+            <div className="relative z-10" style={{ fontFamily: 'Arial, sans-serif', fontSize: '9pt', lineHeight: '1.3', color: 'black', paddingTop: '45mm', paddingBottom: '15mm', paddingLeft: '22mm', paddingRight: '22mm' }}>
+              <table className="mb-2 w-full"><tbody><tr><td className="w-24 align-top font-semibold">No.</td><td className="w-3 align-top">:</td><td className="align-top font-bold">{offeringLetterNo || '________'}</td></tr></tbody></table>
+              <div className="mb-2"><p>Kepada Yth.</p><p className="font-bold underline">{selectedIds.size === 1 ? candidates.find(c => selectedIds.has(c.id))?.fullName || '________' : `[${selectedIds.size} Kandidat terpilih]`}</p><p>Di Tempat</p></div>
+              <p className="mb-2 underline font-semibold">Perihal : Penawaran Kerja</p>
+              <p className="mb-2 text-justify">Dengan hormat,</p>
+              <p className="mb-2 text-justify">Bersama ini kami sampaikan penawaran kerja untuk saudara sebagai berikut :</p>
+              <table className="mb-3 w-full text-[9pt]"><tbody>
+                {[
+                  ["Jabatan/Level/POH", bulkOfferingForm.position],
+                  ["Atasan langsung", bulkOfferingForm.directSupervisor],
+                  ["Gaji Pokok", bulkOfferingForm.salary],
+                  ["Masa kontrak", `${bulkOfferingForm.contractDurationMonths} (dua belas) bulan`],
+                  ["Biaya Rawat Jalan", bulkOfferingForm.outpatientBenefit],
+                  ["Biaya Rawat Inap", bulkOfferingForm.inpatientBenefit],
+                  ["Biaya Melahirkan", bulkOfferingForm.maternityBenefit],
+                  ["Asuransi Kecelakaan", bulkOfferingForm.accidentInsurance],
+                  ["BPJS Ketenagakerjaan", bulkOfferingForm.bpjsEmployment],
+                  ["BPJS Kesehatan", bulkOfferingForm.bpjsHealth],
+                  ["THR", bulkOfferingForm.thr],
+                  ["Ketentuan-ketentuan lain", bulkOfferingForm.otherTerms],
+                ].map(([label, val], i) => (
+                  <tr key={i} className="align-top">
+                    <td className="w-6 py-0.5">{i + 1}.</td>
+                    <td className="w-40 py-0.5 font-semibold">{label}</td>
+                    <td className="w-3 py-0.5">:</td>
+                    <td className="py-0.5 text-justify">{val || '________'}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+              <p className="mb-2 text-justify">Bila saudara menyepakati penawaran tersebut diatas dan juga hasil medical check-up yang memenuhi syarat maka perusahaan akan menyiapkan perjanjian kerja untuk ditandatangani kedua pihak dan mulai bekerja tanggal <span className="font-bold underline">{bulkOfferingForm.startDate ? new Date(bulkOfferingForm.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '___'}</span></p>
+              <p className="mb-6 text-justify">Demikianlah surat penawaran kami, atas perhatian Saudara kami ucapkan terima kasih.</p>
+              <div className="flex justify-between" style={{ marginTop: '10mm' }}>
+                <div>
+                  <p className="mb-1">Balikpapan, {new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                  {bulkOfferingForm.signatureUrl ? (
+                    <img src={bulkOfferingForm.signatureUrl} alt={`TTD ${bulkOfferingForm.signatoryName}`} className="h-12 object-contain mb-1" />
+                  ) : (
+                    <div className="h-12 mb-1" />
+                  )}
+                  <p className="font-bold underline text-[9pt]">{bulkOfferingForm.signatoryName}</p>
+                  <p className="text-[8pt]">{bulkOfferingForm.signatoryTitle}</p>
+                </div>
+                <div className="text-center">
+                  <p className="mb-16">Menerima/Menyetujui,</p>
+                  <p className="font-bold text-[9pt]">{selectedIds.size === 1 ? candidates.find(c => selectedIds.has(c.id))?.fullName || '________' : '________'}</p>
+                  <p className="font-bold text-[9pt]">Calon Karyawan</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="px-6 py-3 border-t shrink-0">
+          <Button variant="outline" onClick={() => setIsOfferingPreviewOpen(false)}>Tutup</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

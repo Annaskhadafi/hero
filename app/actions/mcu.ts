@@ -131,7 +131,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
     status: "Scheduled",
   }).returning();
 
-  if (candidate.currentStage !== "Hired" && candidate.currentStage !== "Offering") {
+  if (candidate.currentStage !== "Hired" && candidate.currentStage !== "Medical Checkup") {
     await db.update(hcCandidates)
       .set({ currentStage: "Medical Checkup", updatedAt: new Date() })
       .where(eq(hcCandidates.id, candidateId));
@@ -371,7 +371,7 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
         status: "Scheduled",
       });
 
-      if (candidate.currentStage !== "Hired" && candidate.currentStage !== "Offering") {
+      if (candidate.currentStage !== "Hired" && candidate.currentStage !== "Medical Checkup") {
         await db.update(hcCandidates)
           .set({ currentStage: "Medical Checkup", updatedAt: new Date() })
           .where(eq(hcCandidates.id, cid));
@@ -525,11 +525,56 @@ export async function recordMcuResult(
     .limit(1);
   if (candidate.length > 0) {
     if (data.result === "Fit") {
-      if (candidate[0].currentStage !== "Hired" && candidate[0].currentStage !== "Offering") {
+      if (candidate[0].currentStage !== "Hired" && candidate[0].currentStage !== "Medical Checkup") {
         await db
           .update(hcCandidates)
-          .set({ currentStage: "Offering", updatedAt: new Date() })
+          .set({ currentStage: "Hired", updatedAt: new Date() })
           .where(eq(hcCandidates.id, mcuRecord.candidateId));
+
+        // Send congratulatory email
+        try {
+          const smtpSettings = await getEmailSmtpSettingsData();
+          if (smtpSettings.host && smtpSettings.fromEmail && candidate[0].email) {
+            const [recruitment] = await db
+              .select()
+              .from(hcRecruitments)
+              .where(eq(hcRecruitments.id, candidate[0].recruitmentId!))
+              .limit(1);
+
+            const { format } = await import("date-fns");
+            const hireDate = format(new Date(), "EEEE, dd MMMM yyyy");
+
+            const CONGRATS_HTML = `
+<div style="font-family:Arial,sans-serif;line-height:1.6;color:#000;padding:20px;border:1px solid #ddd;max-width:800px;margin:0 auto;">
+  <h2 style="text-align:center;margin-bottom:20px;color:#16a34a;">Selamat!</h2>
+  <p>Kepada Yth. <strong>${candidate[0].fullName}</strong>,</p>
+  <p>Dengan hormat, kami mengucapkan selamat! Anda telah resmi diterima sebagai karyawan <strong>PT Chitra Paratama (a Member of Mahadasha Group)</strong> untuk posisi <strong>${recruitment?.jobTitle || "yang dilamar"}</strong>.</p>
+  <p>Mohon menyiapkan dokumen berikut untuk proses onboarding:</p>
+  <ul>
+    <li>Kartu Tanda Penduduk (KTP)</li>
+    <li>Kartu Keluarga (KK)</li>
+    <li>Nomor Pokok Wajib Pajak (NPWP)</li>
+    <li>BPJS Kesehatan & Ketenagakerjaan</li>
+    <li>Rekening Bank Mandiri & Scan Buku Tabungan</li>
+  </ul>
+  <p>Silakan lengkapi data onboarding melalui link berikut:</p>
+  <p style="text-align:center;margin:20px 0;">
+    <a href="${process.env.NEXT_PUBLIC_BETTER_AUTH_URL?.replace("/api/auth", "") || "http://localhost:3000"}/onboarding/${candidate[0].onboardingToken}" style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;font-weight:bold;">Lengkapi Data Onboarding</a>
+  </p>
+  <p>Demikian pemberitahuan kami. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.</p>
+  <div style="margin-top:40px;"><p>Hormat kami,</p><p style="margin-top:60px;"><strong>Human Capital Department</strong><br/>PT Chitra Paratama</p></div>
+</div>`;
+
+            await sendEmailViaSmtp(smtpSettings, {
+              to: candidate[0].email,
+              subject: `[HERO] Selamat! Anda Resmi Menjadi Karyawan PT Chitra Paratama`,
+              html: CONGRATS_HTML,
+              text: `Selamat ${candidate[0].fullName}! Anda telah resmi diterima sebagai karyawan PT Chitra Paratama untuk posisi ${recruitment?.jobTitle || "yang dilamar"}. Silakan lengkapi data onboarding.`,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to send congratulatory email:", emailErr);
+        }
       }
     } else if (data.result === "Unfit") {
       await db

@@ -1,7 +1,7 @@
 import { getLetterArchives, getLetterStats } from '@/app/actions/surat'
 import { db } from '@/db'
-import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrEmployeeStatuses } from '@/db/schema/hero'
-import { and, asc, eq, ilike, or } from 'drizzle-orm'
+import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrEmployeeStatuses, hcCandidates, hcRecruitments } from '@/db/schema/hero'
+import { and, asc, eq, ilike, or, inArray } from 'drizzle-orm'
 import { SuratWorkspaceClient } from './client-page'
 
 export const metadata = {
@@ -38,11 +38,11 @@ export default async function SuratPage(props: {
   const resolvedSearchParams = await props.searchParams
   const rawTab = resolvedSearchParams?.tab
   const requestedTab = typeof rawTab === 'string' ? rawTab : undefined
-  const validTabs = ['keterangan', 'tugas', 'mcu', 'archive', 'perintah-kerja', 'perubahan-status', 'pengalaman-kerja']
+  const validTabs = ['keterangan', 'tugas', 'mcu', 'penawaran-kerja', 'archive', 'perintah-kerja', 'perubahan-status', 'pengalaman-kerja']
   const initialTab = validTabs.includes(requestedTab || '')
     ? requestedTab || 'keterangan'
     : 'keterangan'
-  const [employeesData, hrSignersData, letters, stats] = await Promise.all([
+  const [employeesData, hrSignersData, letters, stats, candidatesData, sectionsData, departmentsData, supervisorsData] = await Promise.all([
     db
       .select({
         id: hrEmployees.id,
@@ -86,6 +86,44 @@ export default async function SuratPage(props: {
       .orderBy(asc(hrEmployees.fullName)),
     getLetterArchives(),
     getLetterStats(),
+    db
+      .select({
+        id: hcCandidates.id,
+        fullName: hcCandidates.fullName,
+        email: hcCandidates.email,
+        phone: hcCandidates.phone,
+        jobTitle: hcRecruitments.jobTitle,
+        department: hcRecruitments.department,
+        section: hcRecruitments.section,
+        location: hcRecruitments.location,
+      })
+      .from(hcCandidates)
+      .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+      .where(inArray(hcCandidates.currentStage, ['Offering', 'Medical Checkup', 'Hired']))
+      .orderBy(asc(hcCandidates.fullName)),
+    db
+      .select({ name: hrSections.name })
+      .from(hrSections)
+      .where(eq(hrSections.isActive, true))
+      .orderBy(asc(hrSections.name)),
+    db
+      .select({ name: hrDepartments.name })
+      .from(hrDepartments)
+      .where(eq(hrDepartments.isActive, true))
+      .orderBy(asc(hrDepartments.name)),
+    db
+      .select({
+        id: hrEmployees.id,
+        name: hrEmployees.fullName,
+        employeeSn: hrEmployees.employeeId,
+        section: hrSections.name,
+        jobTitle: hrPositions.rankName,
+      })
+      .from(hrEmployees)
+      .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
+      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+      .where(eq(hrEmployees.isActive, true))
+      .orderBy(asc(hrEmployees.fullName)),
   ])
 
   const employees = employeesData.map((employee) => ({
@@ -106,12 +144,37 @@ export default async function SuratPage(props: {
     }
   })
 
+  const candidates = candidatesData.map((c) => ({
+    id: c.id,
+    fullName: c.fullName,
+    email: c.email,
+    phone: c.phone,
+    jobTitle: c.jobTitle || '-',
+    department: c.department || '-',
+    section: c.section || '-',
+    location: c.location || '-',
+  }))
+
+  const sections = [...new Set(sectionsData.map((s) => s.name).filter(Boolean))]
+  const departments = [...new Set(departmentsData.map((d) => d.name).filter(Boolean))]
+  const supervisors = supervisorsData.map((s) => ({
+    id: s.id,
+    name: s.name,
+    employeeSn: s.employeeSn,
+    section: s.section || '-',
+    jobTitle: s.jobTitle || '-',
+  }))
+
   return (
     <SuratWorkspaceClient
       employees={employees}
       hrSigners={hrSigners}
       letters={letters}
       stats={stats}
+      candidates={candidates}
+      sections={sections}
+      departments={departments}
+      supervisors={supervisors}
       initialTab={initialTab}
     />
   )

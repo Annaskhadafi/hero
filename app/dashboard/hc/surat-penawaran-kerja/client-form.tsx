@@ -35,12 +35,26 @@ type HrSigner = {
   signatureUrl: string
 }
 
+type EmployeeForSupervisor = {
+  id: number
+  name: string
+  employeeSn: string
+  section: string
+  jobTitle: string
+}
+
 export function SuratPenawaranKerjaClient({
   candidates,
   hrSigners,
+  employees = [],
+  sections = [],
+  departments = [],
 }: {
   candidates: CandidateForOffer[]
   hrSigners: HrSigner[]
+  employees?: EmployeeForSupervisor[]
+  sections?: string[]
+  departments?: string[]
 }) {
   const [selectedCandidateId, setSelectedCandidateId] = useState('')
   const [candidateSearch, setCandidateSearch] = useState('')
@@ -57,7 +71,10 @@ export function SuratPenawaranKerjaClient({
   })
 
   const [jabatan, setJabatan] = useState('')
+  const [selectedSection, setSelectedSection] = useState('')
+  const [selectedDepartment, setSelectedDepartment] = useState('')
   const [atasanLangsung, setAtasanLangsung] = useState('')
+  const [supervisorSearch, setSupervisorSearch] = useState('')
   const [gajiPokok, setGajiPokok] = useState('')
   const [masaKontrak, setMasaKontrak] = useState('12')
   const [biayaRawatJalan, setBiayaRawatJalan] = useState('Penusahaan memberikan bantuan biaya pengobatan rawat jalan sebesar Rp 3.500.000,-')
@@ -94,6 +111,8 @@ export function SuratPenawaranKerjaClient({
   useEffect(() => {
     if (selectedCandidate) {
       setJabatan(selectedCandidate.jobTitle || '')
+      setSelectedSection(selectedCandidate.section || '')
+      setSelectedDepartment(selectedCandidate.department || '')
     }
   }, [selectedCandidate])
 
@@ -105,8 +124,7 @@ export function SuratPenawaranKerjaClient({
     }
 
     const letterheadUrl = LETTERHEAD_BACKGROUND_URL
-    const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
-
+    const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
     printWindow.document.write(`
       <!doctype html>
       <html>
@@ -125,43 +143,32 @@ export function SuratPenawaranKerjaClient({
               background-position: center top;
               background-repeat: no-repeat;
               color: black;
+              font-family: Arial, sans-serif;
+              font-size: 9pt;
+              line-height: 1.3;
+              padding: 45mm 22mm 15mm 22mm;
             }
             table { width: 100%; border-collapse: collapse; }
+            td { vertical-align: top; }
             .text-center { text-align: center; }
             .text-justify { text-align: justify; }
             .font-bold { font-weight: 700; }
             .font-semibold { font-weight: 600; }
             .underline { text-decoration: underline; }
-            .uppercase { text-transform: uppercase; }
             .mb-1 { margin-bottom: 0.25rem; }
             .mb-2 { margin-bottom: 0.5rem; }
-            .mb-4 { margin-bottom: 1rem; }
-            .mb-6 { margin-bottom: 1.5rem; }
-            .mb-8 { margin-bottom: 2rem; }
-            .mt-8 { margin-top: 2rem; }
-            .mt-16 { margin-top: 4rem; }
-            .ml-6 { margin-left: 1.5rem; }
-            .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-            .w-4 { width: 1rem; }
-            .w-32 { width: 8rem; }
-            .w-48 { width: 12rem; }
+            .mb-16 { margin-bottom: 4rem; }
             .flex { display: flex; }
-            .justify-end { justify-content: flex-end; }
-            h1 { font-size: 1.25rem; line-height: 1.75rem; margin: 0; }
-            p { margin-top: 0; }
+            .justify-between { justify-content: space-between; }
+            img { max-height: 50px; object-fit: contain; }
           </style>
         </head>
         <body>
-          <main class="page">${contentHtml}</main>
+          <div class="page">${contentHtml}</div>
           <script>
-            const closeAfterPrint = () => setTimeout(() => window.close(), 250);
-            window.addEventListener("afterprint", closeAfterPrint);
-            window.addEventListener("load", () => {
-              const backgroundImage = new Image();
-              backgroundImage.onload = () => setTimeout(() => window.print(), 150);
-              backgroundImage.onerror = () => setTimeout(() => window.print(), 150);
-              backgroundImage.src = "${letterheadUrl}";
-            });
+            window.onload = function() {
+              setTimeout(function() { window.print(); }, 200);
+            };
           </script>
         </body>
       </html>
@@ -181,16 +188,16 @@ export function SuratPenawaranKerjaClient({
     try {
       const today = new Date().toISOString().split('T')[0]
       const contentHtml = document.querySelector('.pdf-wrapper-content')?.innerHTML || ''
+      const freshNumber = await getNextLetterNumber('surat_penawaran_kerja')
 
       const result = await saveLetter({
         letterType: 'surat_penawaran_kerja',
-        letterNumber: noSurat,
-        employeeId: selectedCandidate.id,
+        letterNumber: freshNumber,
         employeeName: selectedCandidate.fullName,
         subject: 'Surat Penawaran Kerja',
-        content: contentHtml,
+        content: contentHtml || '<p>Surat Penawaran Kerja</p>',
         destination: selectedCandidate.fullName,
-        purpose: jabatan,
+        purpose: jabatan || selectedCandidate.jobTitle || '',
         issuedDate: today,
         issuedPlace: 'Balikpapan',
         signatoryName: selectedHrSigner?.name || '',
@@ -304,9 +311,51 @@ export function SuratPenawaranKerjaClient({
               <Input value={jabatan} onChange={(e) => setJabatan(e.target.value)} placeholder="Contoh: HSE Officer / Staff / Balikpapan" />
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Section</Label>
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)}>
+                  <option value="">-- Pilih Section --</option>
+                  {[...new Set(sections)].map((s, i) => <option key={`${s}-${i}`} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)}>
+                  <option value="">-- Pilih Department --</option>
+                  {[...new Set(departments)].map((d, i) => <option key={`${d}-${i}`} value={d}>{d}</option>)}
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>2. Atasan Langsung</Label>
-              <Input value={atasanLangsung} onChange={(e) => setAtasanLangsung(e.target.value)} placeholder="Nama atasan langsung" />
+              <Input placeholder="Cari nama karyawan..." value={supervisorSearch} onChange={(e) => { setSupervisorSearch(e.target.value); setAtasanLangsung('') }} />
+              {supervisorSearch && !atasanLangsung && (
+                <div className="border rounded-lg bg-white shadow-sm max-h-48 overflow-y-auto">
+                  {employees.filter((emp) => emp.name.toLowerCase().includes(supervisorSearch.toLowerCase())).slice(0, 8).length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground">Tidak ada karyawan ditemukan</div>
+                  ) : (
+                    employees.filter((emp) => emp.name.toLowerCase().includes(supervisorSearch.toLowerCase())).slice(0, 8).map((emp) => (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b last:border-0 text-sm"
+                        onClick={() => {
+                          setAtasanLangsung(emp.name)
+                          setSupervisorSearch(emp.name)
+                        }}
+                      >
+                        <span className="font-medium">{emp.name}</span>
+                        <span className="text-muted-foreground ml-2">— {emp.section || emp.jobTitle || '-'}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              {atasanLangsung && !supervisorSearch && (
+                <Input value={atasanLangsung} onChange={(e) => setAtasanLangsung(e.target.value)} />
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -391,163 +440,150 @@ export function SuratPenawaranKerjaClient({
                 className="pdf-wrapper-content relative z-10 outline-none"
                 style={{
                   fontFamily: 'Arial, sans-serif',
-                  fontSize: '10pt',
-                  lineHeight: '1.4',
+                  fontSize: '9pt',
+                  lineHeight: '1.3',
                   color: 'black',
                   paddingTop: '45mm',
-                  paddingBottom: '20mm',
+                  paddingBottom: '15mm',
                   paddingLeft: '22mm',
                   paddingRight: '22mm',
                   minHeight: '297mm',
                 }}
               >
-                {/* No. Surat & Perihal */}
-                <table className="mb-4 w-full">
+                {/* No. Surat */}
+                <table className="mb-2 w-full">
                   <tbody>
                     <tr>
-                      <td className="w-32 align-top font-semibold">No.</td>
-                      <td className="w-4 align-top">:</td>
+                      <td className="w-24 align-top font-semibold">No.</td>
+                      <td className="w-3 align-top">:</td>
                       <td className="align-top">{noSurat || '______________________'}</td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* Kepada Yth */}
-                <div className="mb-4">
+                <div className="mb-2">
                   <p>Kepada Yth.</p>
                   <p className="font-bold underline">{selectedCandidate?.fullName || '______________________'}</p>
                   <p className="text-muted-foreground">Di Tempat</p>
                 </div>
 
                 {/* Perihal */}
-                <p className="mb-4 underline font-semibold">Perihal : Penawaran Kerja</p>
+                <p className="mb-2 underline font-semibold">Perihal : Penawaran Kerja</p>
 
                 {/* Opening */}
-                <p className="mb-4 text-justify">Dengan hormat,</p>
-                <p className="mb-4 text-justify">
+                <p className="mb-2 text-justify">Dengan hormat,</p>
+                <p className="mb-2 text-justify">
                   Bersama ini kami sampaikan penawaran kerja untuk saudara sebagai berikut :
                 </p>
 
                 {/* Terms Table */}
-                <table className="mb-6 w-full text-sm">
+                <table className="mb-3 w-full text-[9pt]">
                   <tbody>
                     <tr className="align-top">
-                      <td className="w-8 py-1">1.</td>
-                      <td className="w-44 py-1 font-semibold">Jabatan/Level/POH</td>
-                      <td className="w-4 py-1">:</td>
-                      <td className="py-1">{jabatan || '______________________'}</td>
+                      <td className="w-6 py-0.5">1.</td>
+                      <td className="w-40 py-0.5 font-semibold">Jabatan/Level/POH</td>
+                      <td className="w-3 py-0.5">:</td>
+                      <td className="py-0.5">{jabatan || '______________________'}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">2.</td>
-                      <td className="py-1 font-semibold">Atasan langsung</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1">{atasanLangsung || '______________________'}</td>
+                      <td className="py-0.5">2.</td>
+                      <td className="py-0.5 font-semibold">Atasan langsung</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5">{atasanLangsung || '______________________'}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">3.</td>
-                      <td className="py-1 font-semibold">Gaji Pokok</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1">{gajiPokok || '______________________'}</td>
+                      <td className="py-0.5">3.</td>
+                      <td className="py-0.5 font-semibold">Gaji Pokok</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5">{gajiPokok || '______________________'}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">4.</td>
-                      <td className="py-1 font-semibold">Masa kontrak</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1">{masaKontrak} (dua belas) bulan</td>
+                      <td className="py-0.5">4.</td>
+                      <td className="py-0.5 font-semibold">Masa kontrak</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5">{masaKontrak} (dua belas) bulan</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">5.</td>
-                      <td className="py-1 font-semibold">Biaya Rawat Jalan</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1 text-justify">{biayaRawatJalan}</td>
+                      <td className="py-0.5">5.</td>
+                      <td className="py-0.5 font-semibold">Biaya Rawat Jalan</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5 text-justify">{biayaRawatJalan}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">6.</td>
-                      <td className="py-1 font-semibold">Biaya Rawat Inap</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1 text-justify">{biayaRawatInap}</td>
+                      <td className="py-0.5">6.</td>
+                      <td className="py-0.5 font-semibold">Biaya Rawat Inap</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5 text-justify">{biayaRawatInap}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">7.</td>
-                      <td className="py-1 font-semibold">Biaya Melahirkan</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1 text-justify">{biayaMelahirkan}</td>
+                      <td className="py-0.5">7.</td>
+                      <td className="py-0.5 font-semibold">Biaya Melahirkan</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5 text-justify">{biayaMelahirkan}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">8.</td>
-                      <td className="py-1 font-semibold">Asuransi Kecelakaan</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1 text-justify">{asuransiKecelakaan}</td>
+                      <td className="py-0.5">8.</td>
+                      <td className="py-0.5 font-semibold">Asuransi Kecelakaan</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5 text-justify">{asuransiKecelakaan}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">9.</td>
-                      <td className="py-1 font-semibold">BPJS Ketenagakerjaan</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1">{bpjsKetenagakerjaan}</td>
+                      <td className="py-0.5">9.</td>
+                      <td className="py-0.5 font-semibold">BPJS Ketenagakerjaan</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5">{bpjsKetenagakerjaan}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">10.</td>
-                      <td className="py-1 font-semibold">BPJS Kesehatan</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1">{bpjsKesehatan}</td>
+                      <td className="py-0.5">10.</td>
+                      <td className="py-0.5 font-semibold">BPJS Kesehatan</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5">{bpjsKesehatan}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">11.</td>
-                      <td className="py-1 font-semibold">THR</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1 text-justify">{thr}</td>
+                      <td className="py-0.5">11.</td>
+                      <td className="py-0.5 font-semibold">THR</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5 text-justify">{thr}</td>
                     </tr>
                     <tr className="align-top">
-                      <td className="py-1">12.</td>
-                      <td className="py-1 font-semibold">Ketentuan-ketentuan lain</td>
-                      <td className="py-1">:</td>
-                      <td className="py-1 text-justify">{ketentuanLain}</td>
+                      <td className="py-0.5">12.</td>
+                      <td className="py-0.5 font-semibold">Ketentuan-ketentuan lain</td>
+                      <td className="py-0.5">:</td>
+                      <td className="py-0.5 text-justify">{ketentuanLain}</td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* Closing */}
-                <p className="mb-4 text-justify">
+                <p className="mb-2 text-justify">
                   Bila saudara menyepakati penawaran tersebut diatas dan juga hasil medical check-up yang memenuhi syarat maka perusahaan
                   akan menyiapkan perjanjian kerja untuk ditandatangani kedua pihak dan mulai bekerja tanggal <span className="font-bold underline">{tanggalBekerja ? new Date(tanggalBekerja).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '___'}</span>
                 </p>
 
-                <p className="mb-8 text-justify">
+                <p className="mb-6 text-justify">
                   Demikianlah surat penawaran kami, atas perhatian Saudara kami ucapkan terima kasih.
                 </p>
 
                 {/* Signature */}
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between" style={{ marginTop: '10mm' }}>
                   <div>
-                    <p>Balikpapan, {tanggal}</p>
+                    <p className="mb-1">Balikpapan, {tanggal}</p>
+                    {selectedSignatureUrl ? (
+                      <img src={selectedSignatureUrl} alt={`TTD ${selectedHrSigner?.name || 'HR'}`} className="h-12 object-contain mb-1" />
+                    ) : (
+                      <div className="h-12 mb-1" />
+                    )}
+                    <p className="font-bold underline text-[9pt]">{selectedHrSigner?.name || '_________________________'}</p>
+                    <p className="text-[8pt]">{selectedHrSigner?.jobTitle || 'HR-GA Supervisor'}</p>
                   </div>
                   <div className="text-center">
-                    <p>Menerima/Menyetujui,</p>
-                    <div className="mt-2" style={{ minHeight: '60px', minWidth: '160px' }}>
-                      {selectedSignatureUrl ? (
-                        <img src={selectedSignatureUrl} alt={`TTD ${selectedHrSigner?.name || 'HR'}`} className="h-16 object-contain" />
-                      ) : (
-                        <div className="h-16" />
-                      )}
-                    </div>
-                    <p className="font-bold underline">{selectedHrSigner?.name || '_________________________'}</p>
-                    <p className="text-sm">{selectedHrSigner?.jobTitle || 'HR-GA Supervisor'}</p>
-                  </div>
-                  <div className="text-center">
-                    <div className="mb-2">
-                      <p>{selectedCandidate?.fullName || '_________________________'}</p>
-                      <p className="font-bold">Calon Karyawan</p>
-                    </div>
+                    <p className="mb-16">Menerima/Menyetujui,</p>
+                    <p className="font-bold text-[9pt]">{selectedCandidate?.fullName || '_________________________'}</p>
+                    <p className="font-bold text-[9pt]">Calon Karyawan</p>
                   </div>
                 </div>
 
-                {/* Footer */}
-                <div className="mt-8 border-t pt-4 text-[8pt] text-muted-foreground">
-                  <p className="font-bold text-black">PT Chitra Paratama</p>
-                  <p>Jl. AMD RT. 46 No. 6 Kelurahan Graha Indah Balikpapan Utara 76126</p>
-                  <p>P +62 542 7908100 | F +62 542 7908100</p>
-                  <p>www.chitraparatama.co.id</p>
-                </div>
               </div>
             </div>
           </div>

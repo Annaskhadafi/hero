@@ -451,7 +451,7 @@ export function SuratTugasClient({
                 fontSize: '9.5pt',
                 lineHeight: '1.3',
                 color: 'black',
-                paddingTop: '38mm',
+                paddingTop: '48mm',
                 paddingBottom: '20mm',
                 paddingLeft: '22mm',
                 paddingRight: '22mm',

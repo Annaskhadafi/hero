@@ -29,7 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { cn } from "@/lib/utils";
 
 const STAGES = [
@@ -37,8 +37,8 @@ const STAGES = [
   "Screening",
   "Psikotes",
   "Interview",
-  "Medical Checkup",
   "Offering",
+  "Medical Checkup",
   "Hired",
 ];
 
@@ -132,7 +132,9 @@ export function KanbanBoard({
     }, 900);
     const toastId = toast.loading(`Running AI assessment for ${candidate.fullName}...`);
     try {
+      console.log(`[AI] Starting assessment for candidate ${candidate.id}: ${candidate.fullName}`);
       const result = await assessCandidateCv(candidate.id);
+      console.log(`[AI] Result:`, result);
       if (result.success) {
         setAiProgress((prev) => ({ ...prev, [candidate.id]: 100 }));
         toast.success(`AI assessment completed: ${result.score}%`, { id: toastId });
@@ -141,6 +143,7 @@ export function KanbanBoard({
         toast.error(result.error || "AI assessment failed.", { id: toastId });
       }
     } catch (error: any) {
+      console.error(`[AI] Error:`, error);
       toast.error(error.message || "AI assessment failed.", { id: toastId });
     } finally {
       if (aiProgressTimers.current[candidate.id]) {
@@ -173,7 +176,7 @@ export function KanbanBoard({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <ScrollArea className="w-full pb-4">
+      <div className="w-full overflow-x-auto pb-4">
         <div className="flex gap-5 min-w-max px-1">
           {STAGES.map((stage) => (
             <KanbanColumn
@@ -187,7 +190,7 @@ export function KanbanBoard({
             />
           ))}
         </div>
-      </ScrollArea>
+      </div>
       <DragOverlay dropAnimation={null}>
         {activeCandidate ? (
           <KanbanCard

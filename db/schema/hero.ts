@@ -2440,6 +2440,12 @@ export const hcCandidates = pgTable('hero_hc_candidates', {
   bankAccountNumber: text('bank_account_number'),
   emergencyContactName: text('emergency_contact_name'),
   emergencyContactPhone: text('emergency_contact_phone'),
+  // Onboarding Documents
+  kkUrl: text('kk_url'),
+  ktpUrl: text('ktp_url'),
+  bankBookUrl: text('bank_book_url'),
+  startDate: date('start_date'),
+  onboardingCompletedAt: timestamp('onboarding_completed_at'),
 })
 
 export const hcCandidateStages = pgTable('hero_hc_candidate_stages', {

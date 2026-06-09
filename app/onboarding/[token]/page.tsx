@@ -1,6 +1,15 @@
 "use client"
 
 import { useState, useEffect, use } from "react"
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 import { getCandidateByToken, submitOnboardingData } from "@/app/actions/onboarding"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -25,7 +34,11 @@ export default function OnboardingPage({ params }: { params: Promise<{ token: st
     bankName: "",
     bankAccountNumber: "",
     emergencyContactName: "",
-    emergencyContactPhone: ""
+    emergencyContactPhone: "",
+    kkUrl: "",
+    ktpUrl: "",
+    bankBookUrl: "",
+    startDate: "",
   })
 
   useEffect(() => {
@@ -41,7 +54,11 @@ export default function OnboardingPage({ params }: { params: Promise<{ token: st
           bankName: res.data.candidate.bankName || "",
           bankAccountNumber: res.data.candidate.bankAccountNumber || "",
           emergencyContactName: res.data.candidate.emergencyContactName || "",
-          emergencyContactPhone: res.data.candidate.emergencyContactPhone || ""
+          emergencyContactPhone: res.data.candidate.emergencyContactPhone || "",
+          kkUrl: res.data.candidate.kkUrl || "",
+          ktpUrl: res.data.candidate.ktpUrl || "",
+          bankBookUrl: res.data.candidate.bankBookUrl || "",
+          startDate: res.data.candidate.startDate || "",
         })
       } else {
         setError(res.error || "Failed to load onboarding link")
@@ -192,6 +209,74 @@ export default function OnboardingPage({ params }: { params: Promise<{ token: st
                     value={formData.bankAccountNumber} 
                     onChange={e => setFormData({...formData, bankAccountNumber: e.target.value})} 
                     placeholder="Your account number" 
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  <CardTitle>Dokumen Pendukung</CardTitle>
+                </div>
+                <CardDescription>Upload scan dokumen yang diperlukan</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Kartu Keluarga (KK) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf"
+                    required
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const base64 = await fileToBase64(file);
+                        setFormData({...formData, kkUrl: base64});
+                      }
+                    }}
+                  />
+                  {formData.kkUrl && <p className="text-xs text-green-600">✓ File uploaded</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Kartu Tanda Penduduk (KTP) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf"
+                    required
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const base64 = await fileToBase64(file);
+                        setFormData({...formData, ktpUrl: base64});
+                      }
+                    }}
+                  />
+                  {formData.ktpUrl && <p className="text-xs text-green-600">✓ File uploaded</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Scan Buku Tabungan <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf"
+                    required
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const base64 = await fileToBase64(file);
+                        setFormData({...formData, bankBookUrl: base64});
+                      }
+                    }}
+                  />
+                  {formData.bankBookUrl && <p className="text-xs text-green-600">✓ File uploaded</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Tanggal Mulai Kerja</Label>
+                  <Input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={e => setFormData({...formData, startDate: e.target.value})}
                   />
                 </div>
               </CardContent>

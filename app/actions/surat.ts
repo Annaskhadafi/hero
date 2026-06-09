@@ -44,6 +44,36 @@ export async function saveHrSignature({
 // ─── Letter Number Generation ─────────────────────────────────────────────
 
 const ROMAN_MONTHS = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
+const LETTER_NUMBER_RETRY_DELAY_MS = 500
+
+function isRetryableDbError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+
+  return (
+    message.includes('connection timeout') ||
+    message.includes('connection terminated') ||
+    message.includes('timeout exceeded') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout')
+  )
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function retryLetterNumberQuery<T>(query: () => Promise<T>) {
+  try {
+    return await query()
+  } catch (error) {
+    if (!isRetryableDbError(error)) {
+      throw error
+    }
+
+    await wait(LETTER_NUMBER_RETRY_DELAY_MS)
+    return await query()
+  }
+}
 
 function formatLetterNumber(
   sequence: number,
@@ -68,21 +98,29 @@ export async function getNextLetterNumber(letterType: string): Promise<string> {
   const year = now.getFullYear()
   const month = now.getMonth() + 1
 
-  const [existing] = await db
-    .select()
-    .from(hcLetterSequences)
-    .where(
-      and(
-        eq(hcLetterSequences.letterType, letterType),
-        eq(hcLetterSequences.year, year),
-        eq(hcLetterSequences.month, month)
-      )
+  try {
+    const [existing] = await retryLetterNumberQuery(() =>
+      db
+        .select()
+        .from(hcLetterSequences)
+        .where(
+          and(
+            eq(hcLetterSequences.letterType, letterType),
+            eq(hcLetterSequences.year, year),
+            eq(hcLetterSequences.month, month)
+          )
+        )
+        .limit(1)
     )
-    .limit(1)
 
-  const nextSeq = (existing?.lastSequence ?? 0) + 1
+    const nextSeq = (existing?.lastSequence ?? 0) + 1
 
-  return formatLetterNumber(nextSeq, letterType, month, year)
+    return formatLetterNumber(nextSeq, letterType, month, year)
+  } catch (error) {
+    console.error('Failed to generate letter number preview:', error)
+
+    return formatLetterNumber(1, letterType, month, year)
+  }
 }
 
 export async function consumeLetterNumber(letterType: string): Promise<string> {
@@ -90,33 +128,39 @@ export async function consumeLetterNumber(letterType: string): Promise<string> {
   const year = now.getFullYear()
   const month = now.getMonth() + 1
 
-  const [existing] = await db
-    .select()
-    .from(hcLetterSequences)
-    .where(
-      and(
-        eq(hcLetterSequences.letterType, letterType),
-        eq(hcLetterSequences.year, year),
-        eq(hcLetterSequences.month, month)
+  const [existing] = await retryLetterNumberQuery(() =>
+    db
+      .select()
+      .from(hcLetterSequences)
+      .where(
+        and(
+          eq(hcLetterSequences.letterType, letterType),
+          eq(hcLetterSequences.year, year),
+          eq(hcLetterSequences.month, month)
+        )
       )
-    )
-    .limit(1)
+      .limit(1)
+  )
 
   if (existing) {
     const nextSeq = existing.lastSequence + 1
-    await db
-      .update(hcLetterSequences)
-      .set({ lastSequence: nextSeq, updatedAt: new Date() })
-      .where(eq(hcLetterSequences.id, existing.id))
+    await retryLetterNumberQuery(() =>
+      db
+        .update(hcLetterSequences)
+        .set({ lastSequence: nextSeq, updatedAt: new Date() })
+        .where(eq(hcLetterSequences.id, existing.id))
+    )
     return formatLetterNumber(nextSeq, letterType, month, year)
   }
 
-  await db.insert(hcLetterSequences).values({
-    letterType,
-    year,
-    month,
-    lastSequence: 1,
-  })
+  await retryLetterNumberQuery(() =>
+    db.insert(hcLetterSequences).values({
+      letterType,
+      year,
+      month,
+      lastSequence: 1,
+    })
+  )
 
   return formatLetterNumber(1, letterType, month, year)
 }
@@ -170,6 +214,7 @@ export async function saveLetter(data: {
     revalidatePath('/dashboard/hc/surat-keterangan')
     revalidatePath('/dashboard/hc/surat-tugas')
     revalidatePath('/dashboard/hc/surat-pengalaman-kerja')
+    revalidatePath('/dashboard/hc/surat-penawaran-kerja')
 
     return { success: true, id: inserted.id }
   } catch (error) {
