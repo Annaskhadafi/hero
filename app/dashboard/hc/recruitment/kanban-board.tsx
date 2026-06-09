@@ -132,9 +132,7 @@ export function KanbanBoard({
     }, 900);
     const toastId = toast.loading(`Running AI assessment for ${candidate.fullName}...`);
     try {
-      console.log(`[AI] Starting assessment for candidate ${candidate.id}: ${candidate.fullName}`);
       const result = await assessCandidateCv(candidate.id);
-      console.log(`[AI] Result:`, result);
       if (result.success) {
         setAiProgress((prev) => ({ ...prev, [candidate.id]: 100 }));
         toast.success(`AI assessment completed: ${result.score}%`, { id: toastId });
