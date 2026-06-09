@@ -22,6 +22,8 @@ import { getCandidateInterviews } from "@/app/actions/interviews";
 import { getCandidateMcu } from "@/app/actions/mcu";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
+import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
+import { renderHcTemplate } from "@/lib/hc-email-utils";
 import crypto from "crypto";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -1308,6 +1310,65 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
   }
 }
 
+export async function previewStartDateEmail(data: {
+  candidateName: string;
+  jobTitle: string;
+  startDate: string;
+  onboardingUrl: string;
+}) {
+  const templateVars = {
+    candidateName: data.candidateName,
+    jobTitle: data.jobTitle,
+    companyName: "PT Chitra Paratama",
+    date: data.startDate,
+    time: "",
+    location: "",
+    interviewer: "",
+    clinicName: "",
+    clinicAddress: "",
+    clinicCity: "",
+    paket: "",
+    testLink: data.onboardingUrl,
+    duration: "",
+  };
+
+  const template = await getHcEmailTemplateByType("start_date");
+  let subject: string, html: string | undefined, text: string;
+
+  if (template) {
+    const rendered = renderHcTemplate(template, templateVars);
+    subject = rendered.subject;
+    html = rendered.html;
+    text = rendered.text;
+  } else {
+    subject = "Selamat Datang — PT Chitra Paratama";
+    html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <h2 style="color:#0f172a;">Secara Resmi Kami Menyambut Anda</h2>
+      <p>Halo <strong>${data.candidateName}</strong>,</p>
+      <p>Kami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai <strong>Karyawan PT Chitra Paratama</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f8fafc;border-radius:8px;">
+        <tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">Posisi</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${data.jobTitle}</td></tr>
+        <tr><td style="padding:8px 12px;font-weight:600;">Tanggal Mulai Kerja</td><td style="padding:8px 12px;">${data.startDate}</td></tr>
+      </table>
+      <p>Sebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:</p>
+      <p style="text-align:center;margin:24px 0;">
+        <a href="${data.onboardingUrl}" style="background:#0f172a;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">Lengkapi Data Onboarding</a>
+      </p>
+      <p>Dokumen yang perlu diupload:</p>
+      <ul>
+        <li>Kartu Keluarga (KK)</li>
+        <li>Kartu Tanda Penduduk (KTP)</li>
+        <li>Scan Buku Tabungan</li>
+      </ul>
+      <p>Pastikan data diisi sebelum tanggal mulai kerja.</p>
+      <p>Salam hangat,<br/>HR Team PT Chitra Paratama</p>
+    </div>`;
+    text = `Secara Resmi Kami Menyambut Anda\n\nHalo ${data.candidateName},\n\nKami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai Karyawan PT Chitra Paratama.\n\nPosisi: ${data.jobTitle}\nTanggal Mulai Kerja: ${data.startDate}\n\nSebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:\n${data.onboardingUrl}\n\nDokumen yang perlu diupload:\n- Kartu Keluarga (KK)\n- Kartu Tanda Penduduk (KTP)\n- Scan Buku Tabungan\n\nPastikan data diisi sebelum tanggal mulai kerja.\n\nSalam hangat,\nHR Team PT Chitra Paratama`;
+  }
+
+  return { subject, html, text };
+}
+
 export async function sendStartDateEmails(candidateIds: number[], startDate: string) {
   const smtpSettings = await getEmailSmtpSettingsData();
   const results: Array<{ candidateId: number; success: boolean; error?: string }> = [];
@@ -1347,37 +1408,18 @@ export async function sendStartDateEmails(candidateIds: number[], startDate: str
       const onboardingUrl = `${baseUrl}/onboarding/${token}`;
       const startDateLabel = new Date(startDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
 
-      const html = `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <h2 style="color:#0f172a;">Secara Resmi Kami Menyambut Anda</h2>
-          <p>Halo <strong>${candidate.fullName}</strong>,</p>
-          <p>Kami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai <strong>Karyawan PT Chitra Paratama</strong>.</p>
-          <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f8fafc;border-radius:8px;">
-            <tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">Posisi</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${jobTitle}</td></tr>
-            <tr><td style="padding:8px 12px;font-weight:600;">Tanggal Mulai Kerja</td><td style="padding:8px 12px;">${startDateLabel}</td></tr>
-          </table>
-          <p>Sebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:</p>
-          <p style="text-align:center;margin:24px 0;">
-            <a href="${onboardingUrl}" style="background:#0f172a;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">Lengkapi Data Onboarding</a>
-          </p>
-          <p>Dokumen yang perlu diupload:</p>
-          <ul>
-            <li>Kartu Keluarga (KK)</li>
-            <li>Kartu Tanda Penduduk (KTP)</li>
-            <li>Scan Buku Tabungan</li>
-          </ul>
-          <p>Pastikan data diisi sebelum tanggal mulai kerja.</p>
-          <p>Salam hangat,<br/>HR Team PT Chitra Paratama</p>
-        </div>
-      `;
-
-      const text = `Secara Resmi Kami Menyambut Anda\n\nHalo ${candidate.fullName},\n\nKami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai Karyawan PT Chitra Paratama.\n\nPosisi: ${jobTitle}\nTanggal Mulai Kerja: ${startDateLabel}\n\nSebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:\n${onboardingUrl}\n\nDokumen yang perlu diupload:\n- Kartu Keluarga (KK)\n- Kartu Tanda Penduduk (KTP)\n- Scan Buku Tabungan\n\nPastikan data diisi sebelum tanggal mulai kerja.\n\nSalam hangat,\nHR Team PT Chitra Paratama`;
+      const preview = await previewStartDateEmail({
+        candidateName: candidate.fullName,
+        jobTitle,
+        startDate: startDateLabel,
+        onboardingUrl,
+      });
 
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
-        subject: "Selamat Datang — PT Chitra Paratama",
-        html,
-        text,
+        subject: preview.subject,
+        html: preview.html,
+        text: preview.text,
         templateName: "Start Date Email",
         templateCode: "start_date_email",
       });

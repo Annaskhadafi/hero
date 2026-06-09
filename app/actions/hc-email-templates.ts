@@ -260,6 +260,57 @@ export async function ensureDefaultTemplates() {
 </table>
 </body></html>`,
     },
+    {
+      type: "start_date",
+      name: "Selamat Datang — Mulai Kerja",
+      subject: `Selamat Datang — PT Chitra Paratama`,
+      format: "html",
+      body: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">PT Chitra Paratama</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Human Capital Division</p>
+    </td></tr>
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Secara Resmi Kami Menyambut Anda! 🎉</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Halo <strong>{candidateName}</strong>,
+      </p>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Kami dengan bangga mengumumkan bahwa Anda secara resmi diterima sebagai <strong>Karyawan PT Chitra Paratama</strong>.
+      </p>
+      <div style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);border:1px solid #22c55e;border-radius:12px;padding:16px 20px;margin:20px 0;">
+        <p style="margin:0;font-size:14px;color:#15803d;"><strong>📋 Detail Kepegawaian:</strong></p>
+        <p style="margin:4px 0 0;font-size:14px;color:#15803d;"><strong>Posisi:</strong> {jobTitle}</p>
+        <p style="margin:4px 0 0;font-size:14px;color:#15803d;"><strong>Tanggal Mulai Kerja:</strong> {date}</p>
+      </div>
+      <p style="margin:16px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Sebelum hari pertama kerja, mohon lengkapi data administrasi dan upload dokumen melalui link onboarding berikut:
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="{testLink}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#0f172a,#334155);color:#ffffff;padding:14px 40px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">🔗 Lengkapi Data Onboarding</a>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="margin:0 0 8px;font-weight:700;color:#0f172a;font-size:14px;">📎 Dokumen yang perlu diupload:</p>
+        <ul style="margin:0;padding-left:20px;color:#475569;font-size:13px;line-height:1.8;">
+          <li>Kartu Keluarga (KK)</li>
+          <li>Kartu Tanda Penduduk (KTP)</li>
+          <li>Scan Buku Tabungan</li>
+        </ul>
+      </div>
+      <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">Pastikan data diisi sebelum tanggal mulai kerja.</p>
+    </td></tr>
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`,
+    },
   ];
 
   for (const def of defaults) {

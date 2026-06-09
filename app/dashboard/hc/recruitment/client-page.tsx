@@ -23,7 +23,7 @@ import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -2038,6 +2038,20 @@ export function RecruitmentClientPage({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsMulaiKerjaOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={async () => {
+            if (!mulaiKerjaDate) { toast.error("Isi tanggal mulai kerja dulu"); return; }
+            const startDateLabel = new Date(mulaiKerjaDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+            const preview = await previewStartDateEmail({
+              candidateName: "John Doe",
+              jobTitle: "Posisi",
+              startDate: startDateLabel,
+              onboardingUrl: "https://hero.chitraparatama.com/onboarding/EXAMPLE",
+            });
+            setEmailPreview({ subject: preview.subject, html: preview.html || "<p>Preview not available</p>", text: preview.text });
+            setIsEmailPreviewOpen(true);
+          }}>
+            Preview
+          </Button>
           <Button onClick={handleMulaiKerja} disabled={isMulaiKerjaSending}>
             {isMulaiKerjaSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
