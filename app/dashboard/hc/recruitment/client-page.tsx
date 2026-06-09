@@ -193,8 +193,8 @@ export function RecruitmentClientPage({
 
   // Vacancy Search & Filter State
   const [vacancySearch, setVacancySearch] = useState("");
-  const [vacancyStatusFilter, setVacancyStatusFilter] = useState("");
-  const [vacancyDepartmentFilter, setVacancyDepartmentFilter] = useState("");
+  const [vacancyStatusFilter, setVacancyStatusFilter] = useState("all");
+  const [vacancyDepartmentFilter, setVacancyDepartmentFilter] = useState("all");
   const [vacancySortBy, setVacancySortBy] = useState<"date" | "candidates" | "daysLeft">("date");
   const [selectedVacancyIds, setSelectedVacancyIds] = useState<Set<number>>(new Set());
   const [emailStatuses, setEmailStatuses] = useState<Record<number, { status: string; lastSentAt: Date | null; templateName: string | null }>>({});
@@ -675,8 +675,8 @@ export function RecruitmentClientPage({
         job.jobTitle.toLowerCase().includes(searchLower) ||
         job.department.toLowerCase().includes(searchLower) ||
         job.section.toLowerCase().includes(searchLower);
-      const matchesStatus = !vacancyStatusFilter || getVacancyStatus(job) === vacancyStatusFilter;
-      const matchesDept = !vacancyDepartmentFilter || job.department === vacancyDepartmentFilter;
+      const matchesStatus = vacancyStatusFilter === "all" || getVacancyStatus(job) === vacancyStatusFilter;
+      const matchesDept = vacancyDepartmentFilter === "all" || job.department === vacancyDepartmentFilter;
       return matchesSearch && matchesStatus && matchesDept;
     })
     .sort((a, b) => {
@@ -990,7 +990,7 @@ export function RecruitmentClientPage({
                          <SelectValue placeholder="All Status" />
                        </SelectTrigger>
                        <SelectContent>
-                         <SelectItem value="">All Status</SelectItem>
+                         <SelectItem value="all">All Status</SelectItem>
                          <SelectItem value="Draft">Draft</SelectItem>
                          <SelectItem value="Published">Published</SelectItem>
                          <SelectItem value="Closed">Closed</SelectItem>
@@ -1002,7 +1002,7 @@ export function RecruitmentClientPage({
                          <SelectValue placeholder="All Departments" />
                        </SelectTrigger>
                        <SelectContent>
-                         <SelectItem value="">All Departments</SelectItem>
+                         <SelectItem value="all">All Departments</SelectItem>
                          {formOptions.departments.map((d) => (
                            <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
                          ))}
@@ -1018,11 +1018,11 @@ export function RecruitmentClientPage({
                          <SelectItem value="daysLeft">Days Left</SelectItem>
                        </SelectContent>
                      </Select>
-                     {(vacancySearch || vacancyStatusFilter || vacancyDepartmentFilter) && (
+                     {(vacancySearch || vacancyStatusFilter !== "all" || vacancyDepartmentFilter !== "all") && (
                        <Button variant="ghost" size="sm" className="h-9" onClick={() => {
                          setVacancySearch("");
-                         setVacancyStatusFilter("");
-                         setVacancyDepartmentFilter("");
+                         setVacancyStatusFilter("all");
+                         setVacancyDepartmentFilter("all");
                        }}>
                          Reset
                        </Button>
