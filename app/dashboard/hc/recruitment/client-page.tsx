@@ -1072,12 +1072,12 @@ export function RecruitmentClientPage({
                    <TableBody>
                      {filteredVacancies.map((job, idx) => {
                        const status = getVacancyStatus(job);
-                       const statusBadge = {
-                         Draft: { variant: "secondary" as const, color: "bg-gray-100 text-gray-700" },
-                         Published: { variant: "default" as const, color: "bg-green-100 text-green-700" },
-                         Closed: { variant: "outline" as const, color: "bg-red-50 text-red-600" },
-                         Completed: { variant: "outline" as const, color: "bg-blue-50 text-blue-700" },
-                       }[status] || { variant: "secondary" as const, color: "" };
+                        const statusBadge = {
+                          Draft: { color: "bg-gray-100 text-gray-700 border-gray-200" },
+                          Published: { color: "bg-green-100 text-green-700 border-green-200" },
+                          Closed: { color: "bg-red-50 text-red-600 border-red-200" },
+                          Completed: { color: "bg-blue-50 text-blue-700 border-blue-200" },
+                        }[status] || { color: "bg-gray-100 text-gray-700 border-gray-200" };
                        return (
                         <TableRow key={job.id} className={hcTableRowClassName}>
                           <TableCell className="text-center">
@@ -1130,9 +1130,9 @@ export function RecruitmentClientPage({
                             <span className="font-bold text-foreground">{job.candidateCount}</span>
                          </TableCell>
                          <TableCell>
-                           <Badge variant={statusBadge.variant} className={`rounded-full ${statusBadge.color}`}>
-                             {status}
-                           </Badge>
+                            <Badge variant="outline" className={`rounded-full ${statusBadge.color}`}>
+                              {status}
+                            </Badge>
                          </TableCell>
                          <TableCell className="text-right">
                              <div className="flex items-center justify-end gap-1">
