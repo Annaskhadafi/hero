@@ -1450,12 +1450,14 @@ export async function getRecruitmentSectionTemplates() {
     .leftJoin(masterSections, eq(masterSections.id, recruitmentSectionTemplates.sectionId))
     .where(eq(recruitmentSectionTemplates.isActive, true));
 
-  return templates.map((t) => ({
-    id: t.id,
-    sectionId: t.sectionId,
-    sectionName: t.sectionName || `Section ${t.sectionId}`,
-    requirements: t.requirements || "",
-    qualifications: (t.qualifications as string[]) || [],
-    mandatoryFields: (t.mandatoryFields as string[]) || [],
-  }));
+  return templates
+    .filter((t) => t.sectionId !== null)
+    .map((t) => ({
+      id: t.id,
+      sectionId: t.sectionId,
+      sectionName: t.sectionName || `Section ${t.sectionId}`,
+      requirements: t.requirements || "",
+      qualifications: (t.qualifications as string[]) || [],
+      mandatoryFields: (t.mandatoryFields as string[]) || [],
+    }));
 }
