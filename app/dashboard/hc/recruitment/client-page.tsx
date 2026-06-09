@@ -190,6 +190,13 @@ export function RecruitmentClientPage({
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
   const [recruitments, setRecruitments] = useState(initialRecruitments);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  // Vacancy Search & Filter State
+  const [vacancySearch, setVacancySearch] = useState("");
+  const [vacancyStatusFilter, setVacancyStatusFilter] = useState("");
+  const [vacancyDepartmentFilter, setVacancyDepartmentFilter] = useState("");
+  const [vacancySortBy, setVacancySortBy] = useState<"date" | "candidates" | "daysLeft">("date");
+  const [selectedVacancyIds, setSelectedVacancyIds] = useState<Set<number>>(new Set());
   const [emailStatuses, setEmailStatuses] = useState<Record<number, { status: string; lastSentAt: Date | null; templateName: string | null }>>({});
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [cvViewerName, setCvViewerName] = useState("");
@@ -652,6 +659,99 @@ export function RecruitmentClientPage({
     s.departmentId === formOptions.departments.find(d => d.name === settingsForm.department)?.id
   );
 
+  // Get effective status (auto-close expired)
+  const getVacancyStatus = (job: Recruitment): string => {
+    if (job.status === "Completed" || job.status === "Cancelled") return job.status;
+    if (job.endDate && differenceInDays(new Date(job.endDate), new Date()) < 0) return "Closed";
+    if (job.isPublic) return "Published";
+    return job.status || "Draft";
+  };
+
+  // Filter & Sort Vacancies
+  const filteredVacancies = recruitments
+    .filter((job) => {
+      const searchLower = vacancySearch.toLowerCase();
+      const matchesSearch = !searchLower || 
+        job.jobTitle.toLowerCase().includes(searchLower) ||
+        job.department.toLowerCase().includes(searchLower) ||
+        job.section.toLowerCase().includes(searchLower);
+      const matchesStatus = !vacancyStatusFilter || getVacancyStatus(job) === vacancyStatusFilter;
+      const matchesDept = !vacancyDepartmentFilter || job.department === vacancyDepartmentFilter;
+      return matchesSearch && matchesStatus && matchesDept;
+    })
+    .sort((a, b) => {
+      if (vacancySortBy === "candidates") return (b.candidateCount || 0) - (a.candidateCount || 0);
+      if (vacancySortBy === "daysLeft") {
+        const daysA = a.endDate ? differenceInDays(new Date(a.endDate), new Date()) : Infinity;
+        const daysB = b.endDate ? differenceInDays(new Date(b.endDate), new Date()) : Infinity;
+        return daysA - daysB;
+      }
+      // date default: newest first
+      return (b.startDate ? new Date(b.startDate).getTime() : 0) - (a.startDate ? new Date(a.startDate).getTime() : 0);
+    });
+
+  const toggleVacancySelect = (id: number) => {
+    setSelectedVacancyIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleVacancySelectAll = () => {
+    if (filteredVacancies.every(j => selectedVacancyIds.has(j.id))) {
+      setSelectedVacancyIds(new Set());
+    } else {
+      setSelectedVacancyIds(new Set(filteredVacancies.map(j => j.id)));
+    }
+  };
+
+  const handleBulkPublish = async () => {
+    if (selectedVacancyIds.size === 0) return;
+    const ids = Array.from(selectedVacancyIds);
+    let updated = 0;
+    for (const id of ids) {
+      try {
+        const res = await updateRecruitment(id, { isPublic: true, status: "Published" });
+        setRecruitments(prev => prev.map(r => r.id === id ? { ...r, ...res } : r));
+        updated++;
+      } catch {}
+    }
+    toast.success(`${updated} vacancy published`);
+    setSelectedVacancyIds(new Set());
+  };
+
+  const handleBulkClose = async () => {
+    if (selectedVacancyIds.size === 0) return;
+    const ids = Array.from(selectedVacancyIds);
+    let updated = 0;
+    for (const id of ids) {
+      try {
+        const res = await updateRecruitment(id, { status: "Closed" });
+        setRecruitments(prev => prev.map(r => r.id === id ? { ...r, ...res } : r));
+        updated++;
+      } catch {}
+    }
+    toast.success(`${updated} vacancy closed`);
+    setSelectedVacancyIds(new Set());
+  };
+
+  const handleBulkDeleteVacancies = async () => {
+    if (selectedVacancyIds.size === 0) return;
+    if (!confirm(`Delete ${selectedVacancyIds.size} vacancies? This cannot be undone.`)) return;
+    const ids = Array.from(selectedVacancyIds);
+    let deleted = 0;
+    for (const id of ids) {
+      try {
+        await deleteRecruitment(id);
+        setRecruitments(prev => prev.filter(r => r.id !== id));
+        deleted++;
+      } catch {}
+    }
+    toast.success(`${deleted} vacancies deleted`);
+    setSelectedVacancyIds(new Set());
+  };
+
   const openSettings = (job: Recruitment) => {
     setSelectedJobId(job.id);
     setSettingsForm({
@@ -726,8 +826,8 @@ export function RecruitmentClientPage({
   };
 
   const copyPublicLink = (job: Recruitment) => {
-    if (!job.isPublic) {
-      toast.error("You must set the status to Published in Settings before sharing the link.");
+    if (getVacancyStatus(job) !== "Published") {
+      toast.error("You must set the status to Published before sharing the link.");
       return;
     }
     const link = `${window.location.origin}/careers/${job.id}`;
@@ -874,23 +974,118 @@ export function RecruitmentClientPage({
           {activeView === "vacancies" ? (
              <div className={hcMutedPanelClassName}>
                <MinimalTableShell label="Job Vacancies">
+                 {/* Search & Filter Toolbar */}
+                 <div className="flex flex-col lg:flex-row gap-3 mb-4 px-1">
+                   <div className="flex-1 min-w-0">
+                     <Input
+                       placeholder="Search by job title, department, or section..."
+                       value={vacancySearch}
+                       onChange={(e) => setVacancySearch(e.target.value)}
+                       className="h-9"
+                     />
+                   </div>
+                   <div className="flex flex-wrap gap-2">
+                     <Select value={vacancyStatusFilter} onValueChange={setVacancyStatusFilter}>
+                       <SelectTrigger className="h-9 w-[150px]">
+                         <SelectValue placeholder="All Status" />
+                       </SelectTrigger>
+                       <SelectContent>
+                         <SelectItem value="">All Status</SelectItem>
+                         <SelectItem value="Draft">Draft</SelectItem>
+                         <SelectItem value="Published">Published</SelectItem>
+                         <SelectItem value="Closed">Closed</SelectItem>
+                         <SelectItem value="Completed">Completed</SelectItem>
+                       </SelectContent>
+                     </Select>
+                     <Select value={vacancyDepartmentFilter} onValueChange={setVacancyDepartmentFilter}>
+                       <SelectTrigger className="h-9 w-[160px]">
+                         <SelectValue placeholder="All Departments" />
+                       </SelectTrigger>
+                       <SelectContent>
+                         <SelectItem value="">All Departments</SelectItem>
+                         {formOptions.departments.map((d) => (
+                           <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                         ))}
+                       </SelectContent>
+                     </Select>
+                     <Select value={vacancySortBy} onValueChange={(v: any) => setVacancySortBy(v)}>
+                       <SelectTrigger className="h-9 w-[140px]">
+                         <SelectValue placeholder="Sort by" />
+                       </SelectTrigger>
+                       <SelectContent>
+                         <SelectItem value="date">Newest</SelectItem>
+                         <SelectItem value="candidates">Most Candidates</SelectItem>
+                         <SelectItem value="daysLeft">Days Left</SelectItem>
+                       </SelectContent>
+                     </Select>
+                     {(vacancySearch || vacancyStatusFilter || vacancyDepartmentFilter) && (
+                       <Button variant="ghost" size="sm" className="h-9" onClick={() => {
+                         setVacancySearch("");
+                         setVacancyStatusFilter("");
+                         setVacancyDepartmentFilter("");
+                       }}>
+                         Reset
+                       </Button>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* Bulk Action Bar */}
+                 {selectedVacancyIds.size > 0 && (
+                   <div className="flex items-center gap-3 px-4 py-2 bg-accent/5 border border-accent/20 rounded-lg mb-3">
+                     <span className="text-sm font-medium">{selectedVacancyIds.size} selected</span>
+                     <Button variant="default" size="sm" onClick={handleBulkPublish}>
+                       <IconExternalLink className="w-4 h-4 mr-1" /> Publish
+                     </Button>
+                     <Button variant="outline" size="sm" onClick={handleBulkClose}>
+                       <IconBriefcase className="w-4 h-4 mr-1" /> Close
+                     </Button>
+                     <Button variant="destructive" size="sm" onClick={handleBulkDeleteVacancies}>
+                       <IconTrash className="w-4 h-4 mr-1" /> Delete
+                     </Button>
+                     <Button variant="ghost" size="sm" onClick={() => setSelectedVacancyIds(new Set())}>
+                       Clear
+                     </Button>
+                   </div>
+                 )}
+
                  <Table>
                    <TableHeader>
                      <TableRow className="hover:bg-transparent border-border/50">
-                       <TableHead className="w-16 text-center">NO</TableHead>
+                       <TableHead className="w-10 text-center">
+                         <Checkbox
+                           checked={filteredVacancies.length > 0 && filteredVacancies.every(j => selectedVacancyIds.has(j.id))}
+                           onCheckedChange={toggleVacancySelectAll}
+                         />
+                       </TableHead>
+                       <TableHead className="w-12 text-center">NO</TableHead>
                        <TableHead>JOB TITLE</TableHead>
                        <TableHead>SECTION</TableHead>
                        <TableHead>DATE RANGE</TableHead>
                        <TableHead>DAYS LEFT</TableHead>
                        <TableHead className="text-center">QUOTA</TableHead>
                        <TableHead className="text-center">APPLIED</TableHead>
-                       <TableHead>PUBLIC STATUS</TableHead>
+                       <TableHead>STATUS</TableHead>
                        <TableHead className="text-right">ACTIONS</TableHead>
                      </TableRow>
                    </TableHeader>
                    <TableBody>
-                     {recruitments.map((job, idx) => (
+                     {filteredVacancies.map((job, idx) => {
+                       const status = getVacancyStatus(job);
+                       const statusBadge = {
+                         Draft: { variant: "secondary" as const, color: "bg-gray-100 text-gray-700" },
+                         Published: { variant: "default" as const, color: "bg-green-100 text-green-700" },
+                         Closed: { variant: "outline" as const, color: "bg-red-50 text-red-600" },
+                         Completed: { variant: "outline" as const, color: "bg-blue-50 text-blue-700" },
+                       }[status] || { variant: "secondary" as const, color: "" };
+                       return (
                         <TableRow key={job.id} className={hcTableRowClassName}>
+                          <TableCell className="text-center">
+                            <Checkbox
+                              checked={selectedVacancyIds.has(job.id)}
+                              onCheckedChange={() => toggleVacancySelect(job.id)}
+                            />
+                          </TableCell>
                           <TableCell className="text-center text-muted-foreground font-medium">{idx + 1}</TableCell>
                           <TableCell className="align-top">
                             <div className="space-y-1">
@@ -935,8 +1130,8 @@ export function RecruitmentClientPage({
                             <span className="font-bold text-foreground">{job.candidateCount}</span>
                          </TableCell>
                          <TableCell>
-                           <Badge variant={job.isPublic ? "default" : "secondary"} className="rounded-full">
-                             {job.isPublic ? "Published" : "Draft"}
+                           <Badge variant={statusBadge.variant} className={`rounded-full ${statusBadge.color}`}>
+                             {status}
                            </Badge>
                          </TableCell>
                          <TableCell className="text-right">
@@ -957,7 +1152,7 @@ export function RecruitmentClientPage({
                                <Button variant="ghost" size="icon" onClick={() => openBatches(job.id)} title="Schedule Batches">
                                  <IconCalendarEvent className="w-4 h-4 text-amber-600" />
                                </Button>
-                               {job.isPublic ? (
+                               {status === "Published" ? (
                                  <a
                                    href={`/careers/${job.id}`}
                                    target="_blank"
@@ -979,11 +1174,12 @@ export function RecruitmentClientPage({
                              </div>
                          </TableCell>
                        </TableRow>
-                     ))}
-                     {recruitments.length === 0 && (
+                     );
+                     })}
+                     {filteredVacancies.length === 0 && (
                        <TableRow>
-                         <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
-                           No Job Vacancies found.
+                         <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
+                           {recruitments.length === 0 ? "No Job Vacancies found." : "No vacancies match your filters."}
                          </TableCell>
                        </TableRow>
                      )}
