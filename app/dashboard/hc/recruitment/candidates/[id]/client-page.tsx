@@ -101,8 +101,16 @@ import { scheduleCandidateMcu, recordMcuResult, uploadMcuResultFile, previewMcuE
 import { generateOnboardingToken } from "@/app/actions/onboarding";
 import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
+import { saveOffering, sendOfferingEmail, respondToOffering } from "@/app/actions/offering";
 
-export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [], panelEvaluations = [] }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[], panelEvaluations?: any[] }) {
+const MCU_SIGNERS = [
+  { name: "Muhammad Iqbal", title: "HR-GA Supervisor", signatureUrl: "/ttd Muhammad Iqbal.png" },
+  { name: "Adila Tri Arizona", title: "HR-GA Admin", signatureUrl: "/ttd Adila Tri Arizona.png" },
+  { name: "Kesuma Bagaskara", title: "HR-GA Admin", signatureUrl: "/ttd Kesuma Bagaskara.png" },
+  { name: "Rendra Rachman", title: "Human Capital Manager", signatureUrl: "" },
+];
+
+export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [], panelEvaluations = [], offering = null }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[], panelEvaluations?: any[], offering?: any }) {
   const router = useRouter();
   
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
@@ -120,6 +128,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [isHireOpen, setIsHireOpen] = useState(false);
   const [isHiring, setIsHiring] = useState(false);
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [cvLoading, setCvLoading] = useState(false);
   const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
   const [emailPreviewData, setEmailPreviewData] = useState<{ subject: string; html?: string | null; text?: string | null }>({ subject: "", html: "", text: "" });
@@ -228,7 +237,70 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
     klinikEmail: "",
     paketMcu: "",
     scheduledDate: "",
+    signatoryName: MCU_SIGNERS[0].name,
+    signatoryTitle: MCU_SIGNERS[0].title,
+    signatureUrl: MCU_SIGNERS[0].signatureUrl,
   });
+
+  // Offering state
+  const [offeringForm, setOfferingForm] = useState({
+    position: offering?.position || candidate.jobTitle || "",
+    directSupervisor: offering?.directSupervisor || "",
+    salary: offering?.salary || "",
+    contractDurationMonths: offering?.contractDurationMonths || 12,
+    startDate: offering?.startDate || "",
+    outpatientBenefit: offering?.outpatientBenefit || "Penusahaan memberikan bantuan biaya pengobatan rawat jalan sebesar Rp 3.500.000,-",
+    inpatientBenefit: offering?.inpatientBenefit || "Penusahaan akan memberikan biaya penggatan/Pengobatan sepengetahuan bagi karyawan beserta istri & 3 (tiga) anak yang sah secara hukum, apabila telah ditanggung menjadi tanggungan karyawan tetap",
+    maternityBenefit: offering?.maternityBenefit || "Penusahaan akan memberikan bantuan sebesar Rp 8.000.000,-. Dan apabila dilakukan operasi caesar perusahaan akan mengganti biaya peralatan sebesar Rp 15.000.000, setelah ditanggung menjadi tanggungan karyawan tetap",
+    accidentInsurance: offering?.accidentInsurance || "Penusahaan akan menanggung premi asuransi sepengetahuannya",
+    bpjsEmployment: offering?.bpjsEmployment || "Wajib berdasarkan Peraturan Pemerintah",
+    bpjsHealth: offering?.bpjsHealth || "Wajib berdasarkan Peraturan Pemerintah",
+    thr: offering?.thr || "Penusahaan akan memberikan THR setahun upah, dan apabila Saudara belum mencapai masa kerja 1 (satu) tahun tetapi sudah lebih dari 1 (satu) bulan, maka akan dihitung secara proporsional.",
+    otherTerms: offering?.otherTerms || "Ketentuan-ketentuan lain yang tidak secara khusus diatur dalam penawaran diatas (Biaya Perjalanan Dinas, Bantuan dan fasilitas lain dan perusahaan) akan tunduk pada peraturan/perjanjian karyawan yang berlaku. Pokok-pokok Musyawarah serta tetapkan pelaksanaan perusahaan",
+    signatoryName: offering?.signatoryName || MCU_SIGNERS[0].name,
+    signatoryTitle: offering?.signatoryTitle || MCU_SIGNERS[0].title,
+    signatureUrl: offering?.signatureUrl || MCU_SIGNERS[0].signatureUrl,
+    notes: offering?.notes || "",
+  });
+  const [isOfferingSaving, setIsOfferingSaving] = useState(false);
+  const [isOfferingSending, setIsOfferingSending] = useState(false);
+
+  const handleSaveOffering = async () => {
+    setIsOfferingSaving(true);
+    try {
+      await saveOffering(candidate.id, offeringForm);
+      toast.success("Offering data saved.");
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save offering.");
+    } finally {
+      setIsOfferingSaving(false);
+    }
+  };
+
+  const handleSendOffering = async () => {
+    setIsOfferingSending(true);
+    try {
+      await saveOffering(candidate.id, offeringForm);
+      await sendOfferingEmail(candidate.id);
+      toast.success("Offering email sent with PDF attachment.");
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to send offering email.");
+    } finally {
+      setIsOfferingSending(false);
+    }
+  };
+
+  const handleOfferingResponse = async (response: "Accepted" | "Rejected") => {
+    try {
+      await respondToOffering(candidate.id, response);
+      toast.success(`Offer ${response.toLowerCase()}.`);
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update response.");
+    }
+  };
 
   const handleScheduleSubmit = async () => {
     if (!scheduleForm.scheduledAtDate || !scheduleForm.scheduledAtTime || !scheduleForm.locationOrLink || !scheduleForm.interviewerName) {
@@ -285,6 +357,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
         paketMcu: mcuForm.paketMcu,
         scheduledDate,
         clinicId: mcuForm.clinicId ? parseInt(mcuForm.clinicId) : null,
+        signatoryName: mcuForm.signatoryName,
+        signatoryTitle: mcuForm.signatoryTitle,
+        signatureUrl: mcuForm.signatureUrl,
       });
 
       toast.success("MCU scheduled and emails sent to Clinic and Candidate.");
@@ -409,6 +484,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interviews">Interviews ({interviews.length})</TabsTrigger>
+          <TabsTrigger value="offering">Offering</TabsTrigger>
           <TabsTrigger value="panel-evaluation">Panelist ({panelEvaluations.length})</TabsTrigger>
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
@@ -1147,6 +1223,161 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </div>
         </TabsContent>
 
+        <TabsContent value="offering">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Job Offering</h3>
+            <div className="flex items-center gap-2">
+              {offering?.status === "Sent" && (
+                <Badge variant="secondary" className="bg-blue-100 text-blue-700">Email Sent</Badge>
+              )}
+              {offering?.status === "Accepted" && (
+                <Badge className="bg-green-500 hover:bg-green-600">Accepted</Badge>
+              )}
+              {offering?.status === "Rejected" && (
+                <Badge variant="destructive">Rejected</Badge>
+              )}
+              {(!offering || offering.status === "Draft") && (
+                <Badge variant="outline">Draft</Badge>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Offering Form */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Offering Details</CardTitle>
+                <CardDescription>Isi detail penawaran kerja untuk kandidat ini</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Jabatan / Level / POH</Label>
+                    <Input value={offeringForm.position} onChange={e => setOfferingForm({...offeringForm, position: e.target.value})} placeholder="HSE Officer / Staff / Balikpapan" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Atasan Langsung</Label>
+                    <Input value={offeringForm.directSupervisor} onChange={e => setOfferingForm({...offeringForm, directSupervisor: e.target.value})} placeholder="Nama atasan langsung" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Gaji Pokok</Label>
+                    <Input value={offeringForm.salary} onChange={e => setOfferingForm({...offeringForm, salary: e.target.value})} placeholder="Rp. 8.000.000,-" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Masa Kontrak (bulan)</Label>
+                    <Input type="number" value={offeringForm.contractDurationMonths} onChange={e => setOfferingForm({...offeringForm, contractDurationMonths: parseInt(e.target.value) || 12})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tanggal Mulai Kerja</Label>
+                    <Input type="date" value={offeringForm.startDate} onChange={e => setOfferingForm({...offeringForm, startDate: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Penandatangan</Label>
+                    <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offeringForm.signatoryName} onChange={e => {
+                      const signer = MCU_SIGNERS.find(s => s.name === e.target.value) || MCU_SIGNERS[0];
+                      setOfferingForm({...offeringForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
+                    }}>
+                      {MCU_SIGNERS.map(s => <option key={s.name} value={s.name}>{s.name} — {s.title}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>5. Biaya Rawat Jalan</Label>
+                  <Textarea rows={2} value={offeringForm.outpatientBenefit} onChange={e => setOfferingForm({...offeringForm, outpatientBenefit: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>6. Biaya Rawat Inap</Label>
+                  <Textarea rows={2} value={offeringForm.inpatientBenefit} onChange={e => setOfferingForm({...offeringForm, inpatientBenefit: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>7. Biaya Melahirkan</Label>
+                  <Textarea rows={2} value={offeringForm.maternityBenefit} onChange={e => setOfferingForm({...offeringForm, maternityBenefit: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>8. Asuransi Kecelakaan</Label>
+                  <Textarea rows={2} value={offeringForm.accidentInsurance} onChange={e => setOfferingForm({...offeringForm, accidentInsurance: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>9. BPJS Ketenagakerjaan</Label>
+                    <Input value={offeringForm.bpjsEmployment} onChange={e => setOfferingForm({...offeringForm, bpjsEmployment: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>10. BPJS Kesehatan</Label>
+                    <Input value={offeringForm.bpjsHealth} onChange={e => setOfferingForm({...offeringForm, bpjsHealth: e.target.value})} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>11. THR</Label>
+                  <Textarea rows={2} value={offeringForm.thr} onChange={e => setOfferingForm({...offeringForm, thr: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>12. Ketentuan-ketentuan Lain</Label>
+                  <Textarea rows={3} value={offeringForm.otherTerms} onChange={e => setOfferingForm({...offeringForm, otherTerms: e.target.value})} />
+                </div>
+
+                <div className="flex items-center gap-2 pt-4">
+                  <Button onClick={handleSaveOffering} disabled={isOfferingSaving}>
+                    {isOfferingSaving ? "Saving..." : "Save Draft"}
+                  </Button>
+                  <Button onClick={handleSendOffering} disabled={isOfferingSending} variant="default">
+                    {isOfferingSending ? "Sending..." : "Send Offering Email + PDF"}
+                  </Button>
+                  {offering?.status === "Sent" && (
+                    <>
+                      <Button onClick={() => handleOfferingResponse("Accepted")} variant="outline" className="text-green-600 border-green-200 hover:bg-green-50">
+                        <IconCheck className="w-4 h-4 mr-1" /> Accept
+                      </Button>
+                      <Button onClick={() => handleOfferingResponse("Rejected")} variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
+                        <IconX className="w-4 h-4 mr-1" /> Reject
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Offering Status */}
+            {offering && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Offering Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Status</span>
+                      <Badge variant={offering.status === "Accepted" ? "default" : offering.status === "Rejected" ? "destructive" : "secondary"}>
+                        {offering.status}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Letter Number</span>
+                      <span className="font-medium">{offering.letterNumber || "-"}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Sent At</span>
+                      <span className="font-medium">{offering.sentAt ? format(new Date(offering.sentAt), "dd MMM yyyy HH:mm") : "-"}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Responded At</span>
+                      <span className="font-medium">{offering.respondedAt ? format(new Date(offering.respondedAt), "dd MMM yyyy HH:mm") : "-"}</span>
+                    </div>
+                  </div>
+                  {offering.pdfUrl && (
+                    <div className="mt-3">
+                      <a href={offering.pdfUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                        <IconFileText className="w-4 h-4" /> View Offering PDF
+                      </a>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
         <TabsContent value="mcu">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold">Medical Check Up (MCU)</h3>
@@ -1217,9 +1448,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                       )}
                       {mcu.resultFileUrl && (
                         <div className="md:col-span-2">
-                          <a href={mcu.resultFileUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                            <IconFileText className="w-4 h-4" /> View Result File
-                          </a>
+                          <Button type="button" variant="link" className="h-auto p-0 text-sm text-blue-600" onClick={() => setPdfPreviewUrl(mcu.resultFileUrl)}>
+                            <IconFileText className="w-4 h-4 mr-1" /> Preview Result PDF
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -1699,6 +1930,23 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               <Label>Date <span className="text-destructive">*</span></Label>
               <Input type="date" value={mcuForm.scheduledDate} onChange={(e) => setMcuForm({...mcuForm, scheduledDate: e.target.value})} />
             </div>
+
+            <div className="space-y-2">
+              <Label>Penandatangan Surat MCU</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={mcuForm.signatoryName}
+                onChange={(e) => {
+                  const signer = MCU_SIGNERS.find((item) => item.name === e.target.value) || MCU_SIGNERS[0];
+                  setMcuForm({ ...mcuForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl });
+                }}
+              >
+                {MCU_SIGNERS.map((signer) => (
+                  <option key={signer.name} value={signer.name}>{signer.name} — {signer.title}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">TTD akan digambar di PDF Surat Pengantar jika file TTD tersedia.</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsMcuScheduleOpen(false)}>Cancel</Button>
@@ -1735,6 +1983,30 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             {cvViewerUrl && (
               <Button asChild variant="default">
                 <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MCU Result PDF Preview Dialog */}
+      <Dialog open={!!pdfPreviewUrl} onOpenChange={(open) => { if (!open) setPdfPreviewUrl(null); }}>
+        <DialogContent className="w-[95vw] h-[95vh] max-w-none p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
+          <DialogHeader className="px-6 py-3 border-b shrink-0">
+            <DialogTitle>MCU Result PDF — {candidate.fullName}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
+            {pdfPreviewUrl ? (
+              <iframe src={pdfPreviewUrl} className="w-full h-full border-0" style={{ height: '100%', minHeight: 0 }} title={`MCU result of ${candidate.fullName}`} />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+            )}
+          </div>
+          <DialogFooter className="px-6 py-3 border-t shrink-0">
+            <Button variant="outline" onClick={() => setPdfPreviewUrl(null)}>Close</Button>
+            {pdfPreviewUrl && (
+              <Button asChild variant="default">
+                <a href={pdfPreviewUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
               </Button>
             )}
           </DialogFooter>

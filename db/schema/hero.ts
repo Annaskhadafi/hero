@@ -2506,6 +2506,37 @@ export const hcCandidateMcu = pgTable('hero_hc_candidate_mcu', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+// ─── HC Offering ─────────────────────────────────────────────────────────
+
+export const hcCandidateOfferings = pgTable('hero_hc_candidate_offerings', {
+  id: serial('id').primaryKey(),
+  candidateId: integer('candidate_id').notNull().references(() => hcCandidates.id, { onDelete: 'cascade' }).unique(),
+  position: text('position').notNull().default(''),
+  directSupervisor: text('direct_supervisor').notNull().default(''),
+  salary: text('salary').notNull().default(''),
+  contractDurationMonths: integer('contract_duration_months').notNull().default(12),
+  startDate: date('start_date'),
+  outpatientBenefit: text('outpatient_benefit').notNull().default('Penusahaan memberikan bantuan biaya pengobatan rawat jalan sebesar Rp 3.500.000,-'),
+  inpatientBenefit: text('inpatient_benefit').notNull().default('Penusahaan akan memberikan biaya penggatan/Pengobatan sepengetahuan bagi karyawan beserta istri & 3 (tiga) anak yang sah secara hukum, apabila telah ditanggung menjadi tanggungan karyawan tetap'),
+  maternityBenefit: text('maternity_benefit').notNull().default('Penusahaan akan memberikan bantuan sebesar Rp 8.000.000,-. Dan apabila dilakukan operasi caesar perusahaan akan mengganti biaya peralatan sebesar Rp 15.000.000, setelah ditanggung menjadi tanggungan karyawan tetap'),
+  accidentInsurance: text('accident_insurance').notNull().default('Penusahaan akan menanggung premi asuransi sepengetahuannya'),
+  bpjsEmployment: text('bpjs_employment').notNull().default('Wajib berdasarkan Peraturan Pemerintah'),
+  bpjsHealth: text('bpjs_health').notNull().default('Wajib berdasarkan Peraturan Pemerintah'),
+  thr: text('thr').notNull().default('Penusahaan akan memberikan THR setahun upah, dan apabila Saudara belum mencapai masa kerja 1 (satu) tahun tetapi sudah lebih dari 1 (satu) bulan, maka akan dihitung secara proporsional.'),
+  otherTerms: text('other_terms').notNull().default('Ketentuan-ketentuan lain yang tidak secara khusus diatur dalam penawaran diatas (Biaya Perjalanan Dinas, Bantuan dan fasilitas lain dan perusahaan) akan tunduk pada peraturan/perjanjian karyawan yang berlaku. Pokok-pokok Musyawarah serta tetapkan pelaksanaan perusahaan'),
+  signatoryName: text('signatory_name').notNull().default(''),
+  signatoryTitle: text('signatory_title').notNull().default(''),
+  signatureUrl: text('signature_url').notNull().default(''),
+  letterNumber: text('letter_number').notNull().default(''),
+  pdfUrl: text('pdf_url').notNull().default(''),
+  status: text('status').notNull().default('Draft'), // Draft, Sent, Accepted, Rejected
+  sentAt: timestamp('sent_at'),
+  respondedAt: timestamp('responded_at'),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 // ─── HC Offboarding ───────────────────────────────────────────────────────
 
 export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {

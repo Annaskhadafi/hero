@@ -2,6 +2,7 @@ import { getCandidateById, getCandidateEmailLogs, getCandidatePanelEvaluations }
 import { getCandidateInterviews } from "@/app/actions/interviews";
 import { getCandidateMcu } from "@/app/actions/mcu";
 import { getCandidateTestResults } from "@/app/actions/candidate-tests";
+import { getOfferingByCandidate } from "@/app/actions/offering";
 import { CandidateDetailClientPage } from "./client-page";
 import { notFound } from "next/navigation";
 
@@ -17,13 +18,14 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
     notFound();
   }
 
-  const [candidate, interviews, mcuRecords, emailLogs, testResults, panelEvaluations] = await Promise.all([
+  const [candidate, interviews, mcuRecords, emailLogs, testResults, panelEvaluations, offering] = await Promise.all([
     getCandidateById(candidateId),
     getCandidateInterviews(candidateId),
     getCandidateMcu(candidateId),
     getCandidateEmailLogs(candidateId),
     getCandidateTestResults(candidateId),
     getCandidatePanelEvaluations(candidateId),
+    getOfferingByCandidate(candidateId),
   ]);
 
   if (!candidate) {
@@ -38,6 +40,7 @@ export default async function CandidateDetailPage({ params }: { params: Promise<
       emailLogs={emailLogs}
       testResults={testResults}
       panelEvaluations={panelEvaluations}
+      offering={offering as any}
     />
   );
 }

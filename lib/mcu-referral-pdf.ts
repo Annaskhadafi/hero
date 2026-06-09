@@ -74,6 +74,7 @@ export async function generateMcuReferralPdf(data: {
   letterNumber?: string;
   signatoryName?: string;
   signatoryTitle?: string;
+  signatureUrl?: string;
   picList?: { name: string; phone: string }[];
 }) {
   const pdfDoc = await PDFDocument.create();
@@ -99,6 +100,31 @@ export async function generateMcuReferralPdf(data: {
 
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const embedSignature = async () => {
+    if (!data.signatureUrl) return null;
+    try {
+      let bytes: Buffer | null = null;
+      if (data.signatureUrl.startsWith("data:image/")) {
+        bytes = Buffer.from(data.signatureUrl.split(",")[1] || "", "base64");
+      } else if (data.signatureUrl.startsWith("/")) {
+        const filePath = path.join(process.cwd(), "public", data.signatureUrl.replace(/^\//, ""));
+        if (fs.existsSync(filePath)) bytes = fs.readFileSync(filePath);
+      } else if (data.signatureUrl.startsWith("http")) {
+        const response = await fetch(data.signatureUrl);
+        if (response.ok) bytes = Buffer.from(await response.arrayBuffer());
+      }
+      if (!bytes) return null;
+      return data.signatureUrl.toLowerCase().includes(".jpg") || data.signatureUrl.toLowerCase().includes("jpeg")
+        ? await pdfDoc.embedJpg(bytes)
+        : await pdfDoc.embedPng(bytes);
+    } catch (error) {
+      console.warn("Failed to embed MCU signature", error);
+      return null;
+    }
+  };
+
+  const signatureImg = await embedSignature();
 
   const left = mmToPt(22);
   const right = width - mmToPt(22);
@@ -148,8 +174,8 @@ export async function generateMcuReferralPdf(data: {
 
   // Billing address
   y = drawWrapped(page, "Mohon tagihan dikirimkan kepada:", left, y, contentWidth, fontRegular, size, lineH);
-  page.drawText(`${data.companyName || "PT Chitra Paratama (a Member of Mahadasha Group)"}`, { x: left, y: y - lineH + 2, size, font: fontBold });
-  y -= lineH + 2;
+  page.drawText(`${data.companyName || "PT Chitra Paratama (a Member of Mahadasha Group)"}`, { x: left, y, size, font: fontBold });
+  y -= lineH;
   page.drawText("Jl AMD RT 46 No 69 Kelurahan Graha Indah, Balikpapan.", { x: left, y, size, font: fontBold });
   y -= lineH;
   page.drawText("Attn : Muhammad Iqbal", { x: left, y, size, font: fontBold });
@@ -163,9 +189,13 @@ export async function generateMcuReferralPdf(data: {
   const sigX = left;
   const dateStr = data.scheduledDate;
   page.drawText(`Balikpapan, ${dateStr}`, { x: sigX, y, size, font: fontRegular });
-  y -= 6;
-  // Signature placeholder area
-  y -= 40;
+  y -= 8;
+  if (signatureImg) {
+    const sigW = 120;
+    const sigH = 45;
+    page.drawImage(signatureImg, { x: sigX, y: y - sigH + 6, width: sigW, height: sigH });
+  }
+  y -= 48;
   page.drawText(data.signatoryName || "_________________________", { x: sigX, y, size, font: fontBold });
   y -= lineH;
   page.drawText(data.signatoryTitle || "HR-GA Admin", { x: sigX, y, size, font: fontBold });

@@ -99,6 +99,9 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
   paketMcu: string;
   scheduledDate: Date;
   clinicId?: number | null;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  signatureUrl?: string;
 }) {
   const [candidate] = await db.select().from(hcCandidates).where(eq(hcCandidates.id, candidateId)).limit(1);
   if (!candidate) throw new Error("Candidate not found");
@@ -170,8 +173,9 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
           packageName: data.paketMcu,
           companyName: "PT Chitra Paratama",
           letterNumber: `MCU/${candidate.id}/${Date.now()}`,
-          signatoryName: "Muhammad Iqbal",
-          signatoryTitle: "HR-GA Admin",
+          signatoryName: data.signatoryName || "Muhammad Iqbal",
+          signatoryTitle: data.signatoryTitle || "HR-GA Admin",
+          signatureUrl: data.signatureUrl,
         });
         pdfBuffer = Buffer.from(pdfBytes);
         const s3Result = await uploadBufferToS3(
@@ -329,6 +333,9 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
   paketMcu: string;
   scheduledDate: Date;
   clinicId?: number | null;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  signatureUrl?: string;
 }) {
   const smtpSettings = await getEmailSmtpSettingsData();
   const { format } = await import("date-fns");
@@ -404,8 +411,9 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
             packageName: data.paketMcu,
             companyName: "PT Chitra Paratama",
             letterNumber: `MCU/${candidate.id}/${Date.now()}`,
-            signatoryName: "Muhammad Iqbal",
-            signatoryTitle: "HR-GA Admin",
+            signatoryName: data.signatoryName || "Muhammad Iqbal",
+            signatoryTitle: data.signatoryTitle || "HR-GA Admin",
+            signatureUrl: data.signatureUrl,
           });
           pdfBuffer = Buffer.from(pdfBytes);
           const s3Result = await uploadBufferToS3(

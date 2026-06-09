@@ -322,9 +322,10 @@ export function RecruitmentClientPage({
     try {
       const d = new Date(`${bulkInterviewForm.date}T${bulkInterviewForm.time}`);
       const { format } = await import("date-fns");
+      const firstSelected = candidates.find(c => selectedIds.has(c.id));
       const preview = await previewInterviewEmail({
         candidateName: "[Candidate Name]",
-        jobTitle: "Posisi",
+        jobTitle: firstSelected?.jobTitle || "Lowongan terpilih",
         scheduledDate: format(d, "EEEE, dd MMMM yyyy"),
         scheduledTime: format(d, "HH:mm"),
         interviewType: bulkInterviewForm.type,
@@ -344,9 +345,10 @@ export function RecruitmentClientPage({
     try {
       const d = new Date(bulkMcuForm.date);
       const { format } = await import("date-fns");
+      const firstSelected = candidates.find(c => selectedIds.has(c.id));
       const preview = await previewMcuEmail({
         candidateName: "[Candidate Name]",
-        jobTitle: "Posisi",
+        jobTitle: firstSelected?.jobTitle || "Lowongan terpilih",
         klinikName: bulkMcuForm.clinicName,
         paketMcu: bulkMcuForm.paket || "-",
         scheduledDate: format(d, "dd MMMM yyyy"),

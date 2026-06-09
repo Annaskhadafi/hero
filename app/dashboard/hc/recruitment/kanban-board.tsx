@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -77,10 +77,18 @@ export function KanbanBoard({
   const [activeId, setActiveId] = useState<number | null>(null);
   const [reverting, setReverting] = useState<Record<number, boolean>>({});
   const [aiLoadingIds, setAiLoadingIds] = useState<Set<number>>(new Set());
+  const [aiProgress, setAiProgress] = useState<Record<number, number>>({});
+  const aiProgressTimers = useRef<Record<number, ReturnType<typeof setInterval>>>({});
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
+
+  useEffect(() => {
+    return () => {
+      Object.values(aiProgressTimers.current).forEach((timer) => clearInterval(timer));
+    };
+  }, []);
 
   const filtered = jobFilter
     ? candidates.filter((c) => c.recruitmentId === jobFilter)
@@ -114,10 +122,19 @@ export function KanbanBoard({
 
   const handleRunAiAssessment = async (candidate: Candidate) => {
     setAiLoadingIds((prev) => new Set(prev).add(candidate.id));
+    setAiProgress((prev) => ({ ...prev, [candidate.id]: 8 }));
+    if (aiProgressTimers.current[candidate.id]) clearInterval(aiProgressTimers.current[candidate.id]);
+    aiProgressTimers.current[candidate.id] = setInterval(() => {
+      setAiProgress((prev) => ({
+        ...prev,
+        [candidate.id]: Math.min(90, (prev[candidate.id] ?? 8) + Math.max(2, Math.round((90 - (prev[candidate.id] ?? 8)) / 8))),
+      }));
+    }, 900);
     const toastId = toast.loading(`Running AI assessment for ${candidate.fullName}...`);
     try {
       const result = await assessCandidateCv(candidate.id);
       if (result.success) {
+        setAiProgress((prev) => ({ ...prev, [candidate.id]: 100 }));
         toast.success(`AI assessment completed: ${result.score}%`, { id: toastId });
         router.refresh();
       } else {
@@ -126,11 +143,22 @@ export function KanbanBoard({
     } catch (error: any) {
       toast.error(error.message || "AI assessment failed.", { id: toastId });
     } finally {
+      if (aiProgressTimers.current[candidate.id]) {
+        clearInterval(aiProgressTimers.current[candidate.id]);
+        delete aiProgressTimers.current[candidate.id];
+      }
       setAiLoadingIds((prev) => {
         const next = new Set(prev);
         next.delete(candidate.id);
         return next;
       });
+      setTimeout(() => {
+        setAiProgress((prev) => {
+          const next = { ...prev };
+          delete next[candidate.id];
+          return next;
+        });
+      }, 800);
     }
   };
 
@@ -154,6 +182,7 @@ export function KanbanBoard({
               candidates={filtered.filter((c) => c.currentStage === stage)}
               emailStatuses={emailStatuses}
               aiLoadingIds={aiLoadingIds}
+              aiProgress={aiProgress}
               onRunAiAssessment={handleRunAiAssessment}
             />
           ))}
@@ -177,12 +206,14 @@ function KanbanColumn({
   candidates,
   emailStatuses,
   aiLoadingIds,
+  aiProgress,
   onRunAiAssessment,
 }: {
   stage: string;
   candidates: Candidate[];
   emailStatuses: Record<number, EmailStatus>;
   aiLoadingIds: Set<number>;
+  aiProgress: Record<number, number>;
   onRunAiAssessment: (candidate: Candidate) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
@@ -212,6 +243,7 @@ function KanbanColumn({
             candidate={c}
             emailStatus={emailStatuses[c.id]}
             isAiLoading={aiLoadingIds.has(c.id)}
+            aiProgress={aiProgress[c.id] ?? 0}
             onRunAiAssessment={onRunAiAssessment}
           />
         ))}
@@ -232,12 +264,14 @@ function KanbanCard({
   emailStatus,
   isOverlay,
   isAiLoading = false,
+  aiProgress = 0,
   onRunAiAssessment,
 }: {
   candidate: Candidate;
   emailStatus?: EmailStatus;
   isOverlay?: boolean;
   isAiLoading?: boolean;
+  aiProgress?: number;
   onRunAiAssessment?: (candidate: Candidate) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -257,18 +291,16 @@ function KanbanCard({
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
       style={style}
       className={cn(
-        "bg-card border shadow-sm rounded-xl p-4 hover:shadow-md transition-shadow group relative cursor-grab active:cursor-grabbing select-none",
+        "bg-card border shadow-sm rounded-xl p-4 hover:shadow-md transition-shadow group relative select-none",
         isOverlay &&
           "shadow-xl ring-2 ring-accent/30 rotate-2 scale-105 cursor-grabbing z-50",
         isDragging && "opacity-30"
       )}
     >
       <div className="flex justify-between items-start mb-3">
-        <div className="min-w-0">
+        <div className="min-w-0 cursor-grab active:cursor-grabbing" {...listeners} {...attributes}>
           <h4 className="font-semibold text-base mb-0.5 truncate">
             {candidate.fullName}
           </h4>
@@ -333,6 +365,15 @@ function KanbanCard({
             )}
             {isAiLoading ? "Running AI..." : "Run AI Assessment"}
           </Button>
+          {isAiLoading && (
+            <div className="mt-2 space-y-1">
+              <Progress value={aiProgress} className="h-1.5 bg-accent/10 [&>div]:bg-accent" />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Analyzing CV & requirements</span>
+                <span>{aiProgress}%</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
