@@ -141,6 +141,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [emailPreviewData, setEmailPreviewData] = useState<{ subject: string; html?: string | null; text?: string | null }>({ subject: "", html: "", text: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [selectedTestResult, setSelectedTestResult] = useState<any>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
   const [isPanelSubmitting, setIsPanelSubmitting] = useState(false);
   const [panelForm, setPanelForm] = useState({
     interviewId: "",
@@ -497,8 +498,6 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="panel-evaluation">Panelist ({panelEvaluations.length})</TabsTrigger>
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
-          <TabsTrigger value="form-public">Form Public</TabsTrigger>
-          <TabsTrigger value="dokumen">Dokumen</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
           <TabsTrigger value="emails">Emails ({emailLogs.length})</TabsTrigger>
           <TabsTrigger value="test-results">Test Results ({testResults.length})</TabsTrigger>
@@ -1488,11 +1487,11 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
         <TabsContent value="onboarding">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Onboarding Data</h3>
+            <h3 className="text-lg font-semibold">Onboarding</h3>
             {!onboardingToken ? (
               <Button onClick={handleGenerateOnboardingToken}>
                 <IconLink className="w-4 h-4 mr-2" />
-                Generate Onboarding Link
+                Generate Link
               </Button>
             ) : (
               <div className="flex gap-2">
@@ -1513,154 +1512,104 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             )}
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Administrative Information</CardTitle>
-              <CardDescription>Data submitted by candidate via the onboarding link</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {candidate.nikKtp ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <div className="text-sm text-muted-foreground">NIK KTP</div>
-                      <div className="font-medium">{candidate.nikKtp || "-"}</div>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Administrative Information</CardTitle>
+                <CardDescription>Data submitted by candidate via the onboarding link</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {candidate.nikKtp ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm text-muted-foreground">NIK KTP</div>
+                        <div className="font-medium">{candidate.nikKtp || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">NPWP Number</div>
+                        <div className="font-medium">{candidate.npwpNumber || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Emergency Contact Name</div>
+                        <div className="font-medium">{candidate.emergencyContactName || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Emergency Contact Phone</div>
+                        <div className="font-medium">{candidate.emergencyContactPhone || "-"}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">NPWP Number</div>
-                      <div className="font-medium">{candidate.npwpNumber || "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Emergency Contact Name</div>
-                      <div className="font-medium">{candidate.emergencyContactName || "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Emergency Contact Phone</div>
-                      <div className="font-medium">{candidate.emergencyContactPhone || "-"}</div>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Bank Name</div>
+                        <div className="font-medium">{candidate.bankName || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">Bank Account Number</div>
+                        <div className="font-medium">{candidate.bankAccountNumber || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">BPJS Kesehatan</div>
+                        <div className="font-medium">{candidate.bpjsKesehatan || "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-muted-foreground">BPJS Ketenagakerjaan</div>
+                        <div className="font-medium">{candidate.bpjsKetenagakerjaan || "-"}</div>
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="text-sm text-muted-foreground">Bank Name</div>
-                      <div className="font-medium">{candidate.bankName || "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Bank Account Number</div>
-                      <div className="font-medium">{candidate.bankAccountNumber || "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">BPJS Kesehatan</div>
-                      <div className="font-medium">{candidate.bpjsKesehatan || "-"}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">BPJS Ketenagakerjaan</div>
-                      <div className="font-medium">{candidate.bpjsKetenagakerjaan || "-"}</div>
-                    </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                    <IconLink className="w-12 h-12 mb-4 opacity-20" />
+                    <p>Candidate has not submitted their onboarding data yet.</p>
+                    {!onboardingToken && (
+                      <p className="text-sm mt-1">Generate a link first to send to the candidate.</p>
+                    )}
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                  <IconLink className="w-12 h-12 mb-4 opacity-20" />
-                  <p>Candidate has not submitted their onboarding data yet.</p>
-                  {!onboardingToken && (
-                    <p className="text-sm mt-1">Generate a link first to send to the candidate.</p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                )}
+              </CardContent>
+            </Card>
 
-        <TabsContent value="form-public">
-          <Card>
-            <CardHeader>
-              <CardTitle>Form Public Link</CardTitle>
-              <CardDescription>Link untuk kandidat mengisi data onboarding</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {onboardingToken ? (
-                <>
-                  <div className="p-3 bg-muted/50 rounded-lg break-all text-sm font-mono">
-                    {onboardingUrl}
+            <Card>
+              <CardHeader>
+                <CardTitle>Dokumen Pendukung</CardTitle>
+                <CardDescription>Dokumen yang di-upload kandidat melalui form onboarding. Klik gambar untuk preview.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {candidate.kkUrl || candidate.ktpUrl || candidate.bankBookUrl ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {candidate.kkUrl && (
+                      <div className="border rounded-lg p-3 text-center cursor-pointer hover:bg-muted/50 transition" onClick={() => setPreviewDoc({ url: candidate.kkUrl, title: "Kartu Keluarga" })}>
+                        <img src={candidate.kkUrl} alt="Kartu Keluarga" className="w-full h-32 object-contain rounded mb-2 bg-muted" />
+                        <p className="text-sm font-medium">Kartu Keluarga</p>
+                        <p className="text-xs text-muted-foreground">Klik untuk preview</p>
+                      </div>
+                    )}
+                    {candidate.ktpUrl && (
+                      <div className="border rounded-lg p-3 text-center cursor-pointer hover:bg-muted/50 transition" onClick={() => setPreviewDoc({ url: candidate.ktpUrl, title: "KTP" })}>
+                        <img src={candidate.ktpUrl} alt="KTP" className="w-full h-32 object-contain rounded mb-2 bg-muted" />
+                        <p className="text-sm font-medium">KTP</p>
+                        <p className="text-xs text-muted-foreground">Klik untuk preview</p>
+                      </div>
+                    )}
+                    {candidate.bankBookUrl && (
+                      <div className="border rounded-lg p-3 text-center cursor-pointer hover:bg-muted/50 transition" onClick={() => setPreviewDoc({ url: candidate.bankBookUrl, title: "Buku Tabungan" })}>
+                        <img src={candidate.bankBookUrl} alt="Buku Tabungan" className="w-full h-32 object-contain rounded mb-2 bg-muted" />
+                        <p className="text-sm font-medium">Buku Tabungan</p>
+                        <p className="text-xs text-muted-foreground">Klik untuk preview</p>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => {
-                      navigator.clipboard.writeText(onboardingUrl);
-                      toast.success("Link copied!");
-                    }}>
-                      <IconCopy className="w-4 h-4 mr-2" /> Copy Link
-                    </Button>
-                    <Button asChild variant="outline" size="sm">
-                      <a href={onboardingPath} target="_blank" rel="noreferrer">
-                        <IconLink className="w-4 h-4 mr-2" /> Open Form
-                      </a>
-                    </Button>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                    <IconFileText className="w-12 h-12 mb-4 opacity-20" />
+                    <p>Belum ada dokumen yang di-upload.</p>
+                    <p className="text-sm mt-1">Dokumen akan muncul setelah kandidat mengisi form onboarding.</p>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    <p>Form ini meminta kandidat mengisi:</p>
-                    <ul className="list-disc list-inside mt-1 space-y-0.5">
-                      <li>NIK KTP & NPWP</li>
-                      <li>BPJS Kesehatan & Ketenagakerjaan</li>
-                      <li>Rekening Bank & Scan Buku Tabungan</li>
-                      <li>Kartu Keluarga (KK)</li>
-                      <li>Kartu Tanda Penduduk (KTP)</li>
-                      <li>Kontak Darurat</li>
-                    </ul>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-6">
-                  <IconLink className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-                  <p className="text-muted-foreground">Belum ada link onboarding.</p>
-                  <Button onClick={handleGenerateOnboardingToken} className="mt-3">
-                    <IconLink className="w-4 h-4 mr-2" /> Generate Link
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="dokumen">
-          <Card>
-            <CardHeader>
-              <CardTitle>Dokumen Pendukung</CardTitle>
-              <CardDescription>Dokumen yang di-upload kandidat melalui form onboarding</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {candidate.kkUrl || candidate.ktpUrl || candidate.bankBookUrl ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {candidate.kkUrl && (
-                    <div className="border rounded-lg p-4 text-center">
-                      <IconFileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm font-medium">Kartu Keluarga</p>
-                      <a href={candidate.kkUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Lihat Dokumen</a>
-                    </div>
-                  )}
-                  {candidate.ktpUrl && (
-                    <div className="border rounded-lg p-4 text-center">
-                      <IconFileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm font-medium">KTP</p>
-                      <a href={candidate.ktpUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Lihat Dokumen</a>
-                    </div>
-                  )}
-                  {candidate.bankBookUrl && (
-                    <div className="border rounded-lg p-4 text-center">
-                      <IconFileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm font-medium">Buku Tabungan</p>
-                      <a href={candidate.bankBookUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Lihat Dokumen</a>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                  <IconFileText className="w-12 h-12 mb-4 opacity-20" />
-                  <p>Belum ada dokumen yang di-upload.</p>
-                  <p className="text-sm mt-1">Dokumen akan muncul setelah kandidat mengisi form onboarding.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="history">
@@ -1978,6 +1927,23 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             <Button onClick={handleHire} disabled={isHiring}>
               {isHiring ? "Processing..." : "Confirm Hire"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Preview Dialog */}
+      <Dialog open={!!previewDoc} onOpenChange={() => setPreviewDoc(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{previewDoc?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 flex justify-center">
+            {previewDoc && (
+              <img src={previewDoc.url} alt={previewDoc.title} className="max-w-full max-h-[70vh] object-contain rounded-lg border" />
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewDoc(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
