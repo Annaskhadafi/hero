@@ -18,12 +18,13 @@ import {
   IconStack2,
   IconStethoscope,
   IconArrowsExchange,
+  IconUpload,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -31,6 +32,7 @@ import { bulkScheduleMcus, previewMcuEmail } from "@/app/actions/mcu";
 import { sendOfferingEmail, saveOffering } from "@/app/actions/offering";
 import { getNextLetterNumber, getActiveEmployees } from "@/app/actions/surat";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
+import { uploadFile } from "@/app/actions/upload";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -270,6 +272,17 @@ export function RecruitmentClientPage({
   const [availableTests, setAvailableTests] = useState<Array<{ id: number; title: string; isApplicationForm: boolean; timeLimitMinutes: number; passingScore: number }>>([]);
   const [availableTestGroups, setAvailableTestGroups] = useState<Array<{ id: number; name: string }>>([]);
   const [availableBatches, setAvailableBatches] = useState<Array<{ id: number; batchName: string; batchType: string; scheduledAt: Date; scheduledEndAt?: Date | null }>>([]);
+
+  // Manual Add Dialog
+  const [isManualAddOpen, setIsManualAddOpen] = useState(false);
+  const [manualAddForm, setManualAddForm] = useState({ recruitmentId: "", fullName: "", email: "", phone: "", source: "Manual" });
+  const [manualAddCvFile, setManualAddCvFile] = useState<File | null>(null);
+  const [isManualAddSubmitting, setIsManualAddSubmitting] = useState(false);
+
+  // Import Dialog
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResults, setImportResults] = useState<Array<{ fullName: string; email: string; success: boolean; error?: string }> | null>(null);
 
   // Batch Management
   const [isBatchOpen, setIsBatchOpen] = useState(false);
@@ -646,7 +659,7 @@ export function RecruitmentClientPage({
   });
 
   const candidateFilters = (
-    <div className="flex flex-col sm:flex-row gap-2">
+    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
       <select
         className="flex h-9 w-[200px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         data-table-filter-key="job"
@@ -668,6 +681,14 @@ export function RecruitmentClientPage({
         <option value="Offering">Offering</option>
         <option value="Hired">Hired</option>
       </select>
+      <div className="flex items-center gap-1.5 ml-auto">
+        <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => { setImportResults(null); setIsImportOpen(true); }}>
+          <IconUpload className="w-3 h-3 mr-1" /> Import
+        </Button>
+        <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setIsManualAddOpen(true)}>
+          <IconPlus className="w-3 h-3 mr-1" /> Tambah
+        </Button>
+      </div>
     </div>
   );
 
@@ -1285,6 +1306,7 @@ export function RecruitmentClientPage({
                           />
                         </TableHead>
                         <TableHead className="w-12 text-center">NO</TableHead>
+                        <TableHead>TGL MELAMAR</TableHead>
                         <TableHead>NAMA LENGKAP</TableHead>
                         <TableHead>LOWONGAN</TableHead>
                         <TableHead>LOKASI</TableHead>
@@ -1307,6 +1329,7 @@ export function RecruitmentClientPage({
                             />
                           </TableCell>
                           <TableCell className="text-center text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell className="text-muted-foreground text-xs whitespace-nowrap">{format(new Date(candidate.createdAt), "dd MMM yyyy")}</TableCell>
                           <TableCell className="font-semibold">{candidate.fullName}</TableCell>
                           <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
                           <TableCell className="text-muted-foreground">{candidate.location || "-"}</TableCell>
@@ -1385,7 +1408,7 @@ export function RecruitmentClientPage({
                       ))}
                       {visibleCandidates.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={12} className="h-32 text-center text-muted-foreground">
+                          <TableCell colSpan={13} className="h-32 text-center text-muted-foreground">
                             Belum ada kandidat.
                           </TableCell>
                         </TableRow>
@@ -2540,6 +2563,213 @@ export function RecruitmentClientPage({
         <DialogFooter className="px-6 py-3 border-t shrink-0">
           <Button variant="outline" onClick={() => setIsOfferingPreviewOpen(false)}>Tutup</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Manual Add Dialog */}
+    <Dialog open={isManualAddOpen} onOpenChange={setIsManualAddOpen}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Tambah Kandidat Manual</DialogTitle>
+          <DialogDescription>Isi data kandidat untuk ditambahkan ke pipeline.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="space-y-2">
+            <Label>Lowongan *</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={manualAddForm.recruitmentId}
+              onChange={(e) => setManualAddForm({ ...manualAddForm, recruitmentId: e.target.value })}
+            >
+              <option value="">Pilih Lowongan</option>
+              {recruitments.map((r) => (
+                <option key={r.id} value={r.id}>{r.jobTitle}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>Nama Lengkap *</Label>
+            <Input
+              placeholder="Nama kandidat"
+              value={manualAddForm.fullName}
+              onChange={(e) => setManualAddForm({ ...manualAddForm, fullName: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Email *</Label>
+            <Input
+              type="email"
+              placeholder="email@example.com"
+              value={manualAddForm.email}
+              onChange={(e) => setManualAddForm({ ...manualAddForm, email: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>No. Telepon</Label>
+            <Input
+              placeholder="08123456789"
+              value={manualAddForm.phone}
+              onChange={(e) => setManualAddForm({ ...manualAddForm, phone: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Upload CV (PDF)</Label>
+            <Input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => setManualAddCvFile(e.target.files?.[0] || null)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsManualAddOpen(false)}>Batal</Button>
+          <Button onClick={async () => {
+            if (!manualAddForm.recruitmentId || !manualAddForm.fullName || !manualAddForm.email) {
+              toast.error("Isi lowongan, nama, dan email");
+              return;
+            }
+            setIsManualAddSubmitting(true);
+            try {
+              let cvUrl = "";
+              if (manualAddCvFile) {
+                const formData = new FormData();
+                formData.append("file", manualAddCvFile);
+                const uploadResult = await uploadFile(formData);
+                if (uploadResult.success) cvUrl = uploadResult.url || "";
+                else toast.warning("CV gagal diupload, data tetap disimpan.");
+              }
+              const created = await adminCreateCandidate({
+                recruitmentId: parseInt(manualAddForm.recruitmentId),
+                fullName: manualAddForm.fullName,
+                email: manualAddForm.email,
+                phone: manualAddForm.phone,
+                cvUrl,
+                source: manualAddForm.source,
+              });
+              setCandidates(prev => [{ ...created, jobTitle: recruitments.find(r => r.id === parseInt(manualAddForm.recruitmentId))?.jobTitle || null, location: null, rating: null, aiScore: null, aiSummary: "", aiDetails: null, rejectionReason: "", createdAt: created.createdAt } as Candidate, ...prev]);
+              toast.success("Kandidat berhasil ditambahkan");
+              setIsManualAddOpen(false);
+              setManualAddForm({ recruitmentId: "", fullName: "", email: "", phone: "", source: "Manual" });
+              setManualAddCvFile(null);
+            } catch (e: any) {
+              toast.error(e.message || "Gagal tambah kandidat");
+            } finally {
+              setIsManualAddSubmitting(false);
+            }
+          }} disabled={isManualAddSubmitting}>
+            {isManualAddSubmitting ? "Menyimpan..." : "Tambah Kandidat"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Import Data Dialog */}
+    <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) setImportResults(null); setIsImportOpen(open); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Import Kandidat</DialogTitle>
+          <DialogDescription>Upload file Excel (.xlsx) atau CSV dengan kolom: fullName, email, phone, recruitmentId.</DialogDescription>
+        </DialogHeader>
+        {importResults ? (
+          <div className="space-y-4 py-4">
+            <div className="text-sm font-medium">
+              Import selesai: {importResults.filter(r => r.success).length} berhasil, {importResults.filter(r => !r.success).length} gagal dari {importResults.length} data.
+            </div>
+            {importResults.filter(r => !r.success).length > 0 && (
+              <div className="border rounded-lg max-h-48 overflow-y-auto">
+                {importResults.filter(r => !r.success).map((r, i) => (
+                  <div key={i} className="px-3 py-2 text-sm text-destructive border-b last:border-0">
+                    {r.fullName} ({r.email}): {r.error}
+                  </div>
+                ))}
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={() => { setImportResults(null); setIsImportOpen(false); }}>Tutup</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Pilih Lowongan</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                id="import-recruitment-id"
+              >
+                <option value="">Pilih Lowongan</option>
+                {recruitments.map((r) => (
+                  <option key={r.id} value={r.id}>{r.jobTitle}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>File Excel / CSV</Label>
+              <Input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                id="import-file-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Format: fullName, email, phone (opsional). Baris pertama adalah header.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsImportOpen(false)}>Batal</Button>
+              <Button onClick={async () => {
+                const select = document.getElementById("import-recruitment-id") as HTMLSelectElement;
+                const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
+                if (!select?.value) { toast.error("Pilih lowongan dulu"); return; }
+                if (!fileInput?.files?.length) { toast.error("Pilih file dulu"); return; }
+
+                setIsImporting(true);
+                try {
+                  const XLSX = await import("xlsx");
+                  const file = fileInput.files[0];
+                  const buffer = await file.arrayBuffer();
+                  const workbook = XLSX.read(buffer, { type: "array" });
+                  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                  const jsonData: any[] = XLSX.utils.sheet_to_json(sheet);
+
+                  if (jsonData.length === 0) {
+                    toast.error("File kosong atau format tidak sesuai");
+                    setIsImporting(false);
+                    return;
+                  }
+
+                  const recruitmentId = parseInt(select.value);
+                  const candidates = jsonData.map((row: any) => ({
+                    recruitmentId,
+                    fullName: row.fullName || row.full_name || row.nama || row.Nama || row["Nama Lengkap"] || row["Nama"] || "",
+                    email: row.email || row.Email || row["Alamat Email"] || "",
+                    phone: row.phone || row.Phone || row.telepon || row.Telepon || row["No Telepon"] || "",
+                    source: "Import",
+                  })).filter(c => c.fullName && c.email);
+
+                  if (candidates.length === 0) {
+                    toast.error("Tidak ada data valid ditemukan di file");
+                    setIsImporting(false);
+                    return;
+                  }
+
+                  const result = await bulkImportCandidates(candidates);
+                  setImportResults(result.results);
+                  toast.success(`${result.imported} kandidat diimport`);
+
+                  // Refresh candidate list
+                  const refreshed = await getCandidatesPaginated({ page: 1, pageSize: 25 });
+                  setCandidates(refreshed.data as Candidate[]);
+                  setCandidatePage(refreshed as any);
+                } catch (e: any) {
+                  toast.error(e.message || "Gagal import data");
+                } finally {
+                  setIsImporting(false);
+                }
+              }} disabled={isImporting}>
+                {isImporting ? "Importing..." : "Import Data"}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
 

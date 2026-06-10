@@ -86,12 +86,24 @@ export async function sendOfferingEmail(candidateId: number) {
     if (rec) vacancyTitle = rec.jobTitle;
   }
 
-  const [offering] = await db
+  let [offering] = await db
     .select()
     .from(hcCandidateOfferings)
     .where(eq(hcCandidateOfferings.candidateId, candidateId))
     .limit(1);
-  if (!offering) throw new Error("Offering data not found. Save the offering form first.");
+
+  if (!offering) {
+    const letterNumber = await getNextLetterNumber("surat_penawaran_kerja");
+    [offering] = await db
+      .insert(hcCandidateOfferings)
+      .values({
+        candidateId,
+        position: vacancyTitle,
+        letterNumber,
+        status: "Draft",
+      })
+      .returning();
+  }
 
   const letterNumber = offering.letterNumber || (await getNextLetterNumber("surat_penawaran_kerja"));
 

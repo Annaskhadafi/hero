@@ -1140,6 +1140,126 @@ export async function createCandidate(data: CandidateData) {
   return created;
 }
 
+export async function adminCreateCandidate(data: CandidateData) {
+  if (!data.fullName || !data.email) {
+    throw new Error("Mohon lengkapi nama dan email.");
+  }
+
+  // Check duplicate (same email + same recruitment)
+  const existingCandidate = await db
+    .select({ id: hcCandidates.id })
+    .from(hcCandidates)
+    .where(
+      and(
+        eq(hcCandidates.email, data.email),
+        eq(hcCandidates.recruitmentId, data.recruitmentId)
+      )
+    )
+    .limit(1);
+
+  if (existingCandidate.length > 0) {
+    throw new Error("Kandidat dengan email ini sudah melamar untuk lowongan tersebut.");
+  }
+
+  const [created] = await db
+    .insert(hcCandidates)
+    .values({
+      recruitmentId: data.recruitmentId,
+      fullName: data.fullName,
+      email: data.email || "",
+      phone: data.phone || "",
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      address: data.address || "",
+      gender: data.gender || "",
+      workExperience: data.workExperience || [],
+      education: data.education || [],
+      drivingLicenses: data.drivingLicenses || [],
+      certificates: data.certificates || [],
+      achievements: data.achievements || "",
+      source: data.source || "Manual",
+      notes: data.notes || "",
+      cvUrl: data.cvUrl || "",
+      currentStage: "Sourcing",
+    })
+    .returning();
+
+  await db.insert(hcCandidateStages).values({
+    candidateId: created.id,
+    stage: "Sourcing",
+    enteredAt: new Date(),
+    notes: "Admin added candidate manually",
+  });
+
+  try { revalidatePath("/dashboard/hc/recruitment") } catch {}
+  return created;
+}
+
+export async function bulkImportCandidates(
+  candidates: Array<{
+    recruitmentId: number;
+    fullName: string;
+    email: string;
+    phone?: string;
+    location?: string;
+    source?: string;
+    notes?: string;
+  }>
+) {
+  const results: Array<{ fullName: string; email: string; success: boolean; error?: string }> = [];
+
+  for (const data of candidates) {
+    try {
+      if (!data.fullName || !data.email) {
+        results.push({ fullName: data.fullName || "-", email: data.email || "-", success: false, error: "Nama dan email wajib" });
+        continue;
+      }
+
+      const existing = await db
+        .select({ id: hcCandidates.id })
+        .from(hcCandidates)
+        .where(
+          and(
+            eq(hcCandidates.email, data.email),
+            eq(hcCandidates.recruitmentId, data.recruitmentId)
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        results.push({ fullName: data.fullName, email: data.email, success: false, error: "Duplikat email untuk lowongan ini" });
+        continue;
+      }
+
+      const [created] = await db
+        .insert(hcCandidates)
+        .values({
+          recruitmentId: data.recruitmentId,
+          fullName: data.fullName,
+          email: data.email || "",
+          phone: data.phone || "",
+          source: data.source || "Import",
+          notes: data.notes || "",
+          currentStage: "Sourcing",
+        })
+        .returning();
+
+      await db.insert(hcCandidateStages).values({
+        candidateId: created.id,
+        stage: "Sourcing",
+        enteredAt: new Date(),
+        notes: "Imported via admin",
+      });
+
+      results.push({ fullName: data.fullName, email: data.email, success: true });
+    } catch (e: any) {
+      results.push({ fullName: data.fullName, email: data.email, success: false, error: e.message || "Gagal import" });
+    }
+  }
+
+  try { revalidatePath("/dashboard/hc/recruitment") } catch {}
+  return { results, total: candidates.length, imported: results.filter(r => r.success).length };
+}
+
 export async function updateCandidateStage(
   candidateId: number,
   nextStage: StageName,
@@ -1365,7 +1485,23 @@ export async function hireCandidate(candidateId: number) {
 
 export async function updateCandidate(
   id: number,
-  data: Partial<CandidateData & { rating: number }>
+  data: Partial<CandidateData & {
+    rating: number;
+    currentStage?: string;
+    rejectionReason?: string;
+    address?: string;
+    gender?: string;
+    dateOfBirth?: string | null;
+    cvUrl?: string;
+    nikKtp?: string;
+    npwpNumber?: string;
+    bpjsKesehatan?: string;
+    bpjsKetenagakerjaan?: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
+  }>
 ) {
   const updatePayload: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -1375,6 +1511,25 @@ export async function updateCandidate(
   if (data.source !== undefined) updatePayload.source = data.source;
   if (data.notes !== undefined) updatePayload.notes = data.notes;
   if (data.rating !== undefined) updatePayload.rating = data.rating;
+  if (data.address !== undefined) updatePayload.address = data.address;
+  if (data.gender !== undefined) updatePayload.gender = data.gender;
+  if (data.dateOfBirth !== undefined) updatePayload.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+  if (data.cvUrl !== undefined) updatePayload.cvUrl = data.cvUrl;
+  if (data.currentStage !== undefined) updatePayload.currentStage = data.currentStage;
+  if (data.rejectionReason !== undefined) updatePayload.rejectionReason = data.rejectionReason;
+  if (data.education !== undefined) updatePayload.education = data.education;
+  if (data.workExperience !== undefined) updatePayload.workExperience = data.workExperience;
+  if (data.certificates !== undefined) updatePayload.certificates = data.certificates;
+  if (data.drivingLicenses !== undefined) updatePayload.drivingLicenses = data.drivingLicenses;
+  if (data.achievements !== undefined) updatePayload.achievements = data.achievements;
+  if (data.nikKtp !== undefined) updatePayload.nikKtp = data.nikKtp;
+  if (data.npwpNumber !== undefined) updatePayload.npwpNumber = data.npwpNumber;
+  if (data.bpjsKesehatan !== undefined) updatePayload.bpjsKesehatan = data.bpjsKesehatan;
+  if (data.bpjsKetenagakerjaan !== undefined) updatePayload.bpjsKetenagakerjaan = data.bpjsKetenagakerjaan;
+  if (data.bankName !== undefined) updatePayload.bankName = data.bankName;
+  if (data.bankAccountNumber !== undefined) updatePayload.bankAccountNumber = data.bankAccountNumber;
+  if (data.emergencyContactName !== undefined) updatePayload.emergencyContactName = data.emergencyContactName;
+  if (data.emergencyContactPhone !== undefined) updatePayload.emergencyContactPhone = data.emergencyContactPhone;
 
   const [updated] = await db
     .update(hcCandidates)
@@ -1383,6 +1538,7 @@ export async function updateCandidate(
     .returning();
 
   revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${id}`);
   return updated;
 }
 

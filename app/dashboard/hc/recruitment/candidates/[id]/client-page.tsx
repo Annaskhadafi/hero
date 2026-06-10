@@ -99,7 +99,7 @@ function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
 import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, recordMcuResult, uploadMcuResultFile, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
-import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation } from "@/app/actions/recruitment";
+import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation, updateCandidate } from "@/app/actions/recruitment";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 import { saveOffering, sendOfferingEmail, respondToOffering } from "@/app/actions/offering";
 
@@ -136,12 +136,37 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [hireStartDate, setHireStartDate] = useState("");
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [offeringPdfUrl, setOfferingPdfUrl] = useState<string | null>(null);
+  const [offeringPdfLoading, setOfferingPdfLoading] = useState(false);
   const [cvLoading, setCvLoading] = useState(false);
   const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
   const [emailPreviewData, setEmailPreviewData] = useState<{ subject: string; html?: string | null; text?: string | null }>({ subject: "", html: "", text: "" });
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
   const [selectedTestResult, setSelectedTestResult] = useState<any>(null);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; title: string } | null>(null);
+  // Edit Candidate
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    fullName: candidate.fullName || "",
+    email: candidate.email || "",
+    phone: candidate.phone || "",
+    dateOfBirth: candidate.dateOfBirth ? new Date(candidate.dateOfBirth).toISOString().split("T")[0] : "",
+    gender: candidate.gender || "",
+    address: candidate.address || "",
+    source: candidate.source || "",
+    nikKtp: candidate.nikKtp || "",
+    npwpNumber: candidate.npwpNumber || "",
+    bpjsKesehatan: candidate.bpjsKesehatan || "",
+    bpjsKetenagakerjaan: candidate.bpjsKetenagakerjaan || "",
+    bankName: candidate.bankName || "",
+    bankAccountNumber: candidate.bankAccountNumber || "",
+    emergencyContactName: candidate.emergencyContactName || "",
+    emergencyContactPhone: candidate.emergencyContactPhone || "",
+    notes: candidate.notes || "",
+    rating: candidate.rating || 0,
+  });
+
   const [isPanelSubmitting, setIsPanelSubmitting] = useState(false);
   const [panelForm, setPanelForm] = useState({
     interviewId: "",
@@ -173,6 +198,19 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
       toast.error("Failed to load CV");
     } finally {
       setCvLoading(false);
+    }
+  };
+
+  const handleViewOfferingPdf = async () => {
+    if (!offering?.pdfUrl) return;
+    setOfferingPdfLoading(true);
+    try {
+      const url = await getCvDownloadUrl(offering.pdfUrl);
+      setOfferingPdfUrl(url);
+    } catch {
+      toast.error("Failed to load offering PDF");
+    } finally {
+      setOfferingPdfLoading(false);
     }
   };
 
@@ -472,6 +510,30 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <>
             <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/hc/recruitment")}>
               <IconArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => {
+              setEditForm({
+                fullName: candidate.fullName || "",
+                email: candidate.email || "",
+                phone: candidate.phone || "",
+                dateOfBirth: candidate.dateOfBirth ? new Date(candidate.dateOfBirth).toISOString().split("T")[0] : "",
+                gender: candidate.gender || "",
+                address: candidate.address || "",
+                source: candidate.source || "",
+                nikKtp: candidate.nikKtp || "",
+                npwpNumber: candidate.npwpNumber || "",
+                bpjsKesehatan: candidate.bpjsKesehatan || "",
+                bpjsKetenagakerjaan: candidate.bpjsKetenagakerjaan || "",
+                bankName: candidate.bankName || "",
+                bankAccountNumber: candidate.bankAccountNumber || "",
+                emergencyContactName: candidate.emergencyContactName || "",
+                emergencyContactPhone: candidate.emergencyContactPhone || "",
+                notes: candidate.notes || "",
+                rating: candidate.rating || 0,
+              });
+              setIsEditOpen(true);
+            }}>
+              Edit
             </Button>
             <Badge variant="secondary" className="text-sm px-3 py-1">{candidate.currentStage}</Badge>
             {candidate.cvUrl && (
@@ -1377,9 +1439,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   </div>
                   {offering.pdfUrl && (
                     <div className="mt-3">
-                      <a href={offering.pdfUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                        <IconFileText className="w-4 h-4" /> View Offering PDF
-                      </a>
+                      <Button variant="link" className="h-auto p-0 text-sm text-blue-600" onClick={handleViewOfferingPdf} disabled={offeringPdfLoading}>
+                        <IconFileText className="w-4 h-4 mr-1" /> {offeringPdfLoading ? "Loading..." : "View Offering PDF"}
+                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -1905,6 +1967,147 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
       </Dialog>
     </AdminPageShell>
 
+    {/* Edit Candidate Dialog */}
+    <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Candidate — {candidate.fullName}</DialogTitle>
+          <DialogDescription>Update data kandidat di semua tab.</DialogDescription>
+        </DialogHeader>
+        <Tabs defaultValue="personal" className="mt-2">
+          <TabsList className="mb-4">
+            <TabsTrigger value="personal">Personal Info</TabsTrigger>
+            <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+            <TabsTrigger value="notes">Notes & Rating</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="personal" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Full Name</Label>
+                <Input value={editForm.fullName} onChange={e => setEditForm({...editForm, fullName: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Phone</Label>
+                <Input value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Date of Birth</Label>
+                <Input type="date" value={editForm.dateOfBirth} onChange={e => setEditForm({...editForm, dateOfBirth: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Gender</Label>
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})}>
+                  <option value="">-- Select --</option>
+                  <option value="Laki-laki">Laki-laki</option>
+                  <option value="Perempuan">Perempuan</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Source</Label>
+                <Input value={editForm.source} onChange={e => setEditForm({...editForm, source: e.target.value})} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Textarea rows={2} value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="onboarding" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>NIK KTP</Label>
+                <Input value={editForm.nikKtp} onChange={e => setEditForm({...editForm, nikKtp: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>NPWP Number</Label>
+                <Input value={editForm.npwpNumber} onChange={e => setEditForm({...editForm, npwpNumber: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>BPJS Kesehatan</Label>
+                <Input value={editForm.bpjsKesehatan} onChange={e => setEditForm({...editForm, bpjsKesehatan: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>BPJS Ketenagakerjaan</Label>
+                <Input value={editForm.bpjsKetenagakerjaan} onChange={e => setEditForm({...editForm, bpjsKetenagakerjaan: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Bank Name</Label>
+                <Input value={editForm.bankName} onChange={e => setEditForm({...editForm, bankName: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Bank Account Number</Label>
+                <Input value={editForm.bankAccountNumber} onChange={e => setEditForm({...editForm, bankAccountNumber: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Emergency Contact Name</Label>
+                <Input value={editForm.emergencyContactName} onChange={e => setEditForm({...editForm, emergencyContactName: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Emergency Contact Phone</Label>
+                <Input value={editForm.emergencyContactPhone} onChange={e => setEditForm({...editForm, emergencyContactPhone: e.target.value})} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="notes" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Rating (1-5)</Label>
+                <Input type="number" min={0} max={5} value={editForm.rating} onChange={e => setEditForm({...editForm, rating: parseInt(e.target.value) || 0})} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea rows={4} value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+          <Button onClick={async () => {
+            setIsEditSaving(true);
+            try {
+              const updated = await updateCandidate(candidate.id, {
+                fullName: editForm.fullName,
+                email: editForm.email,
+                phone: editForm.phone,
+                dateOfBirth: editForm.dateOfBirth || null,
+                gender: editForm.gender,
+                address: editForm.address,
+                source: editForm.source,
+                nikKtp: editForm.nikKtp,
+                npwpNumber: editForm.npwpNumber,
+                bpjsKesehatan: editForm.bpjsKesehatan,
+                bpjsKetenagakerjaan: editForm.bpjsKetenagakerjaan,
+                bankName: editForm.bankName,
+                bankAccountNumber: editForm.bankAccountNumber,
+                emergencyContactName: editForm.emergencyContactName,
+                emergencyContactPhone: editForm.emergencyContactPhone,
+                notes: editForm.notes,
+                rating: editForm.rating,
+              });
+              toast.success("Candidate updated");
+              setIsEditOpen(false);
+              router.refresh();
+            } catch (e: any) {
+              toast.error(e.message || "Failed to update candidate");
+            } finally {
+              setIsEditSaving(false);
+            }
+          }} disabled={isEditSaving}>
+            {isEditSaving ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
       {/* Hire Confirmation Dialog */}
       <Dialog open={isHireOpen} onOpenChange={setIsHireOpen}>
         <DialogContent className="sm:max-w-md">
@@ -2057,6 +2260,30 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             {cvViewerUrl && (
               <Button asChild variant="default">
                 <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Offering PDF Viewer Dialog */}
+      <Dialog open={!!offeringPdfUrl} onOpenChange={(open) => { if (!open) setOfferingPdfUrl(null); }}>
+        <DialogContent className="w-[95vw] h-[95vh] max-w-none p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
+          <DialogHeader className="px-6 py-3 border-b shrink-0">
+            <DialogTitle>Offering Letter — {candidate.fullName}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
+            {offeringPdfUrl ? (
+              <iframe src={offeringPdfUrl} className="w-full h-full border-0" style={{ height: '100%', minHeight: 0 }} title={`Offering letter of ${candidate.fullName}`} />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+            )}
+          </div>
+          <DialogFooter className="px-6 py-3 border-t shrink-0">
+            <Button variant="outline" onClick={() => setOfferingPdfUrl(null)}>Close</Button>
+            {offeringPdfUrl && (
+              <Button asChild variant="default">
+                <a href={offeringPdfUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
               </Button>
             )}
           </DialogFooter>

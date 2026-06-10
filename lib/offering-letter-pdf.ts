@@ -109,7 +109,7 @@ export async function generateOfferingLetterPdf(data: {
   const right = width - mmToPt(22);
   const contentWidth = right - left;
   const size = 8;
-  const lineH = 11;
+  const lineH = 14;
   let y = height - mmToPt(45);
 
   // Letter number
@@ -122,17 +122,17 @@ export async function generateOfferingLetterPdf(data: {
   page.drawText(data.candidateName, { x: left, y, size, font: fontBold });
   y -= lineH;
   page.drawText("Di Tempat", { x: left, y, size, font: fontRegular });
-  y -= 4;
+  y -= lineH;
 
   // Perihal
   page.drawText("Perihal : Penawaran Kerja", { x: left, y, size, font: fontBold });
-  y -= 8;
+  y -= lineH * 1.5;
 
   // Opening
   y = drawWrapped(page, "Dengan hormat,", left, y, contentWidth, fontRegular, size, lineH);
-  y -= 2;
+  y -= lineH;
   y = drawWrapped(page, "Bersama ini kami sampaikan penawaran kerja untuk saudara sebagai berikut :", left, y, contentWidth, fontRegular, size, lineH);
-  y -= 6;
+  y -= lineH;
 
   // Terms table
   const terms: [string, string][] = [
@@ -162,15 +162,16 @@ export async function generateOfferingLetterPdf(data: {
     page.drawText(label, { x: labelX, y, size, font: fontBold });
     page.drawText(":", { x: colonX, y, size, font: fontRegular });
     y = drawWrapped(page, value, valueX, y, contentWidth - 170, fontRegular, size, lineH);
+    y -= lineH / 2;
   }
 
   // Closing
   const startDateStr = data.startDate || "___";
   const closingText = `Bila saudara menyepakati penawaran tersebut diatas dan juga hasil medical check-up yang memenuhi syarat maka perusahaan akan menyiapkan perjanjian kerja untuk ditandatangani kedua pihak dan mulai bekerja tanggal ${startDateStr}`;
   y = drawWrapped(page, closingText, left, y, contentWidth, fontRegular, size, lineH);
-  y -= 4;
+  y -= lineH;
   y = drawWrapped(page, "Demikianlah surat penawaran kami, atas perhatian Saudara kami ucapkan terima kasih.", left, y, contentWidth, fontRegular, size, lineH);
-  y -= 10;
+  y -= lineH * 2;
 
   // Signature block (left: date + signatory, right: candidate acceptance)
   const today = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -179,14 +180,16 @@ export async function generateOfferingLetterPdf(data: {
 
   // Left side: date + signatory
   page.drawText(`Balikpapan, ${today}`, { x: left, y, size, font: fontRegular });
-  y -= 8;
+  y -= lineH;
 
   if (signatureImg) {
     const sigW = 100;
     const sigH = 36;
     page.drawImage(signatureImg, { x: left, y: y - sigH + 4, width: sigW, height: sigH });
+    y -= sigH + 4;
+  } else {
+    y -= lineH * 2;
   }
-  y -= 40;
 
   page.drawText(data.signatoryName, { x: left, y, size, font: fontBold });
   y -= lineH;
@@ -195,7 +198,7 @@ export async function generateOfferingLetterPdf(data: {
   // Right side: candidate acceptance
   y = sigBlockY;
   page.drawText("Menerima/Menyetujui,", { x: signerX, y, size, font: fontRegular });
-  y -= 38;
+  y -= lineH * 2;
 
   page.drawText(data.candidateName, { x: signerX, y, size, font: fontRegular });
   y -= lineH;
