@@ -318,8 +318,9 @@ export function SuratTugasClient({
               <Label className="mb-2 block">No Surat</Label>
               <Input
                 value={noSurat}
-                onChange={(e) => setNoSurat(e.target.value)}
-                placeholder="Contoh: 015/HR-ST/VI/2026"
+                readOnly
+                className="bg-muted cursor-not-allowed"
+                placeholder="Otomatis..."
               />
             </div>
             <div>
