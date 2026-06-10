@@ -132,7 +132,7 @@ export default async function CargoManifestPage() {
                   <span key={`loc-${idx}`} className="font-medium">
                     {loc.locationName}
                   </span>,
-                  <span key={`addr-${idx}`} className="text-xs text-muted-foreground">
+                  <span key={`addr-${idx}`} className="max-w-[200px] truncate text-xs text-muted-foreground block" title={loc.address || undefined}>
                     {empty(loc.address)}
                   </span>,
                   empty(loc.city),
