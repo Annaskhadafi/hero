@@ -1680,7 +1680,7 @@ export async function previewStartDateEmail(data: {
   return { subject, html, text };
 }
 
-export async function sendStartDateEmails(candidateIds: number[], startDate: string) {
+export async function sendStartDateEmails(candidateIds: number[], startDate: string, position?: string) {
   const smtpSettings = await getEmailSmtpSettingsData();
   const results: Array<{ candidateId: number; success: boolean; error?: string }> = [];
 
@@ -1709,8 +1709,8 @@ export async function sendStartDateEmails(candidateIds: number[], startDate: str
 
       await db.update(hcCandidates).set({ startDate }).where(eq(hcCandidates.id, cid));
 
-      let jobTitle = "Posisi";
-      if (candidate.recruitmentId) {
+      let jobTitle = position || "Posisi";
+      if (!position && candidate.recruitmentId) {
         const [rec] = await db.select({ jobTitle: hcRecruitments.jobTitle }).from(hcRecruitments).where(eq(hcRecruitments.id, candidate.recruitmentId)).limit(1);
         if (rec) jobTitle = rec.jobTitle;
       }

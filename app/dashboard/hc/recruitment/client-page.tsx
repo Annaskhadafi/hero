@@ -32,6 +32,7 @@ import { sendOfferingEmail, saveOffering } from "@/app/actions/offering";
 import { getNextLetterNumber, getActiveEmployees } from "@/app/actions/surat";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { hcPrimaryActionClassName, hcTableRowClassName, hcMutedPanelClassName } from "@/components/hc/hc-workspace-banner";
@@ -182,10 +183,13 @@ export function RecruitmentClientPage({
   clinics,
   sectionTemplates,
 }: RecruitmentClientPageProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const viewParam = searchParams.get("view");
   const [candidates, setCandidates] = useState<Candidate[]>(paginatedCandidates.data as Candidate[]);
   const [candidatePage, setCandidatePage] = useState(paginatedCandidates);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
-  const [activeView, setActiveView] = useState<"vacancies" | "pipeline">("vacancies");
+  const [activeView, setActiveView] = useState<"vacancies" | "pipeline">(viewParam === "pipeline" ? "pipeline" : "vacancies");
   const [pipelineJobIdFilter, setPipelineJobIdFilter] = useState<number | null>(null);
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
   const [recruitments, setRecruitments] = useState(initialRecruitments);
@@ -202,6 +206,16 @@ export function RecruitmentClientPage({
   const [cvViewerName, setCvViewerName] = useState("");
   const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
+
+  useEffect(() => {
+    setActiveView(viewParam === "pipeline" ? "pipeline" : "vacancies");
+  }, [viewParam]);
+
+  const setRecruitmentView = (view: "vacancies" | "pipeline") => {
+    setActiveView(view);
+    if (view === "vacancies") setPipelineJobIdFilter(null);
+    router.replace(`/dashboard/hc/recruitment?view=${view}`, { scroll: false });
+  };
   const [compareRows, setCompareRows] = useState<any[]>([]);
   const [compareLoading, setCompareLoading] = useState(false);
 
@@ -225,6 +239,7 @@ export function RecruitmentClientPage({
 
   const [isMulaiKerjaOpen, setIsMulaiKerjaOpen] = useState(false);
   const [mulaiKerjaDate, setMulaiKerjaDate] = useState("");
+  const [mulaiKerjaPosisi, setMulaiKerjaPosisi] = useState("");
   const [isMulaiKerjaSending, setIsMulaiKerjaSending] = useState(false);
 
   // Bulk Offering State
@@ -385,14 +400,16 @@ export function RecruitmentClientPage({
   };
 
   const handleMulaiKerja = async () => {
+    if (!mulaiKerjaPosisi) { toast.error("Isi posisi dulu"); return; }
     if (!mulaiKerjaDate) { toast.error("Isi tanggal mulai kerja dulu"); return; }
     setIsMulaiKerjaSending(true);
     try {
-      const result = await sendStartDateEmails(Array.from(selectedIds), mulaiKerjaDate);
+      const result = await sendStartDateEmails(Array.from(selectedIds), mulaiKerjaDate, mulaiKerjaPosisi);
       const ok = result.results.filter((r: any) => r.success).length;
       toast.success(`Mulai kerja email sent to ${ok} candidates`);
       setIsMulaiKerjaOpen(false);
       setMulaiKerjaDate("");
+      setMulaiKerjaPosisi("");
       setSelectedIds(new Set());
     } catch (e: any) { toast.error(e.message); }
     finally { setIsMulaiKerjaSending(false); }
@@ -912,7 +929,7 @@ export function RecruitmentClientPage({
         <div className="flex flex-col lg:flex-row justify-between gap-6 items-start lg:items-end px-2 mt-6">
           <div className="flex bg-muted/30 p-1.5 rounded-2xl border backdrop-blur-sm shadow-sm">
             <button
-              onClick={() => { setActiveView("vacancies"); setPipelineJobIdFilter(null); }}
+              onClick={() => setRecruitmentView("vacancies")}
               className={cn(
                 "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
                 activeView === "vacancies"
@@ -924,7 +941,7 @@ export function RecruitmentClientPage({
               Job Vacancies
             </button>
             <button
-              onClick={() => setActiveView("pipeline")}
+              onClick={() => setRecruitmentView("pipeline")}
               className={cn(
                 "relative z-10 px-6 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2",
                 activeView === "pipeline"
@@ -2324,6 +2341,10 @@ export function RecruitmentClientPage({
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
+            <Label>Posisi *</Label>
+            <Input placeholder="Isi manual posisi, ex: HSE Officer" value={mulaiKerjaPosisi} onChange={e => setMulaiKerjaPosisi(e.target.value)} />
+          </div>
+          <div className="space-y-2">
             <Label>Tanggal Mulai Kerja *</Label>
             <Input type="date" value={mulaiKerjaDate} onChange={e => setMulaiKerjaDate(e.target.value)} />
             <p className="text-xs text-muted-foreground">Tanggal akan disimpan ke kandidat dan dikirim via email.</p>
@@ -2332,11 +2353,12 @@ export function RecruitmentClientPage({
         <DialogFooter>
           <Button variant="outline" onClick={() => setIsMulaiKerjaOpen(false)}>Cancel</Button>
           <Button variant="outline" onClick={async () => {
+            if (!mulaiKerjaPosisi) { toast.error("Isi posisi dulu"); return; }
             if (!mulaiKerjaDate) { toast.error("Isi tanggal mulai kerja dulu"); return; }
             const startDateLabel = new Date(mulaiKerjaDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
             const preview = await previewStartDateEmail({
               candidateName: "John Doe",
-              jobTitle: "Posisi",
+              jobTitle: mulaiKerjaPosisi,
               startDate: startDateLabel,
               onboardingUrl: "https://hero.chitraparatama.com/onboarding/EXAMPLE",
             });

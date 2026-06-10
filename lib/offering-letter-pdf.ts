@@ -108,8 +108,8 @@ export async function generateOfferingLetterPdf(data: {
   const left = mmToPt(22);
   const right = width - mmToPt(22);
   const contentWidth = right - left;
-  const size = 10;
-  const lineH = 14;
+  const size = 8;
+  const lineH = 11;
   let y = height - mmToPt(45);
 
   // Letter number
@@ -122,17 +122,17 @@ export async function generateOfferingLetterPdf(data: {
   page.drawText(data.candidateName, { x: left, y, size, font: fontBold });
   y -= lineH;
   page.drawText("Di Tempat", { x: left, y, size, font: fontRegular });
-  y -= lineH * 1.5;
+  y -= 4;
 
   // Perihal
   page.drawText("Perihal : Penawaran Kerja", { x: left, y, size, font: fontBold });
-  y -= lineH * 1.5;
+  y -= 8;
 
   // Opening
   y = drawWrapped(page, "Dengan hormat,", left, y, contentWidth, fontRegular, size, lineH);
-  y -= 4;
+  y -= 2;
   y = drawWrapped(page, "Bersama ini kami sampaikan penawaran kerja untuk saudara sebagai berikut :", left, y, contentWidth, fontRegular, size, lineH);
-  y -= 8;
+  y -= 6;
 
   // Terms table
   const terms: [string, string][] = [
@@ -162,46 +162,44 @@ export async function generateOfferingLetterPdf(data: {
     page.drawText(label, { x: labelX, y, size, font: fontBold });
     page.drawText(":", { x: colonX, y, size, font: fontRegular });
     y = drawWrapped(page, value, valueX, y, contentWidth - 170, fontRegular, size, lineH);
-    y -= 2;
   }
-
-  y -= 8;
 
   // Closing
   const startDateStr = data.startDate || "___";
   const closingText = `Bila saudara menyepakati penawaran tersebut diatas dan juga hasil medical check-up yang memenuhi syarat maka perusahaan akan menyiapkan perjanjian kerja untuk ditandatangani kedua pihak dan mulai bekerja tanggal ${startDateStr}`;
   y = drawWrapped(page, closingText, left, y, contentWidth, fontRegular, size, lineH);
-  y -= 8;
+  y -= 4;
   y = drawWrapped(page, "Demikianlah surat penawaran kami, atas perhatian Saudara kami ucapkan terima kasih.", left, y, contentWidth, fontRegular, size, lineH);
-  y -= 16;
+  y -= 10;
 
-  // Signature block (left: date, right: signer + candidate)
+  // Signature block (left: date + signatory, right: candidate acceptance)
   const today = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-  page.drawText(`Balikpapan, ${today}`, { x: left, y, size, font: fontRegular });
-
+  const sigBlockY = y;
   const signerX = right - 160;
-  page.drawText("Menerima/Menyetujui,", { x: signerX, y, size, font: fontRegular });
+
+  // Left side: date + signatory
+  page.drawText(`Balikpapan, ${today}`, { x: left, y, size, font: fontRegular });
   y -= 8;
 
-  // Candidate name (right side)
+  if (signatureImg) {
+    const sigW = 100;
+    const sigH = 36;
+    page.drawImage(signatureImg, { x: left, y: y - sigH + 4, width: sigW, height: sigH });
+  }
+  y -= 40;
+
+  page.drawText(data.signatoryName, { x: left, y, size, font: fontBold });
+  y -= lineH;
+  page.drawText(data.signatoryTitle, { x: left, y, size, font: fontRegular });
+
+  // Right side: candidate acceptance
+  y = sigBlockY;
+  page.drawText("Menerima/Menyetujui,", { x: signerX, y, size, font: fontRegular });
+  y -= 38;
+
   page.drawText(data.candidateName, { x: signerX, y, size, font: fontRegular });
   y -= lineH;
   page.drawText("Calon Karyawan", { x: signerX, y, size, font: fontBold });
-  y -= lineH * 3;
-
-  // Signature image (right side)
-  if (signatureImg) {
-    const sigW = 120;
-    const sigH = 45;
-    page.drawImage(signatureImg, { x: signerX, y, width: sigW, height: sigH });
-  }
-  y -= 50;
-
-  // Signer name
-  page.drawText(data.signatoryName, { x: signerX, y, size, font: fontBold });
-  y -= lineH;
-  page.drawText(data.signatoryTitle, { x: signerX, y, size, font: fontRegular });
-  y -= lineH * 2;
 
   // Footer
   const footerY = mmToPt(25);
