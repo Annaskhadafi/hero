@@ -60,6 +60,7 @@ export function SuratTugasClient({
 
   // Custom inputs for Surat Tugas
   const [tujuan, setTujuan] = useState('')
+  const [kota, setKota] = useState('')
   const [keperluan, setKeperluan] = useState('')
   const [tglBerangkat, setTglBerangkat] = useState('')
   const [tglKembali, setTglKembali] = useState('')
@@ -364,11 +365,19 @@ export function SuratTugasClient({
               <h4 className="mb-3 text-sm font-semibold">Detail Penugasan</h4>
               <div className="space-y-4">
                 <div>
-                  <Label className="mb-2 block">Tujuan / Lokasi</Label>
+                  <Label className="mb-2 block">Tujuan / Perusahaan</Label>
                   <Input
                     value={tujuan}
                     onChange={(e) => setTujuan(e.target.value)}
-                    placeholder="Contoh: Site Melak - Kaltim"
+                    placeholder="Contoh: PT Kaltim Prima Coal"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Kota / Lokasi</Label>
+                  <Input
+                    value={kota}
+                    onChange={(e) => setKota(e.target.value)}
+                    placeholder="Contoh: Sangatta"
                   />
                 </div>
                 <div>
@@ -458,90 +467,74 @@ export function SuratTugasClient({
                 minHeight: '297mm',
               }}
             >
-              <div className="mb-4 text-center">
-                <h1 className="mb-1 text-xl font-bold uppercase underline">Surat Tugas</h1>
-                <p>No: {noSurat || '______________________'}</p>
-              </div>
+              <table className="mb-4 w-full">
+                <tbody>
+                  <tr>
+                    <td className="w-20 py-1">Nomor</td>
+                    <td className="w-4 py-1">:</td>
+                    <td className="py-1">{noSurat || '______________________'}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1">Perihal</td>
+                    <td className="py-1">:</td>
+                    <td className="py-1">Surat Tugas</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <p className="mb-1">Kepada Yth :</p>
+              <p className="mb-1 font-bold underline">{tujuan || '______________________'}</p>
+              <p className="mb-4 font-bold underline">{kota || '______________________'}</p>
+
+              <p className="mb-1">Dengan hormat,</p>
+              <p className="mb-3 text-justify">Yang bertanda tangan di bawah ini menerangkan bahwa :</p>
+
+              <table className="mb-3 border-collapse border border-black w-full" style={{ fontSize: '9pt' }}>
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-black px-2 py-1 text-center w-10">No</th>
+                    <th className="border border-black px-2 py-1 text-center">Nama</th>
+                    <th className="border border-black px-2 py-1 text-center w-20">SN</th>
+                    <th className="border border-black px-2 py-1 text-center">Section</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-black px-2 py-1 text-center">1</td>
+                    <td className="border border-black px-2 py-1 font-bold">{selectedEmp?.name || '______________________'}</td>
+                    <td className="border border-black px-2 py-1 text-center">{selectedEmp?.employeeSn || '________'}</td>
+                    <td className="border border-black px-2 py-1">{selectedEmp?.section || '______________________'}</td>
+                  </tr>
+                </tbody>
+              </table>
 
               <p className="mb-3 text-justify">
-                Yang bertanda tangan di bawah ini, selaku pimpinan perusahaan PT Chitra Paratama,
-                memberikan tugas kepada:
+                Adalah benar bekerja pada perusahaan kami, <span className="font-bold">PT Chitra Paratama ( a Member of Mahadasha Group )</span>.
+                Bersama dengan surat ini di informasikan bahwa karyawan di atas akan ditugaskan ke <span className="font-bold underline">{tujuan || '______________________'}</span> mulai tanggal <span className="font-bold underline">{tglBerangkat ? new Date(tglBerangkat).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '________________'}</span> dengan agenda <span className="font-bold underline">{keperluan || '______________________'}</span>.
               </p>
 
-              <table className="mb-3 ml-6 w-full">
-                <tbody>
-                  <tr>
-                    <td className="w-40 pb-1">Nama</td>
-                    <td className="w-4 pb-1">:</td>
-                    <td className="font-bold pb-1">{selectedEmp?.name || '______________________'}</td>
-                  </tr>
-                  <tr>
-                    <td className="pb-1">SN</td>
-                    <td className="pb-1">:</td>
-                    <td className="pb-1">{selectedEmp?.employeeSn || '______________________'}</td>
-                  </tr>
-                  <tr>
-                    <td className="pb-1">Jabatan</td>
-                    <td className="pb-1">:</td>
-                    <td className="pb-1">{selectedEmp ? formatJabatan(selectedEmp.section, selectedEmp.jobTitle) : '______________________'}</td>
-                  </tr>
-                  <tr>
-                    <td className="pb-1">Departemen / Section</td>
-                    <td className="pb-1">:</td>
-                    <td className="pb-1">{selectedEmp?.section || '______________________'}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <p className="mb-2">Untuk melaksanakan pekerjaan / penugasan sebagai berikut:</p>
-
-              <table className="mb-3 ml-6 w-full">
-                <tbody>
-                  <tr>
-                    <td className="w-40 pb-1">Tempat / Tujuan</td>
-                    <td className="w-4 pb-1">:</td>
-                    <td className="font-semibold pb-1">{tujuan || '______________________'}</td>
-                  </tr>
-                  <tr>
-                    <td className="pb-1">Keperluan</td>
-                    <td className="pb-1">:</td>
-                    <td className="pb-1">{keperluan || '______________________'}</td>
-                  </tr>
-                  <tr>
-                    <td className="pb-1">Waktu Pelaksanaan</td>
-                    <td className="pb-1">:</td>
-                    <td className="pb-1">
-                      {tglBerangkat || '________'} s/d {tglKembali || '________'}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
               <p className="mb-6 text-justify">
-                Demikian surat tugas ini diberikan agar dapat dilaksanakan dengan penuh tanggung
-                jawab. Setelah selesai melaksanakan tugas, harap segera memberikan laporan kepada
-                atasan.
+                Demikian surat ini kami buat atas perhatian dan kerjasamanya kami ucapkan terima kasih.
               </p>
 
               <div className="mt-8 flex justify-end text-center">
                 <div>
                   <p className="mb-1">Balikpapan, {tanggal || '_________________'}</p>
-                  <p className="mb-4 font-bold">PT Chitra Paratama</p>
+                  <p className="mb-1">Hormat Kami,</p>
                   {selectedSignatureUrl ? (
                     <img
                       src={selectedSignatureUrl}
                       alt={`TTD ${selectedHrSigner?.name || 'HR'}`}
-                      className="mx-auto mb-1 object-contain"
-                      style={{ height: '60px', width: '160px' }}
+                      className="mb-1 object-contain"
+                      style={{ height: '60px', width: '160px', objectPosition: 'left' }}
                     />
                   ) : (
-                    <div className="mx-auto mb-1" style={{ height: '60px', width: '160px' }} />
+                    <div className="mb-1" style={{ height: '60px', width: '160px' }} />
                   )}
-
                   <p className="font-bold underline">
                     {selectedHrSigner?.name || '_________________________'}
                   </p>
-                  <p>{selectedHrSigner?.jobTitle || 'Direktur / HR Manager'}</p>
+                  <p>{selectedHrSigner?.jobTitle || 'HR & GA Dept. Head'}</p>
                 </div>
               </div>
             </div>
