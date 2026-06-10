@@ -104,10 +104,12 @@ export function SecurityUserRowActions({
   const [selectedSectionId, setSelectedSectionId] = useState(
     sections.find((section) => section.name === user.section)?.id.toString() ?? ''
   )
-  const [selectedJobTitle, setSelectedJobTitle] = useState(user.jobTitle)
+  const [selectedJobTitle, setSelectedJobTitle] = useState(
+    positions.find((p) => p.name === user.jobTitle)?.id.toString() ?? ''
+  )
   const [selectedSiteId, setSelectedSiteId] = useState(user.siteId ? `${user.siteId}` : '')
 
-  const selectedPosition = positions.find((position) => position.name === selectedJobTitle) ?? null
+  const selectedPosition = positions.find((position) => position.id.toString() === selectedJobTitle) ?? null
   const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null
   const filteredSections = selectedDepartmentId
     ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
@@ -148,7 +150,7 @@ export function SecurityUserRowActions({
       setSelectedSectionId(
         sections.find((section) => section.name === user.section)?.id.toString() ?? ''
       )
-      setSelectedJobTitle(user.jobTitle)
+      setSelectedJobTitle(positions.find((p) => p.name === user.jobTitle)?.id.toString() ?? '')
       setSelectedSiteId(user.siteId ? `${user.siteId}` : '')
     }
   }, [departments, open, sections, user.department, user.jobTitle, user.section, user.siteId])
@@ -412,7 +414,6 @@ export function SecurityUserRowActions({
                     <div className="grid min-w-0 gap-2">
                       <Label>Position</Label>
                       <Select
-                        name="jobTitle"
                         value={selectedJobTitle}
                         onValueChange={setSelectedJobTitle}
                       >
@@ -421,13 +422,14 @@ export function SecurityUserRowActions({
                         </SelectTrigger>
                         <SelectContent className={compactSelectContentClass}>
                           {filteredPositions.map((position) => (
-                            <SelectItem key={position.id} value={position.name}>
+                            <SelectItem key={position.id} value={`${position.id}`}>
                               {position.name} ({position.code}) -{' '}
                               {position.siteLocation || 'Semua Site'} - Level {position.level}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      <input type="hidden" name="jobTitle" value={selectedPosition?.name || ''} />
                     </div>
                     <div className="grid min-w-0 gap-2">
                       <Label>Lokasi Site</Label>

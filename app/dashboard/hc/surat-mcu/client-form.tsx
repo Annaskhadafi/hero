@@ -75,6 +75,7 @@ export function SuratMcuClient({
   const [paketMcu, setPaketMcu] = useState('')
   const [klinikEmail, setKlinikEmail] = useState('')
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null)
+  const [tanggalMcu, setTanggalMcu] = useState('')
 
   const [klinikHistory, setKlinikHistory] = useState<string[]>([])
   const [kotaHistory, setKotaHistory] = useState<string[]>([])
@@ -348,7 +349,7 @@ export function SuratMcuClient({
     } finally {
       setSaving(false)
     }
-  }, [selectedEmp, noSurat, klinik, kota, paketMcu, klinikHistory, kotaHistory, paketHistory])
+  }, [selectedEmp, noSurat, klinik, kota, paketMcu, tanggalMcu, klinikHistory, kotaHistory, paketHistory])
 
   return (
     <div className="space-y-4">
@@ -473,6 +474,14 @@ export function SuratMcuClient({
                     })()}
                     placeholder="Contoh: Paket Executive"
                     allowCustom={true}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Tanggal MCU</Label>
+                  <Input
+                    type="date"
+                    value={tanggalMcu}
+                    onChange={(e) => setTanggalMcu(e.target.value)}
                   />
                 </div>
               </div>
@@ -630,6 +639,11 @@ export function SuratMcuClient({
                     <td className="pb-1">Paket MCU</td>
                     <td className="pb-1">:</td>
                     <td className="font-bold pb-1">{paketMcu || '______________________'}</td>
+                  </tr>
+                  <tr>
+                    <td className="pb-1">Tanggal MCU</td>
+                    <td className="pb-1">:</td>
+                    <td className="font-bold pb-1">{tanggalMcu ? new Date(tanggalMcu).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
