@@ -167,15 +167,20 @@ export function SuratTugasClient({
             .underline { text-decoration: underline; }
             .uppercase { text-transform: uppercase; }
             .mb-1 { margin-bottom: 0.25rem; }
+            .mb-3 { margin-bottom: 0.75rem; }
             .mb-4 { margin-bottom: 1rem; }
             .mb-6 { margin-bottom: 1.5rem; }
             .mb-8 { margin-bottom: 2rem; }
             .mb-12 { margin-bottom: 3rem; }
             .mb-20 { margin-bottom: 5rem; }
+            .mt-8 { margin-top: 2rem; }
             .mt-16 { margin-top: 4rem; }
             .ml-6 { margin-left: 1.5rem; }
+            .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
             .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
             .w-4 { width: 1rem; }
+            .w-10 { width: 2.5rem; }
+            .w-20 { width: 5rem; }
             .w-48 { width: 12rem; }
             .flex { display: flex; }
             .justify-end { justify-content: flex-end; }
@@ -490,21 +495,21 @@ export function SuratTugasClient({
               <p className="mb-1">Dengan hormat,</p>
               <p className="mb-3 text-justify">Yang bertanda tangan di bawah ini menerangkan bahwa :</p>
 
-              <table className="mb-3 border-collapse border border-black w-full" style={{ fontSize: '9pt' }}>
+              <table className="mb-3 w-full" style={{ borderCollapse: 'collapse', border: '1px solid black', fontSize: '9pt' }}>
                 <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-black px-2 py-1 text-center w-10">No</th>
-                    <th className="border border-black px-2 py-1 text-center">Nama</th>
-                    <th className="border border-black px-2 py-1 text-center w-20">SN</th>
-                    <th className="border border-black px-2 py-1 text-center">Section</th>
+                  <tr style={{ backgroundColor: '#f3f4f6' }}>
+                    <th style={{ border: '1px solid black', padding: '4px 8px', textAlign: 'center', width: '40px' }}>No</th>
+                    <th style={{ border: '1px solid black', padding: '4px 8px', textAlign: 'center' }}>Nama</th>
+                    <th style={{ border: '1px solid black', padding: '4px 8px', textAlign: 'center', width: '80px' }}>SN</th>
+                    <th style={{ border: '1px solid black', padding: '4px 8px', textAlign: 'center' }}>Section</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-black px-2 py-1 text-center">1</td>
-                    <td className="border border-black px-2 py-1 font-bold">{selectedEmp?.name || '______________________'}</td>
-                    <td className="border border-black px-2 py-1 text-center">{selectedEmp?.employeeSn || '________'}</td>
-                    <td className="border border-black px-2 py-1">{selectedEmp?.section || '______________________'}</td>
+                    <td style={{ border: '1px solid black', padding: '4px 8px', textAlign: 'center' }}>1</td>
+                    <td style={{ border: '1px solid black', padding: '4px 8px', fontWeight: 'bold' }}>{selectedEmp?.name || '______________________'}</td>
+                    <td style={{ border: '1px solid black', padding: '4px 8px', textAlign: 'center' }}>{selectedEmp?.employeeSn || '________'}</td>
+                    <td style={{ border: '1px solid black', padding: '4px 8px' }}>{selectedEmp?.section || '______________________'}</td>
                   </tr>
                 </tbody>
               </table>
