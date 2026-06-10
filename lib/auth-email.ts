@@ -1,6 +1,8 @@
 import { emailDeliveryLogs } from "@/db/schema/hero";
 import { db } from "@/db";
 import { getPublicAppUrl } from "@/lib/auth-config";
+import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
+import { sendEmailViaSmtp } from "@/lib/email-delivery";
 
 type AuthEmailPayload = {
     to: string;
@@ -19,43 +21,6 @@ function getFromEmail() {
     return process.env.AUTH_FROM_EMAIL || "noreply@hero.chitraparatama.com";
 }
 
-async function sendViaResend(payload: AuthEmailPayload) {
-    const apiKey = process.env.RESEND_API_KEY?.trim();
-
-    if (!apiKey) {
-        return {
-            delivered: false,
-            reason: "RESEND_API_KEY is not configured",
-        };
-    }
-
-    const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            from: getFromEmail(),
-            to: [payload.to],
-            subject: payload.subject,
-            html: payload.html,
-            text: payload.text,
-        }),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-
-        throw new Error(`Resend request failed: ${response.status} ${errorText}`);
-    }
-
-    return {
-        delivered: true,
-        reason: null,
-    };
-}
-
 async function logAuthEmail(payload: AuthEmailPayload, status: "sent" | "pending" | "failed", errorMessage?: string) {
     await db.insert(emailDeliveryLogs).values({
         deliveryChannel: "email",
@@ -72,19 +37,37 @@ async function logAuthEmail(payload: AuthEmailPayload, status: "sent" | "pending
     });
 }
 
+async function sendViaSmtp(payload: AuthEmailPayload) {
+    try {
+        const smtpSettings = await getEmailSmtpSettingsData();
+        if (!smtpSettings.host || !smtpSettings.fromEmail) return { delivered: false as const, reason: "SMTP not configured" };
+
+        await sendEmailViaSmtp(smtpSettings, {
+            to: payload.to,
+            subject: payload.subject,
+            html: payload.html,
+            text: payload.text,
+            templateName: payload.templateName,
+            templateCode: payload.templateCode,
+        });
+
+        return { delivered: true as const, reason: null };
+    } catch (error) {
+        return { delivered: false as const, reason: error instanceof Error ? error.message : "SMTP error" };
+    }
+}
+
 export async function sendAuthEmail(payload: AuthEmailPayload) {
     try {
-        const result = await sendViaResend(payload);
-
+        const result = await sendViaSmtp(payload);
         if (result.delivered) {
             await logAuthEmail(payload, "sent");
             return;
         }
-
         await logAuthEmail(payload, "pending", result.reason ?? undefined);
-        console.info(`[auth-email] ${payload.templateCode} prepared for ${payload.to}. Configure RESEND_API_KEY to deliver it.`);
+        console.info(`[auth-email] ${payload.templateCode} not sent to ${payload.to}: ${result.reason}`);
     } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown email error";
+        const message = error instanceof Error ? error.message : "Unknown error";
         await logAuthEmail(payload, "failed", message);
         throw error;
     }

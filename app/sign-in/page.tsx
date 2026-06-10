@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Loader2, LockKeyhole, Mail, Sparkles, Wand2 } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, Sparkles, Wand2 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ function SignInContent() {
     const [error, setError] = useState("");
     const [resolvedEmail, setResolvedEmail] = useState("");
     const [resolvedName, setResolvedName] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
     // Check if input looks like email
     const isEmailInput = email.includes("@");
@@ -248,14 +249,17 @@ function SignInContent() {
                                     </div>
                                     <Input
                                         id="m-password"
-                                        type="password"
+                                        type={showPassword ? "text" : "password"}
                                         placeholder="••••••••••"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="auth-dark-input h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-4 text-sm text-slate-100 placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-xl bg-[#10283a]/92 pl-11 pr-11 text-sm text-slate-100 placeholder:text-slate-500"
                                     />
+                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-500 hover:text-slate-300">
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
                                 </div>
                             </div>
 
@@ -399,14 +403,17 @@ function SignInContent() {
                                     <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition group-focus-within:text-[#9ac8ec]" />
                                     <Input
                                         id="d-password"
-                                        type="password"
+                                        type={showPassword ? "text" : "password"}
                                         placeholder="Enter your password"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
-                                        className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-4 text-base text-white placeholder:text-slate-500"
+                                        className="auth-dark-input h-14 rounded-2xl bg-[#10283a]/92 pl-11 pr-11 text-base text-white placeholder:text-slate-500"
                                     />
+                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
                                 </div>
                             </div>
                         </div>
