@@ -21,6 +21,8 @@ import {
   roleMenuPermissions,
   securityRoles,
   sites,
+  masterJobTitles,
+  masterLevelStaff,
   masterSubSections,
 } from "@/db/schema/hero";
 import { auth } from "@/lib/auth";
@@ -66,14 +68,23 @@ const sectionSchema = z.object({
   description: z.string().trim().max(500).optional(),
   isActive: formBooleanField(true),
 });
-// SUB SECTION SCHEMA
-const subSectionSchema = z.object({
+// JOB TITLE SCHEMA
+const jobTitleSchema = z.object({
   intent: z.enum(["create", "update", "delete"]),
   id: optionalPositiveIntField,
   code: z.string().trim().min(1).max(5),
   name: z.string().trim().min(1).max(100),
-  sectionId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
+  isActive: formBooleanField(true),
+});
+
+// LEVEL STAFF SCHEMA
+const levelStaffSchema = z.object({
+  intent: z.enum(["create", "update", "delete"]),
+  id: optionalPositiveIntField,
+  code: z.string().trim().min(1).max(10),
+  name: z.string().trim().min(1).max(100),
+  sortOrder: z.coerce.number().int().min(0).optional(),
   isActive: formBooleanField(true),
 });
 
@@ -858,8 +869,8 @@ export async function manageSectionAction(
   }
 }
 
-// SUB SECTION ACTIONS
-export async function manageSubSectionAction(
+// JOB TITLE ACTIONS
+export async function manageJobTitleAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
@@ -879,17 +890,16 @@ export async function manageSubSectionAction(
     }
 
     try {
-      await db.delete(masterSubSections).where(eq(masterSubSections.id, deletePayload.data.id));
-
+      await db.delete(masterJobTitles).where(eq(masterJobTitles.id, deletePayload.data.id));
       revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Sub section deleted successfully" };
+      return { status: "success", message: "Job title deleted successfully" };
     } catch (error) {
-      console.error("Sub section action error:", error);
-      return { status: "error", message: "An error occurred while deleting the sub section" };
+      console.error("Job title action error:", error);
+      return { status: "error", message: "An error occurred while deleting the job title" };
     }
   }
 
-  const parsed = subSectionSchema.safeParse(raw);
+  const parsed = jobTitleSchema.safeParse(raw);
 
   if (!parsed.success) {
     return {
@@ -899,28 +909,24 @@ export async function manageSubSectionAction(
     };
   }
 
-  const { intent, id, code, name, sectionId, description, isActive } = parsed.data;
+  const { intent, id, code, name, description, isActive } = parsed.data;
   const normalizedCode = code.trim().toUpperCase();
 
   try {
     if (intent === "create") {
       const existing = await db
-        .select({ id: masterSubSections.id })
-        .from(masterSubSections)
-        .where(eq(masterSubSections.code, normalizedCode))
+        .select({ id: masterJobTitles.id })
+        .from(masterJobTitles)
+        .where(eq(masterJobTitles.code, normalizedCode))
         .limit(1);
 
       if (existing.length > 0) {
-        return {
-          status: "error",
-          message: "Sub section code already exists",
-        };
+        return { status: "error", message: "Job title code already exists" };
       }
 
-      await db.insert(masterSubSections).values({
+      await db.insert(masterJobTitles).values({
         code: normalizedCode,
         name,
-        sectionId: sectionId || null,
         description: description || "",
         isActive,
         createdAt: now(),
@@ -928,7 +934,7 @@ export async function manageSubSectionAction(
       });
 
       revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Sub section created successfully" };
+      return { status: "success", message: "Job title created successfully" };
     }
 
     if (intent === "update") {
@@ -937,37 +943,131 @@ export async function manageSubSectionAction(
       }
 
       const existing = await db
-        .select({ id: masterSubSections.id })
-        .from(masterSubSections)
-        .where(and(eq(masterSubSections.code, normalizedCode), sql`${masterSubSections.id} != ${id}`))
+        .select({ id: masterJobTitles.id })
+        .from(masterJobTitles)
+        .where(and(eq(masterJobTitles.code, normalizedCode), sql`${masterJobTitles.id} != ${id}`))
         .limit(1);
 
       if (existing.length > 0) {
-        return {
-          status: "error",
-          message: "Sub section code already exists",
-        };
+        return { status: "error", message: "Job title code already exists" };
       }
 
       await db
-        .update(masterSubSections)
+        .update(masterJobTitles)
         .set({
           code: normalizedCode,
           name,
-          sectionId: sectionId || null,
           description: description || "",
           isActive,
           updatedAt: now(),
         })
-        .where(eq(masterSubSections.id, id));
+        .where(eq(masterJobTitles.id, id));
 
       revalidatePath("/dashboard/master-data");
-      return { status: "success", message: "Sub section updated successfully" };
+      return { status: "success", message: "Job title updated successfully" };
     }
 
     return { status: "error", message: "Invalid intent" };
   } catch (error) {
-    console.error("Sub section action error:", error);
+    console.error("Job title action error:", error);
+    return { status: "error", message: "An error occurred while processing your request" };
+  }
+}
+
+// LEVEL STAFF ACTIONS
+export async function manageLevelStaffAction(
+  _state: MasterDataActionState,
+  formData: FormData
+): Promise<MasterDataActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const raw = Object.fromEntries(formData.entries());
+
+  if (raw.intent === "delete") {
+    const deletePayload = deleteIntentSchema.safeParse(raw);
+
+    if (!deletePayload.success) {
+      return {
+        status: "error",
+        message: "Validation failed",
+        errors: deletePayload.error.flatten().fieldErrors,
+      };
+    }
+
+    try {
+      await db.delete(masterLevelStaff).where(eq(masterLevelStaff.id, deletePayload.data.id));
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Level staff deleted successfully" };
+    } catch (error) {
+      console.error("Level staff action error:", error);
+      return { status: "error", message: "An error occurred while deleting level staff" };
+    }
+  }
+
+  const parsed = levelStaffSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Validation failed",
+      errors: parsed.error.flatten().fieldErrors,
+    };
+  }
+
+  const { intent, id, code, name, sortOrder, isActive } = parsed.data;
+  const normalizedCode = code.trim().toUpperCase();
+
+  try {
+    if (intent === "create") {
+      const existing = await db
+        .select({ id: masterLevelStaff.id })
+        .from(masterLevelStaff)
+        .where(eq(masterLevelStaff.code, normalizedCode))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return { status: "error", message: "Level staff code already exists" };
+      }
+
+      await db.insert(masterLevelStaff).values({
+        code: normalizedCode,
+        name,
+        sortOrder: sortOrder ?? 0,
+        isActive,
+        createdAt: now(),
+      });
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Level staff created successfully" };
+    }
+
+    if (intent === "update") {
+      if (!id) {
+        return { status: "error", message: "ID is required for update" };
+      }
+
+      const existing = await db
+        .select({ id: masterLevelStaff.id })
+        .from(masterLevelStaff)
+        .where(and(eq(masterLevelStaff.code, normalizedCode), sql`${masterLevelStaff.id} != ${id}`))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return { status: "error", message: "Level staff code already exists" };
+      }
+
+      await db
+        .update(masterLevelStaff)
+        .set({ code: normalizedCode, name, sortOrder: sortOrder ?? 0, isActive })
+        .where(eq(masterLevelStaff.id, id));
+
+      revalidatePath("/dashboard/master-data");
+      return { status: "success", message: "Level staff updated successfully" };
+    }
+
+    return { status: "error", message: "Invalid intent" };
+  } catch (error) {
+    console.error("Level staff action error:", error);
     return { status: "error", message: "An error occurred while processing your request" };
   }
 }

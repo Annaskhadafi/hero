@@ -8,6 +8,8 @@ import {
   masterCategoryOptions,
   masterAttendanceShifts,
   masterDepartments,
+  masterJobTitles,
+  masterLevelStaff,
   masterPositions,
   masterSections,
   masterSubSections,
@@ -39,16 +41,23 @@ export type MasterSection = {
   updatedAt: Date;
 };
 
-export type MasterSubSection = {
+export type MasterJobTitle = {
   id: number;
   code: string;
   name: string;
-  sectionId: number | null;
-  sectionName: string | null;
   description: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type MasterLevelStaff = {
+  id: number;
+  name: string;
+  code: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: Date;
 };
 
 export type MasterDepartment = {
@@ -225,7 +234,7 @@ export async function getMasterDataPageData() {
 
   const [
     sections,
-    subSections,
+    jobTitles,
     departments,
     sitesData,
     positions,
@@ -234,10 +243,11 @@ export async function getMasterDataPageData() {
     approvalMatricesData,
     categoryOptions,
     employeesData,
+    levelStaff,
   ] =
     await Promise.all([
       getMasterSections(),
-      getMasterSubSections(),
+      getMasterJobTitles(),
       getMasterDepartments(),
       getMasterSites(),
       getMasterPositions(),
@@ -258,11 +268,12 @@ export async function getMasterDataPageData() {
         .from(employees)
         .where(eq(employees.isActive, true))
         .orderBy(asc(employees.name)),
+      getMasterLevelStaff(),
     ]);
 
   return {
     sections,
-    subSections,
+    jobTitles,
     departments,
     sites: sitesData,
     positions,
@@ -271,6 +282,7 @@ export async function getMasterDataPageData() {
     approvalMatrices: approvalMatricesData,
     categoryOptions,
     employees: employeesData,
+    levelStaff,
   };
 }
 
@@ -500,36 +512,32 @@ export async function getMasterSections(): Promise<MasterSection[]> {
   }));
 }
 
-export async function getMasterSubSections(): Promise<MasterSubSection[]> {
+export async function getMasterJobTitles(): Promise<MasterJobTitle[]> {
   await ensureHeroGovernanceSeedData();
 
-  const subSectionRows = await db
+  const rows = await db
     .select({
-      id: masterSubSections.id,
-      code: masterSubSections.code,
-      name: masterSubSections.name,
-      sectionId: masterSubSections.sectionId,
-      sectionName: masterSections.name,
-      departmentId: masterDepartments.id,
-      departmentName: masterDepartments.name,
-      description: masterSubSections.description,
-      isActive: masterSubSections.isActive,
-      employeeCount: sql<number>`0`,
-      createdAt: masterSubSections.createdAt,
-      updatedAt: masterSubSections.updatedAt,
+      id: masterJobTitles.id,
+      code: masterJobTitles.code,
+      name: masterJobTitles.name,
+      description: masterJobTitles.description,
+      isActive: masterJobTitles.isActive,
+      createdAt: masterJobTitles.createdAt,
+      updatedAt: masterJobTitles.updatedAt,
     })
-    .from(masterSubSections)
-    .leftJoin(masterSections, eq(masterSubSections.sectionId, masterSections.id))
-    .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
-    .orderBy(asc(masterSubSections.code));
+    .from(masterJobTitles)
+    .orderBy(asc(masterJobTitles.code));
 
-  return subSectionRows.map((ss) => ({
-    ...ss,
-    sectionName: ss.sectionName ?? null,
-    departmentId: ss.departmentId ?? null,
-    departmentName: ss.departmentName ?? null,
-    employeeCount: ss.employeeCount ?? 0,
-  }));
+  return rows;
+}
+
+export async function getMasterLevelStaff(): Promise<MasterLevelStaff[]> {
+  await ensureHeroGovernanceSeedData();
+
+  return db
+    .select()
+    .from(masterLevelStaff)
+    .orderBy(asc(masterLevelStaff.sortOrder), asc(masterLevelStaff.name));
 }
 
 export async function getSectionOptions(

@@ -35,6 +35,8 @@ export async function getOrgChartData() {
     .where(eq(hrOrgNodes.isActive, true))
     .orderBy(asc(hrOrgNodes.hierarchyLevel), asc(hrOrgNodes.name));
 
+  const orgNodeIds = new Set(nodes.map((n) => n.id));
+
   const employees = await db
     .select({
       id: hrEmployees.id,
@@ -61,13 +63,99 @@ export async function getOrgChartData() {
     .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
     .where(eq(hrEmployees.isActive, true));
 
-  const employeesByNode = new Map<number, typeof employees>();
-  for (const employee of employees) {
-    if (!employee.orgNodeId) continue;
-    employeesByNode.set(employee.orgNodeId, [...(employeesByNode.get(employee.orgNodeId) ?? []), employee]);
+  // Build virtual department+section nodes for employees not assigned to any org node
+  const unassigned = employees.filter((e) => !e.orgNodeId || !orgNodeIds.has(e.orgNodeId));
+  const deptGroup = new Map<string, typeof employees>();
+  for (const emp of unassigned) {
+    const key = `${emp.departmentId ?? 0}_${emp.sectionId ?? 0}`;
+    if (!deptGroup.has(key)) deptGroup.set(key, []);
+    deptGroup.get(key)!.push(emp);
   }
 
-  return nodes.map((node) => ({
+  // Get all unique departments/sections that have unassigned employees
+  const deptIds = [...new Set(unassigned.map((e) => e.departmentId).filter(Boolean))];
+  const sectIds = [...new Set(unassigned.map((e) => e.sectionId).filter(Boolean))];
+  const [allDepts, allSects] = await Promise.all([
+    deptIds.length ? db.select().from(hrDepartments).where(inArray(hrDepartments.id, deptIds as number[])) : [],
+    sectIds.length ? db.select().from(hrSections).where(inArray(hrSections.id, sectIds as number[])) : [],
+  ]);
+  const deptMap = new Map(allDepts.map((d) => [d.id, d]));
+  const sectMap = new Map(allSects.map((s) => [s.id, s]));
+
+  // Build virtual nodes per department
+  const virtualNodes: typeof nodes = [];
+  const virtualEmployees = new Map<number, typeof employees>();
+  let virtualId = -1;
+  for (const [key, emps] of deptGroup) {
+    const first = emps[0];
+    const dept = first.departmentId ? deptMap.get(first.departmentId) : null;
+    const sect = first.sectionId ? sectMap.get(first.sectionId) : null;
+    virtualId--;
+
+    const parentDeptNode = nodes.find((n) => n.departmentId === first.departmentId && n.nodeType?.toLowerCase().includes('department'));
+    let parentId = parentDeptNode?.id ?? null;
+
+    // If department node doesn't exist, create virtual department
+    if (!parentDeptNode && dept) {
+      const deptVirtualId = virtualId--;
+      virtualNodes.push({
+        id: deptVirtualId,
+        code: `AUTO_${dept.name.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        parentNodeId: null,
+        nodeType: 'department',
+        name: dept.name,
+        hierarchyLevel: 0,
+        pathText: `/${deptVirtualId}/`,
+        isActive: true,
+        departmentName: dept.name,
+        sectionName: null,
+        siteName: null,
+        workLocationName: null,
+        departmentId: dept.id,
+        sectionId: null,
+        siteId: null,
+      });
+      parentId = deptVirtualId;
+    }
+
+    virtualNodes.push({
+      id: virtualId,
+      code: `AUTO_${(sect?.name ?? dept?.name ?? 'unknown').replace(/[^a-zA-Z0-9]/g, '_')}`,
+      parentNodeId: parentId,
+      nodeType: sect ? 'section' : 'department',
+      name: sect?.name ?? dept?.name ?? 'Unknown',
+      hierarchyLevel: parentId ? 1 : 0,
+      pathText: parentId ? `/${parentId}/${virtualId}/` : `/${virtualId}/`,
+      isActive: true,
+      departmentName: dept?.name ?? null,
+      sectionName: sect?.name ?? null,
+      siteName: null,
+      workLocationName: null,
+      departmentId: first.departmentId,
+      sectionId: first.sectionId,
+      siteId: null,
+    });
+    virtualEmployees.set(virtualId, emps as any);
+  }
+
+  const allNodes = [...nodes, ...virtualNodes];
+
+  const employeesByNode = new Map<number, typeof employees>();
+  for (const employee of employees) {
+    const nodeId = employee.orgNodeId && orgNodeIds.has(employee.orgNodeId) ? employee.orgNodeId : null;
+    if (nodeId) {
+      if (!employeesByNode.has(nodeId)) employeesByNode.set(nodeId, []);
+      employeesByNode.get(nodeId)!.push(employee);
+    }
+  }
+  // Also add virtual node assignments
+  for (const [vnId, vnEmps] of virtualEmployees) {
+    if (vnEmps.length > 0) {
+      employeesByNode.set(vnId, vnEmps);
+    }
+  }
+
+  return allNodes.map((node) => ({
     ...node,
     employees: employeesByNode.get(node.id) ?? [],
     employeeCount: employeesByNode.get(node.id)?.length ?? 0,

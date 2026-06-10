@@ -36,7 +36,7 @@ export const sites = pgTable('hero_sites', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
-// Sub Section belongs to a Section
+// Sub Section (kept for backward compatibility)
 export const masterSubSections = pgTable('hero_master_sub_sections', {
   id: serial('id').primaryKey(),
   code: text('code').notNull().unique(),
@@ -46,6 +46,27 @@ export const masterSubSections = pgTable('hero_master_sub_sections', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// Job Title
+export const masterJobTitles = pgTable('hero_master_job_titles', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// Level Staff
+export const masterLevelStaff = pgTable('hero_master_level_staff', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  code: text('code').notNull().unique(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
 export const employees = pgTable('hero_employees', {
@@ -60,6 +81,16 @@ export const employees = pgTable('hero_employees', {
   email: text('email').notNull(),
   employeeSn: text('employee_sn').notNull().default(''),
   joinYear: integer('join_year').notNull().default(new Date().getFullYear()),
+  joinDate: date('join_date'),
+  contractDurationStart: date('contract_duration_start'),
+  contractDurationEnd: date('contract_duration_end'),
+  permanentDate: date('permanent_date'),
+  pointOfHire: text('point_of_hire').notNull().default(''),
+  birthDate: date('birth_date'),
+  gender: text('gender').notNull().default(''),
+  maritalStatus: text('marital_status').notNull().default(''),
+  religion: text('religion').notNull().default(''),
+  education: text('education').notNull().default(''),
   birthPlaceDate: text('birth_place_date').notNull().default(''),
   domicile: text('domicile').notNull().default(''),
   directManagerId: integer('direct_manager_id'),

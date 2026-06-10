@@ -100,6 +100,16 @@ export type SecurityUserRecord = {
   siteName: string
   totalPoints: number
   contractEnd: string | null
+  gender: string
+  religion: string
+  education: string
+  maritalStatus: string
+  pointOfHire: string
+  joinDate: string | null
+  contractDurationStart: string | null
+  contractDurationEnd: string | null
+  permanentDate: string | null
+  birthDate: string | null
 }
 
 export async function getSecurityUserReferenceData() {
@@ -3583,7 +3593,8 @@ export async function getSecurityUsersData() {
       domicile: employees.domicile,
       directManagerId: employees.directManagerId,
       section: hrSections.name,
-      jobTitle: hrPositions.rankName,
+      jobTitle:
+        sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as('job_title'),
       workLocation:
         sql<string>`coalesce(${hrWorkLocations.name}, ${hrOrgNodes.name}, ${hrSites.name}, '')`.as(
           'work_location'
@@ -3598,12 +3609,21 @@ export async function getSecurityUsersData() {
         ),
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
       department: hrDepartments.name,
-      levelName: hrPositions.levelName,
+      levelName:
+        sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as('level_name'),
       fitStatus: sql<string>`'fit'`.as('fit_status'),
       isActive: hrEmployees.isActive,
       siteName: hrSites.name,
       totalPoints: sql<number>`0`.as('total_points'),
       contractEnd: hrEmployees.contractEnd,
+      gender: employees.gender,
+      religion: employees.religion,
+      education: employees.education,
+      maritalStatus: employees.maritalStatus,
+      pointOfHire: employees.pointOfHire,
+      contractDurationStart: employees.contractDurationStart,
+      contractDurationEnd: employees.contractDurationEnd,
+      permanentDate: employees.permanentDate,
     })
     .from(hrEmployees)
     .leftJoin(
@@ -3621,6 +3641,7 @@ export async function getSecurityUsersData() {
       hrEmployeeStatuses,
       eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code)
     )
+    .where(eq(hrEmployees.isActive, true))
     .orderBy(hrEmployees.fullName)
 
   const uniqueRowsMap = new Map()
@@ -3662,6 +3683,16 @@ export async function getSecurityUsersData() {
     isActive: row.isActive,
     siteName: row.siteName ?? row.workLocation ?? 'Belum diisi',
     totalPoints: row.totalPoints,
+    gender: row.gender ?? '',
+    religion: row.religion ?? '',
+    education: row.education ?? '',
+    maritalStatus: row.maritalStatus ?? '',
+    pointOfHire: row.pointOfHire ?? '',
+    joinDate: row.joinDate ?? null,
+    contractDurationStart: row.contractDurationStart ?? null,
+    contractDurationEnd: row.contractDurationEnd ?? null,
+    permanentDate: row.permanentDate ?? null,
+    birthDate: row.birthDate ?? null,
   }))
 }
 

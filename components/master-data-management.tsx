@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3, Tags } from "lucide-react";
 import { toast } from "sonner";
-import type { ApprovalMatrix, MasterSection, MasterSubSection, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift, MasterCategoryOption } from "@/lib/master-data";
+import type { ApprovalMatrix, MasterSection, MasterJobTitle, MasterLevelStaff, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift, MasterCategoryOption } from "@/lib/master-data";
 import {
   manageAttendanceShiftAction,
   manageMasterCategoryOptionAction,
   manageSectionAction,
-  manageSubSectionAction,
+  manageJobTitleAction,
+  manageLevelStaffAction,
   manageDepartmentAction,
   manageSiteAction,
   managePositionAction,
@@ -56,7 +57,7 @@ import { ApprovalRouteSimulator } from "@/components/approval-route-simulator";
 
 interface MasterDataManagementProps {
   sections: MasterSection[];
-  subSections: MasterSubSection[];
+  jobTitles: MasterJobTitle[];
   departments: MasterDepartment[];
   sites: MasterSite[];
   positions: MasterPosition[];
@@ -65,6 +66,7 @@ interface MasterDataManagementProps {
   orgStructures: OrgStructure[];
   approvalMatrices: ApprovalMatrix[];
   employees: any[];
+  levelStaff: MasterLevelStaff[];
 }
 
 const INITIAL_ACTION_STATE: MasterDataActionState = {
@@ -161,7 +163,7 @@ async function fetchIndonesiaRegionOptions(
 
 export function MasterDataManagement({
   sections,
-  subSections,
+  jobTitles,
   departments,
   sites,
   positions,
@@ -170,6 +172,7 @@ export function MasterDataManagement({
   orgStructures,
   approvalMatrices,
   employees,
+  levelStaff,
 }: MasterDataManagementProps) {
   const [activeTab, setActiveTab] = useState("sections");
 
@@ -196,11 +199,18 @@ export function MasterDataManagement({
               {sections.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="sub-sections" className="flex items-center gap-2">
+          <TabsTrigger value="job-titles" className="flex items-center gap-2">
             <Layers className="size-4" />
-            <span>Sub Section</span>
+            <span>Job Title</span>
             <Badge variant="secondary" className="ml-1 bg-[#eff6ff] text-[#3b82f6]">
-              {subSections.length}
+              {jobTitles.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="level-staff" className="flex items-center gap-2">
+            <Users className="size-4" />
+            <span>Level Staff</span>
+            <Badge variant="secondary" className="ml-1 bg-[#fef3c7] text-[#d97706]">
+              {levelStaff.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="departments" className="flex items-center gap-2">
@@ -262,8 +272,11 @@ export function MasterDataManagement({
           <SectionManagement sections={sections} departments={departments} />
         </TabsContent>
 
-        <TabsContent value="sub-sections" className="space-y-4">
-          <SubSectionManagement subSections={subSections} sections={sections} departments={departments} />
+        <TabsContent value="job-titles" className="space-y-4">
+          <JobTitleManagement jobTitles={jobTitles} />
+        </TabsContent>
+        <TabsContent value="level-staff" className="space-y-4">
+          <LevelStaffManagement levelStaff={levelStaff} />
         </TabsContent>
 
         <TabsContent value="departments" className="space-y-4">
@@ -1808,49 +1821,42 @@ function SectionManagement({
   );
 }
 
-// SUB SECTION MANAGEMENT COMPONENT
-function SubSectionManagement({
-  subSections,
-  sections,
-  departments,
+// JOB TITLE MANAGEMENT COMPONENT
+function JobTitleManagement({
+  jobTitles,
 }: {
-  subSections: MasterSubSection[];
-  sections: MasterSection[];
-  departments: MasterDepartment[];
+  jobTitles: MasterJobTitle[];
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingSubSection, setEditingSubSection] = useState<MasterSubSection | null>(null);
+  const [editingJobTitle, setEditingJobTitle] = useState<MasterJobTitle | null>(null);
   const [formData, setFormData] = useState({
     code: "",
     name: "",
-    sectionId: "",
     description: "",
     isActive: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const filteredSubSections = subSections.filter(
-    (ss) =>
-      ss.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ss.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ss.sectionName ?? "").toLowerCase().includes(searchQuery.toLowerCase()),
+  const filteredJobTitles = jobTitles.filter(
+    (jt) =>
+      jt.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      jt.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const handleOpenDialog = (subSection?: MasterSubSection) => {
-    if (subSection) {
-      setEditingSubSection(subSection);
+  const handleOpenDialog = (jobTitle?: MasterJobTitle) => {
+    if (jobTitle) {
+      setEditingJobTitle(jobTitle);
       setFormData({
-        code: subSection.code,
-        name: subSection.name,
-        sectionId: subSection.sectionId?.toString() ?? "",
-        description: subSection.description,
-        isActive: subSection.isActive,
+        code: jobTitle.code,
+        name: jobTitle.name,
+        description: jobTitle.description,
+        isActive: jobTitle.isActive,
       });
     } else {
-      setEditingSubSection(null);
-      setFormData({ code: "", name: "", sectionId: "", description: "", isActive: true });
+      setEditingJobTitle(null);
+      setFormData({ code: "", name: "", description: "", isActive: true });
     }
     setIsDialogOpen(true);
   };
@@ -1860,21 +1866,20 @@ function SubSectionManagement({
     setIsSubmitting(true);
 
     const form = new FormData();
-    form.append("intent", editingSubSection ? "update" : "create");
-    if (editingSubSection) form.append("id", editingSubSection.id.toString());
+    form.append("intent", editingJobTitle ? "update" : "create");
+    if (editingJobTitle) form.append("id", editingJobTitle.id.toString());
     form.append("code", formData.code);
     form.append("name", formData.name);
-    form.append("sectionId", formData.sectionId);
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
 
-    const result = await manageSubSectionAction(INITIAL_ACTION_STATE, form);
+    const result = await manageJobTitleAction(INITIAL_ACTION_STATE, form);
 
     if (result.status === "success") {
       toast.success(result.message);
       setIsDialogOpen(false);
-      setEditingSubSection(null);
-      setFormData({ code: "", name: "", sectionId: "", description: "", isActive: true });
+      setEditingJobTitle(null);
+      setFormData({ code: "", name: "", description: "", isActive: true });
       router.refresh();
     } else {
       toast.error(result.message);
@@ -1883,16 +1888,14 @@ function SubSectionManagement({
     setIsSubmitting(false);
   };
 
-  const handleDelete = async (subSection: MasterSubSection) => {
-    if (!confirm(`Are you sure you want to delete sub section "${subSection.name}"?`)) {
-      return;
-    }
+  const handleDelete = async (jobTitle: MasterJobTitle) => {
+    if (!confirm(`Are you sure you want to delete job title "${jobTitle.name}"?`)) return;
 
     const form = new FormData();
     form.append("intent", "delete");
-    form.append("id", subSection.id.toString());
+    form.append("id", jobTitle.id.toString());
 
-    const result = await manageSubSectionAction(INITIAL_ACTION_STATE, form);
+    const result = await manageJobTitleAction(INITIAL_ACTION_STATE, form);
 
     if (result.status === "success") {
       toast.success(result.message);
@@ -1906,17 +1909,14 @@ function SubSectionManagement({
     <Card className="border-[#e2e8f0]">
       <CardHeader className="flex flex-row items-center justify-between pb-4">
         <div>
-          <CardTitle className="text-lg font-semibold text-[#1e293b]">Daftar Sub Section</CardTitle>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Daftar Job Title</CardTitle>
           <CardDescription className="text-sm text-[#64748b]">
-            Sub-kelompok kerja di bawah section dalam organisasi
+            Daftar jabatan/posisi pekerjaan dalam organisasi
           </CardDescription>
         </div>
-        <Button
-          onClick={() => handleOpenDialog()}
-          className="bg-[#3b82f6] hover:bg-[#2563eb]"
-        >
+        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
           <Plus className="mr-2 size-4" />
-          Tambah Sub Section
+          Tambah Job Title
         </Button>
       </CardHeader>
       <CardContent>
@@ -1924,7 +1924,7 @@ function SubSectionManagement({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
             <Input
-              placeholder="Cari sub section..."
+              placeholder="Cari job title..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full max-w-sm pl-9"
@@ -1937,43 +1937,25 @@ function SubSectionManagement({
             <TableHeader>
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead className="w-[100px]">Kode</TableHead>
-                <TableHead>Nama Sub Section</TableHead>
-                <TableHead>Section</TableHead>
+                <TableHead>Nama Job Title</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredSubSections.length > 0 ? (
-                filteredSubSections.map((ss) => (
-                  <TableRow key={ss.id}>
-                    <TableCell className="font-mono text-sm font-medium">
-                      {ss.code}
-                    </TableCell>
-                    <TableCell className="font-medium">{ss.name}</TableCell>
-                    <TableCell>
-                      {ss.sectionName ? (
-                        <Badge variant="outline" className="bg-[#f1f5f9]">
-                          {ss.sectionName}
-                        </Badge>
-                      ) : (
-                        <span className="text-[#94a3b8]">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-[#64748b]">
-                      {ss.description || "-"}
-                    </TableCell>
+              {filteredJobTitles.length > 0 ? (
+                filteredJobTitles.map((jt) => (
+                  <TableRow key={jt.id}>
+                    <TableCell className="font-mono text-sm font-medium">{jt.code}</TableCell>
+                    <TableCell className="font-medium">{jt.name}</TableCell>
+                    <TableCell className="text-[#64748b]">{jt.description || "-"}</TableCell>
                     <TableCell>
                       <Badge
-                        variant={ss.isActive ? "default" : "secondary"}
-                        className={
-                          ss.isActive
-                            ? "bg-[#10b981] text-white"
-                            : "bg-[#cbd5e1] text-[#64748b]"
-                        }
+                        variant={jt.isActive ? "default" : "secondary"}
+                        className={jt.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
                       >
-                        {ss.isActive ? "Aktif" : "Nonaktif"}
+                        {jt.isActive ? "Aktif" : "Nonaktif"}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -1981,7 +1963,7 @@ function SubSectionManagement({
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleOpenDialog(ss)}
+                          onClick={() => handleOpenDialog(jt)}
                           className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
                         >
                           <Pencil className="size-4" />
@@ -1989,7 +1971,7 @@ function SubSectionManagement({
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDelete(ss)}
+                          onClick={() => handleDelete(jt)}
                           className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
                         >
                           <Trash2 className="size-4" />
@@ -2000,8 +1982,8 @@ function SubSectionManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
-                    Tidak ada data sub section
+                  <TableCell colSpan={5} className="h-24 text-center text-[#64748b]">
+                    Tidak ada data job title
                   </TableCell>
                 </TableRow>
               )}
@@ -2013,60 +1995,33 @@ function SubSectionManagement({
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{editingSubSection ? "Edit Sub Section" : "Tambah Sub Section"}</DialogTitle>
+            <DialogTitle>{editingJobTitle ? "Edit Job Title" : "Tambah Job Title"}</DialogTitle>
             <DialogDescription>
-              {editingSubSection
-                ? "Ubah informasi sub section yang sudah ada"
-                : "Tambahkan sub section baru ke dalam sistem"}
+              {editingJobTitle ? "Ubah informasi job title yang sudah ada" : "Tambahkan job title baru ke dalam sistem"}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="code">Kode Sub Section</Label>
+              <Label htmlFor="code">Kode Job Title</Label>
               <Input
                 id="code"
                 value={formData.code}
-                onChange={(e) =>
-                  setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 5) })
-                }
-                placeholder="e.g., HSEO, OPS1"
+                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 5) })}
+                placeholder="e.g., ACC01, HRD01"
                 maxLength={5}
                 required
               />
               <p className="text-xs text-[#64748b]">Maksimal 5 karakter.</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="name">Nama Sub Section</Label>
+              <Label htmlFor="name">Nama Job Title</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., HSE Officers, Operations Team A"
+                placeholder="e.g., Accounting & Asset SPV"
                 required
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="subsection-section">Section</Label>
-              <Select
-                value={formData.sectionId || "0"}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, sectionId: value === "0" ? "" : value })
-                }
-              >
-                <SelectTrigger id="subsection-section">
-                  <SelectValue placeholder="Pilih section" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">- Tidak ada -</SelectItem>
-                  {sections
-                    .filter((section) => section.isActive)
-                    .map((section) => (
-                      <SelectItem key={section.id} value={section.id.toString()}>
-                        {section.name} {section.departmentName ? `(${section.departmentName})` : ""}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -2074,7 +2029,7 @@ function SubSectionManagement({
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Short description of this sub section"
+                placeholder="Short description of this job title"
                 rows={3}
               />
             </div>
@@ -2088,12 +2043,244 @@ function SubSectionManagement({
             </div>
             <DialogFooter>
               <DialogClose asChild>
-                <Button type="button" variant="outline">
-                  Batal
-                </Button>
+                <Button type="button" variant="outline">Batal</Button>
               </DialogClose>
               <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
-                {isSubmitting ? "Menyimpan..." : editingSubSection ? "Simpan Perubahan" : "Tambah Sub Section"}
+                {isSubmitting ? "Menyimpan..." : editingJobTitle ? "Simpan Perubahan" : "Tambah Job Title"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+// LEVEL STAFF MANAGEMENT COMPONENT
+function LevelStaffManagement({
+  levelStaff,
+}: {
+  levelStaff: MasterLevelStaff[];
+}) {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingLevel, setEditingLevel] = useState<MasterLevelStaff | null>(null);
+  const [formData, setFormData] = useState({
+    code: "",
+    name: "",
+    sortOrder: 0,
+    isActive: true,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const filteredLevels = levelStaff.filter(
+    (lvl) =>
+      lvl.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      lvl.code.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  const handleOpenDialog = (level?: MasterLevelStaff) => {
+    if (level) {
+      setEditingLevel(level);
+      setFormData({
+        code: level.code,
+        name: level.name,
+        sortOrder: level.sortOrder,
+        isActive: level.isActive,
+      });
+    } else {
+      setEditingLevel(null);
+      setFormData({ code: "", name: "", sortOrder: levelStaff.length, isActive: true });
+    }
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    const form = new FormData();
+    form.append("intent", editingLevel ? "update" : "create");
+    if (editingLevel) form.append("id", editingLevel.id.toString());
+    form.append("code", formData.code);
+    form.append("name", formData.name);
+    form.append("sortOrder", formData.sortOrder.toString());
+    form.append("isActive", formData.isActive.toString());
+
+    const result = await manageLevelStaffAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      setIsDialogOpen(false);
+      setEditingLevel(null);
+      setFormData({ code: "", name: "", sortOrder: 0, isActive: true });
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const handleDelete = async (level: MasterLevelStaff) => {
+    if (!confirm(`Are you sure you want to delete level staff "${level.name}"?`)) return;
+
+    const form = new FormData();
+    form.append("intent", "delete");
+    form.append("id", level.id.toString());
+
+    const result = await manageLevelStaffAction(INITIAL_ACTION_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  return (
+    <Card className="border-[#e2e8f0]">
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <div>
+          <CardTitle className="text-lg font-semibold text-[#1e293b]">Daftar Level Staff</CardTitle>
+          <CardDescription className="text-sm text-[#64748b]">
+            Tingkatan level staff dalam organisasi
+          </CardDescription>
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+          <Plus className="mr-2 size-4" />
+          Tambah Level Staff
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+            <Input
+              placeholder="Cari level staff..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full max-w-sm pl-9"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-[#F5F7F9]">
+                <TableHead className="w-[100px]">Kode</TableHead>
+                <TableHead>Nama Level</TableHead>
+                <TableHead className="w-[80px]">Urutan</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+                <TableHead className="w-[100px]">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredLevels.length > 0 ? (
+                filteredLevels.map((lvl) => (
+                  <TableRow key={lvl.id}>
+                    <TableCell className="font-mono text-sm font-medium">{lvl.code}</TableCell>
+                    <TableCell className="font-medium">{lvl.name}</TableCell>
+                    <TableCell className="text-[#64748b] text-sm">{lvl.sortOrder}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={lvl.isActive ? "default" : "secondary"}
+                        className={lvl.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
+                      >
+                        {lvl.isActive ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenDialog(lvl)}
+                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(lvl)}
+                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center text-[#64748b]">
+                    Tidak ada data level staff
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>{editingLevel ? "Edit Level Staff" : "Tambah Level Staff"}</DialogTitle>
+            <DialogDescription>
+              {editingLevel ? "Ubah informasi level staff yang sudah ada" : "Tambahkan level staff baru ke dalam sistem"}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ls-code">Kode Level</Label>
+              <Input
+                id="ls-code"
+                value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase().slice(0, 10) })}
+                placeholder="e.g., BOD, MGR"
+                maxLength={10}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ls-name">Nama Level Staff</Label>
+              <Input
+                id="ls-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Supervisor"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ls-sort">Urutan</Label>
+              <Input
+                id="ls-sort"
+                type="number"
+                min={0}
+                value={formData.sortOrder}
+                onChange={(e) => setFormData({ ...formData, sortOrder: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="ls-isActive"
+                checked={formData.isActive}
+                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+              />
+              <Label htmlFor="ls-isActive">Aktif</Label>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">Batal</Button>
+              </DialogClose>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#3b82f6] hover:bg-[#2563eb]">
+                {isSubmitting ? "Menyimpan..." : editingLevel ? "Simpan Perubahan" : "Tambah Level Staff"}
               </Button>
             </DialogFooter>
           </form>

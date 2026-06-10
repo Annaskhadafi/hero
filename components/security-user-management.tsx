@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   BriefcaseBusiness,
   Check,
+  EyeOff,
   Filter,
   MapPin,
   RefreshCw,
@@ -44,6 +45,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { MinimalTableShell, exportRowsToFile } from '@/components/ui/minimal-table-shell'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -80,6 +87,29 @@ const INITIAL_IMPORT_STATE: ImportUsersActionState = {
   status: 'idle',
   message: '',
 }
+
+const COLUMNS = [
+  { key: 'name', label: 'Name' },
+  { key: 'sn', label: 'SN' },
+  { key: 'department', label: 'Department' },
+  { key: 'section', label: 'Section' },
+  { key: 'jobTitle', label: 'Job Title' },
+  { key: 'levelStaff', label: 'Level Staff' },
+  { key: 'peran', label: 'Peran' },
+  { key: 'lokasiSite', label: 'Lokasi Site' },
+  { key: 'tipeStatus', label: 'Tipe Status' },
+  { key: 'gender', label: 'Gender' },
+  { key: 'agama', label: 'Agama' },
+  { key: 'pendidikan', label: 'Pendidikan' },
+  { key: 'maritalStatus', label: 'Marital Status' },
+  { key: 'poh', label: 'POH' },
+  { key: 'joinDate', label: 'Join Date' },
+  { key: 'contractStart', label: 'Contract Start' },
+  { key: 'contractEnd', label: 'Contract End' },
+  { key: 'permanentDate', label: 'Permanent Date' },
+  { key: 'tglLahir', label: 'Tgl Lahir' },
+  { key: 'statusAkun', label: 'Status Akun' },
+] as const
 
 function getUniqueOptions(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort(
@@ -257,6 +287,15 @@ export function SecurityUserManagement({
   const [selectedSites, setSelectedSites] = useState<string[]>([])
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+    name: true, sn: true, department: true, section: true, jobTitle: true,
+    levelStaff: true, peran: true, lokasiSite: true, tipeStatus: true,
+    gender: true, agama: true, pendidikan: true, maritalStatus: true,
+    poh: true, joinDate: true, contractStart: true, contractEnd: true,
+    permanentDate: true, tglLahir: true, statusAkun: true,
+  })
+  const [sortKey, setSortKey] = useState<string>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [rawCsv, setRawCsv] = useState('')
   const [mapping, setMapping] = useState<UserImportMapping>({})
   const [actionState, formAction, isPending] = useActionState(
@@ -319,7 +358,7 @@ export function SecurityUserManagement({
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
 
-    return users.filter((user) => {
+    const filtered = users.filter((user) => {
       const haystack = [
         user.employeeSn,
         user.name,
@@ -349,7 +388,42 @@ export function SecurityUserManagement({
 
       return matchesKeyword && matchesDepartment && matchesRole && matchesStatusType && matchesSite
     })
-  }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites, users])
+
+    if (!sortKey) return filtered
+
+    const getSortVal = (u: typeof users[number]): string => {
+      switch (sortKey) {
+        case 'name': return u.name
+        case 'sn': return u.employeeSn
+        case 'department': return u.department
+        case 'section': return u.section
+        case 'jobTitle': return u.jobTitle
+        case 'levelStaff': return u.levelName
+        case 'peran': return u.accessRole
+        case 'lokasiSite': return u.workLocation
+        case 'tipeStatus': return u.employeeStatusType
+        case 'gender': return u.gender
+        case 'agama': return u.religion
+        case 'pendidikan': return u.education
+        case 'maritalStatus': return u.maritalStatus
+        case 'poh': return u.pointOfHire
+        case 'joinDate': return u.joinDate ?? ''
+        case 'contractStart': return u.contractDurationStart ?? ''
+        case 'contractEnd': return u.contractDurationEnd ?? ''
+        case 'permanentDate': return u.permanentDate ?? ''
+        case 'tglLahir': return u.birthDate ?? ''
+        case 'statusAkun': return u.isActive ? 'Active' : 'Non Active'
+        default: return ''
+      }
+    }
+
+    return [...filtered].sort((a, b) => {
+      const va = getSortVal(a)
+      const vb = getSortVal(b)
+      const cmp = va.localeCompare(vb)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites, users, sortKey, sortDir])
 
   const currentYear = new Date().getFullYear()
   const activeUsersCount = users.filter((user) => user.status === 'active').length
@@ -376,15 +450,28 @@ export function SecurityUserManagement({
 
   function exportVisibleUsers() {
     exportRowsToFile({
-      columns: ['Nama', 'SN', 'Departemen', 'Peran', 'Lokasi Site', 'Tipe Status', 'Join Year'],
+      columns: ['Nama', 'SN', 'Departemen', 'Section', 'Job Title', 'Level Staff', 'Peran', 'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status', 'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun'],
       rows: filteredUsers.map((user) => [
         user.name,
         user.employeeSn,
         user.department,
+        user.section,
+        user.jobTitle,
+        user.levelName,
         user.accessRole,
         user.workLocation || user.siteName,
         user.employeeStatusType,
-        user.joinYear,
+        user.gender,
+        user.religion,
+        user.education,
+        user.maritalStatus,
+        user.pointOfHire,
+        user.joinDate,
+        user.contractDurationStart,
+        user.contractDurationEnd,
+        user.permanentDate,
+        user.birthDate,
+        user.isActive ? 'Active' : 'Non Active',
       ]),
       fileName: 'security-users',
     })
@@ -412,7 +499,7 @@ export function SecurityUserManagement({
               <DialogHeader>
                 <DialogTitle>Import Daftar Pengguna</DialogTitle>
                 <DialogDescription>
-                  Tempel atau unggah CSV, cocokkan kolom, lalu simpan ke master user.
+                  Upload atau tempel CSV/Excel, cocokkan kolom, lalu simpan ke master user.
                 </DialogDescription>
               </DialogHeader>
 
@@ -430,11 +517,24 @@ export function SecurityUserManagement({
                           </p>
                           <Input
                             type="file"
-                            accept=".csv,text/csv"
+                            accept=".csv,.xls,.xlsx,text/csv"
                             onChange={async (event) => {
                               const file = event.target.files?.[0]
                               if (!file) return
-                              setRawCsv(await file.text())
+                              const lowerName = file.name.toLowerCase()
+                              if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+                                const buffer = await file.arrayBuffer()
+                                const XLSX = await import('xlsx')
+                                const workbook = XLSX.read(buffer, { type: 'array' })
+                                const firstSheet = workbook.SheetNames[0]
+                                const worksheet = workbook.Sheets[firstSheet]
+                                const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(worksheet, { header: 1, raw: false, defval: '', blankrows: false })
+                                const normalized = rows.map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim())).filter((r: string[]) => r.some((c: string) => c.length > 0))
+                                const csv = normalized.map((r: string[]) => r.join(',')).join('\n')
+                                setRawCsv(csv)
+                              } else {
+                                setRawCsv(await file.text())
+                              }
                             }}
                           />
                         </div>
@@ -493,7 +593,7 @@ export function SecurityUserManagement({
                                 >
                                   {parsedImport.headers.map((header) => (
                                     <TableCell key={`${index}-${header}`} className="text-xs">
-                                      {record[header] || 'â€”'}
+                                      {record[header] || '-'}
                                     </TableCell>
                                   ))}
                                 </TableRow>
@@ -726,6 +826,7 @@ export function SecurityUserManagement({
           label="users"
           fileName="security-users"
           searchEnabled={false}
+          showImport={false}
           filters={
             <>
               <div className="relative w-full sm:w-[220px] sm:flex-none">
@@ -768,14 +869,41 @@ export function SecurityUserManagement({
             </>
           }
           actions={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportVisibleUsers}
-              className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-            >
-              Export Terfilter
-            </Button>
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                  >
+                    <EyeOff className="mr-1.5 size-3.5" />
+                    Kolom
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+                  {COLUMNS.map((col) => (
+                    <DropdownMenuCheckboxItem
+                      key={col.key}
+                      checked={columnVisibility[col.key]}
+                      onCheckedChange={(checked) =>
+                        setColumnVisibility((prev) => ({ ...prev, [col.key]: checked }))
+                      }
+                    >
+                      {col.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportVisibleUsers}
+                className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              >
+                Export Terfilter
+              </Button>
+            </>
           }
           dateFilter={false}
         >
@@ -793,17 +921,25 @@ export function SecurityUserManagement({
                       }}
                     />
                   </TableHead>
-                  <TableHead className="w-[320px]">Name</TableHead>
-                  <TableHead>SN</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Sub Section</TableHead>
-                  <TableHead>Peran</TableHead>
-                  <TableHead>Lokasi Site</TableHead>
-                  <TableHead>Site</TableHead>
-                  <TableHead>Tipe Status</TableHead>
-                  <TableHead>Status Kontrak</TableHead>
-                  <TableHead className="w-[120px] text-right">Aksi</TableHead>
+                  {COLUMNS.map((col) =>
+                    columnVisibility[col.key] ? (
+                      <TableHead
+                        key={col.key}
+                        className="cursor-pointer select-none"
+                        onClick={() => {
+                          if (sortKey === col.key) {
+                            setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+                          } else {
+                            setSortKey(col.key)
+                            setSortDir('asc')
+                          }
+                        }}
+                      >
+                        {col.label}
+                      </TableHead>
+                    ) : null
+                  )}
+                  <TableHead className="w-[120px]">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -822,78 +958,97 @@ export function SecurityUserManagement({
                           }}
                         />
                       </TableCell>
-                      <TableCell className="py-3.5">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="size-11 rounded-xl shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
-                            <AvatarImage
-                              src={user.profileImage || undefined}
-                              alt={user.name}
-                              className="object-cover"
-                            />
-                            <AvatarFallback className="bg-primary/10 text-primary rounded-xl text-sm font-semibold">
-                              {getUserInitials(user.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="text-foreground truncate font-medium">{user.name}</p>
-                            <p className="text-muted-foreground truncate text-sm">{user.email}</p>
+                      {columnVisibility.name ? (
+                        <TableCell className="py-3.5">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="size-11 rounded-xl shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                              <AvatarImage src={user.profileImage || undefined} alt={user.name} className="object-cover" />
+                              <AvatarFallback className="bg-primary/10 text-primary rounded-xl text-sm font-semibold">
+                                {getUserInitials(user.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="text-foreground truncate font-medium">{user.name}</p>
+                              <p className="text-muted-foreground truncate text-sm">{user.email}</p>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        <span className="text-foreground/80 font-mono text-sm">
-                          {user.employeeSn}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        <Badge
-                          variant="secondary"
-                          className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
-                        >
-                          {user.department}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-foreground/85 py-3.5 text-sm">
-                        {user.section || 'â€”'}
-                      </TableCell>
-                      <TableCell className="text-foreground/85 py-3.5 text-sm">
-                        {user.employeeStatusType || 'â€”'}
-                      </TableCell>
-                      <TableCell className="text-foreground/85 py-3.5 text-sm">
-                        {user.accessRole}
-                      </TableCell>
-                      <TableCell className="text-foreground/85 py-3.5 text-sm">
-                        {user.workLocation || 'â€”'}
-                      </TableCell>
-                      <TableCell className="text-foreground/85 py-3.5 text-sm">
-                        {extractSiteName(user.workLocation)}
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        <Badge
-                          variant="outline"
-                          className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]"
-                        >
-                          {user.employeeStatusType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        {(() => {
-                          const status = getContractStatus(user.contractEnd)
-                          return (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "rounded-full border-0 px-3 py-1 text-[10px] uppercase tracking-wide",
-                                status.type === 'NONE' 
-                                  ? "bg-slate-100 text-slate-500" 
-                                  : "bg-[#183d6a] text-white"
-                              )}
-                            >
-                              {status.label}
-                            </Badge>
-                          )
-                        })()}
-                      </TableCell>
+                        </TableCell>
+                      ) : null}
+                      {columnVisibility.sn ? (
+                        <TableCell className="py-3.5">
+                          <span className="text-foreground/80 font-mono text-sm">{user.employeeSn}</span>
+                        </TableCell>
+                      ) : null}
+                      {columnVisibility.department ? (
+                        <TableCell className="py-3.5">
+                          <Badge variant="secondary" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                            {user.department}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
+                      {columnVisibility.section ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.section || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.jobTitle ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">
+                          <Badge variant="outline" className="bg-surface-container-lowest text-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                            {user.jobTitle || '-'}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
+                      {columnVisibility.levelStaff ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.levelName || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.peran ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.accessRole}</TableCell>
+                      ) : null}
+                      {columnVisibility.lokasiSite ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.workLocation || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.tipeStatus ? (
+                        <TableCell className="py-3.5">
+                          <Badge variant="outline" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                            {user.employeeStatusType}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
+                      {columnVisibility.gender ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.gender || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.agama ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.religion || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.pendidikan ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.education || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.maritalStatus ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.maritalStatus || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.poh ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.pointOfHire || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.joinDate ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.joinDate || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.contractStart ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.contractDurationStart || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.contractEnd ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.contractDurationEnd || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.permanentDate ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.permanentDate || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.tglLahir ? (
+                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.birthDate || '-'}</TableCell>
+                      ) : null}
+                      {columnVisibility.statusAkun ? (
+                        <TableCell className="py-3.5">
+                          <Badge variant="outline" className={cn("rounded-full border-0 px-3 py-1 text-[10px] uppercase tracking-wide", user.isActive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700")}>
+                            {user.isActive ? 'Active' : 'Non Active'}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
                       <TableCell className="py-3.5 text-right">
                         <SecurityUserRowActions
                           user={user}

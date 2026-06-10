@@ -8,7 +8,7 @@ export default async function MasterDataPage() {
     <div className="flex flex-1 flex-col bg-background">
       <MasterDataManagement
         sections={data.sections}
-        subSections={data.subSections}
+        jobTitles={data.jobTitles}
         departments={data.departments}
         sites={data.sites}
         positions={data.positions}
@@ -17,6 +17,7 @@ export default async function MasterDataPage() {
         orgStructures={data.orgStructures}
         approvalMatrices={data.approvalMatrices}
         employees={data.employees}
+        levelStaff={data.levelStaff}
       />
     </div>
   );

@@ -1,18 +1,24 @@
 export const USER_IMPORT_FIELDS = [
+  { key: "fullName", label: "Name", required: true, aliases: ["name", "nama", "nama lengkap", "full name", "full_name"] },
   { key: "employeeSn", label: "SN", required: true, aliases: ["sn", "employee sn", "employee_sn", "nik", "nrp"] },
-  { key: "joinYear", label: "Tahun Masuk", required: true, aliases: ["tahun masuk", "join year", "tahun_masuk", "year joined"] },
-  { key: "fullName", label: "Nama Lengkap", required: true, aliases: ["nama lengkap", "nama", "full name", "full_name"] },
-  { key: "ttl", label: "TTL", required: true, aliases: ["ttl", "tempat tanggal lahir", "tempat_tanggal_lahir", "birth"] },
-  { key: "domicile", label: "Domisili", required: true, aliases: ["domisili", "alamat", "domicile"] },
-  { key: "directManager", label: "Atasan Langsung", required: false, aliases: ["atasan langsung", "manager", "direct manager", "supervisor"] },
+  { key: "email", label: "Email", required: false, aliases: ["email", "email address", "mail"] },
+  { key: "department", label: "Department", required: true, aliases: ["department", "departemen", "departement", "dept"] },
   { key: "section", label: "Section", required: true, aliases: ["section", "seksi"] },
-  { key: "department", label: "Departement", required: true, aliases: ["departement", "department", "dept"] },
-  { key: "jobTitle", label: "Jabatan", required: true, aliases: ["jabatan", "position", "title", "role"] },
-  { key: "workLocation", label: "Lokasi Kerja", required: true, aliases: ["lokasi kerja", "work location", "site", "lokasi"] },
-  { key: "phoneNumber", label: "Nomor Telp", required: true, aliases: ["nomor telp", "phone", "no hp", "nomor hp", "telephone"] },
-  { key: "email", label: "Email", required: true, aliases: ["email", "email address", "mail"] },
-  { key: "status", label: "Status", required: true, aliases: ["status", "employment status", "employee status"] },
-  { key: "employeeStatusType", label: "Tipe Status Karyawan", required: true, aliases: ["tipe status", "employee status type", "employee_status_type", "tipe status karyawan"] },
+  { key: "jobTitle", label: "Job Title", required: true, aliases: ["job title", "jabatan", "position", "title"] },
+  { key: "levelName", label: "Level Staff", required: false, aliases: ["level staff", "level", "level_name", "tingkatan"] },
+  { key: "workLocation", label: "Lokasi Site", required: true, aliases: ["lokasi site", "work location", "lokasi kerja", "site", "lokasi"] },
+  { key: "accessRole", label: "Peran", required: false, aliases: ["peran", "access role", "access_role", "role"] },
+  { key: "employeeStatusType", label: "Tipe Status", required: true, aliases: ["tipe status", "employee status type", "employee_status_type", "tipe status karyawan"] },
+  { key: "gender", label: "Gender", required: false, aliases: ["gender", "jenis kelamin", "kelamin"] },
+  { key: "religion", label: "Agama", required: false, aliases: ["agama", "religion"] },
+  { key: "education", label: "Pendidikan", required: false, aliases: ["pendidikan", "education"] },
+  { key: "maritalStatus", label: "Marital Status", required: false, aliases: ["marital status", "status pernikahan", "pernikahan"] },
+  { key: "pointOfHire", label: "POH", required: false, aliases: ["poh", "point of hire"] },
+  { key: "joinDate", label: "Join Date", required: false, aliases: ["join date", "tanggal masuk", "join_date"] },
+  { key: "contractDurationStart", label: "Contract Start", required: false, aliases: ["contract start", "contract_duration_start"] },
+  { key: "contractDurationEnd", label: "Contract End", required: false, aliases: ["contract end", "contract_duration_end"] },
+  { key: "permanentDate", label: "Permanent Date", required: false, aliases: ["permanent date", "permanent_date", "tgl permanen"] },
+  { key: "birthDate", label: "Tgl Lahir", required: false, aliases: ["tgl lahir", "birth date", "birth_date", "tanggal lahir"] },
 ] as const;
 
 export type UserImportFieldKey = (typeof USER_IMPORT_FIELDS)[number]["key"];
@@ -148,7 +154,13 @@ export function parseCsvToRecords(raw: string): {
   }
 
   const [headerRow, ...valueRows] = rows;
-  const headers = headerRow.map((header, index) => header || `Column ${index + 1}`);
+  const seen = new Map<string, number>();
+  const headers = headerRow.map((header, index) => {
+    const base = header || `Column ${index + 1}`;
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base} ${count + 1}`;
+  });
   const records = valueRows
     .filter((row) => row.some((value) => value.length > 0))
     .map((row) =>

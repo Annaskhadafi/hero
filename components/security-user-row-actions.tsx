@@ -31,13 +31,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+} from '@/components/ui/table'
 
 const INITIAL_STATE: AdminMutationState = {
   status: 'idle',
   message: '',
 }
 
-const detailValueClass = 'min-w-0 break-words text-sm leading-relaxed text-[#064e4a]'
 const compactSelectTriggerClass =
   'min-h-10 w-full min-w-0 overflow-hidden text-left [&>span]:block [&>span]:truncate'
 const compactSelectContentClass = 'max-w-[min(36rem,calc(100vw-3rem))]'
@@ -104,28 +109,19 @@ export function SecurityUserRowActions({
   const [selectedSectionId, setSelectedSectionId] = useState(
     sections.find((section) => section.name === user.section)?.id.toString() ?? ''
   )
-  const [selectedJobTitle, setSelectedJobTitle] = useState(
-    positions.find((p) => p.name === user.jobTitle)?.id.toString() ?? ''
-  )
   const [selectedSiteId, setSelectedSiteId] = useState(user.siteId ? `${user.siteId}` : '')
 
-  const selectedPosition = positions.find((position) => position.id.toString() === selectedJobTitle) ?? null
   const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null
   const filteredSections = selectedDepartmentId
     ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
     : sections
-  const filteredPositions = selectedDepartmentId
-    ? positions.filter(
-        (position) => !position.departmentId || position.departmentId.toString() === selectedDepartmentId
-      )
-    : positions
   const selectedDepartmentName =
     departments.find((department) => department.id.toString() === selectedDepartmentId)?.name ||
     user.department
   const selectedSectionName =
     sections.find((section) => section.id.toString() === selectedSectionId)?.name || user.section
   const resolvedWorkLocation =
-    user.workLocation || selectedPosition?.siteLocation || selectedSite?.name || ''
+    user.workLocation || selectedSite?.name || ''
 
   useEffect(() => {
     if (state.status === 'success') {
@@ -150,10 +146,9 @@ export function SecurityUserRowActions({
       setSelectedSectionId(
         sections.find((section) => section.name === user.section)?.id.toString() ?? ''
       )
-      setSelectedJobTitle(positions.find((p) => p.name === user.jobTitle)?.id.toString() ?? '')
       setSelectedSiteId(user.siteId ? `${user.siteId}` : '')
     }
-  }, [departments, open, sections, user.department, user.jobTitle, user.section, user.siteId])
+  }, [departments, open, sections, user.department, user.section, user.siteId])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -186,94 +181,87 @@ export function SecurityUserRowActions({
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="danger">Danger</TabsTrigger>
           </TabsList>
-          <TabsContent value="profile" className="mt-0">
-            <div className="grid min-w-0 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="bg-surface-container-low min-w-0 space-y-4 rounded-[1.2rem] p-4 xl:sticky xl:top-0">
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar className="border-border size-14 border">
-                      <AvatarImage
-                        src={user.profileImage || undefined}
-                        alt={user.name}
-                        className="object-cover"
-                      />
-                      <AvatarFallback className="bg-muted text-muted-foreground font-semibold">
-                        {getUserInitials(user.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="break-words text-lg font-semibold leading-snug">{user.name}</p>
-                      <p className="text-muted-foreground text-sm break-all">{user.email}</p>
-                    </div>
-                  </div>
-                  <AdminStatusBadge value={user.status} />
-                </div>
-
-                <div className="grid gap-3 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs">SN</p>
-                    <p className={detailValueClass}>{user.employeeSn}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Peran</p>
-                    <Badge variant="outline" className="rounded-full">
-                      {user.accessRole}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Position</p>
-                    <p className={detailValueClass}>{user.jobTitle || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Lokasi Site Jabatan</p>
-                    <p className={detailValueClass}>{selectedPosition?.siteLocation || user.workLocation || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Departement</p>
-                    <p className={detailValueClass}>{user.department || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Section</p>
-                    <p className={detailValueClass}>{user.section || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">TTL</p>
-                    <p className={detailValueClass}>{normalizeBirthDateValue(user.birthPlaceDate) || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Domisili</p>
-                    <p className={detailValueClass}>{user.domicile || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Atasan Langsung</p>
-                    <p className={detailValueClass}>{user.directManagerName || 'Belum dipilih'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Lokasi Kerja</p>
-                    <p className={detailValueClass}>{user.workLocation || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Nomor Telp</p>
-                    <p className={detailValueClass}>{user.phoneNumber || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Tipe Status Karyawan</p>
-                    {user.employeeStatusType ? (
-                      <Badge
-                        variant="secondary"
-                        className="bg-muted text-muted-foreground mt-1 rounded-full font-medium"
-                      >
-                        {user.employeeStatusType}
-                      </Badge>
-                    ) : (
-                      <p className="font-medium">—</p>
-                    )}
-                  </div>
+          <TabsContent value="profile" className="mt-0 space-y-5">
+            {/* Header Card */}
+            <div className="bg-surface-container-low flex min-w-0 flex-wrap items-start justify-between gap-3 rounded-[1.2rem] p-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar className="border-border size-14 border">
+                  <AvatarImage src={user.profileImage || undefined} alt={user.name} className="object-cover" />
+                  <AvatarFallback className="bg-muted text-muted-foreground font-semibold">
+                    {getUserInitials(user.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="break-words text-lg font-semibold leading-snug">{user.name}</p>
+                  <p className="text-muted-foreground text-sm break-all">{user.email}</p>
                 </div>
               </div>
+              <AdminStatusBadge value={user.status} />
+            </div>
 
-              <div className="min-w-0 space-y-5">
-                {state.status !== 'idle' ? (
+            {/* Profile Data Table */}
+            <div className="bg-surface-container-low overflow-x-auto rounded-[1.2rem] p-4">
+              <p className="mb-3 text-sm font-semibold text-[#1e293b]">Data Pengguna</p>
+              <Table>
+                <TableBody>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">SN</TableCell>
+                    <TableCell className="py-2 text-sm">{user.employeeSn || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Department</TableCell>
+                    <TableCell className="py-2 text-sm">{user.department || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Section</TableCell>
+                    <TableCell className="py-2 text-sm">{user.section || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Job Title</TableCell>
+                    <TableCell className="py-2 text-sm">{user.jobTitle || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Level Staff</TableCell>
+                    <TableCell className="py-2 text-sm">{user.levelName || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Peran</TableCell>
+                    <TableCell className="py-2 text-sm">{user.accessRole || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Lokasi Site</TableCell>
+                    <TableCell className="py-2 text-sm">{user.workLocation || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Tipe Status</TableCell>
+                    <TableCell className="py-2 text-sm">{user.employeeStatusType || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Gender</TableCell>
+                    <TableCell className="py-2 text-sm">{user.gender || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Agama</TableCell>
+                    <TableCell className="py-2 text-sm">{user.religion || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Pendidikan</TableCell>
+                    <TableCell className="py-2 text-sm">{user.education || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Marital Status</TableCell>
+                    <TableCell className="py-2 text-sm">{user.maritalStatus || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">POH</TableCell>
+                    <TableCell className="py-2 text-sm">{user.pointOfHire || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Join Date</TableCell>
+                    <TableCell className="py-2 text-sm">{user.joinDate || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Contract Start</TableCell>
+                    <TableCell className="py-2 text-sm">{user.contractDurationStart || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Contract End</TableCell>
+                    <TableCell className="py-2 text-sm">{user.contractDurationEnd || '—'}</TableCell>
+                  </TableRow>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Permanent Date</TableCell>
+                    <TableCell className="py-2 text-sm">{user.permanentDate || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground w-[180px] py-2 text-xs font-medium">Tgl Lahir</TableCell>
+                    <TableCell className="py-2 text-sm">{user.birthDate || '—'}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            {state.status !== 'idle' ? (
                   <Alert
                     className={
                       state.status === 'error'
@@ -295,6 +283,12 @@ export function SecurityUserRowActions({
                   </div>
                   <input type="hidden" name="intent" value="update-profile" />
                   <input type="hidden" name="employeeId" value={user.id} />
+                  <input type="hidden" name="email" value={user.email} />
+                  <input type="hidden" name="phoneNumber" value={user.phoneNumber} />
+                  <input type="hidden" name="directManagerId" value={user.directManagerId ?? 'none'} />
+                  <input type="hidden" name="domicile" value={user.domicile} />
+                  <input type="hidden" name="joinYear" value={`${user.joinYear}`} />
+                  <input type="hidden" name="employmentStatus" value={user.status} />
 
                   <ProfilePhotoField
                     fallbackName={user.name}
@@ -303,75 +297,21 @@ export function SecurityUserRowActions({
 
                   <div className="grid min-w-0 gap-4 md:grid-cols-2">
                     <label className="grid min-w-0 gap-2">
-                      <Label>Nama Lengkap</Label>
+                      <span className="text-muted-foreground text-xs font-medium">Name</span>
                       <Input name="fullName" defaultValue={user.name} />
                     </label>
                     <label className="grid min-w-0 gap-2">
-                      <Label>SN</Label>
+                      <span className="text-muted-foreground text-xs font-medium">SN</span>
                       <Input name="employeeSn" defaultValue={user.employeeSn} />
                     </label>
-                    <label className="grid min-w-0 gap-2">
-                      <Label>Tahun Masuk</Label>
-                      <Input name="joinYear" defaultValue={`${user.joinYear}`} />
-                    </label>
-                    <label className="grid min-w-0 gap-2">
-                      <Label>TTL</Label>
-                      <Input
-                        name="birthPlaceDate"
-                        type="date"
-                        defaultValue={getBirthDateInputValue(user.birthPlaceDate)}
-                      />
-                    </label>
-                    <label className="grid min-w-0 gap-2">
-                      <Label>Domisili</Label>
-                      <Input name="domicile" defaultValue={user.domicile} />
-                    </label>
+
                     <div className="grid min-w-0 gap-2">
-                      <Label>Atasan Langsung</Label>
-                      <Select
-                        name="directManagerId"
-                        defaultValue={user.directManagerId ? `${user.directManagerId}` : 'none'}
-                      >
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih atasan" />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          <SelectItem value="none">Belum dipilih</SelectItem>
-                          {managerOptions
-                            .filter((manager) => manager.id !== user.id)
-                            .map((manager) => (
-                              <SelectItem key={manager.id} value={`${manager.id}`}>
-                                {manager.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid min-w-0 gap-2">
-                      <Label>Tipe Status Karyawan</Label>
-                      <Select
-                        name="employeeStatusType"
-                        defaultValue={user.employeeStatusType || 'Permanen | Staff'}
-                      >
-                        <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih tipe status" />
-                        </SelectTrigger>
-                        <SelectContent className={compactSelectContentClass}>
-                          <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
-                          <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
-                          <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
-                          <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid min-w-0 gap-2">
-                      <Label>Departement</Label>
+                      <span className="text-muted-foreground text-xs font-medium">Department</span>
                       <Select
                         value={selectedDepartmentId}
                         onValueChange={(value) => {
                           setSelectedDepartmentId(value)
                           setSelectedSectionId('')
-                          setSelectedJobTitle('')
                         }}
                       >
                         <SelectTrigger className={compactSelectTriggerClass}>
@@ -387,8 +327,9 @@ export function SecurityUserRowActions({
                       </Select>
                       <input type="hidden" name="department" value={selectedDepartmentName} />
                     </div>
+
                     <div className="grid min-w-0 gap-2">
-                      <Label>Section</Label>
+                      <span className="text-muted-foreground text-xs font-medium">Section</span>
                       <Select
                         value={selectedSectionId}
                         onValueChange={setSelectedSectionId}
@@ -396,9 +337,7 @@ export function SecurityUserRowActions({
                       >
                         <SelectTrigger className={compactSelectTriggerClass}>
                           <SelectValue
-                            placeholder={
-                              selectedDepartmentId ? 'Pilih section' : 'Pilih department dulu'
-                            }
+                            placeholder={selectedDepartmentId ? 'Pilih section' : 'Pilih department dulu'}
                           />
                         </SelectTrigger>
                         <SelectContent className={compactSelectContentClass}>
@@ -411,39 +350,38 @@ export function SecurityUserRowActions({
                       </Select>
                       <input type="hidden" name="section" value={selectedSectionName} />
                     </div>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Job Title</span>
+                      <Input name="jobTitle" defaultValue={user.jobTitle || ''} placeholder="e.g. Accounting & Asset SPV" />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Level Staff</span>
+                      <Input name="levelName" defaultValue={user.levelName || ''} placeholder="e.g. Staff, Supervisor" />
+                    </label>
+
                     <div className="grid min-w-0 gap-2">
-                      <Label>Position</Label>
-                      <Select
-                        value={selectedJobTitle}
-                        onValueChange={setSelectedJobTitle}
-                      >
+                      <span className="text-muted-foreground text-xs font-medium">Peran</span>
+                      <Select name="accessRole" defaultValue={user.accessRole}>
                         <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih jabatan" />
+                          <SelectValue placeholder="Pilih peran" />
                         </SelectTrigger>
                         <SelectContent className={compactSelectContentClass}>
-                          {filteredPositions.map((position) => (
-                            <SelectItem key={position.id} value={`${position.id}`}>
-                              {position.name} ({position.code}) -{' '}
-                              {position.siteLocation || 'Semua Site'} - Level {position.level}
+                          {roleOptions.map((role) => (
+                            <SelectItem key={role.id} value={role.name}>
+                              {role.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <input type="hidden" name="jobTitle" value={selectedPosition?.name || ''} />
                     </div>
+
                     <div className="grid min-w-0 gap-2">
-                      <Label>Lokasi Site</Label>
-                      <Select
-                        value={selectedSiteId}
-                        onValueChange={setSelectedSiteId}
-                        disabled={sites.length === 0}
-                      >
+                      <span className="text-muted-foreground text-xs font-medium">Lokasi Site</span>
+                      <Select value={selectedSiteId} onValueChange={setSelectedSiteId} disabled={sites.length === 0}>
                         <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue
-                            placeholder={
-                              sites.length > 0 ? 'Pilih lokasi site' : 'Belum ada site aktif'
-                            }
-                          />
+                          <SelectValue placeholder={sites.length > 0 ? 'Pilih lokasi site' : 'Belum ada site aktif'} />
                         </SelectTrigger>
                         <SelectContent className={compactSelectContentClass}>
                           {sites.map((site) => (
@@ -454,41 +392,94 @@ export function SecurityUserRowActions({
                         </SelectContent>
                       </Select>
                       <input type="hidden" name="siteId" value={selectedSiteId} />
-                    </div>
-                    <label className="grid min-w-0 gap-2">
-                      <Label>Lokasi Kerja</Label>
-                      <Input
-                        name="workLocationDisplay"
-                        value={resolvedWorkLocation}
-                        readOnly
-                        disabled
-                      />
                       <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
-                    </label>
-                    <label className="grid min-w-0 gap-2">
-                      <Label>Nomor Telp</Label>
-                      <Input name="phoneNumber" defaultValue={user.phoneNumber} />
-                    </label>
-                    <label className="grid min-w-0 gap-2">
-                      <Label>Email</Label>
-                      <Input name="email" defaultValue={user.email} type="email" />
-                    </label>
+                    </div>
+
                     <div className="grid min-w-0 gap-2">
-                      <Label>Status</Label>
-                      <Select name="employmentStatus" defaultValue={user.status}>
+                      <span className="text-muted-foreground text-xs font-medium">Tipe Status</span>
+                      <Select name="employeeStatusType" defaultValue={user.employeeStatusType || 'Permanen | Staff'}>
                         <SelectTrigger className={compactSelectTriggerClass}>
-                          <SelectValue placeholder="Pilih status" />
+                          <SelectValue placeholder="Pilih tipe status" />
                         </SelectTrigger>
                         <SelectContent className={compactSelectContentClass}>
-                          <SelectItem value="active">active</SelectItem>
-                          <SelectItem value="probation">probation</SelectItem>
-                          <SelectItem value="contract">contract</SelectItem>
-                          <SelectItem value="on_leave">on_leave</SelectItem>
-                          <SelectItem value="inactive">inactive</SelectItem>
-                          <SelectItem value="resigned">resigned</SelectItem>
+                          <SelectItem value="Permanent">Permanent</SelectItem>
+                          <SelectItem value="Contract">Contract</SelectItem>
+                          <SelectItem value="Permanen | Staff">Permanen | Staff</SelectItem>
+                          <SelectItem value="Permanen | Non Staff">Permanen | Non Staff</SelectItem>
+                          <SelectItem value="Kontrak | Staff">Kontrak | Staff</SelectItem>
+                          <SelectItem value="Kontrak | Non Staff">Kontrak | Non Staff</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Gender</span>
+                      <Select name="gender" defaultValue={user.gender || 'none'}>
+                        <SelectTrigger className={compactSelectTriggerClass}>
+                          <SelectValue placeholder="Pilih gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">—</SelectItem>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Agama</span>
+                      <Input name="religion" defaultValue={user.religion || ''} placeholder="e.g. Islam" />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Pendidikan</span>
+                      <Input name="education" defaultValue={user.education || ''} placeholder="e.g. S1" />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Marital Status</span>
+                      <Select name="maritalStatus" defaultValue={user.maritalStatus || 'none'}>
+                        <SelectTrigger className={compactSelectTriggerClass}>
+                          <SelectValue placeholder="Pilih status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">—</SelectItem>
+                          <SelectItem value="Single">Single</SelectItem>
+                          <SelectItem value="Married">Married</SelectItem>
+                          <SelectItem value="Divorced">Divorced</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">POH</span>
+                      <Input name="pointOfHire" defaultValue={user.pointOfHire || ''} placeholder="e.g. Jakarta" />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Join Date</span>
+                      <Input name="joinDate" type="date" defaultValue={user.joinDate || ''} />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Contract Start</span>
+                      <Input name="contractDurationStart" type="date" defaultValue={user.contractDurationStart || ''} />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Contract End</span>
+                      <Input name="contractDurationEnd" type="date" defaultValue={user.contractDurationEnd || ''} />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Permanent Date</span>
+                      <Input name="permanentDate" type="date" defaultValue={user.permanentDate || ''} />
+                    </label>
+
+                    <label className="grid min-w-0 gap-2">
+                      <span className="text-muted-foreground text-xs font-medium">Tgl Lahir</span>
+                      <Input name="birthDate" type="date" defaultValue={user.birthDate || ''} />
+                    </label>
                   </div>
 
                   <div className="flex justify-end">
@@ -593,8 +584,6 @@ export function SecurityUserRowActions({
                     </div>
                   </form>
                 </div>
-              </div>
-            </div>
           </TabsContent>
           <TabsContent
             value="access"

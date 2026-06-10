@@ -1576,6 +1576,17 @@ const manageSecurityUserSchema = z.object({
   accessRole: optionalFormString,
   password: optionalFormString,
   newPassword: optionalFormString,
+  levelName: optionalFormString,
+  gender: optionalFormString,
+  religion: optionalFormString,
+  education: optionalFormString,
+  maritalStatus: optionalFormString,
+  pointOfHire: optionalFormString,
+  joinDate: optionalFormString,
+  contractDurationStart: optionalFormString,
+  contractDurationEnd: optionalFormString,
+  permanentDate: optionalFormString,
+  birthDate: optionalFormString,
 })
 
 const manageSecurityRoleSchema = z.object({
@@ -3382,10 +3393,13 @@ export async function importSecurityUsersAction(
 
     for (const record of records) {
       const fullName = getMappedValue(record, headers, mapping, 'fullName').trim()
-      const email = normalizeEmail(getMappedValue(record, headers, mapping, 'email'))
       const employeeSn = getMappedValue(record, headers, mapping, 'employeeSn').trim()
+      let email = normalizeEmail(getMappedValue(record, headers, mapping, 'email'))
+      if (!email || !isValidEmailFormat(email)) {
+        email = normalizeEmail(`${employeeSn}@chitraparatama.co.id`)
+      }
 
-      if (!fullName || !email || !employeeSn || !isValidEmailFormat(email)) {
+      if (!fullName || !employeeSn) {
         skippedCount += 1
         continue
       }
@@ -3393,11 +3407,22 @@ export async function importSecurityUsersAction(
       const department = getMappedValue(record, headers, mapping, 'department') || 'General'
       const section = getMappedValue(record, headers, mapping, 'section') || department
       const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
-      const normalizedStatus = normalizeEmploymentStatus(
-        getMappedValue(record, headers, mapping, 'status')
-      )
+      const levelName = getMappedValue(record, headers, mapping, 'levelName') || 'Rookie'
+      const workLocation = getMappedValue(record, headers, mapping, 'workLocation') || ''
+      const accessRole = getMappedValue(record, headers, mapping, 'accessRole') || 'User'
       const employeeStatusType =
-        getMappedValue(record, headers, mapping, 'employeeStatusType') || normalizedStatus.status
+        getMappedValue(record, headers, mapping, 'employeeStatusType') || 'Permanen | Staff'
+      const gender = getMappedValue(record, headers, mapping, 'gender')
+      const religion = getMappedValue(record, headers, mapping, 'religion')
+      const education = getMappedValue(record, headers, mapping, 'education')
+      const maritalStatus = getMappedValue(record, headers, mapping, 'maritalStatus')
+      const pointOfHire = getMappedValue(record, headers, mapping, 'pointOfHire')
+      const joinDate = getMappedValue(record, headers, mapping, 'joinDate')
+      const contractDurationStart = getMappedValue(record, headers, mapping, 'contractDurationStart')
+      const contractDurationEnd = getMappedValue(record, headers, mapping, 'contractDurationEnd')
+      const permanentDate = getMappedValue(record, headers, mapping, 'permanentDate')
+      const birthDate = getMappedValue(record, headers, mapping, 'birthDate')
+
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
         section,
@@ -3412,22 +3437,46 @@ export async function importSecurityUsersAction(
       })
       const existing =
         employeeBySn.get(normalizeLookupValue(employeeSn)) ?? employeeByEmail.get(email)
-      const linkedAuthUserId = existing?.authUserId ?? authUserByEmail.get(email)?.id ?? null
+      const existingAuthUser = authUserByEmail.get(email)
+
+      let linkedAuthUserId = existing?.authUserId ?? existingAuthUser?.id ?? null
+      if (!linkedAuthUserId) {
+        const password = buildDefaultUserManagementPassword(employeeSn)
+        const newAuthUserId = randomUUID()
+        await db.insert(user).values({
+          id: newAuthUserId,
+          name: fullName,
+          email,
+          emailVerified: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        await upsertCredentialAccount({
+          authUserId: newAuthUserId,
+          email,
+          password,
+          now: new Date(),
+          employeeSn,
+        })
+        linkedAuthUserId = newAuthUserId
+        authUserByEmail.set(email, { id: newAuthUserId, email })
+      }
+
       const hrValues = {
         authUserId: linkedAuthUserId,
         employeeId: employeeSn,
         fullName,
         email,
         siteId: defaultHrSite.id,
-        joinDate: parseJoinDateFromYear(getMappedValue(record, headers, mapping, 'joinYear')),
-        birthDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, 'ttl')) || null,
+        joinDate: joinDate || null,
+        birthDate: birthDate || null,
         departmentId: hrGovernanceIds.departmentId,
         sectionId: hrGovernanceIds.sectionId,
         positionId: hrGovernanceIds.positionId,
         orgNodeId: hrGovernanceIds.orgNodeId,
         demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
-        accountStatus: normalizedStatus.status,
-        isActive: normalizedStatus.isActive,
+        accountStatus: 'active',
+        isActive: true,
         updatedAt: new Date(),
       }
       const legacyValues = {
@@ -3436,23 +3485,34 @@ export async function importSecurityUsersAction(
         name: fullName,
         email,
         employeeSn,
-        joinYear: parseJoinYear(getMappedValue(record, headers, mapping, 'joinYear')),
-        birthPlaceDate: normalizeBirthDateValue(getMappedValue(record, headers, mapping, 'ttl')),
-        domicile: getMappedValue(record, headers, mapping, 'domicile') || 'Belum diisi',
+        joinYear: joinDate ? new Date(joinDate).getFullYear() : new Date().getFullYear(),
+        birthPlaceDate: birthDate || '',
+        domicile: '',
         departmentId: legacyGovernanceIds.departmentId,
         sectionId: legacyGovernanceIds.sectionId,
         positionId: legacyGovernanceIds.positionId,
         orgNodeId: await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId),
+        gender: gender || '',
+        religion: religion || '',
+        education: education || '',
+        maritalStatus: maritalStatus || '',
+        pointOfHire: pointOfHire || '',
+        joinDate: joinDate || null,
+        contractDurationStart: contractDurationStart || null,
+        contractDurationEnd: contractDurationEnd || null,
+        permanentDate: permanentDate || null,
+        birthDate: birthDate || null,
         section,
         department,
         role: jobTitle,
         jobTitle,
-        workLocation:
-          getMappedValue(record, headers, mapping, 'workLocation') || defaultHrSite.name,
-        phoneNumber: getMappedValue(record, headers, mapping, 'phoneNumber'),
-        employmentStatus: normalizedStatus.status,
+        levelName,
+        accessRole,
+        workLocation: workLocation || defaultHrSite.name,
+        phoneNumber: '',
+        employmentStatus: 'active',
         employeeStatusType,
-        isActive: normalizedStatus.isActive,
+        isActive: true,
       }
 
       if (existing) {
@@ -3478,7 +3538,6 @@ export async function importSecurityUsersAction(
       } else if (defaultLegacySite) {
         await db.insert(employees).values({
           ...legacyValues,
-          levelName: 'Rookie',
           totalPoints: 0,
           fitStatus: 'fit',
         })
@@ -3721,6 +3780,17 @@ export async function manageSecurityUserAction(
       const department = payload.department || 'General'
       const section = payload.section || department
       const jobTitle = payload.jobTitle || 'Staff'
+      const levelName = payload.levelName || 'Rookie'
+      const gender = payload.gender ?? ''
+      const religion = payload.religion ?? ''
+      const education = payload.education ?? ''
+      const maritalStatus = payload.maritalStatus ?? ''
+      const pointOfHire = payload.pointOfHire ?? ''
+      const joinDate = payload.joinDate || null
+      const contractDurationStart = payload.contractDurationStart || null
+      const contractDurationEnd = payload.contractDurationEnd || null
+      const permanentDate = payload.permanentDate || null
+      const birthDateValue = payload.birthDate || null
       const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
       const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const profileImage = normalizeProfileImageValue(payload.profileImage)
@@ -3757,8 +3827,8 @@ export async function manageSecurityUserAction(
         .set({
           fullName: payload.fullName || employee.name,
           employeeId: payload.employeeSn || employee.employeeSn,
-          joinDate: parseJoinDateFromYear(payload.joinYear),
-          birthDate: normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
+          joinDate: joinDate || parseJoinDateFromYear(payload.joinYear),
+          birthDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
           departmentId: hrGovernanceIds.departmentId,
           sectionId: hrGovernanceIds.sectionId,
           positionId: hrGovernanceIds.positionId,
@@ -3779,8 +3849,10 @@ export async function manageSecurityUserAction(
           .set({
             name: payload.fullName || employee.name,
             employeeSn: payload.employeeSn || employee.employeeSn,
-            joinYear: parseJoinYear(payload.joinYear ?? ''),
-            birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate || ''),
+            joinDate,
+            joinYear: joinDate ? new Date(joinDate).getFullYear() : parseJoinYear(payload.joinYear ?? ''),
+            birthDate: birthDateValue,
+            birthPlaceDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || ''),
             domicile: payload.domicile || 'Belum diisi',
             directManagerId,
             departmentId: legacyGovernanceIds.departmentId,
@@ -3791,6 +3863,15 @@ export async function manageSecurityUserAction(
             department,
             role: jobTitle,
             jobTitle,
+            levelName,
+            gender,
+            religion,
+            education,
+            maritalStatus,
+            pointOfHire,
+            contractDurationStart,
+            contractDurationEnd,
+            permanentDate,
             workLocation: selectedWorkLocation?.name || payload.workLocation || selectedSite?.name || '',
             phoneNumber: payload.phoneNumber || '',
             email,
