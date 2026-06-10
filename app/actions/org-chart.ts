@@ -37,13 +37,14 @@ export async function getOrgChartData() {
 
   const orgNodeIds = new Set(nodes.map((n) => n.id));
 
-  const employees = await db
+  const employeeRows = await db
     .select({
       id: hrEmployees.id,
       employeeId: hrEmployees.employeeId,
       fullName: hrEmployees.fullName,
       orgNodeId: hrEmployees.orgNodeId,
       positionName: hrPositions.rankName,
+      levelName: sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, 'Staff')`.as('level_name'),
       email: hrEmployees.email,
       departmentName: hrDepartments.name,
       sectionName: hrSections.name,
@@ -61,11 +62,12 @@ export async function getOrgChartData() {
     .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
     .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
     .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
+    .leftJoin(employees, or(eq(employees.authUserId, hrEmployees.authUserId), eq(employees.employeeSn, hrEmployees.employeeId)))
     .where(eq(hrEmployees.isActive, true));
 
   // Build virtual department+section nodes for employees not assigned to any org node
-  const unassigned = employees.filter((e) => !e.orgNodeId || !orgNodeIds.has(e.orgNodeId));
-  const deptGroup = new Map<string, typeof employees>();
+  const unassigned = employeeRows.filter((e) => !e.orgNodeId || !orgNodeIds.has(e.orgNodeId));
+  const deptGroup = new Map<string, typeof employeeRows>();
   for (const emp of unassigned) {
     const key = `${emp.departmentId ?? 0}_${emp.sectionId ?? 0}`;
     if (!deptGroup.has(key)) deptGroup.set(key, []);
@@ -84,8 +86,8 @@ export async function getOrgChartData() {
 
   // Build virtual nodes per department
   const virtualNodes: typeof nodes = [];
-  const virtualEmployees = new Map<number, typeof employees>();
-  let virtualId = -1;
+  const virtualEmployees = new Map<number, typeof employeeRows>();
+  let virtualId = -1000000000;
   for (const [key, emps] of deptGroup) {
     const first = emps[0];
     const dept = first.departmentId ? deptMap.get(first.departmentId) : null;
@@ -140,8 +142,8 @@ export async function getOrgChartData() {
 
   const allNodes = [...nodes, ...virtualNodes];
 
-  const employeesByNode = new Map<number, typeof employees>();
-  for (const employee of employees) {
+  const employeesByNode = new Map<number, typeof employeeRows>();
+  for (const employee of employeeRows) {
     const nodeId = employee.orgNodeId && orgNodeIds.has(employee.orgNodeId) ? employee.orgNodeId : null;
     if (nodeId) {
       if (!employeesByNode.has(nodeId)) employeesByNode.set(nodeId, []);

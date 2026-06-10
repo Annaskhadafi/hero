@@ -36,24 +36,25 @@ type OrgNode = {
   sectionId?: number | null;
   siteId?: number | null;
   employeeCount: number;
-  employees: Array<{
-    id: number;
-    employeeId: string;
-    fullName: string;
-    orgNodeId: number | null;
-    positionName: string | null;
-    email: string | null;
-    departmentName: string | null;
-    sectionName: string | null;
-    departmentId: number | null;
-    sectionId: number | null;
-    siteId: number | null;
-    workLocationId: number | null;
-    positionId: number | null;
-    siteName: string | null;
-    workLocationName: string | null;
-    isVirtual?: boolean;
-  }>;
+    employees: Array<{
+      id: number;
+      employeeId: string;
+      fullName: string;
+      orgNodeId: number | null;
+      positionName: string | null;
+      levelName: string | null;
+      email: string | null;
+      departmentName: string | null;
+      sectionName: string | null;
+      departmentId: number | null;
+      sectionId: number | null;
+      siteId: number | null;
+      workLocationId: number | null;
+      positionId: number | null;
+      siteName: string | null;
+      workLocationName: string | null;
+      isVirtual?: boolean;
+    }>;
 };
 
 type OrgTreeNode = OrgNode & {
@@ -285,6 +286,23 @@ function groupOrgUnitEmployeesByWorkLocation(node: OrgTreeNode): OrgTreeNode {
 }
 
 
+const LEVEL_ORDER: Record<string, number> = {
+  'bod/executive': 0, 'bod': 0, 'executive': 0,
+  'manager': 1,
+  'supervisor': 2,
+  'coordinator': 3,
+  'staff': 4,
+  'non staff': 5, 'non_staff': 5, 'nonstaff': 5,
+}
+
+function getLevelOrder(levelName: string | null | undefined): number {
+  const key = (levelName ?? '').toLowerCase().trim().replace(/[\s_-]+/g, ' ')
+  for (const [pattern, order] of Object.entries(LEVEL_ORDER)) {
+    if (key.includes(pattern)) return order
+  }
+  return 6
+}
+
 function isExecutiveEmployee(employee: OrgEmployee) {
   const searchable = normalizeOrgLabel(`${employee.fullName} ${employee.positionName ?? ""} ${employee.departmentName ?? ""} ${employee.sectionName ?? ""}`);
   return (
@@ -317,6 +335,7 @@ function addBodExecutiveRoot(nodes: OrgTreeNode[]): OrgTreeNode[] {
       fullName: "Hidayat Rahman",
       orgNodeId: null,
       positionName: "Director",
+      levelName: "BoD/Executive",
       email: null,
       departmentName: "Management",
       sectionName: "Management",
@@ -335,6 +354,7 @@ function addBodExecutiveRoot(nodes: OrgTreeNode[]): OrgTreeNode[] {
       fullName: "Person Sihaloho",
       orgNodeId: null,
       positionName: "General Manager",
+      levelName: "BoD/Executive",
       email: null,
       departmentName: "Management",
       sectionName: "Management",
@@ -667,7 +687,7 @@ function groupEmployeesByRole(employees: OrgEmployee[]) {
   return Array.from(groups.values())
     .map((group) => ({
       ...group,
-      employees: group.employees.sort((a, b) => (a.positionName ?? "").localeCompare(b.positionName ?? "", "id-ID") || a.fullName.localeCompare(b.fullName, "id-ID")),
+      employees: group.employees.sort((a, b) => getLevelOrder(a.levelName) - getLevelOrder(b.levelName) || (a.positionName ?? "").localeCompare(b.positionName ?? "", "id-ID") || a.fullName.localeCompare(b.fullName, "id-ID")),
     }))
     .sort((a, b) => a.order - b.order);
 }
