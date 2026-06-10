@@ -846,8 +846,8 @@ function InteractiveTreeNode({
           <div className={"h-8 w-px " + tone.connector} />
           <div className="relative flex items-start justify-start gap-12 px-8 pt-8">
             <div className={"absolute left-4 right-4 top-0 h-px " + tone.connector} />
-            {node.children.map((child) => (
-              <div key={child.id} className="relative flex flex-col items-center">
+            {node.children.map((child, childIdx) => (
+              <div key={`${child.id}-${childIdx}`} className="relative flex flex-col items-center">
                 <div className={"absolute -top-8 h-8 w-px " + tone.connector} />
                 <InteractiveTreeNode node={child} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} onEditEmployee={onEditEmployee} />
               </div>
@@ -1318,9 +1318,9 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                   {filteredTree.length > 0 ? (
                     <div className="flex min-h-[420px] items-start justify-start gap-20 pb-10">
-                      {filteredTree.map((node) => (
+                      {filteredTree.map((node, nodeIdx) => (
                         <InteractiveTreeNode
-                          key={node.id}
+                          key={`${node.id}-${nodeIdx}`}
                           node={node}
                           onEdit={handleEditClick}
                           onDelete={handleDeleteClick}
