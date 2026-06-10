@@ -24,7 +24,7 @@ import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -193,6 +193,8 @@ export function RecruitmentClientPage({
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [activeView, setActiveView] = useState<"vacancies" | "pipeline">(viewParam === "pipeline" ? "pipeline" : "vacancies");
   const [pipelineJobIdFilter, setPipelineJobIdFilter] = useState<number | null>(null);
+  const [pipelineJobTitleFilter, setPipelineJobTitleFilter] = useState("");
+  const [pipelineStageFilter, setPipelineStageFilter] = useState("");
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
   const [recruitments, setRecruitments] = useState(initialRecruitments);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -283,6 +285,13 @@ export function RecruitmentClientPage({
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importResults, setImportResults] = useState<Array<{ fullName: string; email: string; success: boolean; error?: string }> | null>(null);
+
+  // Bulk Email Dialog
+  const [isBulkEmailOpen, setIsBulkEmailOpen] = useState(false);
+  const [bulkEmailSubject, setBulkEmailSubject] = useState("");
+  const [bulkEmailMessage, setBulkEmailMessage] = useState("");
+  const [isBulkEmailSending, setIsBulkEmailSending] = useState(false);
+  const [bulkEmailResult, setBulkEmailResult] = useState<null | { sent: number; failed: number; results: any[] }>(null);
 
   // Batch Management
   const [isBatchOpen, setIsBatchOpen] = useState(false);
@@ -578,9 +587,12 @@ export function RecruitmentClientPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visibleCandidates = pipelineJobIdFilter
-    ? candidates.filter(c => c.recruitmentId === pipelineJobIdFilter)
-    : candidates;
+  const visibleCandidates = candidates.filter(c => {
+    if (pipelineJobIdFilter && c.recruitmentId !== pipelineJobIdFilter) return false;
+    if (pipelineJobTitleFilter && c.jobTitle !== pipelineJobTitleFilter) return false;
+    if (pipelineStageFilter && c.currentStage !== pipelineStageFilter) return false;
+    return true;
+  });
 
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => {
@@ -662,7 +674,8 @@ export function RecruitmentClientPage({
     <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
       <select
         className="flex h-9 w-[200px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        data-table-filter-key="job"
+        value={pipelineJobTitleFilter}
+        onChange={(e) => setPipelineJobTitleFilter(e.target.value)}
       >
         <option value="">Semua Lowongan</option>
         {recruitments.map(r => (
@@ -671,15 +684,18 @@ export function RecruitmentClientPage({
       </select>
       <select
         className="flex h-9 w-[160px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        data-table-filter-key="stage"
+        value={pipelineStageFilter}
+        onChange={(e) => setPipelineStageFilter(e.target.value)}
       >
         <option value="">Semua Tahapan</option>
         <option value="Sourcing">Sourcing</option>
         <option value="Screening">Screening</option>
         <option value="Psikotes">Psikotes</option>
         <option value="Interview">Interview</option>
+        <option value="Medical Checkup">Medical Checkup</option>
         <option value="Offering">Offering</option>
         <option value="Hired">Hired</option>
+        <option value="Rejected">Rejected</option>
       </select>
       <div className="flex items-center gap-1.5 ml-auto">
         <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => { setImportResults(null); setIsImportOpen(true); }}>
@@ -687,6 +703,20 @@ export function RecruitmentClientPage({
         </Button>
         <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => setIsManualAddOpen(true)}>
           <IconPlus className="w-3 h-3 mr-1" /> Tambah
+        </Button>
+        <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => {
+          const headers = ["NO", "NAMA LENGKAP", "EMAIL", "PHONE", "LOWONGAN", "LOKASI", "STAGE", "AI SCORE", "TGL MELAMAR"];
+          const rows = visibleCandidates.map((c, i) => [
+            i + 1, c.fullName, c.email, c.phone, c.jobTitle || "-", c.location || "-", c.currentStage, c.aiScore ?? "-",
+            format(new Date(c.createdAt), "dd MMM yyyy")
+          ]);
+          const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${v}"`).join(","))].join("\n");
+          const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a"); a.href = url; a.download = `candidates-${format(new Date(), "yyyyMMdd")}.csv`; a.click();
+          URL.revokeObjectURL(url);
+        }}>
+          <IconFileText className="w-3 h-3 mr-1" /> Export CSV
         </Button>
       </div>
     </div>
@@ -1262,36 +1292,39 @@ export function RecruitmentClientPage({
               
                {pipelineViewMode === "list" ? (
                 <MinimalTableShell label="Kandidat" filters={candidateFilters}>
-                   {selectedIds.size > 0 && (
-                    <div className="flex items-center gap-3 px-4 py-2 bg-accent/5 border border-accent/20 rounded-lg mb-3">
-                      <span className="text-sm font-medium">{selectedIds.size} selected</span>
-                      <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                        <IconTrash className="w-4 h-4 mr-1" /> Delete Selected
-                      </Button>
-                      <Button variant="default" size="sm" onClick={openTestInvite}>
-                        <IconMail className="w-4 h-4 mr-1" /> Send Test Invitation
-                      </Button>
-                      <Button variant="default" size="sm" onClick={() => setIsBulkInterviewOpen(true)}>
-                        <IconCalendarEvent className="w-4 h-4 mr-1" /> Send Interview Email
-                      </Button>
-                      <Button variant="default" size="sm" onClick={async () => {
-                        const num = await getNextLetterNumber('surat_penawaran_kerja');
-                        setOfferingLetterNo(num);
-                        try {
-                          const emps = await getActiveEmployees();
-                          setOfferingEmployees(emps.map((e: any) => ({ id: e.id, name: e.fullName || e.name, section: e.section || '-', jobTitle: e.jobTitle || '-' })));
-                        } catch {}
-                        setIsBulkOfferingOpen(true);
-                      }}>
-                        <IconFileText className="w-4 h-4 mr-1" /> Send Offering
-                      </Button>
-                      <Button variant="default" size="sm" onClick={() => setIsBulkMcuOpen(true)}>
-                        <IconStethoscope className="w-4 h-4 mr-1" /> Send MCU Email
-                      </Button>
-                      <Button variant="default" size="sm" onClick={() => setIsMulaiKerjaOpen(true)}>
-                        <IconBriefcase className="w-4 h-4 mr-1" /> Send Mulai Kerja
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                    {selectedIds.size > 0 && (
+                     <div className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/5 border border-accent/20 rounded-lg mb-3">
+                       <span className="text-xs font-medium mr-1">{selectedIds.size}</span>
+                       <Button variant="destructive" size="icon" className="h-7 w-7" onClick={handleBulkDelete} title="Delete Selected">
+                         <IconTrash className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={openTestInvite} title="Send Test Invitation">
+                         <IconBrain className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsBulkInterviewOpen(true)} title="Send Interview Email">
+                         <IconCalendarEvent className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={async () => {
+                         const num = await getNextLetterNumber('surat_penawaran_kerja');
+                         setOfferingLetterNo(num);
+                         try {
+                           const emps = await getActiveEmployees();
+                           setOfferingEmployees(emps.map((e: any) => ({ id: e.id, name: e.fullName || e.name, section: e.section || '-', jobTitle: e.jobTitle || '-' })));
+                         } catch {}
+                         setIsBulkOfferingOpen(true);
+                       }} title="Send Offering">
+                         <IconFileText className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsBulkMcuOpen(true)} title="Send MCU Email">
+                         <IconStethoscope className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { setBulkEmailSubject(""); setBulkEmailMessage(""); setBulkEmailResult(null); setIsBulkEmailOpen(true); }} title="Send Custom Email">
+                         <IconMail className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsMulaiKerjaOpen(true)} title="Send Mulai Kerja">
+                         <IconBriefcase className="w-3.5 h-3.5" />
+                       </Button>
+                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedIds(new Set())} title="Clear selection">
                         Clear
                       </Button>
                     </div>
@@ -1390,17 +1423,17 @@ export function RecruitmentClientPage({
                             ) : "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end gap-1">
                               {candidate.cvUrl ? (
-                                <Button variant="outline" size="sm" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id}>
-                                  {cvLoadingId === candidate.id ? "Loading..." : "View CV"}
+                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id} title="View CV">
+                                  {cvLoadingId === candidate.id ? <span className="w-3 h-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <IconFileText className="w-3.5 h-3.5" />}
                                 </Button>
                               ) : null}
-                              <Button variant="default" size="sm" asChild>
-                                <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}>View Details</Link>
+                              <Button variant="default" size="icon" className="h-7 w-7" asChild title="View Details">
+                                <Link href={`/dashboard/hc/recruitment/candidates/${candidate.id}`}><IconEye className="w-3.5 h-3.5" /></Link>
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)} title="Delete Dummy Data">
-                                <IconTrash className="w-4 h-4" />
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)} title="Delete">
+                                <IconTrash className="w-3.5 h-3.5" />
                               </Button>
                             </div>
                           </TableCell>
@@ -1814,17 +1847,17 @@ export function RecruitmentClientPage({
                           ) : "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-1">
                             {candidate.cvUrl ? (
-                              <Button variant="outline" size="sm" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id}>
-                                {cvLoadingId === candidate.id ? "Loading..." : "View CV"}
+                              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id} title="View CV">
+                                {cvLoadingId === candidate.id ? <span className="w-3 h-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <IconFileText className="w-3.5 h-3.5" />}
                               </Button>
                             ) : null}
-                            <Button variant="default" size="sm" onClick={() => window.location.href = `/dashboard/hc/recruitment/candidates/${candidate.id}`}>
-                              View Details
+                            <Button variant="default" size="icon" className="h-7 w-7" onClick={() => window.location.href = `/dashboard/hc/recruitment/candidates/${candidate.id}`} title="View Details">
+                              <IconEye className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)}>
-                              <IconTrash className="w-4 h-4" />
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive border border-transparent hover:border-destructive hover:bg-destructive/10" onClick={() => handleDeleteCandidate(candidate.id)} title="Delete">
+                              <IconTrash className="w-3.5 h-3.5" />
                             </Button>
                           </div>
                         </TableCell>
@@ -2248,16 +2281,21 @@ export function RecruitmentClientPage({
             Subject: {emailPreview.subject}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-1 overflow-auto min-h-0 rounded-lg bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.08)]">
-          {emailPreview.html ? (
-            <iframe
-              srcDoc={emailPreview.html}
-              className="w-full h-full border-0"
-              style={{ minHeight: '500px' }}
-              title="Email Preview"
-            />
-          ) : (
-            <pre className="min-h-[500px] whitespace-pre-wrap break-words p-6 font-mono text-sm leading-7 text-left text-slate-900">{emailPreview.text || "No preview content."}</pre>
+        <div className="flex-1 overflow-auto min-h-0 space-y-2">
+          {emailPreview.html && (
+            <div className="rounded-lg bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.08)]">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-4 pt-3 pb-1">HTML Preview</div>
+              <iframe srcDoc={emailPreview.html} className="w-full border-0" style={{ height: '400px' }} title="Email Preview" />
+            </div>
+          )}
+          {emailPreview.text && (
+            <div className="rounded-lg bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.08)]">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-4 pt-3 pb-1">Plain Text</div>
+              <pre className="whitespace-pre-wrap break-words p-4 pt-0 font-mono text-sm leading-7 text-left text-slate-900">{emailPreview.text}</pre>
+            </div>
+          )}
+          {!emailPreview.html && !emailPreview.text && (
+            <div className="p-6 text-sm text-muted-foreground">No preview content.</div>
           )}
         </div>
         <DialogFooter className="shrink-0">
@@ -2357,23 +2395,23 @@ export function RecruitmentClientPage({
 
     {/* Mulai Kerja Dialog */}
     <Dialog open={isMulaiKerjaOpen} onOpenChange={setIsMulaiKerjaOpen}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Send Mulai Kerja to {selectedIds.size} Candidates</DialogTitle>
           <DialogDescription>Kirim email selamat datang + link onboarding ke kandidat yang sudah hired.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-5 py-4">
           <div className="space-y-2">
             <Label>Posisi *</Label>
-            <Input placeholder="Isi manual posisi, ex: HSE Officer" value={mulaiKerjaPosisi} onChange={e => setMulaiKerjaPosisi(e.target.value)} />
+            <Input placeholder="Isi manual posisi, ex: HSE Officer" value={mulaiKerjaPosisi} onChange={e => setMulaiKerjaPosisi(e.target.value)} className="h-10 text-base" />
           </div>
           <div className="space-y-2">
             <Label>Tanggal Mulai Kerja *</Label>
-            <Input type="date" value={mulaiKerjaDate} onChange={e => setMulaiKerjaDate(e.target.value)} />
+            <Input type="date" value={mulaiKerjaDate} onChange={e => setMulaiKerjaDate(e.target.value)} className="h-10 text-base" />
             <p className="text-xs text-muted-foreground">Tanggal akan disimpan ke kandidat dan dikirim via email.</p>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => setIsMulaiKerjaOpen(false)}>Cancel</Button>
           <Button variant="outline" onClick={async () => {
             if (!mulaiKerjaPosisi) { toast.error("Isi posisi dulu"); return; }
@@ -2385,15 +2423,67 @@ export function RecruitmentClientPage({
               startDate: startDateLabel,
               onboardingUrl: "https://hero.chitraparatama.com/onboarding/EXAMPLE",
             });
-            setEmailPreview({ subject: preview.subject, html: preview.html || "<p>Preview not available</p>", text: preview.text });
+            setEmailPreview({ subject: preview.subject, html: preview.html || null, text: preview.text });
             setIsEmailPreviewOpen(true);
           }}>
             Preview
           </Button>
-          <Button onClick={handleMulaiKerja} disabled={isMulaiKerjaSending}>
+          <Button onClick={handleMulaiKerja} disabled={isMulaiKerjaSending} className="min-w-[160px]">
             {isMulaiKerjaSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Bulk Email Dialog */}
+    <Dialog open={isBulkEmailOpen} onOpenChange={(open) => { if (!open) { setIsBulkEmailOpen(false); setBulkEmailResult(null); } }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Send Email to {selectedIds.size} Candidates</DialogTitle>
+          <DialogDescription>Gunakan {`{name}`} untuk menyisipkan nama kandidat.</DialogDescription>
+        </DialogHeader>
+        {bulkEmailResult ? (
+          <div className="space-y-4 py-4">
+            <p className="text-sm font-medium">{bulkEmailResult.sent} terkirim, {bulkEmailResult.failed} gagal.</p>
+            {bulkEmailResult.failed > 0 && (
+              <div className="max-h-40 overflow-y-auto border rounded-lg">
+                {bulkEmailResult.results.filter((r: any) => !r.success).map((r: any, i: number) => (
+                  <div key={i} className="px-3 py-2 text-sm text-destructive border-b">{r.fullName}: {r.error}</div>
+                ))}
+              </div>
+            )}
+            <DialogFooter><Button onClick={() => { setBulkEmailResult(null); setIsBulkEmailOpen(false); }}>Tutup</Button></DialogFooter>
+          </div>
+        ) : (
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Subject *</Label>
+              <Input placeholder="Subject email" value={bulkEmailSubject} onChange={e => setBulkEmailSubject(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Message *</Label>
+              <Textarea rows={8} placeholder="Tulis pesan... Gunakan {name} untuk nama kandidat" value={bulkEmailMessage} onChange={e => setBulkEmailMessage(e.target.value)} />
+            </div>
+          </div>
+        )}
+        {!bulkEmailResult && (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBulkEmailOpen(false)}>Batal</Button>
+            <Button onClick={async () => {
+              if (!bulkEmailSubject || !bulkEmailMessage) { toast.error("Isi subject dan message"); return; }
+              setIsBulkEmailSending(true);
+              try {
+                const result = await sendBulkCustomEmail(Array.from(selectedIds), bulkEmailSubject, bulkEmailMessage);
+                setBulkEmailResult(result);
+                toast.success(`${result.sent} email terkirim`);
+                setSelectedIds(new Set());
+              } catch (e: any) { toast.error(e.message); }
+              finally { setIsBulkEmailSending(false); }
+            }} disabled={isBulkEmailSending}>
+              {isBulkEmailSending ? "Sending..." : `Send to ${selectedIds.size} Candidates`}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
 

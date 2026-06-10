@@ -14,8 +14,10 @@ import {
   masterSections,
   emailDeliveryLogs,
   recruitmentSectionTemplates,
+  hcCandidateMcu,
+  hcRecruitmentBatches,
 } from "@/db/schema/hero";
-import { eq, desc, and, sql, count, isNull, or, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, count, isNull, or, inArray, gte, lte, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import fs from "fs";
 import path from "path";
@@ -27,6 +29,7 @@ import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 import crypto from "crypto";
+import { format } from "date-fns";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -494,6 +497,108 @@ export async function getRecruitmentDashboardData(filters?: { year?: number; mon
     icon?: string;
   }[] = [];
 
+  try {
+    // Recent candidates
+    const recentCandidates = await db
+      .select({
+        id: hcCandidates.id,
+        fullName: hcCandidates.fullName,
+        jobTitle: hcRecruitments.jobTitle,
+        createdAt: hcCandidates.createdAt,
+        source: hcCandidates.source,
+      })
+      .from(hcCandidates)
+      .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+      .orderBy(desc(hcCandidates.createdAt))
+      .limit(5);
+
+    for (const c of recentCandidates) {
+      recentActivity.push({
+        id: `cand-${c.id}`,
+        type: "apply",
+        title: `${c.fullName} melamar`,
+        description: c.jobTitle || "Posisi tidak diketahui",
+        timestamp: format(c.createdAt, "dd MMM yyyy HH:mm"),
+      });
+    }
+
+    // Recent stage changes
+    const recentStages = await db
+      .select({
+        id: hcCandidateStages.id,
+        candidateId: hcCandidateStages.candidateId,
+        stage: hcCandidateStages.stage,
+        enteredAt: hcCandidateStages.enteredAt,
+        fullName: hcCandidates.fullName,
+      })
+      .from(hcCandidateStages)
+      .leftJoin(hcCandidates, eq(hcCandidateStages.candidateId, hcCandidates.id))
+      .orderBy(desc(hcCandidateStages.enteredAt))
+      .limit(5);
+
+    for (const s of recentStages) {
+      recentActivity.push({
+        id: `stage-${s.id}`,
+        type: "stage",
+        title: `${s.fullName || "Kandidat"} → ${s.stage}`,
+        description: "Stage berubah",
+        timestamp: format(s.enteredAt, "dd MMM yyyy HH:mm"),
+      });
+    }
+
+    // Recent interview schedules
+    const recentInterviews = await db
+      .select({
+        id: hcCandidateInterviews.id,
+        candidateId: hcCandidateInterviews.candidateId,
+        scheduledAt: hcCandidateInterviews.scheduledAt,
+        interviewType: hcCandidateInterviews.interviewType,
+        fullName: hcCandidates.fullName,
+      })
+      .from(hcCandidateInterviews)
+      .leftJoin(hcCandidates, eq(hcCandidateInterviews.candidateId, hcCandidates.id))
+      .orderBy(desc(hcCandidateInterviews.scheduledAt))
+      .limit(5);
+
+    for (const i of recentInterviews) {
+      recentActivity.push({
+        id: `interview-${i.id}`,
+        type: "stage",
+        title: `Interview ${i.interviewType} — ${i.fullName || "Kandidat"}`,
+        description: "Interview dijadwalkan",
+        timestamp: format(i.scheduledAt, "dd MMM yyyy HH:mm"),
+      });
+    }
+
+    // Recent email deliveries
+    const recentEmails = await db
+      .select({
+        id: emailDeliveryLogs.id,
+        toEmail: emailDeliveryLogs.toEmail,
+        templateName: emailDeliveryLogs.templateName,
+        sentAt: emailDeliveryLogs.sentAt,
+        subject: emailDeliveryLogs.subject,
+      })
+      .from(emailDeliveryLogs)
+      .orderBy(desc(emailDeliveryLogs.sentAt))
+      .limit(5);
+
+    for (const e of recentEmails) {
+      recentActivity.push({
+        id: `email-${e.id}`,
+        type: "email",
+        title: `Email: ${e.templateName || e.subject || "Email"} → ${e.toEmail}`,
+        description: "Email terkirim",
+        timestamp: e.sentAt ? format(e.sentAt, "dd MMM yyyy HH:mm") : "-",
+      });
+    }
+
+    // Sort by timestamp descending, take top 10
+    recentActivity.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  } catch (e) {
+    console.warn("Failed to load recent activity", e);
+  }
+
   // ─── Upcoming Events ─────────────────────────────────────────────
   const upcomingEvents: {
     id: string;
@@ -504,6 +609,112 @@ export async function getRecruitmentDashboardData(filters?: { year?: number; mon
     time?: string;
     status: string;
   }[] = [];
+
+  try {
+    const now = new Date();
+    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // Upcoming interviews
+    const upcomingInterviews = await db
+      .select({
+        id: hcCandidateInterviews.id,
+        candidateId: hcCandidateInterviews.candidateId,
+        scheduledAt: hcCandidateInterviews.scheduledAt,
+        interviewType: hcCandidateInterviews.interviewType,
+        interviewerName: hcCandidateInterviews.interviewerName,
+        status: hcCandidateInterviews.status,
+        fullName: hcCandidates.fullName,
+      })
+      .from(hcCandidateInterviews)
+      .leftJoin(hcCandidates, eq(hcCandidateInterviews.candidateId, hcCandidates.id))
+      .where(
+        and(
+          gte(hcCandidateInterviews.scheduledAt, now),
+          lte(hcCandidateInterviews.scheduledAt, sevenDaysLater)
+        )
+      )
+      .orderBy(asc(hcCandidateInterviews.scheduledAt))
+      .limit(10);
+
+    for (const i of upcomingInterviews) {
+      upcomingEvents.push({
+        id: `interview-${i.id}`,
+        type: "interview",
+        title: `Interview ${i.interviewType} — ${i.fullName || "Kandidat"}`,
+        description: `Dengan ${i.interviewerName || "-"}`,
+        date: format(i.scheduledAt, "dd MMM yyyy"),
+        time: format(i.scheduledAt, "HH:mm"),
+        status: i.status === "Scheduled" ? "confirmed" : i.status || "pending",
+      });
+    }
+
+    // Upcoming MCU schedules
+    const upcomingMcus = await db
+      .select({
+        id: hcCandidateMcu.id,
+        candidateId: hcCandidateMcu.candidateId,
+        scheduledDate: hcCandidateMcu.scheduledDate,
+        klinikName: hcCandidateMcu.klinikName,
+        status: hcCandidateMcu.status,
+        fullName: hcCandidates.fullName,
+      })
+      .from(hcCandidateMcu)
+      .leftJoin(hcCandidates, eq(hcCandidateMcu.candidateId, hcCandidates.id))
+      .where(
+        and(
+          gte(hcCandidateMcu.scheduledDate, now),
+          lte(hcCandidateMcu.scheduledDate, sevenDaysLater)
+        )
+      )
+      .orderBy(asc(hcCandidateMcu.scheduledDate))
+      .limit(10);
+
+    for (const m of upcomingMcus) {
+      upcomingEvents.push({
+        id: `mcu-${m.id}`,
+        type: "mcu",
+        title: `MCU — ${m.fullName || "Kandidat"}`,
+        description: `Di ${m.klinikName || "-"}`,
+        date: format(m.scheduledDate, "dd MMM yyyy"),
+        status: m.status === "Scheduled" ? "confirmed" : m.status || "pending",
+      });
+    }
+
+    // Upcoming batch schedules
+    const upcomingBatches = await db
+      .select({
+        id: hcRecruitmentBatches.id,
+        batchName: hcRecruitmentBatches.batchName,
+        batchType: hcRecruitmentBatches.batchType,
+        scheduledAt: hcRecruitmentBatches.scheduledAt,
+      })
+      .from(hcRecruitmentBatches)
+      .where(
+        and(
+          gte(hcRecruitmentBatches.scheduledAt, now),
+          lte(hcRecruitmentBatches.scheduledAt, sevenDaysLater)
+        )
+      )
+      .orderBy(asc(hcRecruitmentBatches.scheduledAt))
+      .limit(10);
+
+    for (const b of upcomingBatches) {
+      upcomingEvents.push({
+        id: `batch-${b.id}`,
+        type: "test",
+        title: `Batch: ${b.batchName}`,
+        description: `Tipe: ${b.batchType}`,
+        date: format(b.scheduledAt, "dd MMM yyyy"),
+        time: format(b.scheduledAt, "HH:mm"),
+        status: "confirmed",
+      });
+    }
+
+    // Sort by date ascending
+    upcomingEvents.sort((a, b) => a.date.localeCompare(b.date));
+  } catch (e) {
+    console.warn("Failed to load upcoming events", e);
+  }
 
   return {
     activeVacancies: activeVacancies?.value ?? 0,
@@ -1090,20 +1301,18 @@ export async function createCandidate(data: CandidateData) {
     }
   }
 
-  // Check for duplicate candidate (same email + same recruitment)
+  // Check for duplicate candidate (global email check)
   const existingCandidate = await db
-    .select({ id: hcCandidates.id })
+    .select({ id: hcCandidates.id, recruitmentId: hcCandidates.recruitmentId })
     .from(hcCandidates)
-    .where(
-      and(
-        eq(hcCandidates.email, data.email),
-        eq(hcCandidates.recruitmentId, data.recruitmentId)
-      )
-    )
+    .where(eq(hcCandidates.email, data.email))
     .limit(1);
 
   if (existingCandidate.length > 0) {
-    throw new Error("Anda sudah melamar untuk lowongan ini sebelumnya.");
+    if (existingCandidate[0].recruitmentId === data.recruitmentId) {
+      throw new Error("Anda sudah melamar untuk lowongan ini sebelumnya.");
+    }
+    throw new Error(`Email ${data.email} sudah terdaftar sebagai kandidat di lowongan lain.`);
   }
 
   const [created] = await db
@@ -1145,20 +1354,18 @@ export async function adminCreateCandidate(data: CandidateData) {
     throw new Error("Mohon lengkapi nama dan email.");
   }
 
-  // Check duplicate (same email + same recruitment)
+  // Check duplicate (global email check)
   const existingCandidate = await db
-    .select({ id: hcCandidates.id })
+    .select({ id: hcCandidates.id, recruitmentId: hcCandidates.recruitmentId })
     .from(hcCandidates)
-    .where(
-      and(
-        eq(hcCandidates.email, data.email),
-        eq(hcCandidates.recruitmentId, data.recruitmentId)
-      )
-    )
+    .where(eq(hcCandidates.email, data.email))
     .limit(1);
 
   if (existingCandidate.length > 0) {
-    throw new Error("Kandidat dengan email ini sudah melamar untuk lowongan tersebut.");
+    if (existingCandidate[0].recruitmentId === data.recruitmentId) {
+      throw new Error("Kandidat dengan email ini sudah melamar untuk lowongan tersebut.");
+    }
+    throw new Error(`Email ${data.email} sudah terdaftar sebagai kandidat di lowongan lain.`);
   }
 
   const [created] = await db
@@ -1928,4 +2135,42 @@ export async function getRecruitmentSectionTemplates() {
       qualifications: (t.qualifications as string[]) || [],
       mandatoryFields: (t.mandatoryFields as string[]) || [],
     }));
+}
+
+export async function sendBulkCustomEmail(candidateIds: number[], subject: string, message: string) {
+  const candidates = await db
+    .select({ id: hcCandidates.id, fullName: hcCandidates.fullName, email: hcCandidates.email })
+    .from(hcCandidates)
+    .where(inArray(hcCandidates.id, candidateIds));
+
+  const results: { candidateId: number; fullName: string; success: boolean; error?: string }[] = [];
+
+  for (const c of candidates) {
+    try {
+      if (!c.email) {
+        results.push({ candidateId: c.id, fullName: c.fullName, success: false, error: "Email kosong" });
+        continue;
+      }
+      const smtpSettings = await getEmailSmtpSettingsData();
+      if (!smtpSettings.host || !smtpSettings.fromEmail) {
+        results.push({ candidateId: c.id, fullName: c.fullName, success: false, error: "SMTP not configured" });
+        continue;
+      }
+      const personalMsg = message.replace(/{name}/g, c.fullName);
+      await sendEmailViaSmtp(smtpSettings, {
+        to: c.email,
+        subject,
+        html: personalMsg.replace(/\n/g, "<br/>"),
+        text: personalMsg,
+        templateName: "Custom Bulk Email",
+        templateCode: "custom_bulk",
+      });
+      results.push({ candidateId: c.id, fullName: c.fullName, success: true });
+    } catch (e: any) {
+      results.push({ candidateId: c.id, fullName: c.fullName, success: false, error: e.message });
+    }
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  return { results, sent: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length };
 }

@@ -847,6 +847,27 @@ export function RecruitmentDashboardClient({ data, selectedYear, selectedMonth }
           <VacancyFulfillmentChart data={data.vacancyFulfillment} />
         </Card>
       </div>
+
+      {/* ─── Section H (PRD): Recent Activity & Upcoming Events ──── */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Card className="p-5 shadow-sm ring-1 ring-slate-200/60">
+          <SectionHeader icon={IconActivity} title="Recent Activity" description="Latest recruitment events" />
+          {data.recentActivity.length > 0 ? (
+            <ActivityList activities={data.recentActivity} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">Belum ada aktivitas terbaru.</p>
+          )}
+        </Card>
+
+        <Card className="p-5 shadow-sm ring-1 ring-slate-200/60">
+          <SectionHeader icon={IconCalendarEvent} title="Upcoming Events (7 days)" description="Scheduled interviews, MCU, and tests" />
+          {data.upcomingEvents.length > 0 ? (
+            <UpcomingEvents events={data.upcomingEvents} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">Tidak ada jadwal dalam 7 hari ke depan.</p>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

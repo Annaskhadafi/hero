@@ -617,23 +617,23 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Recruitment Management',
+    section: 'HR',
     title: 'Recruitment',
     url: '/dashboard/hc/recruitment',
     iconName: 'user-plus',
     resource: 'hc_recruitment',
-    sortOrder: 1,
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'Recruitment Management',
+    section: 'HR',
     title: 'Online Tests',
     url: '/dashboard/hc/recruitment/tests',
     iconName: 'file-text',
     resource: 'hc_recruitment_tests',
-    sortOrder: 2,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1197,8 +1197,8 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
     : item
 )
 
-const DEPRECATED_MENU_RESOURCES = ['slow_moving']
-const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving']
+const DEPRECATED_MENU_RESOURCES = ['slow_moving', 'hc_surat_keterangan']
+const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving', '/dashboard/hc/surat-keterangan']
 
 const PORTAL_CHITRA_APP_SEEDS = [
   {

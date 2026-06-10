@@ -561,6 +561,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <TabsTrigger value="mcu">Medical Checkup ({mcuRecords.length})</TabsTrigger>
           <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
           <TabsTrigger value="history">Stage History</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="emails">Emails ({emailLogs.length})</TabsTrigger>
           <TabsTrigger value="test-results">Test Results ({testResults.length})</TabsTrigger>
         </TabsList>
@@ -1705,6 +1706,73 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </Card>
         </TabsContent>
 
+        <TabsContent value="activity">
+          <Card>
+            <CardHeader>
+              <CardTitle>Activity Log</CardTitle>
+              <CardDescription>Unified timeline of all actions for this candidate</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const activities: { id: string; type: string; title: string; description: string; timestamp: Date }[] = [];
+
+                // Stage changes
+                (candidate.stages || []).forEach((s: any) => {
+                  activities.push({
+                    id: `stage-${s.id}-enter`,
+                    type: "stage",
+                    title: `Stage: ${s.stage}`,
+                    description: s.evaluator ? `Oleh ${s.evaluator}${s.notes ? ` — ${s.notes}` : ""}` : s.notes || "Memasuki tahap ini",
+                    timestamp: new Date(s.enteredAt),
+                  });
+                  if (s.exitedAt) {
+                    activities.push({
+                      id: `stage-${s.id}-exit`,
+                      type: "stage",
+                      title: `Selesai: ${s.stage}`,
+                      description: `Hasil: ${s.result || "-"}${s.score !== null ? `, Skor: ${s.score}` : ""}`,
+                      timestamp: new Date(s.exitedAt),
+                    });
+                  }
+                });
+
+                // Email logs
+                (emailLogs || []).forEach((log: any) => {
+                  activities.push({
+                    id: `email-${log.id}`,
+                    type: "email",
+                    title: `Email: ${log.templateName || log.subject || "Email"}`,
+                    description: `Ke ${log.toEmail} — ${log.status === "sent" ? "Terkirim" : "Gagal"}${log.errorMessage ? `: ${log.errorMessage}` : ""}`,
+                    timestamp: log.sentAt ? new Date(log.sentAt) : new Date(log.createdAt),
+                  });
+                });
+
+                // Sort descending by timestamp
+                activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+                if (activities.length === 0) {
+                  return <p className="text-sm text-muted-foreground py-8 text-center">Belum ada aktivitas.</p>;
+                }
+
+                const iconMap: Record<string, string> = { stage: "bg-amber-100 text-amber-700", email: "bg-sky-100 text-sky-700" };
+
+                return (
+                  <div className="space-y-4">
+                    {activities.map((act) => (
+                      <div key={act.id} className="relative pl-6 border-l-2 border-muted pb-4 last:pb-0">
+                        <div className={cn("absolute w-3 h-3 rounded-full -left-[7px] top-1", act.type === "stage" ? "bg-amber-500" : "bg-sky-500")} />
+                        <div className="font-medium text-sm">{act.title}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{act.description}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{format(act.timestamp, "dd MMM yyyy HH:mm")}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="emails">
           <Card>
             <CardHeader>
@@ -2321,13 +2389,21 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             <DialogTitle>Email Preview</DialogTitle>
             <DialogDescription>Subject: {emailPreviewData.subject}</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-auto min-h-0 border rounded-lg bg-white">
-            {emailPreviewData.html ? (
-              <iframe srcDoc={emailPreviewData.html} className="w-full h-full border-0" style={{ minHeight: '500px' }} title="Email Preview" />
-            ) : (
-              <pre className="min-h-[500px] whitespace-pre-wrap break-words p-6 font-mono text-sm leading-6 text-slate-900">
-                {emailPreviewData.text || "No preview content."}
-              </pre>
+          <div className="flex-1 overflow-auto min-h-0 space-y-2">
+            {emailPreviewData.html && (
+              <div className="border rounded-lg bg-white">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-4 pt-3 pb-1">HTML Preview</div>
+                <iframe srcDoc={emailPreviewData.html} className="w-full border-0" style={{ height: '400px' }} title="Email Preview" />
+              </div>
+            )}
+            {emailPreviewData.text && (
+              <div className="border rounded-lg bg-white">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-4 pt-3 pb-1">Plain Text</div>
+                <pre className="whitespace-pre-wrap break-words p-4 pt-0 font-mono text-sm leading-6 text-slate-900">{emailPreviewData.text}</pre>
+              </div>
+            )}
+            {!emailPreviewData.html && !emailPreviewData.text && (
+              <div className="p-6 text-sm text-muted-foreground">No preview content.</div>
             )}
           </div>
           <DialogFooter className="shrink-0">
