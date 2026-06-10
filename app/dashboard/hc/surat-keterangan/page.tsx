@@ -9,11 +9,11 @@ export const metadata = {
 
 const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: string }> = {
   'Adila Tri Arizona': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Recruitement & GA',
     signatureUrl: '/ttd Adila Tri Arizona.png',
   },
   'Kesuma Bagaskara': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Operation & IR',
     signatureUrl: '/ttd Kesuma Bagaskara.png',
   },
   'Muhammad Iqbal': {
@@ -21,10 +21,10 @@ const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: str
     signatureUrl: '/ttd Muhammad Iqbal.png',
   },
   'Putri Rezky Fitriana': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Development & COMBEN',
   },
   'Putri Rezky Putriana': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Development & COMBEN',
   },
   'Rendra Rachman': {
     jobTitle: 'Human Capital Manager',

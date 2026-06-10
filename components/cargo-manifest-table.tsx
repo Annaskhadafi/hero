@@ -151,7 +151,11 @@ export function CargoManifestTable({ manifests }: CargoManifestTableProps) {
                   <TableCell>{manifest.sectionName || "-"}</TableCell>
                   <TableCell>{manifest.attention || "-"}</TableCell>
                   <TableCell>{manifest.transportVia || "-"}</TableCell>
-                  <TableCell>{manifest.finalDestination || "-"}</TableCell>
+                  <TableCell>
+                    <span className="max-w-[200px] truncate block text-xs" title={manifest.finalDestination || undefined}>
+                      {manifest.finalDestination || "-"}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <span className="tabular-nums text-xs text-muted-foreground">{manifest.items.length} item</span>
                   </TableCell>

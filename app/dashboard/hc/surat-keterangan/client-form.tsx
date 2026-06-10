@@ -269,7 +269,7 @@ export function SuratKeteranganClient({
                   setEmployeeSearch(e.target.value)
                   setSelectedEmpId('')
                 }}
-                placeholder="Ketik nama, NIK, jabatan, section..."
+                placeholder="Ketik nama, SN, jabatan, section..."
               />
               <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                 {visibleEmployeeResults.length > 0 ? (
@@ -359,7 +359,7 @@ export function SuratKeteranganClient({
             <h3 className="text-sm font-semibold">Data Autofill</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">SN/NIK</span>
+                <span className="text-muted-foreground">SN</span>
                 <span className="font-medium">{selectedEmp?.employeeSn || '-'}</span>
               </div>
               <div className="flex justify-between">
@@ -447,7 +447,7 @@ export function SuratKeteranganClient({
                     <td className="font-bold">{selectedEmp?.name || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="py-1">NIK</td>
+                    <td className="py-1">SN</td>
                     <td>:</td>
                     <td>{selectedEmp?.employeeSn || '______________________'}</td>
                   </tr>

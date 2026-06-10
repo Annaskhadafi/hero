@@ -34,12 +34,25 @@ type HrSigner = {
   signatureUrl: string
 }
 
+type McuClinic = {
+  id: number
+  name: string
+  email: string
+  phone: string
+  city: string
+  address: string
+  contactPerson: string
+  paketOptions: string[] | null
+}
+
 export function SuratMcuClient({
   employees,
   hrSigners,
+  mcuClinics = [],
 }: {
   employees: EmployeeForLetter[]
   hrSigners: HrSigner[]
+  mcuClinics?: McuClinic[]
 }) {
   const [selectedEmpId, setSelectedEmpId] = useState<string>('')
   const [employeeSearch, setEmployeeSearch] = useState('')
@@ -60,6 +73,8 @@ export function SuratMcuClient({
   const [klinik, setKlinik] = useState('')
   const [kota, setKota] = useState('')
   const [paketMcu, setPaketMcu] = useState('')
+  const [klinikEmail, setKlinikEmail] = useState('')
+  const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null)
 
   const [klinikHistory, setKlinikHistory] = useState<string[]>([])
   const [kotaHistory, setKotaHistory] = useState<string[]>([])
@@ -67,6 +82,8 @@ export function SuratMcuClient({
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailMessage, setEmailMessage] = useState('')
   const letterNumberFetched = useRef(false)
 
   const visibleEmployeeResults = useMemo(() => {
@@ -138,6 +155,70 @@ export function SuratMcuClient({
       return next
     })
   }
+
+  const handleClinicSelect = (clinicName: string) => {
+    setKlinik(clinicName)
+    const clinic = mcuClinics.find(c => c.name === clinicName)
+    if (clinic) {
+      setSelectedClinicId(clinic.id)
+      setKlinikEmail(clinic.email || '')
+      if (clinic.city) setKota(clinic.city)
+      if (clinic.paketOptions && clinic.paketOptions.length > 0) {
+        setPaketMcu(clinic.paketOptions[0])
+      }
+    } else {
+      setSelectedClinicId(null)
+      setKlinikEmail('')
+    }
+  }
+
+  const handleSendEmail = useCallback(async () => {
+    if (!klinikEmail) {
+      setEmailMessage('Email klinik belum diisi.')
+      return
+    }
+    if (!selectedEmp) {
+      setEmailMessage('Pilih karyawan terlebih dahulu.')
+      return
+    }
+
+    setSendingEmail(true)
+    setEmailMessage('')
+
+    try {
+      const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
+      const result = await fetch('/api/mcu/send-referral-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clinicName: klinik,
+          clinicEmail: klinikEmail,
+          clinicCity: kota,
+          employeeName: selectedEmp.name,
+          employeeSn: selectedEmp.employeeSn,
+          employeeSection: selectedEmp.section,
+          paketMcu,
+          letterNumber: noSurat,
+          letterDate: tanggal,
+          signatoryName: selectedHrSigner?.name || '',
+          signatoryTitle: selectedHrSigner?.jobTitle || '',
+          htmlContent: contentHtml,
+        }),
+      })
+
+      const data = await result.json()
+      if (data.success) {
+        setEmailMessage('Email berhasil dikirim ke klinik.')
+      } else {
+        setEmailMessage(data.error || 'Gagal mengirim email.')
+      }
+    } catch (error) {
+      console.error('Error sending email:', error)
+      setEmailMessage('Terjadi kesalahan saat mengirim email.')
+    } finally {
+      setSendingEmail(false)
+    }
+  }, [klinik, klinikEmail, kota, selectedEmp, paketMcu, noSurat, tanggal, selectedHrSigner])
 
   const handlePrint = () => {
     const contentHtml = document.querySelector('.pdf-wrapper-content')?.outerHTML || ''
@@ -300,7 +381,7 @@ export function SuratMcuClient({
                   setEmployeeSearch(e.target.value)
                   setSelectedEmpId('')
                 }}
-                placeholder="Ketik nama, NIK, jabatan, section..."
+                placeholder="Ketik nama, SN, jabatan, section..."
               />
               <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                 {visibleEmployeeResults.length > 0 ? (
@@ -353,10 +434,19 @@ export function SuratMcuClient({
                   <Label className="mb-2 block">Klinik</Label>
                   <Combobox
                     value={klinik}
-                    onChange={setKlinik}
-                    options={klinikHistory}
-                    placeholder="Contoh: Klinik Pramita"
+                    onChange={handleClinicSelect}
+                    options={mcuClinics.map(c => c.name)}
+                    placeholder="Pilih klinik atau ketik manual"
                     allowCustom={true}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block">Email Klinik</Label>
+                  <Input
+                    type="email"
+                    value={klinikEmail}
+                    onChange={(e) => setKlinikEmail(e.target.value)}
+                    placeholder="email@klinik.co.id"
                   />
                 </div>
                 <div>
@@ -374,7 +464,13 @@ export function SuratMcuClient({
                   <Combobox
                     value={paketMcu}
                     onChange={setPaketMcu}
-                    options={paketHistory}
+                    options={(() => {
+                      const selectedClinic = mcuClinics.find(c => c.name === klinik)
+                      if (selectedClinic?.paketOptions && selectedClinic.paketOptions.length > 0) {
+                        return selectedClinic.paketOptions
+                      }
+                      return paketHistory
+                    })()}
                     placeholder="Contoh: Paket Executive"
                     allowCustom={true}
                   />
@@ -432,6 +528,14 @@ export function SuratMcuClient({
               <Archive className="size-4" />
               {saving ? 'Menyimpan...' : 'Simpan ke Arsip'}
             </Button>
+            <Button
+              onClick={handleSendEmail}
+              variant="default"
+              className="w-full gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700"
+              disabled={sendingEmail || !klinikEmail || !selectedEmp}
+            >
+              {sendingEmail ? 'Mengirim...' : 'Kirim Email ke Klinik'}
+            </Button>
             {saveMessage && (
               <p
                 className={`text-center text-xs ${
@@ -439,6 +543,15 @@ export function SuratMcuClient({
                 }`}
               >
                 {saveMessage}
+              </p>
+            )}
+            {emailMessage && (
+              <p
+                className={`text-center text-xs ${
+                  emailMessage.includes('berhasil') ? 'text-emerald-600' : 'text-destructive'
+                }`}
+              >
+                {emailMessage}
               </p>
             )}
             <Link

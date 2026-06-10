@@ -90,9 +90,12 @@ async function getCurrentEmployee() {
     .from(employees)
     .leftJoin(sites, eq(employees.siteId, sites.id))
     .where(
-      session.user.id
-        ? eq(employees.authUserId, session.user.id)
-        : eq(employees.email, session.user.email)
+      and(
+        eq(employees.isActive, true),
+        session.user.id
+          ? eq(employees.authUserId, session.user.id)
+          : eq(employees.email, session.user.email)
+      )
     )
     .limit(1)
 
@@ -114,7 +117,12 @@ async function getCurrentEmployee() {
     })
     .from(employees)
     .leftJoin(sites, eq(employees.siteId, sites.id))
-    .where(sql`lower(${employees.email}) = ${session.user.email.toLowerCase()}`)
+    .where(
+      and(
+        eq(employees.isActive, true),
+        sql`lower(${employees.email}) = ${session.user.email.toLowerCase()}`
+      )
+    )
     .limit(1)
 
   if (employeeByEmail) {

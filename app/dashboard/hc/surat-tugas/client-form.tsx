@@ -279,7 +279,7 @@ export function SuratTugasClient({
                   setEmployeeSearch(e.target.value)
                   setSelectedEmpId('')
                 }}
-                placeholder="Ketik nama, NIK, jabatan, section..."
+                placeholder="Ketik nama, SN, jabatan, section..."
               />
               <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                 {visibleEmployeeResults.length > 0 ? (
@@ -476,7 +476,7 @@ export function SuratTugasClient({
                     <td className="font-bold pb-1">{selectedEmp?.name || '______________________'}</td>
                   </tr>
                   <tr>
-                    <td className="pb-1">NIK</td>
+                    <td className="pb-1">SN</td>
                     <td className="pb-1">:</td>
                     <td className="pb-1">{selectedEmp?.employeeSn || '______________________'}</td>
                   </tr>

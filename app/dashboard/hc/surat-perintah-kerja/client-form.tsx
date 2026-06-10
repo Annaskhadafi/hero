@@ -329,7 +329,7 @@ export function SuratPerintahKerjaClient({
                       setEmployeeSearch(e.target.value)
                       setSelectedEmpId('')
                     }}
-                    placeholder="Ketik nama, NIK, jabatan..."
+                    placeholder="Ketik nama, SN, jabatan..."
                   />
                   <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                     {visibleEmployeeResults.length > 0 ? (
@@ -480,7 +480,7 @@ export function SuratPerintahKerjaClient({
                   {selectedEmp && (
                     <>
                       <tr>
-                        <td className="pb-1">NIK</td>
+                        <td className="pb-1">SN</td>
                         <td className="pb-1">:</td>
                         <td className="pb-1">{selectedEmp.employeeSn}</td>
                       </tr>

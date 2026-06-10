@@ -1,4 +1,5 @@
 import { getLetterArchives, getLetterStats } from '@/app/actions/surat'
+import { getActiveMcuClinics } from '@/app/actions/hc-mcu-clinics'
 import { db } from '@/db'
 import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrEmployeeStatuses, hcCandidates, hcRecruitments } from '@/db/schema/hero'
 import { and, asc, eq, ilike, or, inArray } from 'drizzle-orm'
@@ -10,11 +11,11 @@ export const metadata = {
 
 const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: string }> = {
   'Adila Tri Arizona': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Recruitement & GA',
     signatureUrl: '/ttd Adila Tri Arizona.png',
   },
   'Kesuma Bagaskara': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Operation & IR',
     signatureUrl: '/ttd Kesuma Bagaskara.png',
   },
   'Muhammad Iqbal': {
@@ -22,10 +23,10 @@ const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: str
     signatureUrl: '/ttd Muhammad Iqbal.png',
   },
   'Putri Rezky Fitriana': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Development & COMBEN',
   },
   'Putri Rezky Putriana': {
-    jobTitle: 'HR-GA Admin',
+    jobTitle: 'HR Development & COMBEN',
   },
   'Rendra Rachman': {
     jobTitle: 'Human Capital Manager',
@@ -42,7 +43,7 @@ export default async function SuratPage(props: {
   const initialTab = validTabs.includes(requestedTab || '')
     ? requestedTab || 'keterangan'
     : 'keterangan'
-  const [employeesData, hrSignersData, letters, stats, candidatesData, sectionsData, departmentsData, supervisorsData] = await Promise.all([
+  const [employeesData, hrSignersData, letters, stats, candidatesData, sectionsData, departmentsData, supervisorsData, mcuClinicsData] = await Promise.all([
     db
       .select({
         id: hrEmployees.id,
@@ -124,6 +125,7 @@ export default async function SuratPage(props: {
       .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
       .where(eq(hrEmployees.isActive, true))
       .orderBy(asc(hrEmployees.fullName)),
+    getActiveMcuClinics(),
   ])
 
   const employees = employeesData.map((employee) => ({
@@ -165,6 +167,17 @@ export default async function SuratPage(props: {
     jobTitle: s.jobTitle || '-',
   }))
 
+  const mcuClinics = mcuClinicsData.map((c) => ({
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    city: c.city,
+    address: c.address,
+    contactPerson: c.contactPerson,
+    paketOptions: c.paketOptions as string[] | null,
+  }))
+
   return (
     <SuratWorkspaceClient
       employees={employees}
@@ -175,6 +188,7 @@ export default async function SuratPage(props: {
       sections={sections}
       departments={departments}
       supervisors={supervisors}
+      mcuClinics={mcuClinics}
       initialTab={initialTab}
     />
   )

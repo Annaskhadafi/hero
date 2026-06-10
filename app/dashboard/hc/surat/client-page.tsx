@@ -52,6 +52,17 @@ type EmployeeForSupervisor = {
   jobTitle: string
 }
 
+type McuClinic = {
+  id: number
+  name: string
+  email: string
+  phone: string
+  city: string
+  address: string
+  contactPerson: string
+  paketOptions: string[] | null
+}
+
 type Letter = Parameters<typeof SuratArchiveClient>[0]['letters'][number]
 type LetterStats = Parameters<typeof SuratArchiveClient>[0]['stats']
 
@@ -64,6 +75,7 @@ export function SuratWorkspaceClient({
   sections = [],
   departments = [],
   supervisors = [],
+  mcuClinics = [],
   initialTab,
 }: {
   employees: EmployeeForLetter[]
@@ -74,6 +86,7 @@ export function SuratWorkspaceClient({
   sections?: string[]
   departments?: string[]
   supervisors?: EmployeeForSupervisor[]
+  mcuClinics?: McuClinic[]
   initialTab: string
 }) {
   const [tab, setTab] = useState(initialTab)
@@ -115,7 +128,7 @@ export function SuratWorkspaceClient({
         <SuratKeteranganClient employees={employees} hrSigners={hrSigners} />
       )}
       {tab === 'tugas' && <SuratTugasClient employees={employees} hrSigners={hrSigners} />}
-      {tab === 'mcu' && <SuratMcuClient employees={employees} hrSigners={hrSigners} />}
+      {tab === 'mcu' && <SuratMcuClient employees={employees} hrSigners={hrSigners} mcuClinics={mcuClinics} />}
       {tab === 'perintah-kerja' && <SuratPerintahKerjaClient employees={employees} hrSigners={hrSigners} />}
       {tab === 'perubahan-status' && <SuratPerubahanStatusClient employees={employees} hrSigners={hrSigners} />}
       {tab === 'pengalaman-kerja' && <SuratPengalamanKerjaClient employees={employees} hrSigners={hrSigners} />}
