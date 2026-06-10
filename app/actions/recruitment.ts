@@ -611,8 +611,12 @@ export async function getRecruitmentDashboardData(filters?: { year?: number; mon
   }[] = [];
 
   try {
-    const now = new Date();
-    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const nowDate = new Date();
+    const now = nowDate;
+    const sevenDaysLaterDate = new Date(nowDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysLater = sevenDaysLaterDate;
+    const nowDateStr = nowDate.toISOString().split("T")[0];
+    const sevenDaysLaterStr = sevenDaysLaterDate.toISOString().split("T")[0];
 
     // Upcoming interviews
     const upcomingInterviews = await db
@@ -662,8 +666,8 @@ export async function getRecruitmentDashboardData(filters?: { year?: number; mon
       .leftJoin(hcCandidates, eq(hcCandidateMcu.candidateId, hcCandidates.id))
       .where(
         and(
-          gte(hcCandidateMcu.scheduledDate, now),
-          lte(hcCandidateMcu.scheduledDate, sevenDaysLater)
+          gte(hcCandidateMcu.scheduledDate, nowDateStr),
+          lte(hcCandidateMcu.scheduledDate, sevenDaysLaterStr)
         )
       )
       .orderBy(asc(hcCandidateMcu.scheduledDate))
