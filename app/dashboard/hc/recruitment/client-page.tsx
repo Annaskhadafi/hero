@@ -1407,7 +1407,7 @@ export function RecruitmentClientPage({
       </div>
 
       <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <SheetContent side="right" className="w-[95vw] sm:max-w-xl lg:max-w-2xl p-0 flex flex-col gap-0 overflow-hidden">
+        <SheetContent side="right" className="h-dvh max-h-dvh w-[95vw] sm:max-w-xl lg:max-w-2xl p-0 flex flex-col gap-0 overflow-hidden">
           <SheetHeader className="px-6 py-5 border-b">
             <SheetTitle className="text-lg font-semibold">Job Vacancy Settings</SheetTitle>
             <SheetDescription>
@@ -1415,7 +1415,7 @@ export function RecruitmentClientPage({
             </SheetDescription>
           </SheetHeader>
 
-          <Tabs defaultValue="info" className="flex flex-col flex-1 min-h-0">
+          <Tabs defaultValue="info" className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <TabsList className="mx-6 mt-4 w-auto self-start">
               <TabsTrigger value="info">Basic Info</TabsTrigger>
               <TabsTrigger value="requirements">Requirements</TabsTrigger>
@@ -1423,7 +1423,7 @@ export function RecruitmentClientPage({
               <TabsTrigger value="knockout">Knockout</TabsTrigger>
             </TabsList>
 
-            <ScrollArea className="flex-1 px-6 py-4">
+            <ScrollArea className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
               <TabsContent value="info" className="space-y-5 mt-0">
                 <div className="flex items-center justify-between rounded-lg border p-4 bg-accent/5">
                   <div className="space-y-0.5">
