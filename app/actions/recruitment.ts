@@ -870,11 +870,14 @@ export async function getCandidatesPaginated(filters: CandidateFilter = {}): Pro
       fullName: hcCandidates.fullName,
       email: hcCandidates.email,
       phone: hcCandidates.phone,
+      dateOfBirth: hcCandidates.dateOfBirth,
       source: hcCandidates.source,
       currentStage: hcCandidates.currentStage,
       rating: hcCandidates.rating,
       notes: hcCandidates.notes,
       cvUrl: hcCandidates.cvUrl,
+      workExperience: hcCandidates.workExperience,
+      education: hcCandidates.education,
       aiScore: hcCandidates.aiScore,
       aiSummary: hcCandidates.aiSummary,
       aiDetails: hcCandidates.aiDetails,
@@ -1924,8 +1927,9 @@ export async function assessCandidateCv(candidateId: number) {
 
     const promptSystem = `You are an expert HR Assessor. You will be provided with a Candidate Profile (JSON) and Job Requirements (JSON).
 Your task is to critically analyze how well the candidate's structured data (Education, Experience, Licenses, CV) matches the Job Requirements, Qualifications Checklist, Scoring Criteria, and enabled Knockout Criteria.
-Return a JSON object strictly following this format: {"score": 85, "summary": "Brief explanation here", "breakdown": [{"criterion": "Experience", "score": 80, "weight": 30, "reason": "Reason"}], "knockout": [{"criterion": "SIM A", "passed": true, "reason": "Reason"}], "recommendation": "Shortlist"}.
-The final score must be 0-100. If any knockout criterion fails, keep score realistic and set recommendation to "Reject" or "Manual Review".`;
+Return a JSON object strictly following this format: {"score": 85, "summary": "Penjelasan singkat di sini", "breakdown": [{"criterion": "Pengalaman", "score": 80, "weight": 30, "reason": "Alasan"}], "knockout": [{"criterion": "SIM A", "passed": true, "reason": "Alasan"}], "recommendation": "Direkomendasikan"}.
+All user-facing text values must be written in Bahasa Indonesia, including summary, breakdown criterion, breakdown reason, knockout criterion, knockout reason, and recommendation. Translate common criteria labels too: Education = Pendidikan, Experience = Pengalaman, Certification = Sertifikasi, License = SIM/Lisensi, Skill Match = Kesesuaian Keahlian, Availability = Kesiapan/Ketersediaan. Keep JSON keys in English exactly as specified.
+The final score must be 0-100. If any knockout criterion fails, keep score realistic and set recommendation to "Ditolak" or "Perlu Review Manual".`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90_000);
@@ -1959,11 +1963,36 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
     const rawContent = aiData.choices?.[0]?.message?.content || aiData.message?.content || "{}";
     const cleanedContent = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const aiContent = JSON.parse(cleanedContent);
+    const criterionTranslations: Record<string, string> = {
+      Education: "Pendidikan",
+      Experience: "Pengalaman",
+      Certification: "Sertifikasi",
+      License: "SIM/Lisensi",
+      "Skill Match": "Kesesuaian Keahlian",
+      Availability: "Kesiapan/Ketersediaan",
+    };
+    const recommendationTranslations: Record<string, string> = {
+      Shortlist: "Masuk Shortlist",
+      Consider: "Dipertimbangkan",
+      "Review Further": "Perlu Review Lanjutan",
+      Review: "Perlu Review",
+      "Manual Review": "Perlu Review Manual",
+      Reject: "Ditolak",
+      Hire: "Direkomendasikan Diterima",
+      "Strong Match": "Sangat Sesuai",
+    };
     const normalizedScore = Math.max(0, Math.min(100, Number(aiContent.score) || 0));
     const aiDetails = {
-      breakdown: Array.isArray(aiContent.breakdown) ? aiContent.breakdown : [],
+      breakdown: Array.isArray(aiContent.breakdown)
+        ? aiContent.breakdown.map((item: any) => ({
+            ...item,
+            criterion: criterionTranslations[item?.criterion] || item?.criterion,
+          }))
+        : [],
       knockout: Array.isArray(aiContent.knockout) ? aiContent.knockout : [],
-      recommendation: typeof aiContent.recommendation === "string" ? aiContent.recommendation : "Manual Review",
+      recommendation: typeof aiContent.recommendation === "string"
+        ? recommendationTranslations[aiContent.recommendation] || aiContent.recommendation
+        : "Perlu Review Manual",
     };
 
     // 5. Update Candidate
@@ -1977,7 +2006,11 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
       })
       .where(eq(hcCandidates.id, candidateId));
 
-    revalidatePath("/dashboard/hc/recruitment");
+    try {
+      revalidatePath("/dashboard/hc/recruitment");
+    } catch (error) {
+      console.warn("Failed to revalidate recruitment path after AI assessment", error);
+    }
     return { success: true, score: normalizedScore, summary: aiContent.summary, details: aiDetails };
   } catch (error: any) {
     console.error("AI Assessment Error:", error);

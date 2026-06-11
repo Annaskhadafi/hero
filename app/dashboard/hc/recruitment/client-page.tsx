@@ -22,6 +22,7 @@ import {
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
+import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
 import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail } from "@/app/actions/recruitment";
@@ -117,6 +118,38 @@ const DEFAULT_KNOCKOUT_CRITERIA = [
   { id: "certification", label: "Required certificate available", enabled: false, description: "Candidate must hold required certificate" },
 ];
 
+const CANDIDATE_STAGES = ["Sourcing", "Screening", "Psikotes", "Interview", "Medical Checkup", "Offering", "Hired", "Rejected"];
+
+const formatAiRecommendation = (recommendation?: string | null) => {
+  const translations: Record<string, string> = {
+    Shortlist: "Masuk Shortlist",
+    Consider: "Dipertimbangkan",
+    "Review Further": "Perlu Review Lanjutan",
+    Review: "Perlu Review",
+    "Manual Review": "Perlu Review Manual",
+    Reject: "Ditolak",
+    Hire: "Direkomendasikan Diterima",
+    "Strong Match": "Sangat Sesuai",
+  };
+
+  return recommendation ? translations[recommendation] || recommendation : null;
+};
+
+const getAgeFromDateOfBirth = (dateOfBirth?: Date | string | null) => {
+  if (!dateOfBirth) return null;
+  const birthDate = new Date(dateOfBirth);
+  if (Number.isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const hasBirthdayPassed =
+    today.getMonth() > birthDate.getMonth() ||
+    (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate());
+
+  if (!hasBirthdayPassed) age -= 1;
+  return age;
+};
+
 const MCU_SIGNERS = [
   { name: "Muhammad Iqbal", title: "HR-GA Supervisor", signatureUrl: "/ttd Muhammad Iqbal.png" },
   { name: "Adila Tri Arizona", title: "HR-GA Admin", signatureUrl: "/ttd Adila Tri Arizona.png" },
@@ -132,11 +165,14 @@ type Candidate = {
   fullName: string;
   email: string;
   phone: string;
+  dateOfBirth?: Date | string | null;
   source: string;
   currentStage: string;
   rating: number | null;
   notes: string;
   cvUrl: string;
+  workExperience?: Array<{ company?: string; role?: string; yearIn?: string; yearOut?: string; description?: string }>;
+  education?: Array<{ level?: string; institution?: string; major?: string; yearIn?: string; yearOut?: string }>;
   aiScore: number | null;
   aiSummary: string;
   aiDetails?: { recommendation?: string; breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }> } | null;
@@ -198,6 +234,8 @@ export function RecruitmentClientPage({
   const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "kanban">("list");
   const [recruitments, setRecruitments] = useState(initialRecruitments);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkStageTarget, setBulkStageTarget] = useState("");
+  const [isBulkStageUpdating, setIsBulkStageUpdating] = useState(false);
 
   // Vacancy Search & Filter State
   const [vacancySearch, setVacancySearch] = useState("");
@@ -209,6 +247,7 @@ export function RecruitmentClientPage({
   const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
   const [cvViewerName, setCvViewerName] = useState("");
   const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
+  const [profileDrawerCandidate, setProfileDrawerCandidate] = useState<Candidate | null>(null);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
 
   useEffect(() => {
@@ -222,6 +261,12 @@ export function RecruitmentClientPage({
   };
   const [compareRows, setCompareRows] = useState<any[]>([]);
   const [compareLoading, setCompareLoading] = useState(false);
+  const profileDrawerRadarData = Array.isArray(profileDrawerCandidate?.aiDetails?.breakdown)
+    ? profileDrawerCandidate.aiDetails.breakdown.map((item: any) => ({
+        criterion: String(item?.criterion || "Kriteria"),
+        score: Math.max(0, Math.min(100, Number(item?.score) || 0)),
+      }))
+    : [];
 
   // Test Invitation Dialog
   const [isTestInviteOpen, setIsTestInviteOpen] = useState(false);
@@ -620,6 +665,31 @@ export function RecruitmentClientPage({
       toast.success(`${selectedIds.size} kandidat dihapus.`);
     } catch (e: any) {
       toast.error(e.message || "Gagal hapus");
+    }
+  };
+
+  const handleBulkStageUpdate = async () => {
+    if (!bulkStageTarget || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    const previousCandidates = candidates;
+
+    setIsBulkStageUpdating(true);
+    setCandidates(prev => prev.map(candidate => ids.includes(candidate.id) ? { ...candidate, currentStage: bulkStageTarget } : candidate));
+    try {
+      const results = await Promise.allSettled(ids.map(id => updateCandidateStage(id, bulkStageTarget as any)));
+      const failedCount = results.filter(result => result.status === "rejected").length;
+
+      if (failedCount > 0) {
+        setCandidates(previousCandidates);
+        toast.error(`${failedCount} dari ${ids.length} kandidat gagal update stage.`);
+        return;
+      }
+
+      toast.success(`${ids.length} kandidat dipindah ke ${bulkStageTarget}.`);
+      setSelectedIds(new Set());
+      setBulkStageTarget("");
+    } finally {
+      setIsBulkStageUpdating(false);
     }
   };
 
@@ -1321,56 +1391,92 @@ export function RecruitmentClientPage({
                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => { setBulkEmailSubject(""); setBulkEmailMessage(""); setBulkEmailResult(null); setIsBulkEmailOpen(true); }} title="Send Custom Email">
                          <IconMail className="w-3.5 h-3.5" />
                        </Button>
-                       <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsMulaiKerjaOpen(true)} title="Send Mulai Kerja">
-                         <IconBriefcase className="w-3.5 h-3.5" />
+                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setIsMulaiKerjaOpen(true)} title="Send Mulai Kerja">
+                          <IconBriefcase className="w-3.5 h-3.5" />
+                        </Button>
+                        <div className="mx-1 h-6 w-px bg-border" />
+                        <select
+                          className="h-7 w-36 rounded-md border border-input bg-background px-2 text-xs shadow-sm"
+                          value={bulkStageTarget}
+                          onChange={(event) => setBulkStageTarget(event.target.value)}
+                          title="Pilih stage bulk"
+                        >
+                          <option value="">Ganti stage...</option>
+                          {CANDIDATE_STAGES.map(stage => (
+                            <option key={stage} value={stage}>{stage}</option>
+                          ))}
+                        </select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={handleBulkStageUpdate}
+                          disabled={!bulkStageTarget || isBulkStageUpdating}
+                          title="Apply stage ke kandidat terpilih"
+                        >
+                          {isBulkStageUpdating ? "Updating..." : "Apply"}
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedIds(new Set())} title="Clear selection">
+                         Clear
                        </Button>
-                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedIds(new Set())} title="Clear selection">
-                        Clear
-                      </Button>
                     </div>
                   )}
-                  <Table>
+                  <Table className="table-fixed text-xs">
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-border/50">
-                        <TableHead className="w-10 text-center">
+                        <TableHead className="w-9 px-2 text-center">
                           <Checkbox
                             checked={visibleCandidates.length > 0 && visibleCandidates.every(c => selectedIds.has(c.id))}
                             onCheckedChange={toggleSelectAll}
                           />
                         </TableHead>
-                        <TableHead className="w-12 text-center">NO</TableHead>
-                        <TableHead>TGL MELAMAR</TableHead>
-                        <TableHead>NAMA LENGKAP</TableHead>
-                        <TableHead>LOWONGAN</TableHead>
-                        <TableHead>LOKASI</TableHead>
-                        <TableHead>EMAIL</TableHead>
-                        <TableHead>PHONE</TableHead>
-                        <TableHead>STAGE</TableHead>
-                        <TableHead className="text-center">HASIL AKHIR</TableHead>
-                        <TableHead>AI MATCH</TableHead>
-                        <TableHead className="text-center w-20">EMAIL STATUS</TableHead>
-                        <TableHead className="text-right">ACTIONS</TableHead>
+                        <TableHead className="w-10 px-2 text-center">NO</TableHead>
+                        <TableHead className="w-24 px-2">TGL</TableHead>
+                        <TableHead className="w-40 px-2">NAMA</TableHead>
+                        <TableHead className="w-36 px-2">LOWONGAN</TableHead>
+                        <TableHead className="w-24 px-2">LOKASI</TableHead>
+                        <TableHead className="w-44 px-2">EMAIL</TableHead>
+                        <TableHead className="w-28 px-2">PHONE</TableHead>
+                        <TableHead className="w-32 px-2">STAGE</TableHead>
+                        <TableHead className="w-24 px-2 text-center">HASIL</TableHead>
+                        <TableHead className="w-36 px-2">AI</TableHead>
+                        <TableHead className="w-16 px-2 text-center">MAIL</TableHead>
+                        <TableHead className="sticky right-0 z-10 w-28 bg-muted/95 px-2 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">ACTIONS</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {visibleCandidates.map((candidate, idx) => (
                         <TableRow key={candidate.id} className={hcTableRowClassName} data-filter-stage={candidate.currentStage} data-filter-job={candidate.jobTitle || ""}>
-                          <TableCell className="text-center">
+                          <TableCell className="px-2 text-center">
                             <Checkbox
                               checked={selectedIds.has(candidate.id)}
                               onCheckedChange={() => toggleSelect(candidate.id)}
                             />
                           </TableCell>
-                          <TableCell className="text-center text-muted-foreground">{idx + 1}</TableCell>
-                          <TableCell className="text-muted-foreground text-xs whitespace-nowrap">{format(new Date(candidate.createdAt), "dd MMM yyyy")}</TableCell>
-                          <TableCell className="font-semibold">{candidate.fullName}</TableCell>
-                          <TableCell className="text-muted-foreground">{candidate.jobTitle || "-"}</TableCell>
-                          <TableCell className="text-muted-foreground">{candidate.location || "-"}</TableCell>
-                          <TableCell>{candidate.email}</TableCell>
-                          <TableCell>{candidate.phone}</TableCell>
-                          <TableCell>
+                          <TableCell className="px-2 text-center text-muted-foreground">{idx + 1}</TableCell>
+                          <TableCell className="px-2 text-muted-foreground text-xs whitespace-nowrap">{format(new Date(candidate.createdAt), "dd MMM yyyy")}</TableCell>
+                          <TableCell className="px-2 font-semibold">
+                            <button
+                              type="button"
+                              onClick={() => setProfileDrawerCandidate(candidate)}
+                              className="line-clamp-2 break-words text-left text-slate-900 underline-offset-4 hover:text-primary hover:underline"
+                              title="Buka drawer profile kandidat"
+                            >
+                              {candidate.fullName}
+                              {getAgeFromDateOfBirth(candidate.dateOfBirth) !== null ? (
+                                <span className="ml-1 whitespace-nowrap rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                  {getAgeFromDateOfBirth(candidate.dateOfBirth)} th
+                                </span>
+                              ) : null}
+                            </button>
+                          </TableCell>
+                          <TableCell className="px-2 text-muted-foreground"><div className="line-clamp-2 break-words" title={candidate.jobTitle || "-"}>{candidate.jobTitle || "-"}</div></TableCell>
+                          <TableCell className="px-2 text-muted-foreground"><div className="truncate" title={candidate.location || "-"}>{candidate.location || "-"}</div></TableCell>
+                          <TableCell className="px-2"><div className="truncate" title={candidate.email}>{candidate.email}</div></TableCell>
+                          <TableCell className="px-2"><div className="truncate" title={candidate.phone}>{candidate.phone}</div></TableCell>
+                          <TableCell className="px-2">
                             <select
-                              className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm cursor-pointer"
+                              className="flex h-8 w-full rounded-md border border-input bg-background px-1.5 py-1 text-xs shadow-sm cursor-pointer"
                               value={candidate.currentStage}
                               onChange={async (e) => {
                                 const newStage = e.target.value;
@@ -1386,12 +1492,12 @@ export function RecruitmentClientPage({
                                 }
                               }}
                             >
-                              {["Sourcing","Screening","Psikotes","Interview","Medical Checkup","Offering","Hired","Rejected"].map(s => (
+                              {CANDIDATE_STAGES.map(s => (
                                 <option key={s} value={s}>{s}</option>
                               ))}
                             </select>
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="px-2 text-center">
                             {candidate.currentStage === "Hired" ? (
                               <Badge className="bg-green-600 text-white font-bold">Lolos</Badge>
                             ) : candidate.currentStage === "Rejected" ? (
@@ -1400,29 +1506,32 @@ export function RecruitmentClientPage({
                               <span className="text-muted-foreground text-xs">-</span>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-2">
                             {candidate.aiScore !== null ? (
                               <div className="flex flex-col gap-1">
+                                <Badge variant="secondary" className="w-fit border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                  AI sudah diproses
+                                </Badge>
                                 <div className="flex items-center gap-2">
                                   <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
                                   <span className="text-xs font-medium">{candidate.aiScore}%</span>
                                 </div>
-                                {candidate.aiDetails?.recommendation && (
+                                {formatAiRecommendation(candidate.aiDetails?.recommendation) && (
                                   <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    {candidate.aiDetails.recommendation}
+                                    {formatAiRecommendation(candidate.aiDetails?.recommendation)}
                                   </span>
                                 )}
                               </div>
                             ) : "-"}
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="px-2 text-center">
                             {emailStatuses[candidate.id] && emailStatuses[candidate.id].status !== "none" ? (
                               <span title={`Email ${emailStatuses[candidate.id].status}`}>
                                 <IconMail className={cn("w-4 h-4 mx-auto", emailStatuses[candidate.id].status === "sent" ? "text-green-600" : "text-destructive")} />
                               </span>
                             ) : "-"}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="sticky right-0 bg-white px-2 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
                             <div className="flex justify-end gap-1">
                               {candidate.cvUrl ? (
                                 <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id} title="View CV">
@@ -1478,6 +1587,138 @@ export function RecruitmentClientPage({
           )}
         </div>
       </div>
+
+      <Sheet open={Boolean(profileDrawerCandidate)} onOpenChange={(open) => !open && setProfileDrawerCandidate(null)}>
+        <SheetContent side="right" className="h-dvh max-h-dvh w-[95vw] sm:max-w-lg p-0 flex flex-col gap-0 overflow-hidden">
+          <SheetHeader className="border-b px-6 py-5">
+            <SheetTitle className="text-lg font-semibold">Profile Kandidat</SheetTitle>
+            <SheetDescription>Ringkasan cepat tanpa pindah halaman.</SheetDescription>
+          </SheetHeader>
+          {profileDrawerCandidate && (
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xl font-bold leading-tight text-slate-900">{profileDrawerCandidate.fullName}</div>
+                  {getAgeFromDateOfBirth(profileDrawerCandidate.dateOfBirth) !== null ? (
+                    <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                      {getAgeFromDateOfBirth(profileDrawerCandidate.dateOfBirth)} tahun
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">{profileDrawerCandidate.jobTitle || "-"}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="outline">{profileDrawerCandidate.currentStage}</Badge>
+                  {profileDrawerCandidate.aiScore !== null ? (
+                    <Badge className="bg-emerald-600 text-white">AI {profileDrawerCandidate.aiScore}%</Badge>
+                  ) : (
+                    <Badge variant="secondary">Belum AI</Badge>
+                  )}
+                  {formatAiRecommendation(profileDrawerCandidate.aiDetails?.recommendation) ? (
+                    <Badge variant="secondary" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                      {formatAiRecommendation(profileDrawerCandidate.aiDetails?.recommendation)}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid gap-3 text-sm">
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Kontak</div>
+                  <div className="mt-2 space-y-1">
+                    <div className="break-words">{profileDrawerCandidate.email || "-"}</div>
+                    <div>{profileDrawerCandidate.phone || "-"}</div>
+                  </div>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Lamaran</div>
+                  <div className="mt-2 space-y-1">
+                    <div>Lokasi: {profileDrawerCandidate.location || "-"}</div>
+                    <div>Sumber: {profileDrawerCandidate.source || "-"}</div>
+                    <div>Tanggal: {format(new Date(profileDrawerCandidate.createdAt), "dd MMM yyyy")}</div>
+                  </div>
+                </div>
+                {profileDrawerCandidate.aiSummary ? (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Ringkasan AI</div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{profileDrawerCandidate.aiSummary}</div>
+                  </div>
+                ) : null}
+                {profileDrawerRadarData.length > 0 ? (
+                  <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Radar AI</div>
+                        <div className="text-xs text-muted-foreground">Score per kriteria assessment</div>
+                      </div>
+                      {profileDrawerCandidate.aiScore !== null ? <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">{profileDrawerCandidate.aiScore}%</Badge> : null}
+                    </div>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={profileDrawerRadarData} margin={{ top: 12, right: 28, bottom: 12, left: 28 }}>
+                          <PolarGrid stroke="#cbd5e1" radialLines />
+                          <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 9, fontWeight: 600 }} />
+                          <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 8 }} tickCount={5} />
+                          <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={2.5} dot={{ r: 2.5, fill: "#0f766e", strokeWidth: 1 }} />
+                          <RechartsTooltip
+                            contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
+                            formatter={(value: number, name: string) => [`${value}%`, name]}
+                            labelFormatter={(label) => `Kriteria: ${label}`}
+                          />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pengalaman Kerja</div>
+                  {(profileDrawerCandidate.workExperience?.length ?? 0) > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      {profileDrawerCandidate.workExperience?.map((work: any, idx: number) => (
+                        <div key={`${work.role}-${idx}`} className="rounded-lg bg-white p-2 text-sm shadow-sm">
+                          <div className="font-semibold text-slate-900">{work.role || "-"}</div>
+                          <div className="text-xs text-muted-foreground">{work.company || "-"} · {work.yearIn || "-"}-{work.yearOut || "-"}</div>
+                          {work.description ? <div className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">{work.description}</div> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm text-muted-foreground">Belum ada pengalaman kerja.</div>
+                  )}
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pendidikan / Sekolah</div>
+                  {(profileDrawerCandidate.education?.length ?? 0) > 0 ? (
+                    <div className="mt-2 space-y-2">
+                      {profileDrawerCandidate.education?.map((edu: any, idx: number) => (
+                        <div key={`${edu.institution}-${idx}`} className="rounded-lg bg-white p-2 text-sm shadow-sm">
+                          <div className="font-semibold text-slate-900">{edu.institution || "-"}</div>
+                          <div className="text-xs text-muted-foreground">{edu.level || "-"} · {edu.major || "-"}</div>
+                          <div className="text-xs text-muted-foreground">{edu.yearIn || "-"}-{edu.yearOut || "-"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm text-muted-foreground">Belum ada data pendidikan.</div>
+                  )}
+                </div>
+                {profileDrawerCandidate.notes ? (
+                  <div className="rounded-xl border bg-muted/20 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Notes</div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{profileDrawerCandidate.notes}</div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+          <SheetFooter className="border-t px-6 py-4">
+            {profileDrawerCandidate ? (
+              <Button asChild className="w-full">
+                <Link href={`/dashboard/hc/recruitment/candidates/${profileDrawerCandidate.id}`}>Buka Detail Lengkap</Link>
+              </Button>
+            ) : null}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <SheetContent side="right" className="h-dvh max-h-dvh w-[95vw] sm:max-w-xl lg:max-w-2xl p-0 flex flex-col gap-0 overflow-hidden">
@@ -1838,9 +2079,9 @@ export function RecruitmentClientPage({
                                 <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
                                 <span className="text-xs font-medium">{candidate.aiScore}%</span>
                               </div>
-                              {candidate.aiDetails?.recommendation && (
+                              {formatAiRecommendation(candidate.aiDetails?.recommendation) && (
                                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                  {candidate.aiDetails.recommendation}
+                                  {formatAiRecommendation(candidate.aiDetails?.recommendation)}
                                 </span>
                               )}
                             </div>
@@ -1907,7 +2148,7 @@ export function RecruitmentClientPage({
     </Dialog>
 
     <Dialog open={isCompareOpen} onOpenChange={setIsCompareOpen}>
-      <DialogContent className="w-[96vw] h-[88vh] max-w-none flex flex-col overflow-hidden" style={{ maxHeight: '88vh' }}>
+      <DialogContent className="w-[80vw] h-[88vh] max-w-6xl flex flex-col overflow-hidden" style={{ maxHeight: '88vh' }}>
         <DialogHeader className="shrink-0">
           <DialogTitle>Candidate Comparison</DialogTitle>
           <DialogDescription>
@@ -1920,34 +2161,63 @@ export function RecruitmentClientPage({
           ) : compareRows.length === 0 ? (
             <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">No comparison data.</div>
           ) : (
-            <div className="grid gap-3 min-w-max" style={{ gridTemplateColumns: `repeat(${compareRows.length}, minmax(300px, 1fr))` }}>
+            <div className="grid gap-3 min-w-max" style={{ gridTemplateColumns: `repeat(${compareRows.length}, minmax(240px, 320px))` }}>
               {compareRows.map((row) => {
                 const candidate = row.candidate;
                 const breakdown = candidate.aiDetails?.breakdown || [];
                 const knockout = candidate.aiDetails?.knockout || [];
+                const aiRecommendation = formatAiRecommendation(candidate.aiDetails?.recommendation);
+                const aiRadarData = breakdown.map((item: any) => ({
+                  criterion: String(item?.criterion || "Kriteria"),
+                  score: Math.max(0, Math.min(100, Number(item?.score) || 0)),
+                  weight: Number(item?.weight) || 0,
+                }));
                 return (
-                  <div key={candidate.id} className="rounded-xl border bg-background p-4 shadow-sm space-y-4">
+                  <div key={candidate.id} className="space-y-3 rounded-xl border bg-background p-3 text-xs shadow-sm">
                     <div className="space-y-1">
-                      <div className="text-base font-semibold leading-tight">{candidate.fullName}</div>
+                      <div className="text-sm font-semibold leading-tight">{candidate.fullName}</div>
                       <div className="text-xs text-muted-foreground">{candidate.jobTitle || "-"} · {candidate.currentStage}</div>
                       <div className="flex flex-wrap gap-2 pt-2">
                         {candidate.aiScore !== null ? <Badge>{candidate.aiScore}% AI</Badge> : <Badge variant="secondary">No AI score</Badge>}
-                        {candidate.aiDetails?.recommendation ? <Badge variant="outline">{candidate.aiDetails.recommendation}</Badge> : null}
+                        {aiRecommendation ? <Badge variant="outline">{aiRecommendation}</Badge> : null}
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI Score Breakdown</div>
+                      {aiRadarData.length > 0 && (
+                        <div className="rounded-lg border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-2">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="text-xs font-semibold text-slate-800">Radar AI</div>
+                            {candidate.aiScore !== null ? <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-[10px] text-emerald-700">{candidate.aiScore}%</Badge> : null}
+                          </div>
+                          <div className="h-44 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <RadarChart data={aiRadarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                                <PolarGrid stroke="#cbd5e1" radialLines />
+                                <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 9, fontWeight: 600 }} />
+                                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 8 }} tickCount={5} />
+                                <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={2} dot={{ r: 2, fill: "#0f766e", strokeWidth: 1 }} />
+                                <RechartsTooltip
+                                  contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
+                                  formatter={(value: number, name: string) => [`${value}%`, name]}
+                                  labelFormatter={(label) => `Kriteria: ${label}`}
+                                />
+                              </RadarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
                       {breakdown.length > 0 ? breakdown.map((item: any, idx: number) => (
                         <div key={`${item.criterion}-${idx}`} className="space-y-1 rounded-md bg-muted/30 p-2">
-                          <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="font-medium">{item.criterion}</span>
-                            <span className="text-muted-foreground">{item.score}% / w{item.weight}</span>
+                          <div className="flex items-start justify-between gap-2 text-xs">
+                            <span className="min-w-0 break-words font-medium leading-snug">{item.criterion}</span>
+                            <span className="shrink-0 whitespace-nowrap text-muted-foreground">{item.score}% / w{item.weight}</span>
                           </div>
                           <div className="h-1 rounded-full bg-muted overflow-hidden">
                             <div className="h-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, Number(item.score) || 0))}%` }} />
                           </div>
-                          <div className="text-[11px] text-muted-foreground">{item.reason}</div>
+                          <div className="whitespace-normal break-words text-[11px] leading-snug text-muted-foreground">{item.reason}</div>
                         </div>
                       )) : <div className="text-xs text-muted-foreground">No AI breakdown.</div>}
                       {knockout.length > 0 && (

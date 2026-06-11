@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,21 @@ const STAGES = [
   "Hired",
 ];
 
+const formatAiRecommendation = (recommendation?: string | null) => {
+  const translations: Record<string, string> = {
+    Shortlist: "Masuk Shortlist",
+    Consider: "Dipertimbangkan",
+    "Review Further": "Perlu Review Lanjutan",
+    Review: "Perlu Review",
+    "Manual Review": "Perlu Review Manual",
+    Reject: "Ditolak",
+    Hire: "Direkomendasikan Diterima",
+    "Strong Match": "Sangat Sesuai",
+  };
+
+  return recommendation ? translations[recommendation] || recommendation : null;
+};
+
 type Candidate = {
   id: number;
   recruitmentId: number | null;
@@ -52,6 +68,8 @@ type Candidate = {
   currentStage: string;
   rating: number | null;
   aiScore: number | null;
+  aiSummary?: string;
+  aiDetails?: { recommendation?: string } | null;
   cvUrl: string;
   createdAt: Date;
 };
@@ -288,6 +306,7 @@ function KanbanCard({
       : emailStatus?.status === "failed"
       ? "text-destructive"
       : "text-muted-foreground";
+  const aiRecommendation = formatAiRecommendation(candidate.aiDetails?.recommendation);
 
   return (
     <div
@@ -331,21 +350,52 @@ function KanbanCard({
       </div>
 
       {candidate.aiScore !== null ? (
-        <div className="mt-3 p-3 rounded-xl bg-gradient-to-br from-accent/5 to-accent/10 border border-accent/20">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="mt-3 cursor-help p-3 rounded-xl bg-gradient-to-br from-accent/5 to-accent/10 border border-accent/20">
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-1.5">
               <IconBrain className="w-3.5 h-3.5" />
-              AI Match
+              AI sudah diproses
             </span>
-            <span className="text-sm font-bold text-accent">
-              {candidate.aiScore}%
-            </span>
+          </div>
+          <div className="mb-2 flex items-end justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Score AI</div>
+              <div className="text-2xl font-bold leading-none text-accent">{candidate.aiScore}%</div>
+            </div>
+            {aiRecommendation ? (
+              <Badge variant="secondary" className="max-w-28 truncate border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700">
+                {aiRecommendation}
+              </Badge>
+            ) : null}
           </div>
           <Progress
             value={candidate.aiScore}
             className="h-1.5 bg-accent/20 [&>div]:bg-accent"
           />
-        </div>
+          {candidate.aiSummary ? (
+            <p className="mt-2 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+              {candidate.aiSummary}
+            </p>
+          ) : null}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="start" className="max-w-sm bg-slate-950 p-3 text-left text-xs leading-relaxed text-white shadow-xl">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold">Ringkasan AI</span>
+                <span className="font-bold text-emerald-300">{candidate.aiScore}%</span>
+              </div>
+              {aiRecommendation ? (
+                <div className="text-[11px] font-medium text-emerald-200">{aiRecommendation}</div>
+              ) : null}
+              <p className="text-slate-100">
+                {candidate.aiSummary || "Ringkasan AI belum tersedia. Buka detail kandidat untuk melihat data lengkap."}
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
       ) : (
         <div className="mt-3">
           <Button

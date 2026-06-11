@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
@@ -19,6 +20,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+
+const formatAiRecommendation = (recommendation?: string | null) => {
+  const translations: Record<string, string> = {
+    Shortlist: "Masuk Shortlist",
+    Consider: "Dipertimbangkan",
+    "Review Further": "Perlu Review Lanjutan",
+    Review: "Perlu Review",
+    "Manual Review": "Perlu Review Manual",
+    Reject: "Ditolak",
+    Hire: "Direkomendasikan Diterima",
+    "Strong Match": "Sangat Sesuai",
+  };
+
+  return recommendation ? translations[recommendation] || recommendation : null;
+};
 
 function AnswerCell({ text }: { text: string | null | undefined }) {
   if (!text) return <span className="text-muted-foreground">-</span>;
@@ -112,6 +128,13 @@ const MCU_SIGNERS = [
 
 export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, emailLogs = [], testResults = [], panelEvaluations = [], offering = null }: { candidate: any, interviews: any[], mcuRecords: any[], emailLogs?: any[], testResults?: any[], panelEvaluations?: any[], offering?: any }) {
   const router = useRouter();
+  const aiRadarData = Array.isArray(candidate.aiDetails?.breakdown)
+    ? candidate.aiDetails.breakdown.map((item: any) => ({
+        criterion: String(item?.criterion || "Kriteria"),
+        score: Math.max(0, Math.min(100, Number(item?.score) || 0)),
+        weight: Number(item?.weight) || 0,
+      }))
+    : [];
   const [appOrigin, setAppOrigin] = useState("");
   const [onboardingToken, setOnboardingToken] = useState<string | null>(candidate.onboardingToken ?? null);
   
@@ -842,9 +865,9 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     <div className="flex items-center gap-3">
                       <div className="text-3xl font-bold">{candidate.aiScore}%</div>
                       <div className="text-sm text-muted-foreground">Match Score</div>
-                      {candidate.aiDetails?.recommendation && (
+                      {formatAiRecommendation(candidate.aiDetails?.recommendation) && (
                         <Badge variant="secondary" className="uppercase tracking-wide">
-                          {candidate.aiDetails.recommendation}
+                          {formatAiRecommendation(candidate.aiDetails?.recommendation)}
                         </Badge>
                       )}
                       {candidate.aiAssessmentDate && (
@@ -855,6 +878,34 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     </div>
                     {candidate.aiSummary && (
                       <div className="text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap">{candidate.aiSummary}</div>
+                    )}
+                    {aiRadarData.length > 0 && (
+                      <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">Radar AI Analysis Score</div>
+                            <div className="text-xs text-muted-foreground">Visual perbandingan nilai tiap kriteria assessment</div>
+                          </div>
+                          <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-emerald-700">
+                            {candidate.aiScore}% total
+                          </Badge>
+                        </div>
+                        <div className="h-80 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart data={aiRadarData} margin={{ top: 18, right: 40, bottom: 18, left: 40 }}>
+                              <PolarGrid stroke="#cbd5e1" radialLines />
+                              <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 11, fontWeight: 600 }} />
+                              <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 10 }} tickCount={6} />
+                              <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={3} dot={{ r: 3, fill: "#0f766e", strokeWidth: 1 }} />
+                              <RechartsTooltip
+                                contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
+                                formatter={(value: number, name: string) => [`${value}%`, name]}
+                                labelFormatter={(label) => `Kriteria: ${label}`}
+                              />
+                            </RadarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     )}
                     {candidate.aiDetails?.knockout?.length > 0 && (
                       <div className="rounded-md border bg-muted/20 p-3">
@@ -1044,6 +1095,34 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     <p className="text-sm text-muted-foreground">No education listed</p>
                   )}
                 </div>
+                {aiRadarData.length > 0 && (
+                  <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Radar AI Analysis Score</div>
+                        <div className="text-xs text-muted-foreground">Diambil dari breakdown score AI assessment</div>
+                      </div>
+                      <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-emerald-700">
+                        {candidate.aiScore}% total
+                      </Badge>
+                    </div>
+                    <div className="h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={aiRadarData} margin={{ top: 16, right: 34, bottom: 16, left: 34 }}>
+                          <PolarGrid stroke="#cbd5e1" radialLines />
+                          <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 10, fontWeight: 600 }} />
+                          <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 10 }} tickCount={6} />
+                          <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={3} dot={{ r: 3, fill: "#0f766e", strokeWidth: 1 }} />
+                          <RechartsTooltip
+                            contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
+                            formatter={(value: number, name: string) => [`${value}%`, name]}
+                            labelFormatter={(label) => `Kriteria: ${label}`}
+                          />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
