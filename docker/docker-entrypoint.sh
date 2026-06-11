@@ -9,7 +9,7 @@ echo "========================================"
 echo ""
 echo "[1/2] Running database migrations..."
 
-if [ -n "$DATABASE_URL" ] || [ -n "$POSTGRES_URL" ] || [ -n "$POSTGRES_PRISMA_URL" ] || [ -n "$POSTGRESQL_URL" ] || [ -n "$DATABASE_PUBLIC_URL" ]; then
+if [ "$RUN_MIGRATIONS" = "true" ] && { [ -n "$DATABASE_URL" ] || [ -n "$POSTGRES_URL" ] || [ -n "$POSTGRES_PRISMA_URL" ] || [ -n "$POSTGRESQL_URL" ] || [ -n "$DATABASE_PUBLIC_URL" ]; }; then
     if [ -d "/app/migration" ]; then
         cd /app/migration
 
@@ -23,7 +23,7 @@ if [ -n "$DATABASE_URL" ] || [ -n "$POSTGRES_URL" ] || [ -n "$POSTGRES_PRISMA_UR
     fi
 
 else
-    echo "⚠️  DATABASE_URL not set - skipping database migrations."
+    echo "⚠️  RUN_MIGRATIONS=true or database URL not set - skipping database migrations."
 fi
 
 # --- Start Application ---
