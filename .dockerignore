@@ -70,6 +70,7 @@ HERO-CHITRA/
 scripts/
 !scripts/
 !scripts/run-docker-migrations.mjs
+!scripts/database-url.mjs
 
 # Drizzle dev studio output (keep migration files and meta)
 

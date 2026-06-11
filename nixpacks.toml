@@ -14,4 +14,4 @@ cmds = ["npm install --ignore-scripts"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "sh -lc 'if [ -n \"$DATABASE_URL\" ] || [ -n \"$POSTGRES_URL\" ] || [ -n \"$POSTGRES_PRISMA_URL\" ] || [ -n \"$POSTGRESQL_URL\" ] || [ -n \"$DATABASE_PUBLIC_URL\" ]; then node scripts/run-docker-migrations.mjs; else echo \"DATABASE_URL alias not set - skipping migrations.\"; fi && next start'"
+cmd = "sh -lc 'if [ -n \"$DATABASE_URL\" ] || [ -n \"$POSTGRES_URL\" ] || [ -n \"$POSTGRES_PRISMA_URL\" ] || [ -n \"$POSTGRESQL_URL\" ] || [ -n \"$DATABASE_PUBLIC_URL\" ]; then node scripts/run-docker-migrations.mjs; else echo \"DATABASE_URL alias not set - skipping migrations.\"; fi && next start -H 0.0.0.0 -p ${PORT:-3000}'"

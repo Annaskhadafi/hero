@@ -9,7 +9,7 @@ echo "========================================"
 echo ""
 echo "[1/2] Running database migrations..."
 
-if [ -n "$DATABASE_URL" ]; then
+if [ -n "$DATABASE_URL" ] || [ -n "$POSTGRES_URL" ] || [ -n "$POSTGRES_PRISMA_URL" ] || [ -n "$POSTGRESQL_URL" ] || [ -n "$DATABASE_PUBLIC_URL" ]; then
     if [ -d "/app/migration" ]; then
         cd /app/migration
 
