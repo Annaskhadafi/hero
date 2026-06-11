@@ -585,11 +585,20 @@ export default function CentralServicePage() {
                   <TableHead>SN</TableHead>
                   <TableHead>Nama</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Site</TableHead>
                   <TableHead>Department</TableHead>
-                  <TableHead>Position</TableHead>
+                  <TableHead>Section</TableHead>
+                  <TableHead>Job Title</TableHead>
+                  <TableHead>Level Staff</TableHead>
+                  <TableHead>Site/Location</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Gender</TableHead>
+                  <TableHead>Agama</TableHead>
+                  <TableHead>Pendidikan</TableHead>
+                  <TableHead>Join Date</TableHead>
+                  <TableHead>Contract Start</TableHead>
+                  <TableHead>Contract End</TableHead>
+                  <TableHead>Permanent Date</TableHead>
+                  <TableHead>Tgl Lahir</TableHead>
                   <TableHead>Sync</TableHead>
                   <TableHead>Aksi</TableHead>
                 </TableRow>
@@ -597,18 +606,18 @@ export default function CentralServicePage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-muted-foreground py-10 text-center">
+                    <TableCell colSpan={19} className="text-muted-foreground py-10 text-center">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : visibleEmployees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-muted-foreground py-10 text-center">
+                    <TableCell colSpan={19} className="text-muted-foreground py-10 text-center">
                       Tidak ada karyawan ditemukan
                     </TableCell>
                   </TableRow>
                 ) : (
-                  visibleEmployees.map((emp) => (
+                  visibleEmployees.map((emp: any) => (
                     <TableRow key={emp.id}>
                       <TableCell className="font-mono text-sm">{emp.employeeSn}</TableCell>
                       <TableCell className="font-medium">{emp.fullName}</TableCell>
@@ -619,6 +628,7 @@ export default function CentralServicePage() {
                           </Badge>
                         )}
                       </TableCell>
+                      <TableCell>{emp.department}</TableCell>
                       <TableCell>
                         {emp.section || (
                           <Badge variant="outline" className="text-xs">
@@ -626,6 +636,8 @@ export default function CentralServicePage() {
                           </Badge>
                         )}
                       </TableCell>
+                      <TableCell>{emp.position}</TableCell>
+                      <TableCell>{emp.levelName || '-'}</TableCell>
                       <TableCell>
                         {emp.site || (
                           <Badge variant="outline" className="text-xs">
@@ -633,8 +645,6 @@ export default function CentralServicePage() {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell>{emp.department}</TableCell>
-                      <TableCell>{emp.position}</TableCell>
                       <TableCell>
                         <Badge
                           variant={emp.employmentStatus === 'active' ? 'default' : 'secondary'}
@@ -642,6 +652,14 @@ export default function CentralServicePage() {
                           {emp.employmentStatus}
                         </Badge>
                       </TableCell>
+                      <TableCell>{emp.gender || '-'}</TableCell>
+                      <TableCell>{emp.religion || '-'}</TableCell>
+                      <TableCell>{emp.education || '-'}</TableCell>
+                      <TableCell>{emp.joinDate || '-'}</TableCell>
+                      <TableCell>{emp.contractDurationStart || '-'}</TableCell>
+                      <TableCell>{emp.contractDurationEnd || '-'}</TableCell>
+                      <TableCell>{emp.permanentDate || '-'}</TableCell>
+                      <TableCell>{emp.birthDate || '-'}</TableCell>
                       <TableCell>
                         {emp.isSyncedToUserManagement ? (
                           <Badge className="bg-green-600">

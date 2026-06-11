@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations, sites } from "@/db/schema/hero";
+import { employees, hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations, masterLevelStaff, sites } from "@/db/schema/hero";
 import { user } from "@/db/schema/auth";
-import { asc, eq, inArray, or, sql } from "drizzle-orm";
+import { asc, eq, inArray, or, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export type OrgChartNode = Awaited<ReturnType<typeof getOrgChartData>>[number];
@@ -26,6 +26,7 @@ export async function getOrgChartData() {
       departmentId: hrOrgNodes.departmentId,
       sectionId: hrOrgNodes.sectionId,
       siteId: hrOrgNodes.siteId,
+      workLocationId: hrOrgNodes.workLocationId,
     })
     .from(hrOrgNodes)
     .leftJoin(hrDepartments, eq(hrOrgNodes.departmentId, hrDepartments.id))
@@ -65,9 +66,29 @@ export async function getOrgChartData() {
     .leftJoin(employees, or(eq(employees.authUserId, hrEmployees.authUserId), eq(employees.employeeSn, hrEmployees.employeeId)))
     .where(eq(hrEmployees.isActive, true));
 
+  // Deduplicate: the OR join on `employees` table can produce multiple rows
+  // for the same hrEmployee when both authUserId AND employeeSn match.
+  const seenEmpIds = new Set<number>();
+  const employeeRowsUnique = employeeRows.filter((e) => {
+    if (seenEmpIds.has(e.id)) return false;
+    seenEmpIds.add(e.id);
+    return true;
+  });
+
   // Build virtual department+section nodes for employees not assigned to any org node
-  const unassigned = employeeRows.filter((e) => !e.orgNodeId || !orgNodeIds.has(e.orgNodeId));
-  const deptGroup = new Map<string, typeof employeeRows>();
+  // or assigned to a department node but belong to a section that has no real section node under it
+  const unassigned = employeeRowsUnique.filter((e) => {
+    if (!e.orgNodeId || !orgNodeIds.has(e.orgNodeId)) return true;
+    
+    const assignedNode = nodes.find((n) => n.id === e.orgNodeId);
+    if (assignedNode && assignedNode.nodeType === 'department' && e.sectionId) {
+      const hasRealSection = nodes.some((n) => n.parentNodeId === assignedNode.id && n.sectionId === e.sectionId);
+      return !hasRealSection;
+    }
+    
+    return false;
+  });
+  const deptGroup = new Map<string, typeof employeeRowsUnique>();
   for (const emp of unassigned) {
     const key = `${emp.departmentId ?? 0}_${emp.sectionId ?? 0}`;
     if (!deptGroup.has(key)) deptGroup.set(key, []);
@@ -86,38 +107,49 @@ export async function getOrgChartData() {
 
   // Build virtual nodes per department
   const virtualNodes: typeof nodes = [];
-  const virtualEmployees = new Map<number, typeof employeeRows>();
+  const virtualEmployees = new Map<number, typeof employeeRowsUnique>();
+  // Cache: departmentId → virtualDeptNode.id (so multiple sections share one parent)
+  const virtualDeptIdByDeptId = new Map<number, number>();
   let virtualId = -1000000000;
-  for (const [key, emps] of deptGroup) {
+
+  for (const [, emps] of deptGroup) {
     const first = emps[0];
     const dept = first.departmentId ? deptMap.get(first.departmentId) : null;
     const sect = first.sectionId ? sectMap.get(first.sectionId) : null;
     virtualId--;
 
-    const parentDeptNode = nodes.find((n) => n.departmentId === first.departmentId && n.nodeType?.toLowerCase().includes('department'));
-    let parentId = parentDeptNode?.id ?? null;
+    // Look for a real department node first, then a previously-created virtual one
+    const realDeptNode = nodes.find((n) => n.departmentId === first.departmentId && n.nodeType?.toLowerCase().includes('department'));
+    let parentId = realDeptNode?.id ?? null;
 
-    // If department node doesn't exist, create virtual department
-    if (!parentDeptNode && dept) {
-      const deptVirtualId = virtualId--;
-      virtualNodes.push({
-        id: deptVirtualId,
-        code: `AUTO_${dept.name.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        parentNodeId: null,
-        nodeType: 'department',
-        name: dept.name,
-        hierarchyLevel: 0,
-        pathText: `/${deptVirtualId}/`,
-        isActive: true,
-        departmentName: dept.name,
-        sectionName: null,
-        siteName: null,
-        workLocationName: null,
-        departmentId: dept.id,
-        sectionId: null,
-        siteId: null,
-      });
-      parentId = deptVirtualId;
+    if (!realDeptNode && dept) {
+      if (first.departmentId && virtualDeptIdByDeptId.has(first.departmentId)) {
+        // Reuse the virtual dept node already created for this department
+        parentId = virtualDeptIdByDeptId.get(first.departmentId)!;
+      } else {
+        // Create a new virtual department node (only once per dept)
+        const deptVirtualId = virtualId--;
+        virtualNodes.push({
+          id: deptVirtualId,
+          code: `AUTO_${dept.name.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          parentNodeId: null,
+          nodeType: 'department',
+          name: dept.name,
+          hierarchyLevel: 0,
+          pathText: `/${deptVirtualId}/`,
+          isActive: true,
+          departmentName: dept.name,
+          sectionName: null,
+          siteName: null,
+          workLocationName: null,
+          departmentId: dept.id,
+          sectionId: null,
+          siteId: null,
+          workLocationId: null,
+        });
+        if (first.departmentId) virtualDeptIdByDeptId.set(first.departmentId, deptVirtualId);
+        parentId = deptVirtualId;
+      }
     }
 
     virtualNodes.push({
@@ -136,14 +168,16 @@ export async function getOrgChartData() {
       departmentId: first.departmentId,
       sectionId: first.sectionId,
       siteId: null,
+      workLocationId: null,
     });
     virtualEmployees.set(virtualId, emps as any);
   }
 
+
   const allNodes = [...nodes, ...virtualNodes];
 
-  const employeesByNode = new Map<number, typeof employeeRows>();
-  for (const employee of employeeRows) {
+  const employeesByNode = new Map<number, typeof employeeRowsUnique>();
+  for (const employee of employeeRowsUnique) {
     const nodeId = employee.orgNodeId && orgNodeIds.has(employee.orgNodeId) ? employee.orgNodeId : null;
     if (nodeId) {
       if (!employeesByNode.has(nodeId)) employeesByNode.set(nodeId, []);
@@ -273,6 +307,255 @@ export async function updateOrgNodeParent(nodeId: number, newParentId: number | 
   }
 }
 
+export async function materializeOrgVirtualNode(data: {
+  name: string;
+  nodeType: string;
+  parentNodeId: number | null;
+  departmentId?: number | null;
+  sectionId?: number | null;
+  siteId?: number | null;
+  workLocationId?: number | null;
+  employeeIds: number[];
+}) {
+  try {
+    const safeCode = data.name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40) || "ORG_NODE";
+    const hierarchy = await calculateHierarchy(0, data.parentNodeId);
+
+    const [newNode] = await db
+      .insert(hrOrgNodes)
+      .values({
+        code: `ORG_${safeCode}_${Date.now()}`,
+        name: data.name,
+        nodeType: data.nodeType.replace(/_virtual$/i, "") || "section",
+        parentNodeId: (data.parentNodeId && data.parentNodeId > 0) ? data.parentNodeId : null,
+        departmentId: data.departmentId ?? null,
+        sectionId: (data.nodeType.replace(/_virtual$/i, "").toLowerCase() === "department" || data.nodeType.replace(/_virtual$/i, "").toLowerCase() === "company" || data.nodeType.replace(/_virtual$/i, "").toLowerCase().includes("bod")) ? null : (data.sectionId ?? null),
+        siteId: data.siteId ?? null,
+        workLocationId: (data.nodeType.replace(/_virtual$/i, "").toLowerCase().includes("location") || data.nodeType.replace(/_virtual$/i, "").toLowerCase().includes("site")) ? (data.workLocationId ?? null) : null,
+        hierarchyLevel: hierarchy.level,
+        pathText: "",
+        isActive: true,
+      })
+      .returning({ id: hrOrgNodes.id });
+
+    const actualPath = data.parentNodeId
+      ? (await calculateHierarchy(newNode.id, data.parentNodeId)).path
+      : `/${newNode.id}/`;
+
+    await db.update(hrOrgNodes).set({ pathText: actualPath }).where(eq(hrOrgNodes.id, newNode.id));
+
+    const employeeIds = Array.from(new Set(data.employeeIds.filter((id) => Number.isFinite(id) && id > 0)));
+    if (employeeIds.length > 0) {
+      const updatedEmployees = await db
+        .update(hrEmployees)
+        .set({ orgNodeId: newNode.id, updatedAt: new Date() })
+        .where(inArray(hrEmployees.id, employeeIds))
+        .returning({
+          id: hrEmployees.id,
+          authUserId: hrEmployees.authUserId,
+          employeeId: hrEmployees.employeeId,
+          fullName: hrEmployees.fullName,
+          email: hrEmployees.email,
+          departmentId: hrEmployees.departmentId,
+          sectionId: hrEmployees.sectionId,
+          siteId: hrEmployees.siteId,
+          workLocationId: hrEmployees.workLocationId,
+          positionId: hrEmployees.positionId,
+          orgNodeId: hrEmployees.orgNodeId,
+        });
+
+      for (const employee of updatedEmployees) {
+        await syncOrgChartEmployeeToOperationalEmployee(employee);
+      }
+    }
+
+    revalidateOrgChartEmployeeSurfaces();
+    return { success: true, message: "Node virtual berhasil dijadikan node real dan dipindahkan.", nodeId: newNode.id };
+  } catch (error) {
+    console.error("materializeOrgVirtualNode error:", error);
+    return { success: false, message: "Gagal memindahkan node virtual." };
+  }
+}
+
+type VirtualOrgNodePayload = {
+  id: number;
+  name: string;
+  nodeType: string;
+  parentNodeId: number | null;
+  departmentId?: number | null;
+  sectionId?: number | null;
+  siteId?: number | null;
+  workLocationId?: number | null;
+  employeeIds: number[];
+};
+
+export async function materializeAndMoveOrgVirtualNode(data: {
+  source: VirtualOrgNodePayload;
+  target: VirtualOrgNodePayload | null;
+  fallbackParentNodeId: number | null;
+}) {
+  try {
+    let parentNodeId = data.fallbackParentNodeId;
+
+    if (data.target) {
+      const targetResult = await createRealOrgNodeFromVirtual(data.target, data.fallbackParentNodeId);
+      if (!targetResult.success || !targetResult.nodeId) {
+        return { success: false, message: "Gagal membuat target node real." };
+      }
+      parentNodeId = targetResult.nodeId;
+    }
+
+    const sourceResult = await createRealOrgNodeFromVirtual(data.source, parentNodeId);
+    if (!sourceResult.success || !sourceResult.nodeId) {
+      return { success: false, message: "Gagal membuat source node real." };
+    }
+
+    revalidateOrgChartEmployeeSurfaces();
+    return { success: true, message: "Node virtual berhasil dipindahkan ke target." };
+  } catch (error) {
+    console.error("materializeAndMoveOrgVirtualNode error:", error);
+    return { success: false, message: "Gagal memindahkan node virtual." };
+  }
+}
+
+export async function materializeTargetAndMoveOrgNode(data: {
+  nodeId: number;
+  target: VirtualOrgNodePayload;
+  fallbackParentNodeId: number | null;
+}) {
+  try {
+    const targetResult = await createRealOrgNodeFromVirtual(data.target, data.fallbackParentNodeId);
+    if (!targetResult.success || !targetResult.nodeId) {
+      return { success: false, message: "Gagal membuat target node real." };
+    }
+
+    return await updateOrgNodeParent(data.nodeId, targetResult.nodeId);
+  } catch (error) {
+    console.error("materializeTargetAndMoveOrgNode error:", error);
+    return { success: false, message: "Gagal memindahkan node ke target virtual." };
+  }
+}
+
+async function createRealOrgNodeFromVirtual(node: VirtualOrgNodePayload, parentNodeId: number | null) {
+  const existingNode = node.id > 0
+    ? await db.select({ id: hrOrgNodes.id }).from(hrOrgNodes).where(eq(hrOrgNodes.id, node.id)).limit(1)
+    : [];
+
+  if (existingNode[0]) {
+    return { success: true, nodeId: existingNode[0].id };
+  }
+
+  const safeCode = node.name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40) || "ORG_NODE";
+  const hierarchy = await calculateHierarchy(0, parentNodeId);
+
+  const [newNode] = await db
+    .insert(hrOrgNodes)
+    .values({
+      code: `ORG_${safeCode}_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      name: node.name,
+      nodeType: node.nodeType.replace(/_virtual$/i, "") || "section",
+      parentNodeId: (parentNodeId && parentNodeId > 0) ? parentNodeId : null,
+      departmentId: node.departmentId ?? null,
+      sectionId: (node.nodeType.replace(/_virtual$/i, "").toLowerCase() === "department" || node.nodeType.replace(/_virtual$/i, "").toLowerCase() === "company" || node.nodeType.replace(/_virtual$/i, "").toLowerCase().includes("bod")) ? null : (node.sectionId ?? null),
+      siteId: node.siteId ?? null,
+      workLocationId: (node.nodeType.replace(/_virtual$/i, "").toLowerCase().includes("location") || node.nodeType.replace(/_virtual$/i, "").toLowerCase().includes("site")) ? (node.workLocationId ?? null) : null,
+      hierarchyLevel: hierarchy.level,
+      pathText: "",
+      isActive: true,
+    })
+    .returning({ id: hrOrgNodes.id });
+
+  const actualPath = parentNodeId ? (await calculateHierarchy(newNode.id, parentNodeId)).path : `/${newNode.id}/`;
+  await db.update(hrOrgNodes).set({ pathText: actualPath }).where(eq(hrOrgNodes.id, newNode.id));
+
+  const employeeIds = Array.from(new Set(node.employeeIds.filter((id) => Number.isFinite(id) && id > 0)));
+  if (employeeIds.length > 0) {
+    const updatedEmployees = await db
+      .update(hrEmployees)
+      .set({ orgNodeId: newNode.id, updatedAt: new Date() })
+      .where(inArray(hrEmployees.id, employeeIds))
+      .returning({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+        departmentId: hrEmployees.departmentId,
+        sectionId: hrEmployees.sectionId,
+        siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
+        positionId: hrEmployees.positionId,
+        orgNodeId: hrEmployees.orgNodeId,
+      });
+
+    for (const employee of updatedEmployees) {
+      await syncOrgChartEmployeeToOperationalEmployee(employee);
+    }
+  }
+
+  return { success: true, nodeId: newNode.id };
+}
+
+async function preserveMovedNodeIdentityFromEmployees(nodeIds: number[]) {
+  const uniqueNodeIds = Array.from(new Set(nodeIds.filter((id) => Number.isFinite(id) && id > 0)));
+  if (uniqueNodeIds.length === 0) return;
+
+  const nodeRows = await db
+    .select({
+      id: hrOrgNodes.id,
+      departmentId: hrOrgNodes.departmentId,
+      sectionId: hrOrgNodes.sectionId,
+      siteId: hrOrgNodes.siteId,
+      workLocationId: hrOrgNodes.workLocationId,
+    })
+    .from(hrOrgNodes)
+    .where(inArray(hrOrgNodes.id, uniqueNodeIds));
+
+  const employeeRows = await db
+    .select({
+      orgNodeId: hrEmployees.orgNodeId,
+      departmentId: hrEmployees.departmentId,
+      sectionId: hrEmployees.sectionId,
+      siteId: hrEmployees.siteId,
+      workLocationId: hrEmployees.workLocationId,
+    })
+    .from(hrEmployees)
+    .where(inArray(hrEmployees.orgNodeId, uniqueNodeIds));
+
+  for (const node of nodeRows) {
+    const employeesInNode = employeeRows.filter((employee) => employee.orgNodeId === node.id);
+    if (employeesInNode.length === 0) continue;
+
+    const updateData: Partial<typeof hrOrgNodes.$inferInsert> = { updatedAt: new Date() };
+    const departmentId = getSingleValue(employeesInNode.map((employee) => employee.departmentId));
+    const sectionId = getSingleValue(employeesInNode.map((employee) => employee.sectionId));
+    const siteId = getSingleValue(employeesInNode.map((employee) => employee.siteId));
+    const workLocationId = getSingleValue(employeesInNode.map((employee) => employee.workLocationId));
+
+    if (node.departmentId == null && departmentId != null) updateData.departmentId = departmentId;
+    if (node.sectionId == null && sectionId != null) updateData.sectionId = sectionId;
+    if (node.siteId == null && siteId != null) updateData.siteId = siteId;
+    if (node.workLocationId == null && workLocationId != null) updateData.workLocationId = workLocationId;
+
+    if (Object.keys(updateData).length === 1) continue;
+
+    await db.update(hrOrgNodes).set(updateData).where(eq(hrOrgNodes.id, node.id));
+  }
+}
+
+function getSingleValue(values: Array<number | null>) {
+  const uniqueValues = Array.from(new Set(values.filter((value): value is number => value != null)));
+  return uniqueValues.length === 1 ? uniqueValues[0] : null;
+}
+
 // Create new node
 export async function createOrgNode(data: {
   code: string;
@@ -282,9 +565,40 @@ export async function createOrgNode(data: {
   departmentId?: number | null;
   sectionId?: number | null;
   siteId?: number | null;
+  workLocationId?: number | null;
 }) {
   try {
     const hierarchy = await calculateHierarchy(0, data.parentNodeId);
+
+    let deptId = data.departmentId ?? null;
+    let sectId = data.sectionId ?? null;
+
+    // Auto-map Department by name if not provided
+    if (!deptId) {
+      const [matchedDept] = await db
+        .select({ id: hrDepartments.id })
+        .from(hrDepartments)
+        .where(and(eq(hrDepartments.isActive, true), sql`lower(trim(${hrDepartments.name})) = lower(trim(${data.name}))`))
+        .limit(1);
+      if (matchedDept) {
+        deptId = matchedDept.id;
+      }
+    }
+
+    // Auto-map Section by name if not provided
+    if (!sectId && (data.nodeType === "section" || data.nodeType === "unit")) {
+      const [matchedSect] = await db
+        .select({ id: hrSections.id, departmentId: hrSections.departmentId })
+        .from(hrSections)
+        .where(and(eq(hrSections.isActive, true), sql`lower(trim(${hrSections.name})) = lower(trim(${data.name}))`))
+        .limit(1);
+      if (matchedSect) {
+        sectId = matchedSect.id;
+        if (!deptId && matchedSect.departmentId) {
+          deptId = matchedSect.departmentId;
+        }
+      }
+    }
 
     const [newNode] = await db
       .insert(hrOrgNodes)
@@ -293,9 +607,10 @@ export async function createOrgNode(data: {
         name: data.name,
         nodeType: data.nodeType,
         parentNodeId: data.parentNodeId,
-        departmentId: data.departmentId ?? null,
-        sectionId: data.sectionId ?? null,
+        departmentId: deptId,
+        sectionId: sectId,
         siteId: data.siteId ?? null,
+        workLocationId: data.workLocationId ?? null,
         hierarchyLevel: hierarchy.level,
         pathText: "", // Will update after we get ID
         isActive: true,
@@ -329,47 +644,178 @@ export async function updateOrgNode(
     departmentId?: number | null;
     sectionId?: number | null;
     siteId?: number | null;
+    workLocationId?: number | null;
+    leaderEmployeeId?: number | null;
   }
 ) {
   try {
+    const subtreeNodeIds = await getOrgNodeSubtreeIds(id);
+
+    const { leaderEmployeeId, ...orgNodeData } = data;
+
+    let deptId = orgNodeData.departmentId;
+    let sectId = orgNodeData.sectionId;
+
+    const [existingNode] = await db
+      .select({ name: hrOrgNodes.name, nodeType: hrOrgNodes.nodeType })
+      .from(hrOrgNodes)
+      .where(eq(hrOrgNodes.id, id))
+      .limit(1);
+
+    const nameToMap = orgNodeData.name ?? existingNode?.name;
+    const nodeTypeToMap = orgNodeData.nodeType ?? existingNode?.nodeType;
+
+    // Auto-map Department by name if not provided
+    if (deptId === undefined && nameToMap) {
+      const [matchedDept] = await db
+        .select({ id: hrDepartments.id })
+        .from(hrDepartments)
+        .where(and(eq(hrDepartments.isActive, true), sql`lower(trim(${hrDepartments.name})) = lower(trim(${nameToMap}))`))
+        .limit(1);
+      if (matchedDept) {
+        deptId = matchedDept.id;
+      }
+    }
+
+    // Auto-map Section by name if not provided
+    if (sectId === undefined && nameToMap && (nodeTypeToMap === "section" || nodeTypeToMap === "unit")) {
+      const [matchedSect] = await db
+        .select({ id: hrSections.id, departmentId: hrSections.departmentId })
+        .from(hrSections)
+        .where(and(eq(hrSections.isActive, true), sql`lower(trim(${hrSections.name})) = lower(trim(${nameToMap}))`))
+        .limit(1);
+      if (matchedSect) {
+        sectId = matchedSect.id;
+        if (deptId === undefined && matchedSect.departmentId) {
+          deptId = matchedSect.departmentId;
+        }
+      }
+    }
+
     await db
       .update(hrOrgNodes)
       .set({
-        ...data,
+        ...orgNodeData,
+        ...(deptId !== undefined ? { departmentId: deptId } : {}),
+        ...(sectId !== undefined ? { sectionId: sectId } : {}),
         updatedAt: new Date(),
       })
       .where(eq(hrOrgNodes.id, id));
 
-    revalidatePath("/dashboard/hc/org-chart");
-    return { success: true, message: "Node berhasil diupdate." };
+    // Handle leader selection if provided
+    if (leaderEmployeeId) {
+      const nodeDefaults = await getOrgNodeEmployeeDefaults(id);
+      
+      const rawPositions = await db
+        .select({ id: hrPositions.id, rankName: hrPositions.rankName, levelName: hrPositions.levelName })
+        .from(hrPositions)
+        .where(eq(hrPositions.isActive, true));
+
+      const targetNodeType = orgNodeData.nodeType ?? existingNode?.nodeType ?? "section";
+      const targetNodeName = orgNodeData.name ?? existingNode?.name ?? "";
+      const nodeTypeLower = targetNodeType.toLowerCase();
+      const nodeNameLower = targetNodeName.toLowerCase();
+
+      const patterns = nodeTypeLower.includes("section")
+        ? ["section head", "head section", "supervisor", "spv", "coordinator", "koordinator", "leader", "foreman", "chief"]
+        : nodeTypeLower.includes("department") || nodeNameLower.includes("department")
+          ? ["department head", "head department", "manager", "mgr", "kepala departemen"]
+          : ["head", "manager", "supervisor", "coordinator", "leader"];
+
+      const scored = rawPositions
+        .map((position) => {
+          const searchable = `${position.levelName} ${position.rankName}`.toLowerCase();
+          const matchIndex = patterns.findIndex((pattern) => searchable.includes(pattern));
+          return { position, matchIndex };
+        })
+        .filter((item) => item.matchIndex >= 0)
+        .sort((a, b) => a.matchIndex - b.matchIndex || a.position.rankName.localeCompare(b.position.rankName, "id-ID"));
+
+      const headPosition = scored[0]?.position ?? null;
+
+      const employeeUpdate = {
+        orgNodeId: id,
+        departmentId: nodeDefaults?.departmentId ?? null,
+        sectionId: nodeDefaults?.sectionId ?? null,
+        updatedAt: new Date(),
+        ...(nodeDefaults?.siteId !== null && nodeDefaults?.siteId !== undefined ? { siteId: nodeDefaults.siteId } : {}),
+        ...(nodeDefaults?.workLocationId !== null && nodeDefaults?.workLocationId !== undefined ? { workLocationId: nodeDefaults.workLocationId } : {}),
+        ...(headPosition ? { positionId: headPosition.id } : {}),
+      };
+
+      const [updatedEmp] = await db
+        .update(hrEmployees)
+        .set(employeeUpdate)
+        .where(eq(hrEmployees.id, leaderEmployeeId))
+        .returning({
+          id: hrEmployees.id,
+          authUserId: hrEmployees.authUserId,
+          employeeId: hrEmployees.employeeId,
+          fullName: hrEmployees.fullName,
+          email: hrEmployees.email,
+          departmentId: hrEmployees.departmentId,
+          sectionId: hrEmployees.sectionId,
+          siteId: hrEmployees.siteId,
+          workLocationId: hrEmployees.workLocationId,
+          positionId: hrEmployees.positionId,
+          orgNodeId: hrEmployees.orgNodeId,
+        });
+
+      if (updatedEmp) {
+        await syncOrgChartEmployeeToOperationalEmployee(updatedEmp);
+      }
+    }
+
+    await syncOrgChartEmployeesInNodesToOperational(subtreeNodeIds);
+
+    revalidateOrgChartEmployeeSurfaces();
+    return { success: true, message: "Node berhasil diupdate dan User Management disync." };
   } catch (error) {
     console.error("updateOrgNode error:", error);
     return { success: false, message: "Gagal mengupdate node." };
   }
 }
 
+async function getOrgNodeSubtreeIds(nodeId: number) {
+  const [node] = await db
+    .select({ pathText: hrOrgNodes.pathText })
+    .from(hrOrgNodes)
+    .where(eq(hrOrgNodes.id, nodeId))
+    .limit(1);
+
+  if (!node) return [nodeId];
+
+  const rows = await db
+    .select({ id: hrOrgNodes.id })
+    .from(hrOrgNodes)
+    .where(sql`${hrOrgNodes.pathText} LIKE ${`${node.pathText}%`}`);
+
+  const ids = rows.map((row) => row.id);
+  return ids.includes(nodeId) ? ids : [nodeId, ...ids];
+}
+
 // Delete node (soft delete)
 export async function deleteOrgNode(id: number) {
   try {
-    // Check if node has children
+    // Check if node has active children
     const children = await db
       .select({ id: hrOrgNodes.id })
       .from(hrOrgNodes)
-      .where(eq(hrOrgNodes.parentNodeId, id))
+      .where(and(eq(hrOrgNodes.parentNodeId, id), eq(hrOrgNodes.isActive, true)))
       .limit(1);
 
     if (children.length > 0) {
       return { success: false, message: "Node memiliki child nodes. Hapus atau pindahkan child nodes terlebih dahulu." };
     }
 
-    // Check if node has assigned employees
-    const employees = await db
+    // Check if node has assigned active employees
+    const assignedEmployees = await db
       .select({ id: hrEmployees.id })
       .from(hrEmployees)
-      .where(eq(hrEmployees.orgNodeId, id))
+      .where(and(eq(hrEmployees.orgNodeId, id), eq(hrEmployees.isActive, true)))
       .limit(1);
 
-    if (employees.length > 0) {
+    if (assignedEmployees.length > 0) {
       return { success: false, message: "Node memiliki karyawan assigned. Pindahkan karyawan terlebih dahulu." };
     }
 
@@ -394,16 +840,18 @@ export async function updateOrgChartEmployeeAssignment(employeeId: number, orgNo
       return { success: false, message: "Node tujuan tidak ditemukan." };
     }
 
+    const updateData = {
+      orgNodeId,
+      departmentId: nodeDefaults.departmentId,
+      sectionId: nodeDefaults.sectionId,
+      updatedAt: new Date(),
+      ...(nodeDefaults.siteId !== null ? { siteId: nodeDefaults.siteId } : {}),
+      ...(nodeDefaults.workLocationId !== null ? { workLocationId: nodeDefaults.workLocationId } : {}),
+    };
+
     const [updatedEmployee] = await db
       .update(hrEmployees)
-      .set({
-        orgNodeId,
-        departmentId: nodeDefaults.departmentId,
-        sectionId: nodeDefaults.sectionId,
-        siteId: nodeDefaults.siteId,
-        workLocationId: nodeDefaults.workLocationId,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(hrEmployees.id, employeeId))
       .returning({
         id: hrEmployees.id,
@@ -430,6 +878,60 @@ export async function updateOrgChartEmployeeAssignment(employeeId: number, orgNo
   } catch (error) {
     console.error("updateOrgChartEmployeeAssignment error:", error);
     return { success: false, message: "Gagal memindahkan karyawan." };
+  }
+}
+
+export async function updateOrgChartEmployeeNodeHead(
+  employeeId: number,
+  orgNodeId: number,
+  positionId?: number | null
+) {
+  try {
+    const nodeDefaults = await getOrgNodeEmployeeDefaults(orgNodeId);
+
+    if (!nodeDefaults) {
+      return { success: false, message: "Node tujuan tidak ditemukan." };
+    }
+
+    const updateData = {
+      orgNodeId,
+      departmentId: nodeDefaults.departmentId,
+      sectionId: nodeDefaults.sectionId,
+      updatedAt: new Date(),
+      ...(nodeDefaults.siteId !== null ? { siteId: nodeDefaults.siteId } : {}),
+      ...(nodeDefaults.workLocationId !== null ? { workLocationId: nodeDefaults.workLocationId } : {}),
+      ...(positionId ? { positionId } : {}),
+    };
+
+    const [updatedEmployee] = await db
+      .update(hrEmployees)
+      .set(updateData)
+      .where(eq(hrEmployees.id, employeeId))
+      .returning({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+        departmentId: hrEmployees.departmentId,
+        sectionId: hrEmployees.sectionId,
+        siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
+        positionId: hrEmployees.positionId,
+        orgNodeId: hrEmployees.orgNodeId,
+      });
+
+    if (!updatedEmployee) {
+      return { success: false, message: "Karyawan tidak ditemukan." };
+    }
+
+    await syncOrgChartEmployeeToOperationalEmployee(updatedEmployee);
+
+    revalidateOrgChartEmployeeSurfaces();
+    return { success: true, message: "Karyawan berhasil dijadikan head node dan disync ke User Management." };
+  } catch (error) {
+    console.error("updateOrgChartEmployeeNodeHead error:", error);
+    return { success: false, message: "Gagal menjadikan karyawan sebagai head node." };
   }
 }
 
@@ -493,7 +995,66 @@ type SyncedOrgChartEmployee = {
   workLocationId?: number | null;
   positionId: number | null;
   orgNodeId: number | null;
+  levelName?: string | null; // Explicit level override from masterLevelStaff selection
 };
+
+function normalizeSiteLabel(value?: string | null) {
+  return (value ?? "")
+    .toLocaleLowerCase("id-ID")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function buildSiteCandidates(...values: Array<string | null | undefined>) {
+  const candidates = new Set<string>();
+
+  for (const value of values) {
+    const cleaned = (value ?? "").trim();
+    if (!cleaned) continue;
+
+    candidates.add(cleaned);
+
+    const splitParts = cleaned
+      .split(/\s+(?:-|•|\||\/)\s+|(?:-|•|\||\/)/g)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    for (const part of splitParts) candidates.add(part);
+    if (splitParts.length > 0) candidates.add(splitParts[splitParts.length - 1]);
+  }
+
+  return Array.from(candidates)
+    .map(normalizeSiteLabel)
+    .filter((candidate) => candidate.length > 2);
+}
+
+async function resolveLegacySiteId(hrSiteName?: string | null, workLocationName?: string | null) {
+  const candidates = buildSiteCandidates(hrSiteName, workLocationName);
+  if (candidates.length === 0) return null;
+
+  const siteRows = await db
+    .select({ id: sites.id, name: sites.name, location: sites.location })
+    .from(sites)
+    .where(eq(sites.isActive, true));
+
+  const keyedRows = siteRows.map((site) => ({
+    id: site.id,
+    keys: [normalizeSiteLabel(site.name), normalizeSiteLabel(site.location)].filter(Boolean),
+  }));
+
+  for (const candidate of candidates) {
+    const exact = keyedRows.find((site) => site.keys.includes(candidate));
+    if (exact) return exact.id;
+  }
+
+  for (const candidate of candidates) {
+    const partial = keyedRows.find((site) =>
+      site.keys.some((key) => key.length > 2 && (candidate.includes(key) || key.includes(candidate)))
+    );
+    if (partial) return partial.id;
+  }
+
+  return null;
+}
 
 async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChartEmployee) {
   const [[department], [section], [position], [hrSite], [workLocation]] = await Promise.all([
@@ -514,11 +1075,11 @@ async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChar
       : Promise.resolve([]),
   ]);
 
-  const [legacySite] = hrSite?.name
-    ? await db.select({ id: sites.id }).from(sites).where(eq(sites.name, hrSite.name)).limit(1).catch(() => [])
-    : [];
+  const legacySiteId = await resolveLegacySiteId(hrSite?.name, workLocation?.name).catch(() => null);
 
-  const roleName = position?.rankName ?? "";
+  const roleName = position?.rankName ?? employee.levelName ?? "";
+  // Use explicit levelName override first, then fall back to position's levelName
+  const resolvedLevelName = (employee.levelName?.trim() || position?.levelName?.trim() || null);
   const legacyUpdate = {
     name: employee.fullName,
     email: employee.email ?? "",
@@ -532,7 +1093,8 @@ async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChar
     role: roleName,
     jobTitle: roleName,
     workLocation: workLocation?.name ?? hrSite?.name ?? "",
-    ...(legacySite?.id ? { siteId: legacySite.id } : {}),
+    ...(resolvedLevelName ? { levelName: resolvedLevelName } : {}),
+    ...(legacySiteId ? { siteId: legacySiteId } : {}),
   };
 
   if (employee.authUserId) {
@@ -562,8 +1124,73 @@ async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChar
     .where(
       employee.email
         ? or(eq(employees.employeeSn, employee.employeeId), eq(employees.email, employee.email))
-        : eq(employees.employeeSn, employee.employeeId)
+      : eq(employees.employeeSn, employee.employeeId)
     );
+}
+
+async function syncOrgChartEmployeesInNodesToOperational(nodeIds: number[]) {
+  const uniqueNodeIds = Array.from(new Set(nodeIds.filter((id) => Number.isFinite(id) && id > 0)));
+  if (uniqueNodeIds.length === 0) return;
+
+  for (const orgNodeId of uniqueNodeIds) {
+    const nodeDefaults = await getOrgNodeEmployeeDefaults(orgNodeId);
+    if (!nodeDefaults) continue;
+
+    const updatedEmployees = await db
+      .update(hrEmployees)
+      .set({
+        orgNodeId,
+        departmentId: nodeDefaults.departmentId,
+        sectionId: nodeDefaults.sectionId,
+        siteId: nodeDefaults.siteId,
+        workLocationId: nodeDefaults.workLocationId,
+        updatedAt: new Date(),
+      })
+      .where(eq(hrEmployees.orgNodeId, orgNodeId))
+      .returning({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+        departmentId: hrEmployees.departmentId,
+        sectionId: hrEmployees.sectionId,
+        siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
+        positionId: hrEmployees.positionId,
+        orgNodeId: hrEmployees.orgNodeId,
+      });
+
+    for (const employee of updatedEmployees) {
+      await syncOrgChartEmployeeToOperationalEmployee(employee);
+    }
+  }
+}
+
+async function syncExistingOrgChartEmployeesToOperational(nodeIds: number[]) {
+  const uniqueNodeIds = Array.from(new Set(nodeIds.filter((id) => Number.isFinite(id) && id > 0)));
+  if (uniqueNodeIds.length === 0) return;
+
+  const employeeRows = await db
+    .select({
+      id: hrEmployees.id,
+      authUserId: hrEmployees.authUserId,
+      employeeId: hrEmployees.employeeId,
+      fullName: hrEmployees.fullName,
+      email: hrEmployees.email,
+      departmentId: hrEmployees.departmentId,
+      sectionId: hrEmployees.sectionId,
+      siteId: hrEmployees.siteId,
+      workLocationId: hrEmployees.workLocationId,
+      positionId: hrEmployees.positionId,
+      orgNodeId: hrEmployees.orgNodeId,
+    })
+    .from(hrEmployees)
+    .where(inArray(hrEmployees.orgNodeId, uniqueNodeIds));
+
+  for (const employee of employeeRows) {
+    await syncOrgChartEmployeeToOperationalEmployee(employee);
+  }
 }
 
 function revalidateOrgChartEmployeeSurfaces() {
@@ -574,6 +1201,63 @@ function revalidateOrgChartEmployeeSurfaces() {
   revalidatePath("/dashboard/scheduling-timesheet/attendance");
   revalidatePath("/dashboard/scheduling-timesheet/schedule");
   revalidatePath("/dashboard/scheduling-timesheet/payroll");
+}
+
+export async function createOrgChartEmployee(data: {
+  employeeId: string;
+  fullName: string;
+  email?: string | null;
+  departmentId?: number | null;
+  sectionId?: number | null;
+  siteId?: number | null;
+  workLocationId?: number | null;
+  positionId?: number | null;
+  orgNodeId?: number | null;
+  levelName?: string | null;
+}) {
+  try {
+    const nodeDefaults = data.orgNodeId ? await getOrgNodeEmployeeDefaults(data.orgNodeId) : null;
+
+    const [createdEmployee] = await db
+      .insert(hrEmployees)
+      .values({
+        employeeId: data.employeeId.trim(),
+        fullName: data.fullName.trim(),
+        email: data.email?.trim() || null,
+        departmentId: data.departmentId ?? nodeDefaults?.departmentId ?? null,
+        sectionId: data.sectionId ?? nodeDefaults?.sectionId ?? null,
+        siteId: data.siteId ?? nodeDefaults?.siteId ?? null,
+        workLocationId: data.workLocationId ?? nodeDefaults?.workLocationId ?? null,
+        positionId: data.positionId ?? null,
+        orgNodeId: data.orgNodeId ?? null,
+        accountStatus: "active",
+        isActive: true,
+      })
+      .returning({
+        id: hrEmployees.id,
+        authUserId: hrEmployees.authUserId,
+        employeeId: hrEmployees.employeeId,
+        fullName: hrEmployees.fullName,
+        email: hrEmployees.email,
+        departmentId: hrEmployees.departmentId,
+        sectionId: hrEmployees.sectionId,
+        siteId: hrEmployees.siteId,
+        workLocationId: hrEmployees.workLocationId,
+        positionId: hrEmployees.positionId,
+        orgNodeId: hrEmployees.orgNodeId,
+      });
+
+    await syncOrgChartEmployeeToOperationalEmployee({
+      ...createdEmployee,
+      levelName: data.levelName ?? null,
+    });
+
+    revalidateOrgChartEmployeeSurfaces();
+    return { success: true, message: "Orang berhasil dibuat di struktur organisasi.", employee: createdEmployee };
+  } catch (error) {
+    console.error("createOrgChartEmployee error:", error);
+    return { success: false, message: "Gagal membuat orang. Pastikan Employee ID belum dipakai." };
+  }
 }
 
 export async function updateOrgChartEmployeeProfile(
@@ -588,13 +1272,15 @@ export async function updateOrgChartEmployeeProfile(
     workLocationId?: number | null;
     positionId?: number | null;
     orgNodeId?: number | null;
+    levelName?: string | null;
   }
 ) {
   try {
+    const { levelName: levelNameOverride, ...dbData } = data;
     const [updatedEmployee] = await db
       .update(hrEmployees)
       .set({
-        ...data,
+        ...dbData,
         updatedAt: new Date(),
       })
       .where(eq(hrEmployees.id, employeeId))
@@ -616,7 +1302,10 @@ export async function updateOrgChartEmployeeProfile(
       return { success: false, message: "Karyawan tidak ditemukan." };
     }
 
-    await syncOrgChartEmployeeToOperationalEmployee(updatedEmployee);
+    await syncOrgChartEmployeeToOperationalEmployee({
+      ...updatedEmployee,
+      levelName: levelNameOverride ?? null,
+    });
     revalidateOrgChartEmployeeSurfaces();
     return { success: true, message: "Profil karyawan berhasil diupdate dan disync ke User Management." };
   } catch (error) {
@@ -624,15 +1313,50 @@ export async function updateOrgChartEmployeeProfile(
     return { success: false, message: "Gagal mengupdate profil karyawan." };
   }
 }
+
 // Get departments, sections, sites for dropdowns
 export async function getOrgNodeReferenceData() {
-  const [departments, sections, sites, workLocations, positions] = await Promise.all([
+  const [departments, sections, sitesData, workLocations, rawPositions, levelStaffs] = await Promise.all([
     db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.isActive, true)).orderBy(asc(hrDepartments.name)),
     db.select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId }).from(hrSections).where(eq(hrSections.isActive, true)).orderBy(asc(hrSections.name)),
     db.select({ id: hrSites.id, name: hrSites.name }).from(hrSites).where(eq(hrSites.isActive, true)).orderBy(asc(hrSites.name)),
     db.select({ id: hrWorkLocations.id, name: hrWorkLocations.name }).from(hrWorkLocations).where(eq(hrWorkLocations.isActive, true)).orderBy(asc(hrWorkLocations.name)),
     db.select({ id: hrPositions.id, rankName: hrPositions.rankName, levelName: hrPositions.levelName }).from(hrPositions).where(eq(hrPositions.isActive, true)).orderBy(asc(hrPositions.levelName), asc(hrPositions.rankName)),
+    db.select({ name: masterLevelStaff.name, sortOrder: masterLevelStaff.sortOrder }).from(masterLevelStaff).where(eq(masterLevelStaff.isActive, true)).orderBy(asc(masterLevelStaff.sortOrder)),
   ]);
 
-  return { departments, sections, sites, workLocations, positions };
+  // Build level order map from masterLevelStaff: normalize levelName → sortOrder
+  const levelOrderMap = new Map<string, number>();
+  for (const lvl of levelStaffs) {
+    levelOrderMap.set(lvl.name.trim().toLowerCase(), lvl.sortOrder);
+  }
+
+  function getLevelSortOrder(levelName: string): number {
+    const key = levelName.trim().toLowerCase();
+    // Exact match first
+    if (levelOrderMap.has(key)) return levelOrderMap.get(key)!;
+    // Partial match fallback
+    for (const [mapKey, order] of levelOrderMap.entries()) {
+      if (key.includes(mapKey) || mapKey.includes(key)) return order;
+    }
+    return 9999;
+  }
+
+  // Deduplicate positions by (levelName + rankName) combination
+  const seenPositions = new Set<string>();
+  const positions = rawPositions
+    .filter((p) => {
+      const sig = `${p.levelName.trim().toLowerCase()}|${p.rankName.trim().toLowerCase()}`;
+      if (seenPositions.has(sig)) return false;
+      seenPositions.add(sig);
+      return true;
+    })
+    .sort((a, b) => {
+      const orderA = getLevelSortOrder(a.levelName);
+      const orderB = getLevelSortOrder(b.levelName);
+      if (orderA !== orderB) return orderA - orderB;
+      return a.rankName.localeCompare(b.rankName, "id-ID");
+    });
+
+  return { departments, sections, sites: sitesData, workLocations, positions, levelStaffs };
 }

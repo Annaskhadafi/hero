@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { Building2, GitBranch, Search, UserRound, Users, Edit, Trash2, Plus, GripVertical, AlertTriangle } from "lucide-react";
+import { AlertTriangle, Building2, Crown, GitBranch, GripVertical, Plus, Search, Trash2, Edit, UserPlus, UserRound, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors, useDraggable, useDroppable, DragOverlay } from "@dnd-kit/core";
@@ -19,7 +19,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Import actions (using relative path to ensure resolution)
-import { updateOrgNodeParent, updateOrgNode, createOrgNode, deleteOrgNode, updateOrgChartEmployeeAssignment, updateOrgChartEmployeeProfile } from "@/app/actions/org-chart";
+import {
+  createOrgChartEmployee,
+  createOrgNode,
+  deleteOrgNode,
+  materializeAndMoveOrgVirtualNode,
+  materializeOrgVirtualNode,
+  materializeTargetAndMoveOrgNode,
+  updateOrgChartEmployeeAssignment,
+  updateOrgChartEmployeeNodeHead,
+  updateOrgChartEmployeeProfile,
+  updateOrgNode,
+  updateOrgNodeParent,
+} from "@/app/actions/org-chart";
 
 type OrgNode = {
   id: number;
@@ -35,26 +47,27 @@ type OrgNode = {
   departmentId?: number | null;
   sectionId?: number | null;
   siteId?: number | null;
+  workLocationId?: number | null;
   employeeCount: number;
-    employees: Array<{
-      id: number;
-      employeeId: string;
-      fullName: string;
-      orgNodeId: number | null;
-      positionName: string | null;
-      levelName: string | null;
-      email: string | null;
-      departmentName: string | null;
-      sectionName: string | null;
-      departmentId: number | null;
-      sectionId: number | null;
-      siteId: number | null;
-      workLocationId: number | null;
-      positionId: number | null;
-      siteName: string | null;
-      workLocationName: string | null;
-      isVirtual?: boolean;
-    }>;
+  employees: Array<{
+    id: number;
+    employeeId: string;
+    fullName: string;
+    orgNodeId: number | null;
+    positionName: string | null;
+    levelName: string | null;
+    email: string | null;
+    departmentName: string | null;
+    sectionName: string | null;
+    departmentId: number | null;
+    sectionId: number | null;
+    siteId: number | null;
+    workLocationId: number | null;
+    positionId: number | null;
+    siteName: string | null;
+    workLocationName: string | null;
+    isVirtual?: boolean;
+  }>;
 };
 
 type OrgTreeNode = OrgNode & {
@@ -72,6 +85,7 @@ type ReferenceData = {
   sites: Array<{ id: number; name: string }>;
   workLocations: Array<{ id: number; name: string }>;
   positions: Array<{ id: number; rankName: string; levelName: string }>;
+  levelStaffs: Array<{ name: string; sortOrder: number }>;
 };
 
 type OrgEmployee = OrgNode["employees"][number];
@@ -165,18 +179,20 @@ function absorbLocationNodes(nodes: OrgTreeNode[]): OrgTreeNode[] {
 }
 
 function isManagerEmployee(employee: OrgNode["employees"][number]) {
-  return normalizeOrgLabel(employee.positionName ?? "").includes("manager");
+  const level = (employee.levelName ?? "").toLowerCase();
+  const pos = normalizeOrgLabel(employee.positionName ?? "");
+  return level.includes("manager") || pos.includes("manager") || pos.includes("mgr");
 }
 
 function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
   // Flag apakah node ini adalah target Department/Managerial
-  const isDepartmentNode =
+  const isDept =
     node.nodeType.toLowerCase().includes("department") ||
     node.nodeType.toLowerCase().includes("manager");
 
   // Jika node ini BUKAN department (misal root company atau section),
   // cukup jalankan proses ke anak-anaknya saja.
-  if (!isDepartmentNode) {
+  if (!isDept) {
     return {
       ...node,
       children: node.children.map(hoistManagersToDepartment)
@@ -237,7 +253,8 @@ function hoistManagersToDepartment(node: OrgTreeNode): OrgTreeNode {
 function groupOrgUnitEmployeesByWorkLocation(node: OrgTreeNode): OrgTreeNode {
   const children = node.children.map(groupOrgUnitEmployeesByWorkLocation);
 
-  if (!isDepartmentNode(node) && getNodeOrder(node) !== 2) {
+  // Jangan split kalau dia BOD/Company (0) atau Location node itu sendiri
+  if (isLocationNode(node) || getNodeOrder(node) === 0) {
     return { ...node, children };
   }
 
@@ -262,13 +279,14 @@ function groupOrgUnitEmployeesByWorkLocation(node: OrgTreeNode): OrgTreeNode {
     nodeType: "work_location_virtual",
     name: employees[0] ? getEmployeeWorkLocationLabel(employees[0]) : "Lokasi Belum Diisi",
     hierarchyLevel: node.hierarchyLevel + 1,
-    departmentName: node.departmentName,
-    sectionName: node.sectionName,
+    departmentName: isDepartmentNode(node) ? node.name : node.departmentName,
+    sectionName: isDepartmentNode(node) ? null : node.name,
     siteName: employees[0]?.siteName ?? null,
     workLocationName: employees[0]?.workLocationName ?? null,
     departmentId: node.departmentId,
     sectionId: node.sectionId,
     siteId: node.siteId,
+    workLocationId: employees[0]?.workLocationId ?? null,
     employeeCount: employees.length,
     employees,
     children: [],
@@ -424,8 +442,8 @@ function pruneEmptyLeaves(nodes: OrgTreeNode[]): OrgTreeNode[] {
       return { ...node, children };
     })
     .filter((node) => {
-      // Pertahankan node JIKA dia punya employee ATAU punya child (yang tidak kosong)
-      return node.employeeCount > 0 || node.children.length > 0;
+      // Pertahankan node JIKA dia tidak virtual ATAU dia punya employee ATAU punya child (yang tidak kosong)
+      return !node.isVirtual || node.employeeCount > 0 || node.children.length > 0;
     });
 }
 
@@ -568,13 +586,14 @@ function nodeMatchesOrgFilters(node: OrgTreeNode, departmentId: string, sectionI
   return matchesDepartment && matchesSection;
 }
 
-function filterTreeWithAncestors(nodes: OrgTreeNode[], departmentId: string, sectionId: string): OrgTreeNode[] {
+function filterTreeWithAncestors(nodes: OrgTreeNode[], departmentId: string, sectionId: string, ancestorMatches = false): OrgTreeNode[] {
   if (departmentId === "all" && sectionId === "all") return nodes;
 
   return nodes
     .map((node) => {
-      const filteredChildren = filterTreeWithAncestors(node.children, departmentId, sectionId);
-      if (nodeMatchesOrgFilters(node, departmentId, sectionId) || filteredChildren.length > 0) {
+      const isMatch = ancestorMatches || nodeMatchesOrgFilters(node, departmentId, sectionId);
+      const filteredChildren = filterTreeWithAncestors(node.children, departmentId, sectionId, isMatch);
+      if (isMatch || filteredChildren.length > 0) {
         return { ...node, children: filteredChildren };
       }
       return null;
@@ -606,10 +625,11 @@ function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTree
       sectionName,
       siteName: members[0]?.siteName ?? null,
       workLocationName: members[0]?.workLocationName ?? selectedLocation,
-      departmentId: members[0]?.departmentId ?? null,
-      sectionId: members[0]?.sectionId ?? null,
-      siteId: members[0]?.siteId ?? null,
-      employeeCount: members.length,
+    departmentId: members[0]?.departmentId ?? null,
+    sectionId: members[0]?.sectionId ?? null,
+    siteId: members[0]?.siteId ?? null,
+    workLocationId: members[0]?.workLocationId ?? null,
+    employeeCount: members.length,
       employees: members,
       children: [],
       isVirtual: true,
@@ -644,6 +664,7 @@ function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTree
     departmentId: employees[0]?.departmentId ?? null,
     sectionId: null,
     siteId: employees[0]?.siteId ?? null,
+    workLocationId: employees[0]?.workLocationId ?? null,
     employeeCount: 0,
     employees: [],
     children: rootChildren,
@@ -654,30 +675,68 @@ function buildSiteStructureTree(nodes: OrgNode[], siteGroupKey: string): OrgTree
   return pruneEmptyLeaves([root]);
 }
 
+type RoleGroup = { key: string; label: string; order: number; className: string };
 
-function getRoleGroupFromPositionName(positionName?: string | null) {
-  const position = (positionName ?? "").toLocaleLowerCase("id-ID");
+// Resolve role group from levelName (primary) then positionName (fallback)
+function getEmployeeRoleGroup(employee: OrgEmployee): RoleGroup {
+  const level = (employee.levelName ?? "").toLowerCase().trim();
+  const position = (employee.positionName ?? "").toLowerCase();
 
-  if (/(manager|mgr|kepala departemen|department head)/i.test(position)) {
-    return { key: "manager", label: "MANAGER", order: 0, className: "bg-sky-100 text-sky-800 ring-sky-200" };
+  // --- 1. Explicit Level Matches (Overrides position regex) ---
+  if (level === "staff") return { key: "staff", label: "STAFF", order: 6, className: "bg-slate-100 text-slate-700 ring-slate-200" };
+  if (level === "non staff" || level === "non_staff" || level === "nonstaff") return { key: "nonstaff", label: "NON STAFF", order: 7, className: "bg-orange-100 text-orange-800 ring-orange-200" };
+  if (level === "sub leader" || level === "sub_leader") return { key: "sub_leader", label: "SUB LEADER", order: 5, className: "bg-indigo-100 text-indigo-800 ring-indigo-200" };
+  if (level === "leader") return { key: "leader", label: "LEADER", order: 4, className: "bg-violet-100 text-violet-800 ring-violet-200" };
+  if (level === "coordinator" || level === "koordinator") return { key: "coordinator", label: "COORDINATOR", order: 3, className: "bg-fuchsia-100 text-fuchsia-800 ring-fuchsia-200" };
+  if (level === "supervisor") return { key: "spv", label: "SUPERVISORY", order: 2, className: "bg-emerald-100 text-emerald-800 ring-emerald-200" };
+  if (level === "manager") return { key: "manager", label: "MANAGER", order: 1, className: "bg-sky-100 text-sky-800 ring-sky-200" };
+  if (level === "bod/executive" || level === "bod" || level === "executive") return { key: "bod", label: "BOD / EXECUTIVE", order: 0, className: "bg-slate-900 text-white ring-slate-700" };
+
+  // --- 2. Fallback Regex Matches (If level is generic or missing) ---
+  if (level.includes("bod") || level.includes("executive") || /director|general manager|gm|board secretary/i.test(position)) {
+    return { key: "bod", label: "BOD / EXECUTIVE", order: 0, className: "bg-slate-900 text-white ring-slate-700" };
   }
-  if (/(supervisor|spv|supervisi)/i.test(position)) {
-    return { key: "spv", label: "SPV / SUPERVISOR", order: 1, className: "bg-emerald-100 text-emerald-800 ring-emerald-200" };
+  if (level.includes("manager") || /(^|\b)(manager|mgr|kepala departemen|department head)(\b|$)/i.test(position)) {
+    return { key: "manager", label: "MANAGER", order: 1, className: "bg-sky-100 text-sky-800 ring-sky-200" };
   }
-  if (/(leader|lead|coordinator|koordinator|head|foreman|chief)/i.test(position)) {
-    return { key: "leader", label: "LEADER / KOORDINATOR", order: 2, className: "bg-violet-100 text-violet-800 ring-violet-200" };
+  if (level.includes("supervisor") || /(supervisor|spv|supervisi)/i.test(position)) {
+    return { key: "spv", label: "SUPERVISORY", order: 2, className: "bg-emerald-100 text-emerald-800 ring-emerald-200" };
   }
-  return { key: "staff", label: "STAFF", order: 3, className: "bg-slate-100 text-slate-700 ring-slate-200" };
+  if (level.includes("coordinator") || level.includes("koordinator") || /(coordinator|koordinator)/i.test(position)) {
+    return { key: "coordinator", label: "COORDINATOR", order: 3, className: "bg-fuchsia-100 text-fuchsia-800 ring-fuchsia-200" };
+  }
+  if (level.includes("sub leader") || level.includes("sub_leader") || /(sub leader|sublead)/i.test(position)) {
+    return { key: "sub_leader", label: "SUB LEADER", order: 5, className: "bg-indigo-100 text-indigo-800 ring-indigo-200" };
+  }
+  if (level.includes("leader") || /(leader|lead|head|foreman|chief)/i.test(position)) {
+    return { key: "leader", label: "LEADER", order: 4, className: "bg-violet-100 text-violet-800 ring-violet-200" };
+  }
+  if (level.includes("non staff") || level.includes("non_staff") || level.includes("nonstaff") || /non.?staff|operator|helper|security|driver|office boy|ob\b/i.test(position)) {
+    return { key: "nonstaff", label: "NON STAFF", order: 7, className: "bg-orange-100 text-orange-800 ring-orange-200" };
+  }
+
+  // --- Staff (default) ---
+  return { key: "staff", label: "STAFF", order: 6, className: "bg-slate-100 text-slate-700 ring-slate-200" };
 }
 
-function getEmployeeRoleGroup(employee: OrgEmployee) {
-  return getRoleGroupFromPositionName(employee.positionName);
+// Kept for backward compat (used by selectedRoleGroup display)
+function getRoleGroupFromPositionName(positionName?: string | null, levelName?: string | null) {
+  return getEmployeeRoleGroup({ positionName, levelName } as OrgEmployee);
 }
 
 function groupEmployeesByRole(employees: OrgEmployee[]) {
   const groups = new Map<string, { label: string; order: number; className: string; employees: OrgEmployee[] }>();
 
-  for (const employee of employees) {
+  // Deduplicate by employee id first to prevent React key collisions
+  const seen = new Set<number>();
+  const uniqueEmployees = employees.filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
+
+
+  for (const employee of uniqueEmployees) {
     const role = getEmployeeRoleGroup(employee);
     const group = groups.get(role.key) ?? { label: role.label, order: role.order, className: role.className, employees: [] };
     group.employees.push(employee);
@@ -696,6 +755,89 @@ function flattenTreeNodes(nodes: OrgTreeNode[]): OrgTreeNode[] {
   return nodes.flatMap((node) => [node, ...flattenTreeNodes(node.children)]);
 }
 
+function getHeadPositionForNode(node: OrgTreeNode, positions: ReferenceData["positions"]) {
+  const nodeType = normalizeOrgLabel(node.nodeType);
+  const nodeName = normalizeOrgLabel(node.name);
+  const patterns = nodeType.includes("section")
+    ? ["section head", "head section", "supervisor", "spv", "coordinator", "koordinator", "leader", "foreman", "chief"]
+    : nodeType.includes("department") || nodeName.includes("department")
+      ? ["department head", "head department", "manager", "mgr", "kepala departemen"]
+      : ["head", "manager", "supervisor", "coordinator", "leader"];
+
+  const scored = positions
+    .map((position) => {
+      const searchable = normalizeOrgLabel(`${position.levelName} ${position.rankName}`);
+      const matchIndex = patterns.findIndex((pattern) => searchable.includes(pattern));
+      return { position, matchIndex };
+    })
+    .filter((item) => item.matchIndex >= 0)
+    .sort((a, b) => a.matchIndex - b.matchIndex || a.position.rankName.localeCompare(b.position.rankName, "id-ID"));
+
+  return scored[0]?.position ?? null;
+}
+
+function getNodeDropTargetId(prefix: "node" | "node-head" | "node-members", node: OrgTreeNode) {
+  return `${prefix}-${node.id}`;
+}
+
+function toVirtualNodePayload(node: OrgTreeNode) {
+  return {
+    id: node.id,
+    name: node.name,
+    nodeType: node.nodeType,
+    parentNodeId: node.parentNodeId,
+    departmentId: node.departmentId ?? null,
+    sectionId: node.sectionId ?? null,
+    siteId: node.siteId ?? null,
+    workLocationId: node.virtualWorkLocationId ?? node.workLocationId ?? null,
+    employeeIds: extractEmployeesDeep(node).map((employee) => employee.id),
+  };
+}
+
+// Prominent card for the top-ranked person in a node (section lead / coordinator / manager)
+function OrgLeadPreview({ employee, onEditEmployee }: { employee: OrgEmployee; onEditEmployee: (employee: OrgEmployee) => void }) {
+  const role = getEmployeeRoleGroup(employee);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: "employee-" + employee.id,
+    data: { type: "employee", employee },
+    disabled: employee.isVirtual,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={"w-full min-w-0 overflow-hidden rounded-xl border-2 p-3 text-left shadow-md transition " +
+        role.className.replace("ring-1", "") + " border-current/20 " +
+        (isDragging ? "scale-95 opacity-40 ring-2 ring-blue-400" : "")}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <button
+          {...listeners} {...attributes}
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/60 text-current hover:bg-white/80 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60"
+          title={employee.isVirtual ? "Data visual" : "Drag orang"}
+          disabled={employee.isVirtual}
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className={"shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ring-1 " + role.className}>
+              {role.label}
+            </span>
+          </div>
+          <p className="mt-0.5 truncate text-sm font-bold">{employee.fullName}</p>
+          <p className="truncate text-[10px] opacity-75">{employee.employeeId} • {employee.positionName ?? employee.levelName ?? "-"}</p>
+        </div>
+        {!employee.isVirtual && (
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 hover:bg-white/60" onClick={() => onEditEmployee(employee)} title="Edit profil">
+            <Edit className="size-3.5" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OrgEmployeePreview({ employee, onEditEmployee }: { employee: OrgEmployee; onEditEmployee: (employee: OrgEmployee) => void }) {
   const role = getEmployeeRoleGroup(employee);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -712,7 +854,7 @@ function OrgEmployeePreview({ employee, onEditEmployee }: { employee: OrgEmploye
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold text-slate-900">{employee.fullName}</p>
-          <p className="truncate text-[10px] text-slate-500">{employee.employeeId} • {employee.positionName ?? "-"}</p>
+          <p className="truncate text-[10px] text-slate-500">{employee.employeeId} • {employee.positionName ?? employee.levelName ?? "-"}</p>
           <p className="truncate text-[10px] text-slate-400">Lokasi: {[employee.siteName, employee.workLocationName].filter(Boolean).join(" • ") || "-"}</p>
           <span className={"mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ring-1 " + role.className}>{role.label}</span>
         </div>
@@ -726,17 +868,44 @@ function OrgEmployeePreview({ employee, onEditEmployee }: { employee: OrgEmploye
   );
 }
 
+function NodeHeadDropZone({ node }: { node: OrgTreeNode }) {
+  const canDrop = !node.isVirtual || Boolean(node.virtualParentNodeId);
+  const { setNodeRef, isOver } = useDroppable({
+    id: getNodeDropTargetId("node-head", node),
+    data: { type: "node-head", node },
+    disabled: !canDrop,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-no-pan="true"
+      className={
+        "mt-3 flex min-h-10 items-center justify-center gap-2 rounded-xl border border-dashed px-3 py-2 text-[10px] font-semibold uppercase tracking-wide transition " +
+        (isOver
+          ? "border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200"
+          : "border-slate-200 bg-white/55 text-slate-400")
+      }
+    >
+      <Crown className="size-3.5" />
+      Drop orang jadi Head
+    </div>
+  );
+}
+
 function InteractiveTreeNode({
   node,
   onEdit,
   onDelete,
   onAddChild,
+  onAddEmployee,
   onEditEmployee,
 }: {
   node: OrgTreeNode;
   onEdit: (node: OrgTreeNode) => void;
   onDelete: (node: OrgTreeNode) => void;
   onAddChild: (parentId: number) => void;
+  onAddEmployee: (node: OrgTreeNode) => void;
   onEditEmployee: (employee: OrgEmployee, node: OrgTreeNode) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -751,7 +920,7 @@ function InteractiveTreeNode({
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: "node-" + node.id,
+    id: getNodeDropTargetId("node", node),
     data: { type: "org-node", node },
   });
 
@@ -769,24 +938,25 @@ function InteractiveTreeNode({
           (isOver && !isDragging ? " scale-[1.02] ring-2 ring-emerald-500" : "")
         }
       >
-        {!node.isVirtual && (
-          <div className="absolute left-2 top-2">
-            <button
-              {...listeners}
-              {...attributes}
-              className="rounded-md p-1 text-current/45 transition hover:bg-white/40 hover:text-current active:cursor-grabbing"
-              title="Drag untuk memindahkan node ini"
-              type="button"
-            >
-              <GripVertical className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className="absolute left-2 top-2">
+          <button
+            {...listeners}
+            {...attributes}
+            className="rounded-md p-1 text-current/45 transition hover:bg-white/40 hover:text-current active:cursor-grabbing"
+            title={node.isVirtual ? "Drag untuk jadikan node real dan pindahkan" : "Drag untuk memindahkan node ini"}
+            type="button"
+          >
+            <GripVertical className="size-4" />
+          </button>
+        </div>
 
         {!node.isVirtual && (
           <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
             <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-emerald-700" onClick={() => onAddChild(node.id)} title="Tambah Child Node">
               <Plus className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-sky-700" onClick={() => onAddEmployee(node)} title="Tambah Orang di Node Ini">
+              <UserPlus className="size-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="h-6 w-6 bg-white/70 text-slate-600 hover:bg-white hover:text-blue-700" onClick={() => onEdit(node)} title="Edit Node">
               <Edit className="size-3.5" />
@@ -824,21 +994,58 @@ function InteractiveTreeNode({
           </span>
         </div>
 
-        {node.employees.length > 0 && isExpanded && (
-          <div className="mt-3 grid gap-2 text-left">
-            {employeeGroups.map((group) => (
-              <div key={group.label} className="grid gap-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 " + group.className}>{group.label}</span>
-                  <span className="text-[9px] font-semibold text-slate-400">{group.employees.length} orang</span>
+        <NodeHeadDropZone node={node} />
+
+        {node.employees.length > 0 && isExpanded && (() => {
+          // Pisahkan lead (order <= 3 = coordinator ke atas) dari anggota biasa
+          const allGroups = groupEmployeesByRole(node.employees);
+          const leadGroups = allGroups.filter((g) => g.order <= 3);   // BOD, Manager, SPV, Coordinator
+          const memberGroups = allGroups.filter((g) => g.order > 3);  // Staff, Non Staff
+          const hasLead = leadGroups.some((g) => g.employees.length > 0);
+          const hasMembers = memberGroups.some((g) => g.employees.length > 0);
+
+          return (
+            <div className="mt-3 grid gap-2 text-left">
+              {/* Lead / Pimpinan Section - tampil prominent */}
+              {hasLead && leadGroups.map((group) =>
+                group.employees.map((employee) => (
+                  <OrgLeadPreview
+                    key={`lead-${employee.id}`}
+                    employee={employee}
+                    onEditEmployee={(emp) => onEditEmployee(emp, node)}
+                  />
+                ))
+              )}
+
+              {/* Divider: lead → anggota */}
+              {hasLead && hasMembers && (
+                <div className="flex items-center gap-2 py-0.5">
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">Anggota</span>
+                  <div className="h-px flex-1 bg-slate-200" />
                 </div>
-                {group.employees.map((employee) => (
-                  <OrgEmployeePreview key={employee.id} employee={employee} onEditEmployee={(selectedEmployee) => onEditEmployee(selectedEmployee, node)} />
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
+              )}
+
+              {/* Anggota biasa */}
+              {hasMembers && memberGroups.map((group) => (
+                <div key={group.label} className="grid gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 " + group.className}>{group.label}</span>
+                    <span className="text-[9px] font-semibold text-slate-400">{group.employees.length} orang</span>
+                  </div>
+                  {group.employees.map((employee) => (
+                    <OrgEmployeePreview key={`${group.label}-${employee.id}`} employee={employee} onEditEmployee={(selectedEmployee) => onEditEmployee(selectedEmployee, node)} />
+                  ))}
+                </div>
+              ))}
+
+              {/* Jika semua orang adalah lead (tidak ada staff di bawah) */}
+              {!hasMembers && hasLead && leadGroups.flatMap((g) => g.employees).length === 0 && (
+                <p className="text-center text-[10px] text-slate-400">Belum ada anggota di bawah pimpinan ini</p>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {isExpanded && node.children.length > 0 && (
@@ -849,7 +1056,7 @@ function InteractiveTreeNode({
             {node.children.map((child, childIdx) => (
               <div key={`${child.id}-${childIdx}`} className="relative flex flex-col items-center">
                 <div className={"absolute -top-8 h-8 w-px " + tone.connector} />
-                <InteractiveTreeNode node={child} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} onEditEmployee={onEditEmployee} />
+                <InteractiveTreeNode node={child} onEdit={onEdit} onDelete={onDelete} onAddChild={onAddChild} onAddEmployee={onAddEmployee} onEditEmployee={onEditEmployee} />
               </div>
             ))}
           </div>
@@ -884,6 +1091,8 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   const [editingEmployee, setEditingEmployee] = useState<{ employee: OrgEmployee; currentNode: OrgTreeNode } | null>(null);
+  const [addingEmployeeNode, setAddingEmployeeNode] = useState<OrgTreeNode | null>(null);
+  const [employeeDialogMode, setEmployeeDialogMode] = useState<"create" | "edit">("edit");
   const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
   const [employeeFormData, setEmployeeFormData] = useState({
     employeeId: "",
@@ -893,7 +1102,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     sectionId: "",
     siteId: "",
     workLocationId: "",
-    positionId: "",
+    selectedLevel: "", // Stores masterLevelStaff.name (e.g. "Staff", "Manager")
     orgNodeId: "",
   });
 
@@ -905,7 +1114,44 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     departmentId: "" as string | null,
     sectionId: "" as string | null,
     siteId: "" as string | null,
+    workLocationId: "" as string | null,
   });
+
+  const [leaderSearchQuery, setLeaderSearchQuery] = useState("");
+  const [selectedLeaderId, setSelectedLeaderId] = useState<number | null>(null);
+
+  const allEmployees = useMemo(() => {
+    const map = new Map<number, OrgEmployee>();
+    for (const node of nodes) {
+      for (const emp of node.employees) {
+        if (!emp.isVirtual) {
+          map.set(emp.id, emp);
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.fullName.localeCompare(b.fullName, "id-ID"));
+  }, [nodes]);
+
+  const selectedLeaderEmployee = useMemo(() => {
+    if (!selectedLeaderId) return null;
+    return allEmployees.find((emp) => emp.id === selectedLeaderId) ?? null;
+  }, [allEmployees, selectedLeaderId]);
+
+  const filteredSearchEmployees = useMemo(() => {
+    const q = leaderSearchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allEmployees
+      .filter((emp) =>
+        emp.fullName.toLowerCase().includes(q) ||
+        emp.employeeId.toLowerCase().includes(q)
+      )
+      .slice(0, 5);
+  }, [allEmployees, leaderSearchQuery]);
+
+  const handleSelectLeader = (emp: OrgEmployee) => {
+    setSelectedLeaderId(emp.id);
+    setLeaderSearchQuery(emp.fullName);
+  };
 
   // Derived data
   const tree = useMemo(() => buildTree(nodes), [nodes]);
@@ -919,27 +1165,60 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   const activeTree = chartTab === "site" ? siteTree : organizationFilteredTree;
   const selectableNodes = useMemo(() => flattenTreeNodes(tree).filter((node) => !node.isVirtual), [tree]);
   const activeAllTreeNodes = useMemo(() => flattenTreeNodes(activeTree), [activeTree]);
+  const allTreeNodes = useMemo(() => flattenTreeNodes(tree), [tree]);
   const selectedEmployeeTargetNode = useMemo(
-    () => activeAllTreeNodes.find((node) => node.id.toString() === employeeFormData.orgNodeId) ?? editingEmployee?.currentNode ?? null,
-    [activeAllTreeNodes, employeeFormData.orgNodeId, editingEmployee],
+    () =>
+      allTreeNodes.find((node) => node.id.toString() === employeeFormData.orgNodeId) ??
+      activeAllTreeNodes.find((node) => node.id.toString() === employeeFormData.orgNodeId) ??
+      editingEmployee?.currentNode ??
+      null,
+    [allTreeNodes, activeAllTreeNodes, employeeFormData.orgNodeId, editingEmployee],
   );
-  const selectedPosition = useMemo(
-    () => referenceData.positions.find((position) => position.id.toString() === employeeFormData.positionId) ?? null,
-    [referenceData.positions, employeeFormData.positionId],
+  // Derive positionId for current selectedLevel (pick first matching hrPositions for that level)
+  const resolvedPositionForLevel = useMemo(() => {
+    if (!employeeFormData.selectedLevel) return null;
+    const key = employeeFormData.selectedLevel.trim().toLowerCase();
+    return referenceData.positions.find((p) => p.levelName.trim().toLowerCase() === key) ?? null;
+  }, [referenceData.positions, employeeFormData.selectedLevel]);
+
+  const selectedRoleGroup = getRoleGroupFromPositionName(
+    resolvedPositionForLevel?.rankName ?? editingEmployee?.employee.positionName,
+    employeeFormData.selectedLevel || editingEmployee?.employee.levelName
   );
-  const selectedRoleGroup = getRoleGroupFromPositionName(selectedPosition?.rankName ?? editingEmployee?.employee.positionName);
   const directSupervisor = useMemo(() => {
-    if (!editingEmployee || !selectedEmployeeTargetNode) return null;
-    let node: OrgTreeNode | undefined = selectedEmployeeTargetNode;
+    if (!selectedEmployeeTargetNode) return null;
+    
+    // Always use the LOGICAL un-split node from allTreeNodes to find the supervisor
+    let node: OrgTreeNode | undefined = 
+      allTreeNodes.find((n) => n.id === selectedEmployeeTargetNode.id) ?? selectedEmployeeTargetNode;
+      
+    const currentOrder = selectedRoleGroup.order;
+
     while (node) {
-      const leader = groupEmployeesByRole(node.employees)
+      // Reconstruct logical node employees: include employees kept in this node AND employees pushed down into location nodes
+      const locationEmployees = node.children
+        ?.filter(c => c.nodeType === "work_location_virtual")
+        .flatMap(c => c.employees) ?? [];
+        
+      const allLogicalEmployees = [...node.employees, ...locationEmployees];
+
+      const candidates = groupEmployeesByRole(allLogicalEmployees)
         .flatMap((group) => group.employees)
-        .find((employee) => employee.id !== editingEmployee.employee.id && getEmployeeRoleGroup(employee).order < 3);
-      if (leader) return leader;
-      node = activeAllTreeNodes.find((candidate) => candidate.id === node?.parentNodeId);
+        .filter((employee) => employee.id !== editingEmployee?.employee.id)
+        .map((employee) => ({ employee, role: getEmployeeRoleGroup(employee) }))
+        .filter(({ role }) => role.order < currentOrder);
+
+      if (candidates.length > 0) {
+        // Pick the supervisor with the HIGHEST order (closest rank to the current employee)
+        candidates.sort((a, b) => b.role.order - a.role.order);
+        return candidates[0].employee;
+      }
+      
+      // Traverse UP using the logical tree (allTreeNodes), so location splits don't hide supervisors!
+      node = allTreeNodes.find((candidate) => candidate.id === node?.parentNodeId);
     }
     return null;
-  }, [editingEmployee, selectedEmployeeTargetNode, activeAllTreeNodes]);
+  }, [editingEmployee, selectedEmployeeTargetNode, allTreeNodes, selectedRoleGroup.order]);
 
   const filteredTree = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -968,13 +1247,13 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
 
     if (activeId.startsWith("employee-")) {
       const employeeId = parseInt(activeId.replace("employee-", ""));
-      const employee = nodes.flatMap((node) => node.employees).find((item) => item.id === employeeId) ?? null;
+      const employee = allTreeNodes.flatMap((node) => node.employees).find((item) => item.id === employeeId) ?? null;
       setActiveDragEmployee(employee);
       return;
     }
 
     const nodeId = parseInt(activeId.replace('node-', ''));
-    const node = nodes.find(n => n.id === nodeId);
+    const node = allTreeNodes.find(n => n.id === nodeId);
     if (node) {
       setActiveDragNode({ ...node, children: [] } as OrgTreeNode);
     }
@@ -991,19 +1270,35 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     const activeId = active.id.toString();
     const overId = over.id.toString();
 
-    if (activeId.startsWith("employee-") && overId.startsWith("node-")) {
+    if (activeId.startsWith("employee-") && (overId.startsWith("node-head-") || overId.startsWith("node-"))) {
       const employeeId = parseInt(activeId.replace("employee-", ""));
-      const targetNodeId = parseInt(overId.replace("node-", ""));
+      const isHeadDrop = overId.startsWith("node-head-");
+      const targetNodeId = parseInt(overId.replace(isHeadDrop ? "node-head-" : "node-", ""));
       const targetNode = activeAllTreeNodes.find((node) => node.id === targetNodeId);
+      if (!targetNode) return;
+
+      const isTargetVirtual = targetNode.isVirtual || (targetNode.id < 0);
+
       startTransition(async () => {
-        const result = targetNode?.isVirtual
+        const headPosition = isHeadDrop ? getHeadPositionForNode(targetNode, referenceData.positions) : null;
+        const realTargetNodeId = isTargetVirtual 
+          ? (targetNode.virtualParentNodeId ?? (targetNode.parentNodeId && targetNode.parentNodeId > 0 ? targetNode.parentNodeId : null)) 
+          : targetNode.id;
+        
+        const result = isTargetVirtual
           ? await updateOrgChartEmployeeProfile(employeeId, {
-              orgNodeId: targetNode.virtualParentNodeId ?? null,
-              workLocationId: targetNode.virtualWorkLocationId ?? null,
+              orgNodeId: realTargetNodeId ?? null,
+              departmentId: targetNode.departmentId ?? null,
+              sectionId: targetNode.sectionId ?? null,
+              siteId: targetNode.siteId ?? null,
+              workLocationId: targetNode.virtualWorkLocationId ?? targetNode.workLocationId ?? null,
+              ...(headPosition ? { positionId: headPosition.id } : {}),
             })
-          : await updateOrgChartEmployeeAssignment(employeeId, targetNodeId);
+          : isHeadDrop
+            ? await updateOrgChartEmployeeNodeHead(employeeId, targetNode.id, headPosition?.id ?? null)
+            : await updateOrgChartEmployeeAssignment(employeeId, targetNode.id);
         if (result?.success) {
-          toast.success("Orang berhasil dipindahkan");
+          toast.success(isHeadDrop ? "Orang berhasil dijadikan head section" : "Orang berhasil dipindahkan");
           router.refresh();
         } else {
           toast.error(result?.message || "Gagal memindahkan orang");
@@ -1012,15 +1307,44 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       return;
     }
 
-    const nodeId = parseInt(activeId.replace('node-', ''));
-    let newParentId: number | null = null;
+    if (!activeId.startsWith("node-")) return;
 
-    if (over.id !== 'root-dropzone') {
-      newParentId = parseInt(overId.replace('node-', ''));
+    let normalizedOverId = overId;
+    if (overId.startsWith("node-head-")) {
+      normalizedOverId = overId.replace("node-head-", "node-");
+    }
+
+    if (normalizedOverId !== "root-dropzone" && !normalizedOverId.startsWith("node-")) return;
+
+    const nodeId = parseInt(activeId.replace('node-', ''));
+    const draggedNode = allTreeNodes.find((node) => node.id === nodeId);
+    let newParentId: number | null = null;
+    let targetNode: OrgTreeNode | null = null;
+
+    if (normalizedOverId !== 'root-dropzone') {
+      const targetNodeId = parseInt(normalizedOverId.replace('node-', ''));
+      targetNode = allTreeNodes.find((node) => node.id === targetNodeId) ?? null;
+      const isTargetVirtual = targetNode?.isVirtual || (targetNode && targetNode.id < 0);
+      newParentId = isTargetVirtual ? (targetNode?.virtualParentNodeId ?? targetNode?.parentNodeId ?? null) : targetNodeId;
     }
 
     startTransition(async () => {
-      const result = await updateOrgNodeParent(nodeId, newParentId);
+      const isSourceVirtual = draggedNode?.isVirtual || (draggedNode && draggedNode.id < 0);
+      const isTargetVirtual = targetNode?.isVirtual || (targetNode && targetNode.id < 0);
+
+      const result = isSourceVirtual
+        ? await materializeAndMoveOrgVirtualNode({
+            source: toVirtualNodePayload(draggedNode!),
+            target: isTargetVirtual && targetNode ? toVirtualNodePayload(targetNode) : null,
+            fallbackParentNodeId: newParentId,
+          })
+        : isTargetVirtual && targetNode
+          ? await materializeTargetAndMoveOrgNode({
+              nodeId,
+              target: toVirtualNodePayload(targetNode),
+              fallbackParentNodeId: newParentId,
+            })
+          : await updateOrgNodeParent(nodeId, newParentId);
       if (result?.success) {
         toast.success("Node berhasil dipindahkan");
         router.refresh();
@@ -1039,19 +1363,28 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       departmentId: node.departmentId?.toString() || null,
       sectionId: node.sectionId?.toString() || null,
       siteId: node.siteId?.toString() || null,
+      workLocationId: node.workLocationId?.toString() || null,
     });
+    
+    // Find current node leader
+    const currentLead = node.employees.find((emp) => getEmployeeRoleGroup(emp).order <= 3);
+    setSelectedLeaderId(currentLead?.id ?? null);
+    setLeaderSearchQuery("");
+    
     setIsEditDialogOpen(true);
   };
 
   const handleCreateClick = (parentId: number | null = null) => {
+    const parentNode = parentId ? allTreeNodes.find((node) => node.id === parentId) ?? null : null;
     setCreatingParentId(parentId);
     setFormData({
       code: `NODE-${Math.floor(Math.random() * 10000)}`,
       name: "",
-      nodeType: "position",
-      departmentId: null,
+      nodeType: parentNode ? "section" : "department",
+      departmentId: parentNode?.departmentId?.toString() ?? null,
       sectionId: null,
-      siteId: null,
+      siteId: parentNode?.siteId?.toString() ?? null,
+      workLocationId: parentNode?.workLocationId?.toString() ?? null,
     });
     setIsCreateDialogOpen(true);
   };
@@ -1063,7 +1396,17 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
 
   const handleEmployeeEditClick = (employee: OrgEmployee, currentNode: OrgTreeNode) => {
     const dbNodeId = currentNode.isVirtual ? currentNode.virtualParentNodeId : currentNode.id;
+    setEmployeeDialogMode("edit");
+    setAddingEmployeeNode(null);
     setEditingEmployee({ employee, currentNode });
+    // Derive selectedLevel from employee's positionId → levelName, or directly from levelName
+    const currentLevelName = employee.positionId
+      ? referenceData.positions.find((p) => p.id === employee.positionId)?.levelName ?? employee.levelName ?? ""
+      : employee.levelName ?? "";
+    // Match against masterLevelStaff
+    const matchedLevel = referenceData.levelStaffs.find(
+      (l) => l.name.trim().toLowerCase() === currentLevelName.trim().toLowerCase()
+    )?.name ?? currentLevelName;
     setEmployeeFormData({
       employeeId: employee.employeeId,
       fullName: employee.fullName,
@@ -1072,7 +1415,26 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
       sectionId: employee.sectionId?.toString() ?? "",
       siteId: employee.siteId?.toString() ?? "",
       workLocationId: (employee.workLocationId ?? currentNode.virtualWorkLocationId)?.toString() ?? "",
-      positionId: employee.positionId?.toString() ?? "",
+      selectedLevel: matchedLevel,
+      orgNodeId: dbNodeId?.toString() ?? "",
+    });
+    setIsEmployeeDialogOpen(true);
+  };
+
+  const handleEmployeeAddClick = (node: OrgTreeNode) => {
+    const dbNodeId = node.isVirtual ? node.virtualParentNodeId : node.id;
+    setEmployeeDialogMode("create");
+    setEditingEmployee(null);
+    setAddingEmployeeNode(node);
+    setEmployeeFormData({
+      employeeId: "",
+      fullName: "",
+      email: "",
+      departmentId: node.departmentId?.toString() ?? "",
+      sectionId: node.sectionId?.toString() ?? "",
+      siteId: node.siteId?.toString() ?? "",
+      workLocationId: (node.virtualWorkLocationId ?? node.workLocationId)?.toString() ?? "",
+      selectedLevel: "",
       orgNodeId: dbNodeId?.toString() ?? "",
     });
     setIsEmployeeDialogOpen(true);
@@ -1089,15 +1451,40 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
         departmentId: formData.departmentId ? parseInt(formData.departmentId) : null,
         sectionId: formData.sectionId ? parseInt(formData.sectionId) : null,
         siteId: formData.siteId ? parseInt(formData.siteId) : null,
+        leaderEmployeeId: selectedLeaderId,
       };
 
-      const result = await updateOrgNode(editingNode.id, payload);
-      if (result?.success) {
-        toast.success(result.message || "Node berhasil disimpan");
-        setIsEditDialogOpen(false);
-        router.refresh();
+      if (editingNode.id < 0) {
+        const materializePayload = {
+          name: payload.name,
+          nodeType: payload.nodeType,
+          departmentId: payload.departmentId,
+          sectionId: payload.sectionId,
+          siteId: payload.siteId,
+          parentNodeId: editingNode.parentNodeId,
+          workLocationId: editingNode.virtualWorkLocationId ?? editingNode.workLocationId ?? null,
+          employeeIds: extractEmployeesDeep(editingNode).map((e) => e.id),
+        };
+        const result = await materializeOrgVirtualNode(materializePayload);
+        if (result?.success) {
+          if (result.nodeId && selectedLeaderId) {
+            await updateOrgNode(result.nodeId, { leaderEmployeeId: selectedLeaderId });
+          }
+          toast.success(result.message || "Node virtual berhasil diedit dan disimpan");
+          setIsEditDialogOpen(false);
+          router.refresh();
+        } else {
+          toast.error(result?.message || "Gagal menyimpan node virtual");
+        }
       } else {
-        toast.error(result?.message || "Gagal menyimpan node");
+        const result = await updateOrgNode(editingNode.id, payload);
+        if (result?.success) {
+          toast.success(result.message || "Node berhasil disimpan");
+          setIsEditDialogOpen(false);
+          router.refresh();
+        } else {
+          toast.error(result?.message || "Gagal menyimpan node");
+        }
       }
     });
   };
@@ -1109,11 +1496,32 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     }
 
     startTransition(async () => {
+      let finalParentId = creatingParentId;
+      
+      // Jika parent adalah virtual node, materialize dulu
+      if (creatingParentId && creatingParentId < 0) {
+        const parentNode = allTreeNodes.find((node) => node.id === creatingParentId);
+        if (parentNode) {
+          const materializeResult = await materializeOrgVirtualNode({
+            ...toVirtualNodePayload(parentNode),
+            name: parentNode.name,
+            nodeType: parentNode.nodeType,
+            employeeIds: parentNode.employees.map((e) => e.id),
+          });
+          
+          if (!materializeResult.success || !materializeResult.nodeId) {
+            toast.error(materializeResult.message || "Gagal memproses parent node virtual");
+            return;
+          }
+          finalParentId = materializeResult.nodeId;
+        }
+      }
+
       const payload = {
         code: formData.code,
         name: formData.name,
         nodeType: formData.nodeType,
-        parentNodeId: creatingParentId,
+        parentNodeId: finalParentId,
         departmentId: formData.departmentId ? parseInt(formData.departmentId) : null,
         sectionId: formData.sectionId ? parseInt(formData.sectionId) : null,
         siteId: formData.siteId ? parseInt(formData.siteId) : null,
@@ -1135,9 +1543,10 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
 
     startTransition(async () => {
       const result = await deleteOrgNode(deletingNode.id);
+      setIsDeleteDialogOpen(false);
+      
       if (result?.success) {
         toast.success(result.message || "Node berhasil dihapus");
-        setIsDeleteDialogOpen(false);
         router.refresh();
       } else {
         toast.error(result?.message || "Gagal menghapus node");
@@ -1146,10 +1555,17 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
   };
 
   const onSaveEmployeeProfile = async () => {
-    if (!editingEmployee || !employeeFormData.employeeId || !employeeFormData.fullName) return;
+    if (!employeeFormData.employeeId || !employeeFormData.fullName) return;
 
     startTransition(async () => {
-      const result = await updateOrgChartEmployeeProfile(editingEmployee.employee.id, {
+      // Resolve selectedLevel (masterLevelStaff.name) → positionId (first matching hrPositions)
+      const resolvedPositionId = employeeFormData.selectedLevel
+        ? (referenceData.positions.find(
+            (p) => p.levelName.trim().toLowerCase() === employeeFormData.selectedLevel.trim().toLowerCase()
+          )?.id ?? null)
+        : null;
+
+      const payload = {
         employeeId: employeeFormData.employeeId,
         fullName: employeeFormData.fullName,
         email: employeeFormData.email || null,
@@ -1157,9 +1573,15 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
         sectionId: employeeFormData.sectionId ? parseInt(employeeFormData.sectionId) : null,
         siteId: employeeFormData.siteId ? parseInt(employeeFormData.siteId) : null,
         workLocationId: employeeFormData.workLocationId ? parseInt(employeeFormData.workLocationId) : null,
-        positionId: employeeFormData.positionId ? parseInt(employeeFormData.positionId) : null,
+        positionId: resolvedPositionId,
         orgNodeId: employeeFormData.orgNodeId ? parseInt(employeeFormData.orgNodeId) : null,
-      });
+        levelName: employeeFormData.selectedLevel || null, // Always sync levelName to employees table
+      };
+      const result = employeeDialogMode === "create"
+        ? await createOrgChartEmployee(payload)
+        : editingEmployee
+          ? await updateOrgChartEmployeeProfile(editingEmployee.employee.id, payload)
+          : { success: false, message: "Karyawan tidak ditemukan." };
       if (result?.success) {
         toast.success(result.message || "Profil karyawan berhasil disimpan");
         setIsEmployeeDialogOpen(false);
@@ -1254,7 +1676,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                     </SelectContent>
                   </Select>
                   <Select value={sectionFilterId} onValueChange={setSectionFilterId}>
-                    <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter section" /></SelectTrigger>
+                    <SelectTrigger className="h-9 w-[180px] bg-white"><SelectValue placeholder="Filter section" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Semua Section</SelectItem>
                       {sectionFilterOptions.map((section) => (
@@ -1266,107 +1688,106 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
               )}
               {chartTab === "site" && (
                 <Select value={siteGroupKey} onValueChange={setSiteGroupKey}>
-                  <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter lokasi kerja" /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-[200px] bg-white"><SelectValue placeholder="Filter lokasi site" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Semua Lokasi Kerja</SelectItem>
-                    {siteGroupOptions.map((location) => (
-                      <SelectItem key={location.key} value={location.key}>{location.label}</SelectItem>
+                    <SelectItem value="all">Semua Lokasi</SelectItem>
+                    {siteGroupOptions.map((opt) => (
+                      <SelectItem key={opt.key} value={opt.key}>{opt.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
-              <div className="relative w-full md:w-64">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari node..." className="pl-9 h-9" />
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Cari node..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="h-9 w-[160px] bg-white pl-8 text-xs"
+                />
               </div>
-              {chartTab === "organization" && (
-                <Button onClick={() => handleCreateClick(null)} size="sm" className="gap-1.5 shrink-0 shadow-sm">
-                  <Plus className="size-4" /> Root Node
-                </Button>
-              )}
+              <Button variant="outline" size="sm" onClick={() => handleCreateClick(null)} className="h-9 gap-1.5">
+                <Plus className="size-3.5" />
+                Root Node
+              </Button>
             </div>
           </CardHeader>
-
           <CardContent className="p-0">
             <div
               ref={canvasRef}
-              className={"relative max-h-[72vh] min-h-[560px] overflow-auto bg-[#f8fafc] select-none " + (isCanvasPanning ? "cursor-grabbing" : "cursor-grab")}
+              className={"relative min-h-[600px] overflow-auto bg-slate-50/50 " + (isCanvasPanning ? "cursor-grabbing" : "cursor-grab")}
               onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={stopCanvasPan}
-              onPointerCancel={stopCanvasPan}
               onPointerLeave={stopCanvasPan}
             >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.08)_1px,transparent_0)] [background-size:24px_24px]" />
-              <div className="relative min-w-max p-8 pl-24 pr-24">
-                {isPending && (
-                  <div className="sticky left-0 top-0 z-20 h-1 overflow-hidden bg-primary/20">
-                    <div className="h-full w-1/3 animate-pulse bg-primary" />
+              {isPending && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+                  <div className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 shadow-md text-sm font-medium text-slate-700">
+                    <div className="size-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                    Memproses...
                   </div>
-                )}
+                </div>
+              )}
 
+              <div className="p-6">
+                {/* Legend strip */}
                 <div data-no-pan="true" className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm backdrop-blur">
-                  <span className="font-semibold text-slate-900">Legend:</span>
+                  <span className="font-semibold text-slate-900">Level Karyawan:</span>
                   <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">BOD / EXECUTIVE</span>
-                  <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">MANAGERIAL</span>
+                  <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">MANAGER</span>
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SUPERVISORY</span>
-                  <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-800">WORK LOCATION / SITE</span>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">PEOPLE / UNIT</span>
-                  <span className="ml-auto hidden text-slate-500 lg:inline">{chartTab === "site" ? "Struktur Site: Site → Technical/PJO → Repair/Service; HSE pendamping." : "Urutan: Department → Section → Work Location/Site → Orang."}</span>
+                  <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-800">COORDINATOR</span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">STAFF</span>
+                  <span className="rounded-full bg-orange-100 px-2.5 py-1 font-semibold text-orange-800">NON STAFF</span>
+                  <span className="ml-auto hidden text-slate-500 lg:inline">{chartTab === "site" ? "Struktur Site: Site → Technical/PJO → Repair/Service; HSE pendamping." : "Level diambil dari master data posisi karyawan."}</span>
                 </div>
 
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                  {filteredTree.length > 0 ? (
-                    <div className="flex min-h-[420px] items-start justify-start gap-20 pb-10">
-                      {filteredTree.map((node, nodeIdx) => (
+                {/* Chart canvas */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div
+                    ref={setRootDropRef}
+                    className={"inline-flex min-w-full gap-12 rounded-2xl p-4 transition " + (isRootOver ? "bg-emerald-50 ring-2 ring-emerald-400" : "")}
+                  >
+                    {filteredTree.length === 0 ? (
+                      <div className="flex w-full flex-col items-center justify-center gap-3 py-24 text-slate-400">
+                        <GitBranch className="size-10 opacity-30" />
+                        <p className="text-sm font-medium">Tidak ada node ditemukan</p>
+                        <p className="text-xs">Coba ubah filter atau tambah root node baru.</p>
+                      </div>
+                    ) : (
+                      filteredTree.map((node, idx) => (
                         <InteractiveTreeNode
-                          key={`${node.id}-${nodeIdx}`}
+                          key={`${node.id}-${idx}`}
                           node={node}
                           onEdit={handleEditClick}
                           onDelete={handleDeleteClick}
                           onAddChild={handleCreateClick}
+                          onAddEmployee={handleEmployeeAddClick}
                           onEditEmployee={handleEmployeeEditClick}
                         />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500 shadow-sm">
-                      <GitBranch className="mx-auto mb-3 size-10 text-slate-300" />
-                      <p className="font-medium text-slate-700">{chartTab === "site" ? "Belum ada struktur site" : "Belum ada struktur organisasi"}</p>
-                      <p className="mb-4 mt-1 text-sm">{chartTab === "site" ? "Tidak ada karyawan untuk filter lokasi ini." : "Mulai dengan membuat root node pertama Anda"}</p>
-                      {chartTab === "organization" && (
-                        <Button onClick={() => handleCreateClick(null)} variant="outline" className="shadow-sm">
-                          <Plus className="mr-2 size-4" /> Buat Root Node
-                        </Button>
-                      )}
-                    </div>
-                  )}
-
-                  <div
-                    ref={setRootDropRef}
-                    className={"mx-auto mt-6 flex h-20 max-w-xl items-center justify-center rounded-2xl border-2 border-dashed text-sm transition-all " +
-                      (isRootOver ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-white/70 text-slate-500") +
-                      (activeDragNode ? " opacity-100" : " pointer-events-none h-0 overflow-hidden border-0 opacity-0")
-                    }
-                  >
-                    Drop di sini untuk jadikan Root Node (Level 0)
+                      ))
+                    )}
                   </div>
 
-                  <DragOverlay dropAnimation={{ duration: 250, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
-                    {activeDragNode ? (
-                      <div className="w-[380px] rotate-2 rounded-2xl border border-primary/50 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
-                        <div className="flex items-center gap-2">
-                          <GripVertical className="size-4 text-primary" />
-                          <h3 className="font-semibold text-slate-900">{activeDragNode.name}</h3>
-                          <Badge variant="secondary" className="ml-auto text-[10px]">{activeDragNode.nodeType}</Badge>
-                        </div>
+                  <DragOverlay>
+                    {activeDragNode && (
+                      <div className="w-[380px] rounded-2xl border border-sky-300 bg-sky-50 p-3 shadow-xl opacity-90">
+                        <p className="text-sm font-bold text-slate-900">{activeDragNode.name}</p>
+                        <p className="text-xs text-slate-500">{activeDragNode.nodeType}</p>
                       </div>
-                    ) : activeDragEmployee ? (
-                      <div className="w-[320px] rotate-2 rounded-xl border border-blue-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
-                        <p className="truncate text-sm font-semibold text-slate-900">{activeDragEmployee.fullName}</p>
-                        <p className="truncate text-xs text-slate-500">{activeDragEmployee.employeeId} • {activeDragEmployee.positionName ?? "-"}</p>
+                    )}
+                    {activeDragEmployee && (
+                      <div className="w-[260px] rounded-lg border border-blue-300 bg-white p-2 shadow-xl opacity-90">
+                        <p className="text-xs font-semibold text-slate-900">{activeDragEmployee.fullName}</p>
+                        <p className="text-[10px] text-slate-500">{activeDragEmployee.positionName ?? "-"}</p>
                       </div>
-                    ) : null}
+                    )}
                   </DragOverlay>
                 </DndContext>
               </div>
@@ -1375,11 +1796,11 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
         </Card>
       </div>
 
-      {/* EMPLOYEE PROFILE DIALOG */}
+      {/* EMPLOYEE EDIT DIALOG */}
       <Dialog open={isEmployeeDialogOpen} onOpenChange={setIsEmployeeDialogOpen}>
         <DialogContent className="sm:max-w-[760px]">
           <DialogHeader>
-            <DialogTitle>Edit Profil Orang</DialogTitle>
+            <DialogTitle>{employeeDialogMode === "create" ? "Tambah Orang" : "Edit Profil Orang"}</DialogTitle>
             <DialogDescription>Ubah profil, jabatan, lokasi, dan kotak struktur. Atasan langsung otomatis dibaca dari struktur organisasi.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -1387,11 +1808,11 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
               <div>
                 <Label className="text-xs text-slate-500">Atasan Langsung Otomatis</Label>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{directSupervisor?.fullName ?? "Belum ada di struktur"}</p>
-                <p className="text-xs text-slate-500">{directSupervisor?.positionName ?? "Tambahkan Manager/SPV/Leader di parent/section terkait"}</p>
+                <p className="text-xs text-slate-500">{directSupervisor ? (directSupervisor.positionName ?? directSupervisor.levelName ?? "-") : "Tambahkan atasan (sesuai hierarki) di kotak terkait"}</p>
               </div>
               <div>
                 <Label className="text-xs text-slate-500">Kotak Saat Ini</Label>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{editingEmployee?.currentNode.name ?? "-"}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{editingEmployee?.currentNode.name ?? addingEmployeeNode?.name ?? "-"}</p>
                 <p className="text-xs text-slate-500">Drag kartu user ke kotak lain untuk pindah cepat.</p>
               </div>
               <div>
@@ -1415,13 +1836,18 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                 <Input type="email" value={employeeFormData.email} onChange={(event) => setEmployeeFormData({ ...employeeFormData, email: event.target.value })} placeholder="email@company.com" />
               </div>
               <div className="space-y-2">
-                <Label>Jabatan</Label>
-                <Select value={employeeFormData.positionId || "none"} onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, positionId: value === "none" ? "" : value })}>
-                  <SelectTrigger><SelectValue placeholder="Pilih jabatan" /></SelectTrigger>
+                <Label>Jabatan / Level</Label>
+                <Select
+                  value={employeeFormData.selectedLevel || "none"}
+                  onValueChange={(value) => setEmployeeFormData({ ...employeeFormData, selectedLevel: value === "none" ? "" : value })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih level jabatan" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Tanpa jabatan</SelectItem>
-                    {referenceData.positions.map((position) => (
-                      <SelectItem key={position.id} value={position.id.toString()}>{position.levelName} • {position.rankName}</SelectItem>
+                    {referenceData.levelStaffs.map((level) => (
+                      <SelectItem key={level.name} value={level.name}>
+                        {level.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1481,7 +1907,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                   <SelectContent>
                     <SelectItem value="none">Tanpa kotak struktur</SelectItem>
                     {selectableNodes.map((node) => (
-                      <SelectItem key={node.id} value={node.id.toString()}>{"—".repeat(Math.max(0, node.hierarchyLevel))} {node.name}</SelectItem>
+                      <SelectItem key={node.id} value={node.id.toString()}>{"\u2014".repeat(Math.max(0, node.hierarchyLevel))} {node.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1491,7 +1917,7 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEmployeeDialogOpen(false)} disabled={isPending}>Batal</Button>
             <Button onClick={onSaveEmployeeProfile} disabled={isPending || !employeeFormData.employeeId || !employeeFormData.fullName}>
-              {isPending ? "Menyimpan..." : "Simpan Profil"}
+              {isPending ? "Menyimpan..." : employeeDialogMode === "create" ? "Tambah Orang" : "Simpan Profil"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1531,13 +1957,117 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
             </div>
             <div className="grid grid-cols-2 gap-4 pt-2 border-t">
               <div className="space-y-2">
-                <Label>Dept ID</Label>
-                <Input type="number" value={formData.departmentId || ''} onChange={(e) => setFormData({...formData, departmentId: e.target.value})} placeholder="Opsional" />
+                <Label>Department</Label>
+                <Select
+                  value={formData.departmentId || "none"}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      departmentId: v === "none" ? null : v,
+                      sectionId: null,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih department" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa department</SelectItem>
+                    {referenceData.departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id.toString()}>{dept.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label>Section ID</Label>
-                <Input type="number" value={formData.sectionId || ''} onChange={(e) => setFormData({...formData, sectionId: e.target.value})} placeholder="Opsional" />
+                <Label>Section</Label>
+                <Select
+                  value={formData.sectionId || "none"}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      sectionId: v === "none" ? null : v,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih section" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa section</SelectItem>
+                    {(formData.departmentId
+                      ? referenceData.sections.filter((s) => s.departmentId?.toString() === formData.departmentId)
+                      : referenceData.sections
+                    ).map((sect) => (
+                      <SelectItem key={sect.id} value={sect.id.toString()}>{sect.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Site</Label>
+                <Select
+                  value={formData.siteId || "none"}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      siteId: v === "none" ? null : v,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih site" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa site</SelectItem>
+                    {referenceData.sites.map((site) => (
+                      <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2 relative">
+              <Label>Pilih Pimpinan Node (Leader/SPV/Manager/Coordinator)</Label>
+              {selectedLeaderEmployee ? (
+                <div className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/80 p-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-sky-900 truncate">{selectedLeaderEmployee.fullName}</p>
+                    <p className="text-[10px] text-sky-700 truncate">{selectedLeaderEmployee.employeeId} • {selectedLeaderEmployee.positionName ?? "-"}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-sky-700 hover:bg-sky-100 hover:text-sky-900 shrink-0"
+                    onClick={() => {
+                      setSelectedLeaderId(null);
+                      setLeaderSearchQuery("");
+                    }}
+                  >
+                    Batal / Hapus
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    placeholder="Cari nama atau NIK pimpinan baru..."
+                    value={leaderSearchQuery}
+                    onChange={(e) => setLeaderSearchQuery(e.target.value)}
+                  />
+                  {filteredSearchEmployees.length > 0 && (
+                    <div className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+                      {filteredSearchEmployees.map((emp) => (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-slate-50 transition"
+                          onClick={() => handleSelectLeader(emp)}
+                        >
+                          <span className="text-xs font-bold text-slate-800">{emp.fullName}</span>
+                          <span className="text-[10px] text-slate-500">{emp.employeeId} • {emp.positionName ?? "-"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <Alert className="col-span-1 bg-amber-50 text-amber-800 border-amber-200 mt-2">
@@ -1588,6 +2118,74 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select
+                  value={formData.departmentId || "none"}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      departmentId: v === "none" ? null : v,
+                      sectionId: null,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih department" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa department</SelectItem>
+                    {referenceData.departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id.toString()}>{dept.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Section</Label>
+                <Select
+                  value={formData.sectionId || "none"}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      sectionId: v === "none" ? null : v,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih section" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa section</SelectItem>
+                    {(formData.departmentId
+                      ? referenceData.sections.filter((s) => s.departmentId?.toString() === formData.departmentId)
+                      : referenceData.sections
+                    ).map((sect) => (
+                      <SelectItem key={sect.id} value={sect.id.toString()}>{sect.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Site</Label>
+                <Select
+                  value={formData.siteId || "none"}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      siteId: v === "none" ? null : v,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih site" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa site</SelectItem>
+                    {referenceData.sites.map((site) => (
+                      <SelectItem key={site.id} value={site.id.toString()}>{site.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={isPending}>Batal</Button>
@@ -1636,4 +2234,3 @@ export function OrgChartClientPage({ nodes, stats, referenceData }: { nodes: Org
     </AdminPageShell>
   );
 }
-

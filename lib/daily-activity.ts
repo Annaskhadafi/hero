@@ -916,6 +916,16 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
         faceEmbedding: employees.faceEmbedding,
         faceRegisteredAt: employees.faceRegisteredAt,
         createdAt: employees.createdAt,
+        joinDate: employees.joinDate,
+        contractDurationStart: employees.contractDurationStart,
+        contractDurationEnd: employees.contractDurationEnd,
+        permanentDate: employees.permanentDate,
+        pointOfHire: employees.pointOfHire,
+        birthDate: employees.birthDate,
+        gender: employees.gender,
+        maritalStatus: employees.maritalStatus,
+        religion: employees.religion,
+        education: employees.education,
       })
       .from(employees)
       .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
@@ -964,6 +974,16 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
       faceEmbedding: employees.faceEmbedding,
       faceRegisteredAt: employees.faceRegisteredAt,
       createdAt: employees.createdAt,
+      joinDate: employees.joinDate,
+      contractDurationStart: employees.contractDurationStart,
+      contractDurationEnd: employees.contractDurationEnd,
+      permanentDate: employees.permanentDate,
+      pointOfHire: employees.pointOfHire,
+      birthDate: employees.birthDate,
+      gender: employees.gender,
+      maritalStatus: employees.maritalStatus,
+      religion: employees.religion,
+      education: employees.education,
     })
     .from(employees)
     .where(eq(employees.isActive, true))

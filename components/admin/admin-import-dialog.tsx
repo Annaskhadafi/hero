@@ -39,6 +39,16 @@ type AdminImportDialogProps = {
 
 const sampleColumns = ["Column A", "Column B", "Column C"]
 
+function deduplicateColumns(columns: string[]) {
+  const seen = new Map<string, number>()
+  return columns.map((col) => {
+    const base = col || "Column"
+    const count = seen.get(base) ?? 0
+    seen.set(base, count + 1)
+    return count === 0 ? base : `${base} ${count + 1}`
+  })
+}
+
 function normalizeImportToken(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "")
 }
@@ -135,7 +145,7 @@ export function AdminImportDialog({
     try {
       const buffer = await file.arrayBuffer()
       const parsedRows = normalizeParsedRows(await parseWorkbookRows(file, buffer))
-      const nextColumns = parsedRows[0]?.length ? parsedRows[0] : sampleColumns
+      const nextColumns = deduplicateColumns(parsedRows[0]?.length ? parsedRows[0] : sampleColumns)
       const nextDataRows = parsedRows.slice(1)
       const nextSampleRows = nextDataRows.slice(0, 3)
 

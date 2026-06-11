@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 const args = process.argv.slice(2);
 const p = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["drizzle-kit", "push", ...args], {
   stdio: ["pipe", "pipe", "inherit"],
+  shell: true,
   env: {
     ...process.env,
     FORCE_COLOR: "1",

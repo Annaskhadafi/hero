@@ -45,6 +45,9 @@ export async function GET(request: NextRequest) {
 
     const conditions = [];
 
+    // Filter active employees only
+    conditions.push(eq(centralServiceEmployees.isActive, true));
+
     // Always filter by Central Service department (with variations)
     conditions.push(
       or(
@@ -100,28 +103,56 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    // Enrich section from User Management (hero_employees) matched by employeeSn.
+    // Enrich fields from User Management (hero_employees) matched by employeeSn.
     // hero_employees may store SN as "EMP-51468" while centralServiceEmployees stores "51468" — try both.
     const snList = employees.map((e) => e.employeeSn).filter(Boolean);
-    const sectionBySn: Record<string, string> = {};
+    const extraBySn: Record<string, any> = {};
     if (snList.length > 0) {
       const snVariants = snList.flatMap((sn) => [sn, `EMP-${sn}`, sn.replace(/^EMP-/i, "")]);
       const uniqueVariants = [...new Set(snVariants)];
       const heroRows = await db
-        .select({ employeeSn: heroEmployees.employeeSn, section: heroEmployees.section })
+        .select({
+          employeeSn: heroEmployees.employeeSn,
+          section: heroEmployees.section,
+          gender: heroEmployees.gender,
+          religion: heroEmployees.religion,
+          education: heroEmployees.education,
+          levelName: heroEmployees.levelName,
+          pointOfHire: heroEmployees.pointOfHire,
+          maritalStatus: heroEmployees.maritalStatus,
+          joinDate: heroEmployees.joinDate,
+          contractDurationStart: heroEmployees.contractDurationStart,
+          contractDurationEnd: heroEmployees.contractDurationEnd,
+          permanentDate: heroEmployees.permanentDate,
+          birthDate: heroEmployees.birthDate,
+        })
         .from(heroEmployees)
         .where(or(...uniqueVariants.map((sn) => eq(heroEmployees.employeeSn, sn))));
       for (const row of heroRows) {
         const plainSn = row.employeeSn.replace(/^EMP-/i, "");
-        sectionBySn[row.employeeSn] = row.section;
-        sectionBySn[plainSn] = row.section;
+        extraBySn[row.employeeSn] = row;
+        extraBySn[plainSn] = row;
       }
     }
 
-    const enriched = employees.map((emp) => ({
-      ...emp,
-      section: sectionBySn[emp.employeeSn] ?? sectionBySn[`EMP-${emp.employeeSn}`] ?? emp.section ?? "",
-    }));
+    const enriched = employees.map((emp) => {
+      const extra = extraBySn[emp.employeeSn] ?? extraBySn[`EMP-${emp.employeeSn}`] ?? {};
+      return {
+        ...emp,
+        section: extra.section ?? emp.section ?? "",
+        gender: extra.gender ?? "",
+        religion: extra.religion ?? "",
+        education: extra.education ?? "",
+        levelName: extra.levelName ?? "",
+        pointOfHire: extra.pointOfHire ?? "",
+        maritalStatus: extra.maritalStatus ?? "",
+        joinDate: extra.joinDate ?? null,
+        contractDurationStart: extra.contractDurationStart ?? null,
+        contractDurationEnd: extra.contractDurationEnd ?? null,
+        permanentDate: extra.permanentDate ?? null,
+        birthDate: extra.birthDate ?? null,
+      };
+    });
 
     return NextResponse.json({
       success: true,

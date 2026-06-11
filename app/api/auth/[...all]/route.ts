@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { toNextJsHandler } from "better-auth/next-js";
 
 function isDatabaseConnectionError(error: unknown) {
     if (!(error instanceof Error)) {
@@ -10,9 +11,11 @@ function isDatabaseConnectionError(error: unknown) {
     );
 }
 
-async function handleAuth(request: Request) {
+const authHandlers = toNextJsHandler(auth);
+
+async function handleAuth(request: Request, method: "GET" | "POST") {
     try {
-        return await auth.handler(request);
+        return await authHandlers[method](request);
     } catch (error) {
         console.error(`[auth-route] ${request.method} ${request.url} failed`, error);
 
@@ -36,5 +39,5 @@ async function handleAuth(request: Request) {
     }
 }
 
-export const GET = handleAuth;
-export const POST = handleAuth;
+export const GET = (request: Request) => handleAuth(request, "GET");
+export const POST = (request: Request) => handleAuth(request, "POST");
