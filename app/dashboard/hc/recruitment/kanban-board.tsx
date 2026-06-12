@@ -148,19 +148,19 @@ export function KanbanBoard({
         [candidate.id]: Math.min(90, (prev[candidate.id] ?? 8) + Math.max(2, Math.round((90 - (prev[candidate.id] ?? 8)) / 8))),
       }));
     }, 900);
-    const toastId = toast.loading(`Running AI assessment for ${candidate.fullName}...`);
+    const toastId = toast.loading(`Running Smart assessment for ${candidate.fullName}...`);
     try {
       const result = await assessCandidateCv(candidate.id);
       if (result.success) {
         setAiProgress((prev) => ({ ...prev, [candidate.id]: 100 }));
-        toast.success(`AI assessment completed: ${result.score}%`, { id: toastId });
+        toast.success(`Smart assessment completed: ${result.score}%`, { id: toastId });
         router.refresh();
       } else {
-        toast.error(result.error || "AI assessment failed.", { id: toastId });
+        toast.error(result.error || "Smart assessment failed.", { id: toastId });
       }
     } catch (error: any) {
       console.error(`[AI] Error:`, error);
-      toast.error(error.message || "AI assessment failed.", { id: toastId });
+      toast.error(error.message || "Smart assessment failed.", { id: toastId });
     } finally {
       if (aiProgressTimers.current[candidate.id]) {
         clearInterval(aiProgressTimers.current[candidate.id]);
@@ -356,12 +356,12 @@ function KanbanCard({
           <div className="flex justify-between items-center mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-accent flex items-center gap-1.5">
               <IconBrain className="w-3.5 h-3.5" />
-              AI sudah diproses
+              Smart sudah diproses
             </span>
           </div>
           <div className="mb-2 flex items-end justify-between gap-2">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Score AI</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Score Smart</div>
               <div className="text-2xl font-bold leading-none text-accent">{candidate.aiScore}%</div>
             </div>
             {aiRecommendation ? (
@@ -384,14 +384,14 @@ function KanbanCard({
           <TooltipContent side="top" align="start" className="max-w-sm bg-slate-950 p-3 text-left text-xs leading-relaxed text-white shadow-xl">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
-                <span className="font-semibold">Ringkasan AI</span>
+                <span className="font-semibold">Ringkasan Smart</span>
                 <span className="font-bold text-emerald-300">{candidate.aiScore}%</span>
               </div>
               {aiRecommendation ? (
                 <div className="text-[11px] font-medium text-emerald-200">{aiRecommendation}</div>
               ) : null}
               <p className="text-slate-100">
-                {candidate.aiSummary || "Ringkasan AI belum tersedia. Buka detail kandidat untuk melihat data lengkap."}
+                {candidate.aiSummary || "Ringkasan Smart belum tersedia. Buka detail kandidat untuk melihat data lengkap."}
               </p>
             </div>
           </TooltipContent>
@@ -414,7 +414,7 @@ function KanbanCard({
             ) : (
               <IconBrain className="w-3.5 h-3.5 mr-2" />
             )}
-            {isAiLoading ? "Running AI..." : "Run AI Assessment"}
+            {isAiLoading ? "Running Smart..." : "Run Smart Assessment"}
           </Button>
           {isAiLoading && (
             <div className="mt-2 space-y-1">

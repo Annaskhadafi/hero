@@ -829,9 +829,9 @@ export function RecruitmentDashboardClient({ data, selectedYear, selectedMonth }
         </Card>
       </div>
 
-      {/* ─── Section G: AI Score Distribution ─────────────────────── */}
+      {/* ─── Section G: Smart Score Distribution ─────────────────────── */}
       <Card className="p-5 shadow-sm ring-1 ring-slate-200/60">
-        <SectionHeader icon={IconAward} title="AI Score Distribution" description="Candidate quality breakdown" />
+        <SectionHeader icon={IconAward} title="Smart Score Distribution" description="Candidate quality breakdown" />
         <AIScoreDistribution data={data.aiScoreDistribution} />
       </Card>
 

@@ -1922,7 +1922,7 @@ export async function assessCandidateCv(candidateId: number) {
     const ollamaKey = process.env.OLLAMA_API_KEY;
 
     if (!ollamaKey) {
-      return { success: false, error: "AI API key belum dikonfigurasi. Set OLLAMA_API_KEY di .env.local (OpenRouter API key)" };
+      return { success: false, error: "Smart API key belum dikonfigurasi. Set OLLAMA_API_KEY di .env.local (OpenRouter API key)" };
     }
 
     const promptSystem = `You are an expert HR Assessor. You will be provided with a Candidate Profile (JSON) and Job Requirements (JSON).
@@ -2000,7 +2000,7 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
       .update(hcCandidates)
       .set({
         aiScore: normalizedScore,
-        aiSummary: typeof aiContent.summary === "string" ? aiContent.summary : "AI assessment completed.",
+        aiSummary: typeof aiContent.summary === "string" ? aiContent.summary : "Smart assessment completed.",
         aiDetails,
         aiAssessmentDate: new Date(),
       })
@@ -2015,7 +2015,7 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
   } catch (error: any) {
     console.error("AI Assessment Error:", error);
     if (error?.name === "AbortError") {
-      return { success: false, error: "AI assessment timed out after 90 seconds. Check OLLAMA_URL / model availability." };
+      return { success: false, error: "Smart assessment timed out after 90 seconds. Check OLLAMA_URL / model availability." };
     }
     return { success: false, error: error.message };
   }

@@ -775,7 +775,7 @@ export function RecruitmentClientPage({
           <IconPlus className="w-3 h-3 mr-1" /> Tambah
         </Button>
         <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => {
-          const headers = ["NO", "NAMA LENGKAP", "EMAIL", "PHONE", "LOWONGAN", "LOKASI", "STAGE", "AI SCORE", "TGL MELAMAR"];
+          const headers = ["NO", "NAMA LENGKAP", "EMAIL", "PHONE", "LOWONGAN", "LOKASI", "STAGE", "SMART SCORE", "TGL MELAMAR"];
           const rows = visibleCandidates.map((c, i) => [
             i + 1, c.fullName, c.email, c.phone, c.jobTitle || "-", c.location || "-", c.currentStage, c.aiScore ?? "-",
             format(new Date(c.createdAt), "dd MMM yyyy")
@@ -1039,7 +1039,7 @@ export function RecruitmentClientPage({
     <AdminPageShell
       eyebrow="Human Capital"
       title="Recruitment Management"
-      description="Manage open job vacancies, candidate pipeline, and AI assessments"
+      description="Manage open job vacancies, candidate pipeline, and Smart assessments"
     >
       <div className="space-y-8 pb-12">
 
@@ -1439,7 +1439,7 @@ export function RecruitmentClientPage({
                         <TableHead className="w-28 px-2">PHONE</TableHead>
                         <TableHead className="w-32 px-2">STAGE</TableHead>
                         <TableHead className="w-24 px-2 text-center">HASIL</TableHead>
-                        <TableHead className="w-36 px-2">AI</TableHead>
+                        <TableHead className="w-36 px-2">Smart</TableHead>
                         <TableHead className="w-16 px-2 text-center">MAIL</TableHead>
                         <TableHead className="sticky right-0 z-10 w-28 bg-muted/95 px-2 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">ACTIONS</TableHead>
                       </TableRow>
@@ -1510,7 +1510,7 @@ export function RecruitmentClientPage({
                             {candidate.aiScore !== null ? (
                               <div className="flex flex-col gap-1">
                                 <Badge variant="secondary" className="w-fit border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                                  AI sudah diproses
+                                  Smart sudah diproses
                                 </Badge>
                                 <div className="flex items-center gap-2">
                                   <Progress value={candidate.aiScore} className="w-16 h-2 [&>div]:bg-accent" />
@@ -1609,9 +1609,9 @@ export function RecruitmentClientPage({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge variant="outline">{profileDrawerCandidate.currentStage}</Badge>
                   {profileDrawerCandidate.aiScore !== null ? (
-                    <Badge className="bg-emerald-600 text-white">AI {profileDrawerCandidate.aiScore}%</Badge>
+                    <Badge className="bg-emerald-600 text-white">Smart {profileDrawerCandidate.aiScore}%</Badge>
                   ) : (
-                    <Badge variant="secondary">Belum AI</Badge>
+                    <Badge variant="secondary">Belum Smart</Badge>
                   )}
                   {formatAiRecommendation(profileDrawerCandidate.aiDetails?.recommendation) ? (
                     <Badge variant="secondary" className="border-emerald-200 bg-emerald-50 text-emerald-700">
@@ -1639,7 +1639,7 @@ export function RecruitmentClientPage({
                 </div>
                 {profileDrawerCandidate.aiSummary ? (
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Ringkasan AI</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Ringkasan Smart</div>
                     <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{profileDrawerCandidate.aiSummary}</div>
                   </div>
                 ) : null}
@@ -1647,7 +1647,7 @@ export function RecruitmentClientPage({
                   <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-3">
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Radar AI</div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Radar Smart</div>
                         <div className="text-xs text-muted-foreground">Score per kriteria assessment</div>
                       </div>
                       {profileDrawerCandidate.aiScore !== null ? <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">{profileDrawerCandidate.aiScore}%</Badge> : null}
@@ -1658,7 +1658,7 @@ export function RecruitmentClientPage({
                           <PolarGrid stroke="#cbd5e1" radialLines />
                           <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 9, fontWeight: 600 }} />
                           <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 8 }} tickCount={5} />
-                          <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={2.5} dot={{ r: 2.5, fill: "#0f766e", strokeWidth: 1 }} />
+                          <Radar name="Score Smart" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={2.5} dot={{ r: 2.5, fill: "#0f766e", strokeWidth: 1 }} />
                           <RechartsTooltip
                             contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
                             formatter={(value: number, name: string) => [`${value}%`, name]}
@@ -1892,7 +1892,7 @@ export function RecruitmentClientPage({
                 </div>
 
                 <div className="space-y-3">
-                  <Label>AI Assessment Qualifications</Label>
+                  <Label>Smart Assessment Qualifications</Label>
                   <div className="grid grid-cols-2 gap-3 bg-muted/20 p-4 rounded-lg border">
                     {[
                       "Pendidikan Min. SMA/SMK",
@@ -1923,7 +1923,7 @@ export function RecruitmentClientPage({
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    AI will strictly check the candidate's CV and Form against these specific points.
+                    Smart will strictly check the candidate's CV and Form against these specific points.
                   </p>
                 </div>
 
@@ -1967,7 +1967,7 @@ export function RecruitmentClientPage({
               <TabsContent value="scoring" className="space-y-5 mt-0">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>AI Scoring Matrix</Label>
+                    <Label>Smart Scoring Matrix</Label>
                     <span className="text-xs text-muted-foreground">Keep total near 100</span>
                   </div>
                   <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
@@ -2058,7 +2058,7 @@ export function RecruitmentClientPage({
                       <TableHead>EMAIL</TableHead>
                       <TableHead>PHONE</TableHead>
                       <TableHead>STAGE</TableHead>
-                      <TableHead>AI MATCH</TableHead>
+                      <TableHead>SMART MATCH</TableHead>
                       <TableHead className="text-right">ACTIONS</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -2178,17 +2178,17 @@ export function RecruitmentClientPage({
                       <div className="text-sm font-semibold leading-tight">{candidate.fullName}</div>
                       <div className="text-xs text-muted-foreground">{candidate.jobTitle || "-"} · {candidate.currentStage}</div>
                       <div className="flex flex-wrap gap-2 pt-2">
-                        {candidate.aiScore !== null ? <Badge>{candidate.aiScore}% AI</Badge> : <Badge variant="secondary">No AI score</Badge>}
+                        {candidate.aiScore !== null ? <Badge>{candidate.aiScore}% Smart</Badge> : <Badge variant="secondary">No Smart score</Badge>}
                         {aiRecommendation ? <Badge variant="outline">{aiRecommendation}</Badge> : null}
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI Score Breakdown</div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Smart Score Breakdown</div>
                       {aiRadarData.length > 0 && (
                         <div className="rounded-lg border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-2">
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="text-xs font-semibold text-slate-800">Radar AI</div>
+                            <div className="text-xs font-semibold text-slate-800">Radar Smart</div>
                             {candidate.aiScore !== null ? <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-[10px] text-emerald-700">{candidate.aiScore}%</Badge> : null}
                           </div>
                           <div className="h-44 w-full">
@@ -2197,7 +2197,7 @@ export function RecruitmentClientPage({
                                 <PolarGrid stroke="#cbd5e1" radialLines />
                                 <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 9, fontWeight: 600 }} />
                                 <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 8 }} tickCount={5} />
-                                <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={2} dot={{ r: 2, fill: "#0f766e", strokeWidth: 1 }} />
+                                <Radar name="Score Smart" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={2} dot={{ r: 2, fill: "#0f766e", strokeWidth: 1 }} />
                                 <RechartsTooltip
                                   contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
                                   formatter={(value: number, name: string) => [`${value}%`, name]}
@@ -2219,7 +2219,7 @@ export function RecruitmentClientPage({
                           </div>
                           <div className="whitespace-normal break-words text-[11px] leading-snug text-muted-foreground">{item.reason}</div>
                         </div>
-                      )) : <div className="text-xs text-muted-foreground">No AI breakdown.</div>}
+                      )) : <div className="text-xs text-muted-foreground">No Smart breakdown.</div>}
                       {knockout.length > 0 && (
                         <div className="space-y-1 pt-1">
                           {knockout.map((item: any, idx: number) => (

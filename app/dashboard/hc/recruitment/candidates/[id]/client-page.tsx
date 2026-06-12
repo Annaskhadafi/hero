@@ -854,10 +854,10 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               </Card>
             </div>
 
-            {/* AI Assessment */}
+            {/* Smart Assessment */}
             <Card>
               <CardHeader>
-                <CardTitle>AI Assessment</CardTitle>
+                <CardTitle>Smart Assessment</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {candidate.aiScore !== null ? (
@@ -883,7 +883,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                       <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-4">
                         <div className="mb-3 flex items-center justify-between gap-3">
                           <div>
-                            <div className="text-sm font-semibold text-slate-900">Radar AI Analysis Score</div>
+                            <div className="text-sm font-semibold text-slate-900">Radar Smart Analysis Score</div>
                             <div className="text-xs text-muted-foreground">Visual perbandingan nilai tiap kriteria assessment</div>
                           </div>
                           <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-emerald-700">
@@ -896,7 +896,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                               <PolarGrid stroke="#cbd5e1" radialLines />
                               <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 11, fontWeight: 600 }} />
                               <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 10 }} tickCount={6} />
-                              <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={3} dot={{ r: 3, fill: "#0f766e", strokeWidth: 1 }} />
+                              <Radar name="Score Smart" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={3} dot={{ r: 3, fill: "#0f766e", strokeWidth: 1 }} />
                               <RechartsTooltip
                                 contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
                                 formatter={(value: number, name: string) => [`${value}%`, name]}
@@ -944,7 +944,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No AI assessment yet</p>
+                  <p className="text-sm text-muted-foreground">No Smart assessment yet</p>
                 )}
               </CardContent>
             </Card>
@@ -1045,7 +1045,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 </div>
                 {candidate.aiScore !== null && (
                   <div>
-                    <div className="text-sm text-muted-foreground">AI Match Score</div>
+                    <div className="text-sm text-muted-foreground">Smart Match Score</div>
                     <div className="font-medium flex items-center gap-2">
                       <span className="text-lg">{candidate.aiScore}%</span>
                     </div>
@@ -1053,7 +1053,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 )}
                 {candidate.aiSummary && (
                   <div>
-                    <div className="text-sm text-muted-foreground">AI Summary</div>
+                    <div className="text-sm text-muted-foreground">Smart Summary</div>
                     <div className="text-sm mt-1 bg-muted/50 p-3 rounded-md">{candidate.aiSummary}</div>
                   </div>
                 )}
@@ -1099,8 +1099,8 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-4">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-slate-900">Radar AI Analysis Score</div>
-                        <div className="text-xs text-muted-foreground">Diambil dari breakdown score AI assessment</div>
+                        <div className="text-sm font-semibold text-slate-900">Radar Smart Analysis Score</div>
+                        <div className="text-xs text-muted-foreground">Diambil dari breakdown score Smart assessment</div>
                       </div>
                       <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-emerald-700">
                         {candidate.aiScore}% total
@@ -1112,7 +1112,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                           <PolarGrid stroke="#cbd5e1" radialLines />
                           <PolarAngleAxis dataKey="criterion" tick={{ fill: "#334155", fontSize: 10, fontWeight: 600 }} />
                           <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 10 }} tickCount={6} />
-                          <Radar name="Score AI" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={3} dot={{ r: 3, fill: "#0f766e", strokeWidth: 1 }} />
+                          <Radar name="Score Smart" dataKey="score" stroke="#059669" fill="#10b981" fillOpacity={0.34} strokeWidth={3} dot={{ r: 3, fill: "#0f766e", strokeWidth: 1 }} />
                           <RechartsTooltip
                             contentStyle={{ borderRadius: 12, border: "1px solid #d1fae5", boxShadow: "0 18px 45px rgba(15, 23, 42, 0.14)" }}
                             formatter={(value: number, name: string) => [`${value}%`, name]}
