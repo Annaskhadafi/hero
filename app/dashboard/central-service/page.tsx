@@ -121,7 +121,6 @@ const COLUMNS = [
   { key: 'site', label: 'Site' },
   { key: 'status', label: 'Status' },
   { key: 'contractLeft', label: 'Contract Left' },
-  { key: 'sync', label: 'Sync' },
 ] as const
 
 const DETAIL_COLUMNS = [
@@ -288,7 +287,7 @@ export default function CentralServicePage() {
 
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
     sn: true, name: true, email: true, department: true, section: true,
-    jobTitle: true, site: true, status: true, contractLeft: true, sync: true,
+    jobTitle: true, site: true, status: true, contractLeft: true,
     levelStaff: false, gender: false, agama: false, pendidikan: false,
     joinDate: false, contractStart: false, contractEnd: false,
     permanentDate: false, tglLahir: false,
@@ -383,7 +382,6 @@ export default function CentralServicePage() {
         case 'contractLeft': return String(getContractLeftDays(e.contractDurationEnd) ?? 999999)
         case 'permanentDate': return e.permanentDate ?? ''
         case 'tglLahir': return e.birthDate ?? ''
-        case 'sync': return e.isSyncedToUserManagement ? 'Synced' : 'Not Synced'
         default: return ''
       }
     }
@@ -499,14 +497,14 @@ export default function CentralServicePage() {
       toast.error('Tidak ada data untuk diekspor')
       return
     }
-    const headers = ['SN', 'Nama', 'Email', 'Department', 'Section', 'Job Title', 'Level Staff', 'Site', 'Status', 'Gender', 'Agama', 'Pendidikan', 'Join Date', 'Contract Start', 'Contract End', 'Contract Left', 'Permanent Date', 'Tgl Lahir', 'Sync']
+    const headers = ['SN', 'Nama', 'Email', 'Department', 'Section', 'Job Title', 'Level Staff', 'Site', 'Status', 'Gender', 'Agama', 'Pendidikan', 'Join Date', 'Contract Start', 'Contract End', 'Contract Left', 'Permanent Date', 'Tgl Lahir']
     const rows = filteredEmployees.map((emp) => [
       emp.employeeSn, emp.fullName, emp.email || '', emp.department, emp.section || '',
       emp.position, emp.levelName || '-', emp.site || '', emp.employmentStatus,
       emp.gender || '-', emp.religion || '-', emp.education || '-', emp.joinDate || '-',
       emp.contractDurationStart || '-', emp.contractDurationEnd || '-',
       getContractLeftDays(emp.contractDurationEnd) ?? '-', emp.permanentDate || '-',
-      emp.birthDate || '-', emp.isSyncedToUserManagement ? 'Synced' : 'Not Synced',
+      emp.birthDate || '-',
     ])
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [
       headers.join(';'),
@@ -770,15 +768,16 @@ export default function CentralServicePage() {
         </div>
 
         <div className="bg-surface-container-low overflow-x-auto rounded-[1rem] p-2">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-8" />
-                {COLUMNS.map((col) =>
-                  columnVisibility[col.key] ? (
+                {COLUMNS.map((col) => {
+                  const widths: Record<string, string> = { sn: 'w-16', name: 'w-44', email: 'w-36', department: 'w-32', section: 'w-36', jobTitle: 'w-36', site: 'w-32', status: 'w-20', contractLeft: 'w-24' }
+                  return columnVisibility[col.key] ? (
                     <TableHead
                       key={col.key}
-                      className="cursor-pointer select-none"
+                      className={['cursor-pointer select-none', widths[col.key] || ''].join(' ')}
                       onClick={() => {
                         if (sortKey === col.key) {
                           setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
@@ -791,7 +790,7 @@ export default function CentralServicePage() {
                       {col.label}
                     </TableHead>
                   ) : null
-                )}
+                })}
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
             </TableHeader>
@@ -840,7 +839,7 @@ export default function CentralServicePage() {
                         {columnVisibility.email ? (
                           <TableCell className="py-3.5">
                             {emp.email ? (
-                              <span className="text-foreground/85 text-sm">{emp.email}</span>
+                              <span className="text-foreground/85 text-sm truncate block">{emp.email}</span>
                             ) : (
                               <Badge variant="outline" className="text-xs">No Email</Badge>
                             )}
@@ -848,23 +847,19 @@ export default function CentralServicePage() {
                         ) : null}
                         {columnVisibility.department ? (
                           <TableCell className="py-3.5">
-                            <Badge variant="secondary" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                              {emp.department}
-                            </Badge>
+                            <span className="text-muted-foreground text-sm truncate block">{emp.department}</span>
                           </TableCell>
                         ) : null}
                         {columnVisibility.section ? (
-                          <TableCell className="text-foreground/85 py-3.5 text-sm">{emp.section || '-'}</TableCell>
+                          <TableCell className="text-foreground/85 py-3.5 text-sm truncate max-w-0">{emp.section || '-'}</TableCell>
                         ) : null}
                         {columnVisibility.jobTitle ? (
                           <TableCell className="py-3.5">
-                            <Badge variant="outline" className="bg-surface-container-lowest text-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                              {emp.position || '-'}
-                            </Badge>
+                            <span className="text-foreground/85 text-sm truncate block">{emp.position || '-'}</span>
                           </TableCell>
                         ) : null}
                         {columnVisibility.site ? (
-                          <TableCell className="text-foreground/85 py-3.5 text-sm">{emp.site || '-'}</TableCell>
+                          <TableCell className="text-foreground/85 py-3.5 text-sm truncate max-w-0">{emp.site || '-'}</TableCell>
                         ) : null}
                         {columnVisibility.status ? (
                           <TableCell className="py-3.5">
@@ -879,21 +874,6 @@ export default function CentralServicePage() {
                         {columnVisibility.contractLeft ? (
                           <TableCell className="py-3.5">
                             <ContractLeftBadge days={getContractLeftDays(emp.contractDurationEnd)} />
-                          </TableCell>
-                        ) : null}
-                        {columnVisibility.sync ? (
-                          <TableCell className="py-3.5">
-                            {emp.isSyncedToUserManagement ? (
-                              <Badge className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-3 py-1 text-[10px]">
-                                <CheckCircle className="mr-1 h-3 w-3" />
-                                Synced
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="bg-orange-50 text-orange-600 rounded-full border-0 px-3 py-1 text-[10px]">
-                                <AlertCircle className="mr-1 h-3 w-3" />
-                                Not Synced
-                              </Badge>
-                            )}
                           </TableCell>
                         ) : null}
                         <TableCell className="py-3.5 text-right">
