@@ -105,6 +105,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       currentNodeId = orgNodes.find(n => n.id === currentNodeId)?.parentNodeId
     }
 
+    // Fallback: if no manager found in parent chain, look for higher-ranked colleagues at same node
+    if (managerChain.length === 0 && emp.orgNodeId) {
+      const sameNodeHigher = employees
+        .filter(e => e.orgNodeId === emp.orgNodeId && e.id !== emp.id && getRankWeight(e.rank || e.position) > empWeight)
+        .sort((a, b) => getRankWeight(b.rank || b.position) - getRankWeight(a.rank || a.position))
+      if (sameNodeHigher.length > 0) managerChain.push(sameNodeHigher[0])
+    }
+
     let newLeaderName = ""
     let newLeaderTitle = ""
     let newSupName = ""
