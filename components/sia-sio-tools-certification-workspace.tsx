@@ -215,6 +215,8 @@ const initialRecords: CertificationRecord[] = [
   },
 ];
 
+const SIA_SIO_STORAGE_KEY = 'mobile-sia-sio-records';
+
 const statusTone: Record<CertificationStatus, string> = {
   Active: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   "Near Expiry": "bg-amber-50 text-amber-700 ring-amber-200",
@@ -374,8 +376,17 @@ function CertificationDialog({ record }: { record: CertificationRecord }) {
   );
 }
 
-function AddCertificationDialog({ categories, onAddCategory, userOptions }: { categories: string[]; onAddCategory: (category: string) => void; userOptions: string[] }) {
+function AddCertificationDialog({ categories, onAddCategory, onSave, userOptions }: { categories: string[]; onAddCategory: (category: string) => void; onSave: (record: CertificationRecord) => void; userOptions: string[] }) {
+  const [assetOrOperator, setAssetOrOperator] = useState("");
+  const [certificationType, setCertificationType] = useState("SIO");
   const [category, setCategory] = useState("Fire & Emergency");
+  const [subcategory, setSubcategory] = useState("");
+  const [area, setArea] = useState("");
+  const [assetTag, setAssetTag] = useState("");
+  const [permitNumber, setPermitNumber] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [risk, setRisk] = useState<RiskLevel>("High");
+  const [standard, setStandard] = useState("");
   const [recipients, setRecipients] = useState<string[]>(["HSE Superintendent", "Workshop Supervisor Tire Repair"]);
   const [escalations, setEscalations] = useState<string[]>(["Site Manager"]);
   const [days, setDays] = useState("90, 60, 30, 14, 7, 1");
@@ -387,16 +398,16 @@ function AddCertificationDialog({ categories, onAddCategory, userOptions }: { ca
       <DialogContent className="max-w-4xl bg-white">
         <DialogHeader><DialogTitle>Tambah Sertifikasi SIA/SIO & Tools</DialogTitle><DialogDescription>Form untuk Tire Service, Tire Repair, forklift, hydrant, tools, dan sertifikasi workshop mining.</DialogDescription></DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 md:col-span-2"><Label>Nama alat / operator</Label><Input placeholder="Contoh: Forklift Toyota 3 Ton / Operator Suryadi" /></div>
-          <div className="space-y-2"><Label>Tipe sertifikasi</Label><Input placeholder="SIO, SIA, Calibration, Inspection Certificate" /></div>
+          <div className="space-y-2 md:col-span-2"><Label>Nama alat / operator</Label><Input value={assetOrOperator} onChange={(event) => setAssetOrOperator(event.target.value)} placeholder="Contoh: Forklift Toyota 3 Ton / Operator Suryadi" /></div>
+          <div className="space-y-2"><Label>Tipe sertifikasi</Label><Input value={certificationType} onChange={(event) => setCertificationType(event.target.value)} placeholder="SIO, SIA, Calibration, Inspection Certificate" /></div>
           <div className="space-y-2"><Label>Kategori (combobox, bisa tambah baru)</Label><Combobox value={category} onChange={(next) => { setCategory(next); onAddCategory(next); }} options={categories} placeholder="Pilih / tambah kategori" className="h-10 bg-white" allowCustom /></div>
-          <div className="space-y-2"><Label>Subkategori</Label><Input placeholder="Forklift, Hydrant, Torque Tool, Compressor" /></div>
-          <div className="space-y-2"><Label>Area workshop</Label><Input placeholder="Tire Repair Bay, Tire Service Bay, Tool Store" /></div>
-          <div className="space-y-2"><Label>Asset tag / unit code</Label><Input placeholder="FLT-TRB-03" /></div>
-          <div className="space-y-2"><Label>Nomor seri / izin</Label><Input placeholder="SIO-FLT/TRB/2026/001" /></div>
-          <div className="space-y-2"><Label>Tanggal kadaluarsa</Label><Input type="date" /></div>
-          <div className="space-y-2"><Label>Risk level</Label><Select defaultValue="High"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Low">Low</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="High">High</SelectItem><SelectItem value="Critical">Critical</SelectItem></SelectContent></Select></div>
-          <div className="space-y-2"><Label>Standard pemeriksaan</Label><Input placeholder="Disnaker, OEM, Vendor Calibration, Internal HSE" /></div>
+          <div className="space-y-2"><Label>Subkategori</Label><Input value={subcategory} onChange={(event) => setSubcategory(event.target.value)} placeholder="Forklift, Hydrant, Torque Tool, Compressor" /></div>
+          <div className="space-y-2"><Label>Area workshop</Label><Input value={area} onChange={(event) => setArea(event.target.value)} placeholder="Tire Repair Bay, Tire Service Bay, Tool Store" /></div>
+          <div className="space-y-2"><Label>Asset tag / unit code</Label><Input value={assetTag} onChange={(event) => setAssetTag(event.target.value)} placeholder="FLT-TRB-03" /></div>
+          <div className="space-y-2"><Label>Nomor seri / izin</Label><Input value={permitNumber} onChange={(event) => setPermitNumber(event.target.value)} placeholder="SIO-FLT/TRB/2026/001" /></div>
+          <div className="space-y-2"><Label>Tanggal kadaluarsa</Label><Input value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} type="date" /></div>
+          <div className="space-y-2"><Label>Risk level</Label><Select value={risk} onValueChange={(value) => setRisk(value as RiskLevel)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Low">Low</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="High">High</SelectItem><SelectItem value="Critical">Critical</SelectItem></SelectContent></Select></div>
+          <div className="space-y-2"><Label>Standard pemeriksaan</Label><Input value={standard} onChange={(event) => setStandard(event.target.value)} placeholder="Disnaker, OEM, Vendor Calibration, Internal HSE" /></div>
           <div className="space-y-2 md:col-span-2"><Label>Upload lampiran certificate/dokumen</Label><div className="grid min-h-28 place-items-center rounded-xl border border-dashed bg-slate-50 text-center text-sm font-semibold text-slate-500"><UploadCloud className="mb-2 size-6" /> Pilih PDF / gambar sertifikat</div></div>
         </div>
         <div className="rounded-2xl border bg-slate-50 p-4">
@@ -407,7 +418,7 @@ function AddCertificationDialog({ categories, onAddCategory, userOptions }: { ca
             <div className="space-y-2 md:col-span-2"><Label>Hari sebelum expired</Label><Input value={days} onChange={(event) => setDays(event.target.value)} placeholder="90, 60, 30, 14, 7, 1" /></div>
           </div>
         </div>
-        <DialogFooter><Button variant="outline">Batal</Button><Button>Simpan Data</Button></DialogFooter>
+        <DialogFooter><Button variant="outline">Batal</Button><Button onClick={() => onSave({ id: `CERT-${Date.now()}`, assetOrOperator, certificationType, category, subcategory, area, assetTag, permitNumber, projectLocation: area, pic: recipients[0] ?? '', examiner: 'HSE Inspector', standard, risk, expiryDate: expiryDate || new Date().toISOString().slice(0, 10), status: 'Pending Review', attachmentName: 'Belum ada attachment', attachmentType: 'Missing', attachmentPreview: 'Dokumen belum diunggah.', reminder: { enabled, recipients, escalationRecipients: escalations, daysBeforeExpiry: days.split(',').map((item) => Number(item.trim())).filter(Number.isFinite), lastSent: '-', nextReminder: expiryDate || '-' } })}>Simpan Data</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -512,7 +523,14 @@ export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUs
     return options.length ? options : fallbackUserOptions;
   }, [users]);
 
-  const [records, setRecords] = useState(initialRecords);
+  const [records, setRecords] = useState<CertificationRecord[]>(() => {
+    if (typeof window === 'undefined') return initialRecords;
+    try {
+      return JSON.parse(window.localStorage.getItem(SIA_SIO_STORAGE_KEY) || 'null') ?? initialRecords;
+    } catch {
+      return initialRecords;
+    }
+  });
   const [categories, setCategories] = useState(initialCategories);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
@@ -542,12 +560,21 @@ export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUs
   };
 
   const handleSaveRecord = (next: CertificationRecord) => {
-    setRecords((current) => current.map((record) => (record.id === next.id ? next : record)));
+    setRecords((current) => {
+      const exists = current.some((record) => record.id === next.id);
+      const updated = exists ? current.map((record) => (record.id === next.id ? next : record)) : [next, ...current];
+      window.localStorage.setItem(SIA_SIO_STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleDeleteRecord = (record: CertificationRecord) => {
     if (confirm(`Hapus sertifikasi ${record.assetOrOperator}?`)) {
-      setRecords((current) => current.filter((item) => item.id !== record.id));
+      setRecords((current) => {
+        const updated = current.filter((item) => item.id !== record.id);
+        window.localStorage.setItem(SIA_SIO_STORAGE_KEY, JSON.stringify(updated));
+        return updated;
+      });
     }
   };
 
@@ -562,7 +589,7 @@ export function SiaSioToolsCertificationWorkspace({ users }: { users: SecurityUs
         <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm"><BellRing className="mb-3 size-5 text-blue-600" /><p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Critical Reminder</p><p className="text-2xl font-black text-blue-700">{kpis.criticalReminder}</p></div>
       </div>
       <div className="rounded-2xl border bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b bg-slate-50 p-4 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-display text-lg font-black text-slate-900">Workshop Tire Certification Register</h2><p className="text-sm font-medium text-slate-500">Forklift, hydrant, pressure tools, hydraulic tools, lifting equipment, dan personnel license.</p></div><AddCertificationDialog categories={categories} onAddCategory={handleAddCategory} userOptions={userOptions} /></div>
+        <div className="flex flex-col gap-3 border-b bg-slate-50 p-4 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-display text-lg font-black text-slate-900">Workshop Tire Certification Register</h2><p className="text-sm font-medium text-slate-500">Forklift, hydrant, pressure tools, hydraulic tools, lifting equipment, dan personnel license.</p></div><AddCertificationDialog categories={categories} onAddCategory={handleAddCategory} onSave={handleSaveRecord} userOptions={userOptions} /></div>
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
           <div className="relative lg:w-[260px]"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" className="h-9 pl-9" /></div>
           <Select value={category} onValueChange={setCategory}><SelectTrigger className="h-9 lg:w-[240px]"><SelectValue placeholder="Category" /></SelectTrigger><SelectContent><SelectItem value="all">All Category</SelectItem>{categories.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>

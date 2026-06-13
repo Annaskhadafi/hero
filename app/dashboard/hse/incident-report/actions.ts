@@ -3,6 +3,14 @@
 import { eq, desc, and, or, ilike } from 'drizzle-orm'
 import { db } from '@/db'
 import { hseIncidentRecords } from '@/db/schema/hero'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+
+async function requireIncidentPermission(action: 'view' | 'edit' | 'delete') {
+  const permission = await getCurrentMenuPermission('hse_incident_report')
+  const allowed = action === 'view' ? permission.canView : action === 'delete' ? permission.canDelete : permission.canEdit
+  if (!allowed) throw new Error('Role Anda tidak punya akses Incident Report.')
+  return permission
+}
 
 export async function getIncidentRecords(params?: {
   search?: string
@@ -11,6 +19,7 @@ export async function getIncidentRecords(params?: {
   status?: string
 }) {
   try {
+    await requireIncidentPermission('view')
     const conditions = []
 
     if (params?.search) {
@@ -62,6 +71,7 @@ export async function createIncidentRecord(payload: {
   documentationUrl: string
 }) {
   try {
+    await requireIncidentPermission('edit')
     const [inserted] = await db
       .insert(hseIncidentRecords)
       .values({
@@ -105,6 +115,7 @@ export async function updateIncidentRecord(
   }>
 ) {
   try {
+    await requireIncidentPermission('edit')
     const [updated] = await db
       .update(hseIncidentRecords)
       .set({
@@ -123,6 +134,7 @@ export async function updateIncidentRecord(
 
 export async function deleteIncidentRecord(id: number) {
   try {
+    await requireIncidentPermission('delete')
     await db.delete(hseIncidentRecords).where(eq(hseIncidentRecords.id, id))
     return { success: true }
   } catch (error: any) {

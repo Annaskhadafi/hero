@@ -2298,6 +2298,51 @@ export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hsePtwPermits = pgTable('hero_hse_ptw_permits', {
+  id: serial('id').primaryKey(),
+  permitNumber: text('permit_number').notNull().unique(),
+  projectName: text('project_name').notNull(),
+  permitType: text('permit_type').notNull().default('Hot Work'),
+  location: text('location').notNull().default(''),
+  area: text('area').notNull().default(''),
+  startAt: timestamp('start_at'),
+  endAt: timestamp('end_at'),
+  applicantName: text('applicant_name').notNull().default(''),
+  fieldPicName: text('field_pic_name').notNull().default(''),
+  authorizedByName: text('authorized_by_name').notNull().default(''),
+  status: text('status').notNull().default('Draft'),
+  riskLevel: text('risk_level').notNull().default('Medium'),
+  description: text('description').notNull().default(''),
+  controlSteps: text('control_steps').notNull().default(''),
+  ppe: jsonb('ppe').$type<string[]>().notNull().default([]),
+  gasTestRequired: boolean('gas_test_required').notNull().default(false),
+  isolationRequired: boolean('isolation_required').notNull().default(false),
+  hiradcEntryId: integer('hiradc_entry_id').references(() => hiradcEntries.id, { onDelete: 'set null' }),
+  attachments: jsonb('attachments').$type<string[]>().notNull().default([]),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hseCorrectiveActions = pgTable('hero_hse_corrective_actions', {
+  id: serial('id').primaryKey(),
+  sourceType: text('source_type').notNull(),
+  sourceId: text('source_id').notNull().default(''),
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  actionPlan: text('action_plan').notNull().default(''),
+  assigneeName: text('assignee_name').notNull().default(''),
+  dueDate: timestamp('due_date'),
+  priority: text('priority').notNull().default('Medium'),
+  status: text('status').notNull().default('Open'),
+  closeOutNote: text('close_out_note').notNull().default(''),
+  evidenceUrls: jsonb('evidence_urls').$type<string[]>().notNull().default([]),
+  createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  closedAt: timestamp('closed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const hcRecruitments = pgTable('hero_hc_recruitments', {
   id: serial('id').primaryKey(),
   jobTitle: text('job_title').notNull(),

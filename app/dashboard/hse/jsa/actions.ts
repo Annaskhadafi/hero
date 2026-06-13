@@ -5,6 +5,14 @@ import { eq, desc, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { heroJsas, heroJsaSettings, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'
 import { getServerSession } from '@/lib/auth-session'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+
+async function requireJsaPermission(action: 'view' | 'edit' | 'delete') {
+  const permission = await getCurrentMenuPermission('hse_jsa')
+  const allowed = action === 'view' ? permission.canView : action === 'delete' ? permission.canDelete : permission.canEdit
+  if (!allowed) throw new Error('Role Anda tidak punya akses JSA.')
+  return permission
+}
 
 export type JsaSettings = {
   notificationRecipients: string
@@ -41,6 +49,7 @@ async function ensureJsaSettingsTable() {
 }
 
 export async function getJsaSettings(): Promise<JsaSettings> {
+  await requireJsaPermission('view')
   await ensureJsaSettingsTable()
 
   const [row] = await db
@@ -53,6 +62,7 @@ export async function getJsaSettings(): Promise<JsaSettings> {
 }
 
 export async function saveJsaSettings(settings: JsaSettings) {
+  await requireJsaPermission('edit')
   const session = await getServerSession()
   if (!session?.user) throw new Error('Unauthorized')
 
@@ -78,10 +88,12 @@ export async function saveJsaSettings(settings: JsaSettings) {
 }
 
 export async function getJsaList() {
+  await requireJsaPermission('view')
   return db.select().from(heroJsas).orderBy(desc(heroJsas.createdAt))
 }
 
 export async function getJsaById(id: string) {
+  await requireJsaPermission('view')
 
 
   const [jsa] = await db.select().from(heroJsas).where(eq(heroJsas.id, id)).limit(1)
@@ -102,6 +114,7 @@ export async function saveJsa(
   steps: Omit<NewJsaStep, 'id' | 'jsaId' | 'createdAt'>[],
   id?: string
 ) {
+  await requireJsaPermission('edit')
   const session = await getServerSession()
   if (id && !session?.user) throw new Error('Unauthorized')
 
@@ -148,6 +161,7 @@ export async function saveJsa(
 }
 
 export async function deleteJsa(id: string) {
+  await requireJsaPermission('delete')
 
   
   await db.delete(heroJsas).where(eq(heroJsas.id, id))

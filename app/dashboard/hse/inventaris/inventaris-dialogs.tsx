@@ -273,7 +273,7 @@ export function HseInventoryFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-1.5rem)] max-w-xl overflow-y-auto rounded-2xl p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{item ? "Edit Data Inventaris" : "Tambah Inventaris HSE"}</DialogTitle>
           <DialogDescription>
@@ -293,7 +293,7 @@ export function HseInventoryFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Kategori</Label>
               <Select value={category} onValueChange={setCategory}>
@@ -323,7 +323,7 @@ export function HseInventoryFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Kondisi</Label>
               <Select value={condition} onValueChange={setCondition}>
@@ -355,7 +355,7 @@ export function HseInventoryFormDialog({
           <div className="border-t border-dashed border-border/80 my-2 pt-4 space-y-4">
             <h4 className="text-xs font-bold text-primary uppercase tracking-widest">Masa Berlaku & Expired Otomatis</h4>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="purchaseDate" className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Tanggal Beli</Label>
                 <Input
@@ -378,7 +378,7 @@ export function HseInventoryFormDialog({
               </div>
             </div>
 
-            <div className="bg-surface-container-low p-3 rounded-lg flex items-center justify-between">
+            <div className="flex flex-col gap-1 rounded-lg bg-surface-container-low p-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs font-semibold text-muted-foreground">Tanggal Expired Otomatis:</span>
               <span className="text-sm font-bold text-rose-600">{autoExpirationDate}</span>
             </div>
@@ -387,7 +387,7 @@ export function HseInventoryFormDialog({
           <div className="border-t border-dashed border-border/80 my-2 pt-4 space-y-4">
             <h4 className="text-xs font-bold text-primary uppercase tracking-widest">Pengaturan Reminder Email</h4>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="reminderDaysBefore" className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Pengingat (Hari Sebelum)</Label>
                 <Input
@@ -420,13 +420,13 @@ export function HseInventoryFormDialog({
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full justify-between h-10 px-3 border border-input bg-background font-normal text-sm shadow-sm hover:bg-muted/50 rounded-md"
+                    className="h-11 w-full justify-between rounded-md border border-input bg-background px-3 text-left text-sm font-normal shadow-sm hover:bg-muted/50"
                   >
-                    <span className="text-muted-foreground text-xs">Pilih / cari penerima dari user management...</span>
+                    <span className="truncate text-xs text-muted-foreground">Pilih / cari penerima dari user management...</span>
                     <Search className="size-4 shrink-0 text-muted-foreground/75" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[360px] p-2 rounded-xl border border-border/80 bg-white shadow-lg" align="start">
+                <PopoverContent className="w-[calc(100vw-2rem)] max-w-[360px] rounded-xl border border-border/80 bg-white p-2 shadow-lg" align="start">
                   <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/75 pointer-events-none" />
                     <Input
@@ -437,7 +437,7 @@ export function HseInventoryFormDialog({
                     />
                   </div>
                   
-                  <div className="max-h-[220px] overflow-y-auto space-y-1 rounded-lg border border-border/60 bg-muted/5 p-1 scrollbar-thin">
+                  <div className="max-h-[45dvh] space-y-1 overflow-y-auto rounded-lg border border-border/60 bg-muted/5 p-1 scrollbar-thin sm:max-h-[220px]">
                     {filteredUsers.length === 0 && !showAddCustom && (
                       <div className="py-6 text-center text-xs text-muted-foreground">
                         Tidak ada pengguna ditemukan
@@ -451,7 +451,7 @@ export function HseInventoryFormDialog({
                           key={user.id}
                           type="button"
                           onClick={() => toggleEmail(user.email)}
-                          className="flex w-full items-center gap-3 rounded-md px-2.5 py-1.5 text-left text-xs text-foreground hover:bg-muted/50 transition-colors"
+                          className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted/50"
                         >
                           <span className={`grid size-4 place-items-center rounded border border-border/80 bg-white ${
                             isSelected ? "border-primary bg-primary text-primary-foreground" : ""
@@ -527,8 +527,8 @@ export function HseInventoryFormDialog({
 
           <div className="grid gap-2">
             <Label className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Foto Barang (Maks. 2MB)</Label>
-            <div className="flex items-center gap-4">
-              <label className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-input px-3 py-2 text-sm font-semibold shadow-sm hover:bg-muted">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              <label className="flex h-11 cursor-pointer items-center justify-center rounded-md border border-input px-3 py-2 text-sm font-semibold shadow-sm hover:bg-muted sm:h-10">
                 {uploading ? (
                   <Loader2 className="mr-2 size-4 animate-spin text-muted-foreground" />
                 ) : (
@@ -552,11 +552,11 @@ export function HseInventoryFormDialog({
             </div>
           </div>
 
-          <DialogFooter className="pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="gap-2 pt-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-11 sm:h-10">
               Batal
             </Button>
-            <Button type="submit" disabled={loading || uploading} className="bg-primary text-white hover:bg-primary/90">
+            <Button type="submit" disabled={loading || uploading} className="h-11 bg-primary text-white hover:bg-primary/90 sm:h-10">
               {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
               {item ? "Perbarui Barang" : "Simpan Barang"}
             </Button>
@@ -684,7 +684,7 @@ export function HseInventoryDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl p-4 sm:max-w-4xl sm:p-6">
         <DialogHeader className="no-print">
           <DialogTitle>Preview Dokumen Aset HSE</DialogTitle>
           <DialogDescription>
@@ -693,31 +693,31 @@ export function HseInventoryDetailDialog({
         </DialogHeader>
 
         {/* Action Buttons Top */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-3 mb-2 no-print">
-          <div className="flex items-center gap-2 bg-surface-container-low rounded-lg p-1.5 text-xs text-muted-foreground border">
+        <div className="no-print mb-2 flex flex-col gap-3 border-b border-border/80 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2 rounded-lg border bg-surface-container-low p-1.5 text-xs text-muted-foreground">
             <FileText className="size-4 text-primary" />
-            <span className="font-semibold">{item.documentId}</span>
+            <span className="truncate font-semibold">{item.documentId}</span>
             <span className="text-[10px] uppercase font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
               Verified
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             {canEdit && (
-              <Button variant="outline" size="sm" onClick={onEditClick}>
+              <Button variant="outline" size="sm" onClick={onEditClick} className="h-10">
                 <Edit3 className="mr-1.5 size-4" />
                 Edit Aset
               </Button>
             )}
             {item.photoUrl && (
               <a href={item.photoUrl} target="_blank" rel="noreferrer" className="no-underline">
-                <Button variant="outline" size="sm" type="button">
+                <Button variant="outline" size="sm" type="button" className="h-10 w-full">
                   <Download className="mr-1.5 size-4" />
                   Unduh / Buka Foto
                 </Button>
               </a>
             )}
-            <Button size="sm" onClick={handlePrint} className="bg-primary text-white hover:bg-primary/90">
+            <Button size="sm" onClick={handlePrint} className="h-10 bg-primary text-white hover:bg-primary/90">
               <Printer className="mr-1.5 size-4" />
               Cetak Dokumen
             </Button>
@@ -727,11 +727,11 @@ export function HseInventoryDetailDialog({
         {/* WYSIWYG PDF-WRAPPER */}
         <div
           id="printable-document-hse-inv"
-          className="pdf-wrapper border rounded-xl bg-white p-6 shadow-sm max-w-[800px] mx-auto text-[#0f172a]"
+          className="pdf-wrapper mx-auto max-w-[800px] rounded-xl border bg-white p-4 text-[#0f172a] shadow-sm sm:p-6"
         >
           {/* Header PT */}
-          <div className="header-container flex items-center justify-between border-b-2 border-[#0f172a] pb-3 mb-4">
-            <div className="header-left flex items-center gap-3">
+          <div className="header-container mb-4 flex items-start justify-between gap-3 border-b-2 border-[#0f172a] pb-3 sm:items-center">
+            <div className="header-left flex min-w-0 items-start gap-3 sm:items-center">
               {/* Logo placeholder icon */}
               <div className="grid size-12 place-items-center rounded-lg bg-primary/10 text-primary border border-primary/20">
                 <FileText className="size-6" />
@@ -751,14 +751,14 @@ export function HseInventoryDetailDialog({
             </div>
 
             {/* Seal Verified */}
-            <div className="badge-verified border-2 border-[#0f172a] rounded-full size-14 flex flex-col items-center justify-center text-[8px] font-extrabold text-[#0f172a] uppercase select-none -rotate-6">
+              <div className="badge-verified flex size-12 shrink-0 -rotate-6 select-none flex-col items-center justify-center rounded-full border-2 border-[#0f172a] text-[8px] font-extrabold uppercase text-[#0f172a] sm:size-14">
               <span>Verified</span>
               <span className="text-[6px] text-muted-foreground mt-0.5">System</span>
             </div>
           </div>
 
           {/* Metadata Grid */}
-          <div className="meta-grid grid grid-cols-6 gap-2 border-b border-border/80 pb-3 mb-4 text-[9px] leading-tight">
+          <div className="meta-grid mb-4 grid grid-cols-2 gap-2 border-b border-border/80 pb-3 text-[9px] leading-tight sm:grid-cols-6">
             <div className="meta-item flex flex-col">
               <span className="meta-label font-bold text-[8px] uppercase text-[#64748b] tracking-wider">Document ID</span>
               <span className="meta-val font-bold text-[#0f172a] mt-0.5">{item.documentId}</span>
@@ -786,14 +786,14 @@ export function HseInventoryDetailDialog({
           </div>
 
           {/* Banner Log */}
-          <div className="banner-strip bg-[#1e293b] text-white p-3 rounded-lg flex items-center justify-between mb-4">
+          <div className="banner-strip mb-4 flex flex-col gap-3 rounded-lg bg-[#1e293b] p-3 text-white sm:flex-row sm:items-center sm:justify-between">
             <div className="banner-left">
               <span className="banner-label text-[9px] uppercase tracking-wider text-[#94a3b8] font-bold">Asset & Inventory Log</span>
               <h2 className="banner-title text-base font-extrabold text-white mt-0.5 uppercase">
                 {item.name}
               </h2>
             </div>
-            <div className="banner-right flex flex-col items-end">
+            <div className="banner-right flex flex-row items-center gap-2 sm:flex-col sm:items-end sm:gap-0">
               <span className="text-[10px] text-white/80 font-semibold mb-1">QTY: {item.qty}</span>
               <span className={`badge-condition text-[9px] font-bold text-white px-2 py-0.5 rounded-full ${
                 getConditionColor(item.condition) === "baik" ? "bg-emerald-500" :

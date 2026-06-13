@@ -1,15 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
+  Boxes,
   Camera,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  FileCheck2,
+  Flame,
+  HardHat,
   ImagePlus,
+  ListChecks,
   MapPin,
   Navigation,
+  NotebookTabs,
   RadioTower,
   ShieldCheck,
+  Siren,
+  Stethoscope,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -114,6 +126,49 @@ function clearDraft(key: string) {
 function formatDate(value: Date) {
   return new Date(value).toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
 }
+
+const hseFieldActions = [
+  {
+    title: "Observation",
+    description: "Catat unsafe act/condition dengan GPS.",
+    icon: ShieldCheck,
+    tab: "observation" as const,
+    tone: "bg-[#e6f6ff] text-[#003f78]",
+  },
+  {
+    title: "Emergency",
+    description: "Alert insiden cepat, wajib GPS + foto.",
+    icon: Siren,
+    tab: "emergency" as const,
+    tone: "bg-[#fff1ea] text-[#8a3d00]",
+  },
+  {
+    title: "Inspection",
+    description: "Buka daftar safety inspection.",
+    icon: ClipboardCheck,
+    href: "/dashboard/safety/inspections",
+    tone: "bg-[#eef7ed] text-[#166534]",
+  },
+  {
+    title: "Induction",
+    description: "Akses safety induction pekerja/tamu.",
+    icon: Stethoscope,
+    href: "/dashboard/safety-induction",
+    tone: "bg-[#f2efff] text-[#5b21b6]",
+  },
+];
+
+const hseAdminFeatures = [
+  { title: "Incident Report", href: "/mobile/hse/incident-report", icon: AlertTriangle, meta: "Investigasi & laporan" },
+  { title: "Corrective Action", href: "/mobile/hse/corrective-action", icon: CheckCircle2, meta: "Follow-up & close-out" },
+  { title: "HIRADC", href: "/mobile/hse/hiradc", icon: Flame, meta: "Risk register" },
+  { title: "JSA", href: "/mobile/hse/jsa", icon: FileCheck2, meta: "Job safety analysis" },
+  { title: "Izin Kerja PTW", href: "/mobile/hse/ptw", icon: HardHat, meta: "Permit to work" },
+  { title: "Inventaris HSE", href: "/dashboard/hse/inventaris", icon: Boxes, meta: "APD & equipment" },
+  { title: "Checklist", href: "/mobile/hse/checklist", icon: ListChecks, meta: "Template & daily check" },
+  { title: "Safety Data", href: "/dashboard/safety/data", icon: NotebookTabs, meta: "Performance dashboard" },
+  { title: "SIA/SIO Tools", href: "/mobile/hse/sia-sio-tools", icon: ClipboardList, meta: "Sertifikasi tools" },
+];
 
 export function MobileHseClient({ data }: MobileHseClientProps) {
   const router = useRouter();
@@ -415,7 +470,88 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
         </div>
       </section>
 
-      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">HSE Mobile Menu</p>
+            <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Field quick actions</h2>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275] shadow-[0_10px_24px_rgba(8,32,51,0.08)]">
+            {hseFieldActions.length} tools
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {hseFieldActions.map((action) => {
+            const Icon = action.icon;
+            const content = (
+              <>
+                <span className={`flex size-10 items-center justify-center rounded-2xl ${action.tone}`}>
+                  <Icon className="size-5" />
+                </span>
+                <span className="mt-4 block text-sm font-black text-[#082033]">{action.title}</span>
+                <span className="mt-1 block text-xs font-semibold leading-5 text-[#486275]">{action.description}</span>
+              </>
+            );
+
+            if ("tab" in action && action.tab) {
+              return (
+                <button
+                  key={action.title}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(action.tab);
+                    document.getElementById("hse-submit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                  className="min-h-[128px] rounded-[1.25rem] bg-white p-4 text-left shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            return (
+              <Link
+                key={action.title}
+                href={action.href}
+                className="min-h-[128px] rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+              >
+                {content}
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">All HSE Features</p>
+          <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Admin & compliance</h2>
+        </div>
+        <div className="rounded-[1.25rem] bg-white p-2 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+          {hseAdminFeatures.map((feature) => {
+            const Icon = feature.icon;
+            return (
+              <Link
+                key={feature.title}
+                href={feature.href}
+                className="flex min-h-16 items-center gap-3 rounded-[1rem] px-3 py-3 active:bg-[#f6fbff]"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#f6fbff] text-[#003f78]">
+                  <Icon className="size-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-black text-[#082033]">{feature.title}</span>
+                  <span className="block truncate text-xs font-semibold text-[#486275]">{feature.meta}</span>
+                </span>
+                <span className="text-lg font-black text-[#9ab0bf]">›</span>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section id="hse-submit-panel" className="scroll-mt-24 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
           <TabsList className="grid h-auto w-full grid-cols-2 rounded-2xl bg-[#e6f6ff] p-1">
             <TabsTrigger value="observation" className="rounded-xl text-[11px] font-black uppercase tracking-[0.12em]">

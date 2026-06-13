@@ -15,6 +15,7 @@ import {
 } from '@/db/schema/hero'
 import { logAuditEvent } from '@/lib/audit-logger'
 import { getServerSession } from '@/lib/auth-session'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 
 export type ChecklistTemplate = typeof checklistTemplates.$inferSelect
@@ -49,6 +50,22 @@ async function getActor(): Promise<Actor> {
   return { employeeId: employee?.id ?? null, name, email }
 }
 
+async function requireChecklistPermission(action: 'view' | 'edit' | 'delete') {
+  const permission = await getCurrentMenuPermission('hse_checklist_generator')
+  const allowed =
+    action === 'view'
+      ? permission.canView
+      : action === 'delete'
+        ? permission.canDelete
+        : permission.canEdit
+
+  if (!allowed) {
+    throw new Error('Role Anda tidak punya akses untuk aksi checklist ini.')
+  }
+
+  return permission
+}
+
 function normalizeChecklistInputType(value: string): ChecklistInputType | null {
   const normalized = value.trim().toLowerCase().replace(/\s+/g, '_')
   if (normalized === 'yes_no_na' || normalized === 'yes/no/na' || normalized === 'yes-no-na')
@@ -71,6 +88,7 @@ function normalizeChecklistInputType(value: string): ChecklistInputType | null {
 }
 
 export async function getChecklistTemplatesWithLatestRevision() {
+  await requireChecklistPermission('view')
   const latest = db
     .select({
       templateId: checklistTemplateRevisions.templateId,
@@ -120,6 +138,7 @@ export async function getChecklistTemplatesWithLatestRevision() {
 }
 
 export async function getChecklistTemplateRevisionDetail(revisionId: number) {
+  await requireChecklistPermission('view')
   const [revision] = await db
     .select({
       id: checklistTemplateRevisions.id,
@@ -159,6 +178,7 @@ export async function createChecklistTemplate(params: {
   description?: string
   items: Array<{ prompt: string; inputType: ChecklistInputType; isRequired?: boolean }>
 }) {
+  await requireChecklistPermission('edit')
   const actor = await getActor()
 
   const title = params.title.trim()
@@ -241,6 +261,7 @@ export async function updateChecklistTemplate(params: {
   description?: string
   items: Array<{ prompt: string; inputType: ChecklistInputType; isRequired?: boolean }>
 }) {
+  await requireChecklistPermission('edit')
   const actor = await getActor()
 
   const title = params.title.trim()
@@ -340,6 +361,7 @@ export async function updateChecklistTemplate(params: {
 }
 
 export async function deleteChecklistTemplate(templateId: number) {
+  await requireChecklistPermission('delete')
   const actor = await getActor()
 
   await db
@@ -361,6 +383,7 @@ export async function deleteChecklistTemplate(templateId: number) {
 }
 
 export async function getDailyChecklistHistory() {
+  await requireChecklistPermission('view')
   return db
     .select({
       id: dailyChecklists.id,
@@ -379,6 +402,7 @@ export async function getDailyChecklistHistory() {
 }
 
 export async function getChecklistAuditLogs() {
+  await requireChecklistPermission('view')
   return db
     .select({
       id: auditLogs.id,
@@ -402,6 +426,7 @@ export async function createDailyChecklistFromTemplate(params: {
   templateRevisionId: number
   area: string
 }) {
+  await requireChecklistPermission('edit')
   const actor = await getActor()
 
   const area = params.area.trim()
@@ -552,6 +577,7 @@ export async function saveDailyChecklistAnswers(params: {
     | { revisionItemId: number; inputType: 'free_text'; valueText: string; attachments?: string[] }
   >
 }) {
+  await requireChecklistPermission('edit')
   const actor = await getActor()
 
   const [checklist] = await db
@@ -743,6 +769,7 @@ export async function saveDailyChecklistAnswers(params: {
 }
 
 export async function deleteDailyChecklist(checklistId: number) {
+  await requireChecklistPermission('delete')
   const actor = await getActor()
 
   await db
@@ -764,6 +791,7 @@ export async function deleteDailyChecklist(checklistId: number) {
 }
 
 export async function getDailyChecklistReportData(checklistId: number) {
+  await requireChecklistPermission('view')
   const [header] = await db
     .select({
       id: dailyChecklists.id,
@@ -875,6 +903,7 @@ export async function logDailyChecklistAccess(params: {
   checklistId: number
   event: 'viewed' | 'pdf_downloaded' | 'printed'
 }) {
+  await requireChecklistPermission('view')
   const actor = await getActor()
   const action =
     params.event === 'viewed'
@@ -904,6 +933,7 @@ export async function importChecklistTemplates(params: {
     itemOrder?: number | null
   }>
 }) {
+  await requireChecklistPermission('edit')
   const actor = await getActor()
 
   const grouped = new Map<
