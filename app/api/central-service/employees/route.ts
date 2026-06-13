@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
       const heroRows = await db
         .select({
           employeeSn: heroEmployees.employeeSn,
+          email: heroEmployees.email,
           section: heroEmployees.section,
           gender: heroEmployees.gender,
           religion: heroEmployees.religion,
@@ -139,6 +140,7 @@ export async function GET(request: NextRequest) {
       const extra = extraBySn[emp.employeeSn] ?? extraBySn[`EMP-${emp.employeeSn}`] ?? {};
       return {
         ...emp,
+        email: emp.email || extra.email || null,
         section: extra.section ?? emp.section ?? "",
         gender: extra.gender ?? "",
         religion: extra.religion ?? "",

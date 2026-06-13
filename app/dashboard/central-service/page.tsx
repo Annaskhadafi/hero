@@ -147,7 +147,7 @@ function getContractLeftDays(contractEnd: string | null): number | null {
 
 function ContractLeftBadge({ days }: { days: number | null }) {
   if (days === null) return <span className="text-muted-foreground text-sm">-</span>
-  if (days <= 0) return <Badge variant="outline" className="bg-red-50 text-red-700 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">Expired</Badge>
+  if (days <= 0) return <Badge variant="outline" className="bg-red-50 text-red-700 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">Lewat {Math.abs(days)} hari</Badge>
   if (days <= 30) return <Badge variant="outline" className="bg-orange-50 text-orange-600 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">{days} hari</Badge>
   if (days <= 90) return <Badge variant="outline" className="bg-amber-50 text-amber-600 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">{days} hari</Badge>
   return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">{days} hari</Badge>
@@ -892,6 +892,9 @@ export default function CentralServicePage() {
                           <div className="flex gap-1 justify-end">
                             <Button size="sm" variant="ghost" onClick={() => setViewEmployee(emp)} title="View">
                               <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => window.location.href = `/dashboard/hc/contract-review/form?employeeSn=${emp.employeeSn}`} title="Contract Review">
+                              <FileText className="h-4 w-4" />
                             </Button>
                             <Button size="sm" variant="ghost" onClick={() => setEditEmployee(emp)} title="Edit">
                               <Edit className="h-4 w-4" />
