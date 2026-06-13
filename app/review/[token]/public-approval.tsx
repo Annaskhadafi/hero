@@ -6,6 +6,7 @@ import { approveContractReviewStep } from '@/app/actions/contract-review'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Download } from 'lucide-react'
 
 type PublicApprovalProps = {
   token: string
@@ -273,7 +274,56 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
             <h2 className="text-sm font-semibold text-slate-950 mb-3">TTD Digital</h2>
             {done ? (
-              <p className="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-700">Approval sudah ditandatangani.</p>
+              <div className="space-y-3">
+                <p className="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-700">Approval sudah ditandatangani.</p>
+                {allApprovals.every((s: any) => s.status === 'approved') && (
+                  <Button type="button" size="sm" className="w-full" onClick={() => {
+                    const page1 = document.querySelector('#pdf-page-1')?.innerHTML || ''
+                    const page2 = document.querySelector('#pdf-page-2')?.innerHTML || ''
+                    const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
+                    const printWindow = window.open('', '_blank', 'width=900,height=1200')
+                    if (!printWindow) return
+                    printWindow.document.write(`<!doctype html><html><head><title>Contract Review - ${review.employeeNameStr || ''}</title>
+                      <style>
+                        @page { size: A4 portrait; margin: 0; }
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { font-family: 'Manrope', 'Inter', Arial, sans-serif; }
+                        .page { width: 210mm; min-height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
+                        .content { position: relative; z-index: 10; padding: 40mm 20mm 35mm 20mm; font-size: 9pt; line-height: 1.3; color: black; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 0.75rem; }
+                        td, th { border: 1px solid black; padding: 4px 6px; font-size: 9pt; }
+                        th { font-weight: bold; background: #f8fafc; }
+                        .font-bold { font-weight: bold; }
+                        .text-center { text-align: center; }
+                        .text-left { text-align: left; }
+                        .capitalize { text-transform: capitalize; }
+                        .grid { display: grid; }
+                        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                        .gap-x-8 { column-gap: 2rem; }
+                        .gap-y-10 { row-gap: 2.5rem; }
+                        .mb-1 { margin-bottom: 0.25rem; }
+                        .mb-3 { margin-bottom: 0.75rem; }
+                        .mb-4 { margin-bottom: 1rem; }
+                        .mb-8 { margin-bottom: 2rem; }
+                        .ml-4 { margin-left: 1rem; }
+                        .mt-2 { margin-top: 0.5rem; }
+                        input[type="checkbox"] { margin-right: 4px; }
+                        img { max-height: 64px; object-fit: contain; }
+                        .border-b { border-bottom: 1px solid black; }
+                        .w-full { width: 100%; }
+                      </style>
+                    </head><body>
+                      <div class="page" style="background-image: url('${letterheadUrl}')"><div class="content">${page1}</div></div>
+                      <div class="page" style="background-image: url('${letterheadUrl}')"><div class="content">${page2}</div></div>
+                      <script>setTimeout(() => { window.print(); }, 300);</script>
+                    </body></html>`)
+                    printWindow.document.close()
+                  }}>
+                    <Download className="mr-2 size-4" />
+                    Download PDF
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">
