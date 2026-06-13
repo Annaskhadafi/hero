@@ -288,8 +288,8 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         @page { size: A4 portrait; margin: 0; }
                         * { box-sizing: border-box; margin: 0; padding: 0; }
                         body { font-family: 'Manrope', 'Inter', Arial, sans-serif; }
-                        .page { width: 210mm; min-height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
-                        .content { position: relative; z-index: 10; padding: 40mm 20mm 35mm 20mm; font-size: 9pt; line-height: 1.3; color: black; }
+                        .page { width: 210mm; height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
+                        .content { position: relative; z-index: 10; padding: 40mm 20mm 35mm 20mm; font-size: 9pt; line-height: 1.3; color: black; height: 100%; overflow: hidden; }
                         table { width: 100%; border-collapse: collapse; margin-bottom: 0.75rem; }
                         td, th { border: 1px solid black; padding: 4px 6px; font-size: 9pt; }
                         th { font-weight: bold; background: #f8fafc; }
