@@ -20,6 +20,7 @@ import {
   MapPin,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   FileText,
 } from 'lucide-react'
 
@@ -293,18 +294,23 @@ export default function CentralServicePage() {
     permanentDate: false, tglLahir: false,
   })
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
-  const [sortKey, setSortKey] = useState<string>('')
+  const [sortKey, setSortKey] = useState<string>('contractLeft')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const PAGE_SIZE = 50
 
   useEffect(() => {
     fetchEmployees()
-  }, [search, syncFilter])
+  }, [search, syncFilter, page])
 
   const fetchEmployees = async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      params.append('limit', '10000')
+      params.append('limit', String(PAGE_SIZE))
+      params.append('page', String(page))
       if (search) params.append('search', search)
       if (syncFilter !== 'all') params.append('syncStatus', syncFilter)
       const response = await fetch(`/api/central-service/employees?${params}`)
@@ -315,6 +321,8 @@ export default function CentralServicePage() {
           site: emp.siteName,
         }))
         setEmployees(parsed)
+        setTotalPages(data.pagination?.totalPages || 1)
+        setTotalCount(data.pagination?.total || parsed.length)
       }
     } catch (error) {
       console.error(error)
@@ -518,7 +526,7 @@ export default function CentralServicePage() {
       eyebrow="Central Services"
       title="Central Service Employees"
       description="Kelola semua karyawan Central Service dalam satu workspace table-first."
-      badge={`${filteredEmployees.length}/${employees.length} visible`}
+      badge={`${filteredEmployees.length}/${totalCount} visible`}
       actions={
         <>
           <input
@@ -963,8 +971,20 @@ export default function CentralServicePage() {
           </Table>
         </div>
         <p className="text-muted-foreground mt-2 text-xs">
-          Menampilkan {filteredEmployees.length} dari {employees.length} karyawan
+          Menampilkan halaman {page} dari {totalPages} ({totalCount} total karyawan)
         </p>
+        <div className="mt-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              <ChevronLeft className="size-4" /> Sebelumnya
+            </Button>
+            <span className="text-muted-foreground text-xs">Halaman {page} / {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+              Selanjutnya <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <span className="text-muted-foreground text-xs">{PAGE_SIZE} per halaman</span>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -976,7 +996,7 @@ export default function CentralServicePage() {
             <div>
               <p className="text-muted-foreground text-xs font-semibold uppercase">Total scope</p>
               <p className="text-foreground text-sm font-medium">
-                {employees.length.toLocaleString()} karyawan terdaftar
+                {totalCount.toLocaleString()} karyawan terdaftar
               </p>
             </div>
           </div>

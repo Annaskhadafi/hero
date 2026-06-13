@@ -103,8 +103,8 @@ export async function GET(request: NextRequest) {
       return or(eq(heroEmployees.employeeSn, sn), eq(heroEmployees.employeeSn, `EMP-${sn}`), eq(heroEmployees.employeeSn, plain))
     }
 
-    const enriched = await db
-      .selectDistinctOn([centralServiceEmployees.id], {
+    const raw = await db
+      .select({
         id: centralServiceEmployees.id,
         employeeSn: centralServiceEmployees.employeeSn,
         fullName: centralServiceEmployees.fullName,
@@ -155,11 +155,19 @@ export async function GET(request: NextRequest) {
         eq(centralServiceEmployees.employeeSn, sql`regexp_replace(${heroEmployees.employeeSn}, '^EMP-', '')`)
       ))
       .where(whereClause)
-      .orderBy(centralServiceEmployees.id, desc(centralServiceEmployees.createdAt))
+      .orderBy(desc(centralServiceEmployees.createdAt))
       .limit(limit)
       .offset(offset);
 
-    const result = enriched.map((row) => ({
+    // Deduplicate by id since LEFT JOIN may produce duplicates
+    const seen = new Set<number>();
+    const deduped = raw.filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
+
+    const result = deduped.map((row) => ({
       ...row,
       email: row.email || row.enrichEmail || null,
       section: row.enrichSection || row.section || "",
@@ -191,7 +199,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: enriched,
+      data: result,
       pagination: {
         page,
         limit,
