@@ -3,8 +3,10 @@
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Save, Printer, ArrowLeft, Plus, Trash2 } from "lucide-react"
+import SignatureCanvas from "react-signature-canvas"
 
 import { saveContractReview } from "@/app/actions/contract-review"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,7 +19,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
-export function ContractReviewClientForm({ employees, orgNodes = [], initialData }: { employees: any[], orgNodes?: any[], initialData?: any }) {
+export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[] }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const mode = searchParams.get("mode")
@@ -36,6 +38,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   }, [setOpen])
 
   const [isPending, startTransition] = useTransition()
+  const leaderSigRef = useRef<SignatureCanvas | null>(null)
+  const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(initialData?.leaderSignatureDataUrl || '')
   
   const [form, setForm] = useState({
     id: initialData?.id,
@@ -68,7 +72,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     employeeNameStr: initialData?.employeeNameStr || "",
     superiorName: initialData?.superiorName || "",
     superiorTitle: initialData?.superiorTitle || "",
-    hrName: initialData?.hrName || "",
+    hrName: initialData?.hrName || "Kesuma Bagaskara",
     hrTitle: initialData?.hrTitle || "HR-GA",
     nextSuperiorName: initialData?.nextSuperiorName || "",
     nextSuperiorTitle: initialData?.nextSuperiorTitle || "",
@@ -86,6 +90,64 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     const emp = employees.find(e => String(e.id) === employeeId)
     if (!emp) return currentForm
 
+    const isCentralService = emp.department?.toLowerCase().includes('central') || emp.section?.toLowerCase().includes('repair') || emp.section?.toLowerCase().includes('retread') || emp.section?.toLowerCase().includes('mvc') || emp.section?.toLowerCase().includes('service')
+    const isHo = emp.siteName && (emp.siteName.toLowerCase().includes('balikpapan') || emp.siteName.toLowerCase().includes('jakarta'))
+
+    // For Central Service employees, use approval matrix settings
+    if (isCentralService && approvalSettings) {
+      const section = (emp.section || '').toLowerCase()
+      let sectionHeadName = ''
+      let sectionHeadTitle = ''
+
+      if (section.includes('repair') || section.includes('retread')) {
+        sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.repairRetread.name
+        sectionHeadTitle = 'Leader Repair/Retread'
+      } else if (section.includes('mvc')) {
+        sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.serviceMvc.name
+        sectionHeadTitle = 'Supervisor Service MVC'
+      } else if (section.includes('other')) {
+        sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.serviceOthers.name
+        sectionHeadTitle = 'Coordinator Service Others'
+      }
+
+      const managerName = approvalSettings.approvalMatrix.managerName
+      const managerTitle = 'Manager Central Services'
+
+      // For Site: find PJO/TE at same site from employees list
+      let leaderName = sectionHeadName
+      let leaderTitle = sectionHeadTitle
+      let superiorName = managerName
+      let superiorTitle = managerTitle
+
+      if (!isHo && emp.siteName) {
+        const pjoKeywords = (approvalSettings.approvalMatrix.pjoKeywords || []).map((k: string) => k.toLowerCase())
+        const siteEmps = employees.filter((e: any) => e.siteName === emp.siteName && e.id !== emp.id)
+        // Prioritize PJO, then TE/Technical
+        const pjoEmp = siteEmps.find((e: any) => {
+          const pos = (e.position || e.rank || '').toLowerCase()
+          return pjoKeywords.some((k: string) => pos.includes(k))
+        })
+        if (pjoEmp) {
+          leaderName = pjoEmp.name
+          leaderTitle = pjoEmp.rank || pjoEmp.position || 'PJO/TE'
+          superiorName = sectionHeadName
+          superiorTitle = sectionHeadTitle
+        }
+      }
+
+      return {
+        ...currentForm,
+        employeeId,
+        leaderName: currentForm.leaderName || leaderName,
+        leaderTitle: currentForm.leaderTitle || leaderTitle,
+        superiorName: currentForm.superiorName || superiorName,
+        superiorTitle: currentForm.superiorTitle || superiorTitle,
+        nextSuperiorName: currentForm.nextSuperiorName || managerName,
+        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle,
+      }
+    }
+
+    // For non-Central Service employees, use org chart as before
     const getRankWeight = (rank: string) => {
        const r = (rank || "").toLowerCase()
        if (r.includes('director') || r.includes('vp') || r.includes('chief')) return 5
@@ -251,9 +313,10 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   const handleSave = () => {
     startTransition(async () => {
-      // Destructure out the temporary title fields so we don't send them to the DB
       const { leaderTitle, superiorTitle, hrTitle, nextSuperiorTitle, ...formToSave } = form
-      
+      const leaderSignatureDataUrl = leaderSigRef.current && !leaderSigRef.current.isEmpty()
+        ? leaderSigRef.current.getTrimmedCanvas().toDataURL('image/png')
+        : initialData?.leaderSignatureDataUrl || ''
       const payload = {
         ...formToSave,
         employeeId: form.employeeId ? parseInt(form.employeeId) : null,
@@ -261,6 +324,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         todayDate: new Date(form.todayDate),
         hireDate: form.hireDate ? new Date(form.hireDate) : new Date(),
         employeeNameStr: selectedEmp?.name || form.employeeNameStr,
+        leaderSignatureDataUrl,
       }
       const res = await saveContractReview(payload as any)
       if (res.success) {
@@ -553,38 +617,47 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
       <div className="font-bold mb-4 break-before-auto break-inside-avoid">Signatories</div>
       
-      <div className="grid grid-cols-2 gap-x-8 gap-y-12 mb-8 break-inside-avoid">
+      <div className="grid grid-cols-2 gap-x-8 gap-y-10 mb-8 break-inside-avoid">
         {form.leaderName && (
           <div>
-            <div className="mb-16">Leader Signature</div>
+            <div className="text-xs text-muted-foreground mb-1">Leader Signature</div>
+            <div className="h-20 flex items-end">
+              {previewLeaderSig ? (
+                <img src={previewLeaderSig} alt="Leader TTD" className="h-16 object-contain" />
+              ) : null}
+            </div>
             <div className="border-b border-black w-full mb-1">{form.leaderName}</div>
-            <div>{form.leaderTitle || 'Leader'}</div>
+            <div className="text-xs">{form.leaderTitle || 'Leader'}</div>
           </div>
         )}
         <div>
-          <div className="mb-16">Employee Signature</div>
+          <div className="text-xs text-muted-foreground mb-1">Employee Signature</div>
+          <div className="h-20 flex items-end" />
           <div className="border-b border-black w-full mb-1">{selectedEmp?.name || form.employeeNameStr || '\u00A0'}</div>
-          <div>{selectedEmp?.position || 'Employee'}</div>
+          <div className="text-xs">{selectedEmp?.position || 'Employee'}</div>
         </div>
         {form.superiorName && (
           <div>
-            <div className="mb-16">Superior Signature</div>
+            <div className="text-xs text-muted-foreground mb-1">Superior Signature</div>
+            <div className="h-20 flex items-end" />
             <div className="border-b border-black w-full mb-1">{form.superiorName}</div>
-            <div>{form.superiorTitle || 'Superior'}</div>
+            <div className="text-xs">{form.superiorTitle || 'Superior'}</div>
           </div>
         )}
         {form.hrName && (
           <div>
-            <div className="mb-16">HR Signature</div>
+            <div className="text-xs text-muted-foreground mb-1">HR Signature</div>
+            <div className="h-20 flex items-end" />
             <div className="border-b border-black w-full mb-1">{form.hrName}</div>
-            <div>{form.hrTitle || 'HR'}</div>
+            <div className="text-xs">{form.hrTitle || 'HR'}</div>
           </div>
         )}
         {form.nextSuperiorName && (
           <div>
-            <div className="mb-16">Next Superior Signature</div>
+            <div className="text-xs text-muted-foreground mb-1">Next Superior Signature</div>
+            <div className="h-20 flex items-end" />
             <div className="border-b border-black w-full mb-1">{form.nextSuperiorName}</div>
-            <div>{form.nextSuperiorTitle || 'Manager'}</div>
+            <div className="text-xs">{form.nextSuperiorTitle || 'Manager'}</div>
           </div>
         )}
         <div>
@@ -880,23 +953,17 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                 <Input value={form.superiorTitle} onChange={(e) => setForm({ ...form, superiorTitle: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label>HR Name</Label>
+                <Label>HR Recipient (Email Approval)</Label>
                 <SearchableSelect 
                   label="HR"
-                  placeholder="Pilih HR..."
+                  placeholder="Pilih HR penerima email..."
                   value={employees.find(e => e.name === form.hrName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
                     if (m) setForm({ ...form, hrName: m.name, hrTitle: m.rank || m.position || "HR" })
                     else setForm({ ...form, hrName: "", hrTitle: "" })
                   }}
-                  options={employees
-                    .filter(e => {
-                      const isHr = e.department?.toLowerCase().includes("hr") || e.department?.toLowerCase().includes("human");
-                      const isMgr = e.isManagerial || e.rank?.toLowerCase().includes('manager') || e.rank?.toLowerCase().includes('spv') || e.rank?.toLowerCase().includes('supervisor');
-                      return isHr && isMgr;
-                    })
-                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position}` }))}
+                  options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || 'Employee'}` }))}
                   widthClassName="w-full"
                 />
               </div>
@@ -939,6 +1006,75 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                 </Select>
               </div>
             </EnterpriseFormGrid>
+          </CardContent>
+        </Card>
+
+        {approvalHistory && approvalHistory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Approval</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {approvalHistory.map((step: any, idx: number) => {
+                  const labels: Record<string, string> = {
+                    pjo_or_te_initial: 'PJO/TE',
+                    section_head_initial: 'Section Head',
+                    employee: 'Karyawan',
+                    section_head_confirmation: 'Section Head',
+                    central_service_manager: 'Manager Central Services',
+                    hr: 'HR',
+                  }
+                  return (
+                    <div key={idx} className="flex items-start justify-between gap-3 rounded-lg border p-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900">{step.approverName}</p>
+                        <p className="text-xs text-slate-500">{labels[step.approverRole] || step.approverRole}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {step.status === 'approved' ? (
+                          <Badge className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-3">Disetujui</Badge>
+                        ) : step.status === 'pending' ? (
+                          <Badge className="bg-amber-50 text-amber-600 rounded-full border-0 px-3">Menunggu</Badge>
+                        ) : (
+                          <Badge variant="outline" className="rounded-full px-3 text-slate-400">Menunggu</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>TTD Digital - {form.leaderName || 'Leader/Creator'}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-2">Tanda tangan digital sebagai pembuat Contract Review ini.</p>
+            <div className="rounded-xl border border-slate-200 bg-white p-2">
+              <SignatureCanvas
+                ref={leaderSigRef}
+                canvasProps={{ className: 'h-40 w-full rounded-lg bg-white' }}
+                backgroundColor="rgba(255,255,255,0)"
+              />
+            </div>
+            <div className="mt-2 flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => leaderSigRef.current?.clear()}>Bersihkan</Button>
+              <Button type="button" variant="default" size="sm" onClick={() => {
+                if (leaderSigRef.current && !leaderSigRef.current.isEmpty()) {
+                  const dataUrl = leaderSigRef.current.getTrimmedCanvas().toDataURL('image/png')
+                  setPreviewLeaderSig(dataUrl)
+                }
+              }}>Tambahkan ke PDF</Button>
+              {initialData?.leaderSignatureDataUrl && !previewLeaderSig && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => {
+                  setPreviewLeaderSig(initialData.leaderSignatureDataUrl)
+                }}>Load TTD Sebelumnya</Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

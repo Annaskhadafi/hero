@@ -95,66 +95,99 @@ export async function GET(request: NextRequest) {
 
     // Apply pagination
     const offset = (page - 1) * limit;
-    const employees = await db
-      .select()
+
+    // Enrich fields from User Management (hero_employees) matched by employeeSn.
+    // Use LEFT JOIN instead of separate query for performance
+    const enrichAlias = (sn: string) => {
+      const plain = sn.replace(/^EMP-/i, "")
+      return or(eq(heroEmployees.employeeSn, sn), eq(heroEmployees.employeeSn, `EMP-${sn}`), eq(heroEmployees.employeeSn, plain))
+    }
+
+    const enriched = await db
+      .selectDistinctOn([centralServiceEmployees.id], {
+        id: centralServiceEmployees.id,
+        employeeSn: centralServiceEmployees.employeeSn,
+        fullName: centralServiceEmployees.fullName,
+        nickname: centralServiceEmployees.nickname,
+        email: centralServiceEmployees.email,
+        phoneNumber: centralServiceEmployees.phoneNumber,
+        siteId: centralServiceEmployees.siteId,
+        siteName: centralServiceEmployees.siteName,
+        department: centralServiceEmployees.department,
+        section: centralServiceEmployees.section,
+        position: centralServiceEmployees.position,
+        employmentStatus: centralServiceEmployees.employmentStatus,
+        employmentType: centralServiceEmployees.employmentType,
+        idCardNumber: centralServiceEmployees.idCardNumber,
+        birthDate: centralServiceEmployees.birthDate,
+        birthPlace: centralServiceEmployees.birthPlace,
+        address: centralServiceEmployees.address,
+        joinDate: centralServiceEmployees.joinDate,
+        resignDate: centralServiceEmployees.resignDate,
+        authUserId: centralServiceEmployees.authUserId,
+        isSyncedToUserManagement: centralServiceEmployees.isSyncedToUserManagement,
+        syncedAt: centralServiceEmployees.syncedAt,
+        importBatchId: centralServiceEmployees.importBatchId,
+        importedAt: centralServiceEmployees.importedAt,
+        notes: centralServiceEmployees.notes,
+        isActive: centralServiceEmployees.isActive,
+        createdAt: centralServiceEmployees.createdAt,
+        updatedAt: centralServiceEmployees.updatedAt,
+        // Enriched fields from hero_employees
+        enrichEmail: heroEmployees.email,
+        enrichSection: heroEmployees.section,
+        enrichGender: heroEmployees.gender,
+        enrichReligion: heroEmployees.religion,
+        enrichEducation: heroEmployees.education,
+        enrichLevelName: heroEmployees.levelName,
+        enrichPointOfHire: heroEmployees.pointOfHire,
+        enrichMaritalStatus: heroEmployees.maritalStatus,
+        enrichJoinDate: heroEmployees.joinDate,
+        enrichContractDurationStart: heroEmployees.contractDurationStart,
+        enrichContractDurationEnd: heroEmployees.contractDurationEnd,
+        enrichPermanentDate: heroEmployees.permanentDate,
+        enrichBirthDate: heroEmployees.birthDate,
+      })
       .from(centralServiceEmployees)
+      .leftJoin(heroEmployees, or(
+        eq(heroEmployees.employeeSn, centralServiceEmployees.employeeSn),
+        eq(heroEmployees.employeeSn, sql`concat('EMP-', ${centralServiceEmployees.employeeSn})`),
+        eq(centralServiceEmployees.employeeSn, sql`regexp_replace(${heroEmployees.employeeSn}, '^EMP-', '')`)
+      ))
       .where(whereClause)
-      .orderBy(desc(centralServiceEmployees.createdAt))
+      .orderBy(centralServiceEmployees.id, desc(centralServiceEmployees.createdAt))
       .limit(limit)
       .offset(offset);
 
-    // Enrich fields from User Management (hero_employees) matched by employeeSn.
-    // hero_employees may store SN as "EMP-51468" while centralServiceEmployees stores "51468" — try both.
-    const snList = employees.map((e) => e.employeeSn).filter(Boolean);
-    const extraBySn: Record<string, any> = {};
-    if (snList.length > 0) {
-      const snVariants = snList.flatMap((sn) => [sn, `EMP-${sn}`, sn.replace(/^EMP-/i, "")]);
-      const uniqueVariants = [...new Set(snVariants)];
-      const heroRows = await db
-        .select({
-          employeeSn: heroEmployees.employeeSn,
-          email: heroEmployees.email,
-          section: heroEmployees.section,
-          gender: heroEmployees.gender,
-          religion: heroEmployees.religion,
-          education: heroEmployees.education,
-          levelName: heroEmployees.levelName,
-          pointOfHire: heroEmployees.pointOfHire,
-          maritalStatus: heroEmployees.maritalStatus,
-          joinDate: heroEmployees.joinDate,
-          contractDurationStart: heroEmployees.contractDurationStart,
-          contractDurationEnd: heroEmployees.contractDurationEnd,
-          permanentDate: heroEmployees.permanentDate,
-          birthDate: heroEmployees.birthDate,
-        })
-        .from(heroEmployees)
-        .where(or(...uniqueVariants.map((sn) => eq(heroEmployees.employeeSn, sn))));
-      for (const row of heroRows) {
-        const plainSn = row.employeeSn.replace(/^EMP-/i, "");
-        extraBySn[row.employeeSn] = row;
-        extraBySn[plainSn] = row;
-      }
-    }
-
-    const enriched = employees.map((emp) => {
-      const extra = extraBySn[emp.employeeSn] ?? extraBySn[`EMP-${emp.employeeSn}`] ?? {};
-      return {
-        ...emp,
-        email: emp.email || extra.email || null,
-        section: extra.section ?? emp.section ?? "",
-        gender: extra.gender ?? "",
-        religion: extra.religion ?? "",
-        education: extra.education ?? "",
-        levelName: extra.levelName ?? "",
-        pointOfHire: extra.pointOfHire ?? "",
-        maritalStatus: extra.maritalStatus ?? "",
-        joinDate: extra.joinDate ?? null,
-        contractDurationStart: extra.contractDurationStart ?? null,
-        contractDurationEnd: extra.contractDurationEnd ?? null,
-        permanentDate: extra.permanentDate ?? null,
-        birthDate: extra.birthDate ?? null,
-      };
-    });
+    const result = enriched.map((row) => ({
+      ...row,
+      email: row.email || row.enrichEmail || null,
+      section: row.enrichSection || row.section || "",
+      gender: row.enrichGender ?? "",
+      religion: row.enrichReligion ?? "",
+      education: row.enrichEducation ?? "",
+      levelName: row.enrichLevelName ?? "",
+      pointOfHire: row.enrichPointOfHire ?? "",
+      maritalStatus: row.enrichMaritalStatus ?? "",
+      joinDate: row.enrichJoinDate ?? null,
+      contractDurationStart: row.enrichContractDurationStart ?? null,
+      contractDurationEnd: row.enrichContractDurationEnd ?? null,
+      permanentDate: row.enrichPermanentDate ?? null,
+      birthDate: row.enrichBirthDate ?? null,
+      enrichEmail: undefined,
+      enrichSection: undefined,
+      enrichGender: undefined,
+      enrichReligion: undefined,
+      enrichEducation: undefined,
+      enrichLevelName: undefined,
+      enrichPointOfHire: undefined,
+      enrichMaritalStatus: undefined,
+      enrichJoinDate: undefined,
+      enrichContractDurationStart: undefined,
+      enrichContractDurationEnd: undefined,
+      enrichPermanentDate: undefined,
+      enrichBirthDate: undefined,
+    }));
 
     return NextResponse.json({
       success: true,

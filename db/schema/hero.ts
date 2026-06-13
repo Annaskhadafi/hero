@@ -2772,9 +2772,12 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
   // Recommendation
   recommendation: text('recommendation').notNull().default(''), // confirm_permanent, contract_extended, terminate_probation, contract_ended
   contractExtendedMonths: integer('contract_extended_months'),
+  contractEndDate: text('contract_end_date'),
+  permanentDate: text('permanent_date'),
   
   // Signatories
   leaderName: text('leader_name').notNull().default(''),
+  leaderSignatureDataUrl: text('leader_signature_data_url'),
   employeeNameStr: text('employee_name_str').notNull().default(''),
   superiorName: text('superior_name').notNull().default(''),
   hrName: text('hr_name').notNull().default(''),
@@ -2784,6 +2787,45 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
   
   status: text('status').notNull().default('draft'), // draft, finalized
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcContractReviewApprovals = pgTable('hero_hc_contract_review_approvals', {
+  id: serial('id').primaryKey(),
+  reviewId: integer('review_id').notNull().references(() => hcEmployeeContractReviews.id, { onDelete: 'cascade' }),
+  stepOrder: integer('step_order').notNull(),
+  approvalToken: text('approval_token').notNull().unique(),
+  approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  approverName: text('approver_name').notNull(),
+  approverEmail: text('approver_email').notNull().default(''),
+  approverRole: text('approver_role').notNull(),
+  status: text('status').notNull().default('pending'),
+  signatureDataUrl: text('signature_data_url'),
+  remarks: text('remarks').notNull().default(''),
+  signedAt: timestamp('signed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcContractReviewReminders = pgTable('hero_hc_contract_review_reminders', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id'),
+  employeeSn: text('employee_sn').notNull(),
+  employeeName: text('employee_name').notNull(),
+  section: text('section').notNull().default(''),
+  siteName: text('site_name').notNull().default(''),
+  contractEndDate: date('contract_end_date').notNull(),
+  reminderType: text('reminder_type').notNull(),
+  recipientEmail: text('recipient_email').notNull().default(''),
+  recipientName: text('recipient_name').notNull(),
+  recipientRole: text('recipient_role').notNull(),
+  sentAt: timestamp('sent_at').notNull().defaultNow(),
+  reviewId: integer('review_id').references(() => hcEmployeeContractReviews.id, { onDelete: 'set null' }),
+})
+
+export const hcContractReviewSettings = pgTable('hero_hc_contract_review_settings', {
+  id: serial('id').primaryKey(),
+  settingKey: text('setting_key').notNull().unique(),
+  settingValue: jsonb('setting_value').notNull().default({}),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
