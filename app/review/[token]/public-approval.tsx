@@ -343,12 +343,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         {/* ── KANAN: 2 PDF A4 Pages ── */}
         <div className="flex-1 space-y-6 print:hidden overflow-auto">
           <div
+            id="pdf-page-1"
             className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
             style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
           >
             {pdfPage1}
           </div>
           <div
+            id="pdf-page-2"
             className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
             style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
           >
