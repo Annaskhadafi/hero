@@ -21,6 +21,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const router = useRouter()
   const searchParams = useSearchParams()
   const mode = searchParams.get("mode")
+  const employeeSnParam = searchParams.get("employeeSn")
   const isPrintMode = mode === "print"
   
   const { setOpen } = useSidebar()
@@ -196,6 +197,23 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
     }
   }, [form.employeeId])
+
+  // Auto-select employee from ?employeeSn= query param (e.g. from Central Service page)
+  useEffect(() => {
+    if (employeeSnParam && !form.employeeId) {
+      const match = employees.find(e => e.employeeId === employeeSnParam || e.employeeId === `EMP-${employeeSnParam}` || e.employeeId?.replace(/^EMP-/i, '') === employeeSnParam)
+      if (match) {
+        setForm(prev => {
+          const updated = {
+            ...prev,
+            employeeId: String(match.id),
+            hireDate: prev.hireDate || (match.joinDate ? new Date(match.joinDate).toISOString().slice(0, 10) : ""),
+          }
+          return autoPopulateSignatories(String(match.id), updated)
+        })
+      }
+    }
+  }, [employeeSnParam, employees])
 
   const achievementScore = useMemo(() => {
     const aVals = form.performanceActivities.map((a: any) => a.achievement).filter(Boolean)
