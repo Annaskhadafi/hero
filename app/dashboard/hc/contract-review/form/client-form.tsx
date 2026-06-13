@@ -400,7 +400,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </tr>
           <tr>
             <td>Job Title:<br/>{selectedEmp?.position || '-'}</td>
-            <td>Department/Section:<br/>{selectedEmp?.department || '-'}</td>
+            <td>Department/Section:<br/>{[selectedEmp?.department, selectedEmp?.section].filter(Boolean).join(' / ') || '-'}</td>
           </tr>
           <tr>
             <td>Superior Name:<br/>{form.leaderName || form.superiorName || form.nextSuperiorName || '-'}</td>
