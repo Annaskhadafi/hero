@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   AlertTriangle, BarChart3, Calendar, CheckCircle2, ExternalLink,
-  FileText, Filter, Plus, Search, ShieldCheck, Trash2, X,
+  FileText, Filter, Plus, Search, ShieldCheck, Trash2, Users, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -14,6 +14,8 @@ import {
   manageSafetyIncidentSummaryYearlyAction,
   manageSafetyIncidentSummaryMonthlyAction,
   manageSafetyCertificationAction,
+  manageSafetyInspectionAction,
+  manageSafetyInductionAction,
   manageSafetyPerformanceAction,
   manageSafetyManHoursAction,
   manageSafetyMonthlyManHoursAction,
@@ -45,6 +47,8 @@ const TABS = [
   { key: 'man-hours', label: 'Man Hours', icon: FileText },
   { key: 'monthly-man-hours', label: 'Monthly MH', icon: FileText },
   { key: 'weekly', label: 'Weekly Act.', icon: CheckCircle2 },
+  { key: 'inspections', label: 'Inspections', icon: Search },
+  { key: 'inductions', label: 'Inductions', icon: Users },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -290,6 +294,42 @@ function FormWeeklyRow({ row, options }: { row: any; options?: any }) {
   )
 }
 
+function FormInspectionsRow({ row, options }: { row: any; options?: any }) {
+  const opts = options || { categories: [], statuses: [], locations: [], pics: [] }
+  return (
+    <>
+      <TextF name="title" label="Judul Inspeksi" defaultValue={row?.title} />
+      <div className="grid grid-cols-2 gap-3">
+        <TextF name="date" label="Tanggal" type="date" defaultValue={fmtDateInput(row?.date)} />
+        <SelectF name="category" label="Kategori" defaultValue={row?.category} options={opts.categories} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <SelectF name="location" label="Lokasi" defaultValue={row?.location} options={opts.locations} />
+        <SelectF name="status" label="Status" defaultValue={row?.status ?? 'Pending'} options={opts.statuses} />
+      </div>
+      <TextAreaF name="findings" label="Temuan" defaultValue={row?.findings} />
+      <TextAreaF name="recommendation" label="Rekomendasi" defaultValue={row?.recommendation} />
+      <div className="grid grid-cols-2 gap-3">
+        <TextF name="assessmentScore" label="Skor" type="number" defaultValue={row?.assessmentScore} />
+        <SelectF name="picName" label="PIC" defaultValue={row?.picName} options={opts.pics} />
+      </div>
+    </>
+  )
+}
+
+function FormInductionsRow({ row }: { row: any }) {
+  return (
+    <>
+      <TextF name="fullName" label="Nama Lengkap" defaultValue={row?.fullName} />
+      <TextF name="companyOrigin" label="Perusahaan/Instansi" defaultValue={row?.companyOrigin} />
+      <div className="grid grid-cols-2 gap-3">
+        <TextF name="phoneNumber" label="No. Telepon" defaultValue={row?.phoneNumber} />
+      </div>
+      <TextAreaF name="purpose" label="Tujuan" defaultValue={row?.purpose} />
+    </>
+  )
+}
+
 function SafetyDataFormModal({
   open, mode, row, activeTab, access, filterOptions, onClose, onEdit, onDelete,
 }: {
@@ -310,6 +350,8 @@ function SafetyDataFormModal({
       case 'man-hours': return manageSafetyManHoursAction
       case 'monthly-man-hours': return manageSafetyMonthlyManHoursAction
       case 'weekly': return manageSafetyWeeklyActivityAction
+      case 'inspections': return manageSafetyInspectionAction
+      case 'inductions': return manageSafetyInductionAction
       default: return null
     }
   }
@@ -378,6 +420,8 @@ function SafetyDataFormModal({
           {activeTab === 'man-hours' ? <FormManHourRow row={row} options={filterOptions} /> : null}
           {activeTab === 'monthly-man-hours' ? <FormMonthlyMHRow row={row} options={filterOptions} /> : null}
           {activeTab === 'weekly' ? <FormWeeklyRow row={row} options={filterOptions} /> : null}
+          {activeTab === 'inspections' ? <FormInspectionsRow row={row} options={filterOptions} /> : null}
+          {activeTab === 'inductions' ? <FormInductionsRow row={row} /> : null}
           {!isView ? (
             <Button type="submit" disabled={saving} className="h-14 w-full rounded-2xl bg-[#003f78] text-white">
               {saving ? 'Menyimpan...' : 'Simpan'}
@@ -455,6 +499,12 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
     if (activeTab === 'weekly') {
       const cats = new Set(data.weeklyActivities.map((r: any) => r.category).filter(Boolean))
       return { categories: [...cats] as string[] }
+    }
+    if (activeTab === 'inspections') {
+      const cats = new Set((data.inspections || []).map((r: any) => r.category).filter(Boolean))
+      const stats = new Set((data.inspections || []).map((r: any) => r.status).filter(Boolean))
+      const locs = new Set((data.inspections || []).map((r: any) => r.location).filter(Boolean))
+      return { categories: [...cats] as string[], statuses: [...stats] as string[], locations: [...locs] as string[] }
     }
     return {}
   }
@@ -548,6 +598,8 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
           else if (tab.key === 'man-hours') count = data.manHours.length
           else if (tab.key === 'monthly-man-hours') count = data.monthlyManHours.length
           else if (tab.key === 'weekly') count = data.weeklyActivities.length
+          else if (tab.key === 'inspections') count = data.inspections?.length ?? 0
+          else if (tab.key === 'inductions') count = data.inductions?.length ?? 0
           return (
             <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSearch(''); setFilterLabel('') }}
               className={cn('flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-[0.08em]',
@@ -568,6 +620,8 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
       {activeTab === 'man-hours' ? renderManHours() : null}
       {activeTab === 'monthly-man-hours' ? renderMonthlyManHours() : null}
       {activeTab === 'weekly' ? renderWeekly() : null}
+      {activeTab === 'inspections' ? renderInspections() : null}
+      {activeTab === 'inductions' ? renderInductions() : null}
 
       <SafetyDataFormModal
         open={form.open} mode={form.mode} row={form.row}
@@ -854,6 +908,81 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
               <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
                 <span>PIC: {row.pic}</span>
                 <span>{formatDate(row.activityDate)}</span>
+              </div>
+            </Card>
+          ))}
+          {items.length === 0 ? <EmptyState /> : null}
+        </div>
+      </div>
+    )
+  }
+
+  function renderInspections() {
+    let items = data.inspections || []
+    items = filteredBySearch(items, ['title', 'location', 'category', 'picName', 'findings'])
+    if (filterLabel) items = items.filter((r: any) => r.category === filterLabel || r.status === filterLabel || r.location === filterLabel)
+    const openCount = items.filter((r: any) => r.status === 'Open' || r.status === 'Pending').length
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
+          <StatCard value={items.length} label="Total" />
+          <StatCard value={openCount} label="Open/Pending" color="text-[#8a3d00]" />
+          <StatCard value={items.filter((r: any) => r.status === 'Closed').length} label="Closed" color="text-[#166534]" />
+        </div>
+        {renderFilterBar()}
+        {renderFilterChips()}
+        <div className="space-y-2">
+          {items.map((row: any) => (
+            <Card key={row.id} onClick={() => openView(row)}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black text-[#082033]">{row.title}</p>
+                  <p className="mt-0.5 truncate text-xs font-semibold text-[#486275]">{row.location} &middot; {row.category}</p>
+                </div>
+                <Badge value={row.status} />
+              </div>
+              {row.findings ? <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{row.findings}</p> : null}
+              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+                <span>PIC: {row.picName || '-'}</span>
+                <span>{formatDate(row.date)}</span>
+                {row.assessmentScore ? <span>Skor: {row.assessmentScore}</span> : null}
+              </div>
+            </Card>
+          ))}
+          {items.length === 0 ? <EmptyState /> : null}
+        </div>
+      </div>
+    )
+  }
+
+  function renderInductions() {
+    let items = data.inductions || []
+    items = filteredBySearch(items, ['fullName', 'companyOrigin', 'phoneNumber', 'purpose'])
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
+          <StatCard value={items.length} label="Total" />
+          <StatCard value={new Set(items.map((r: any) => r.companyOrigin)).size} label="Perusahaan" />
+          <StatCard value={items.filter((r: any) => {
+            const d = new Date(r.createdAt)
+            const today = new Date()
+            return d.toDateString() === today.toDateString()
+          }).length} label="Hari Ini" />
+        </div>
+        {renderFilterBar()}
+        <div className="space-y-2">
+          {items.map((row: any) => (
+            <Card key={row.id} onClick={() => openView(row)}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black text-[#082033]">{row.fullName}</p>
+                  <p className="mt-0.5 truncate text-xs font-semibold text-[#486275]">{row.companyOrigin}</p>
+                </div>
+                <span className="text-[9px] font-semibold text-[#486275]">{formatDate(row.createdAt)}</span>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{row.purpose}</p>
+              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+                <span>{row.phoneNumber}</span>
               </div>
             </Card>
           ))}

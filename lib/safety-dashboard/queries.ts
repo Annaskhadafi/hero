@@ -6,11 +6,13 @@ import {
   safetyIncidentReports,
   safetyIncidentSummaryMonthly,
   safetyIncidentSummaryYearly,
+  safetyInspections,
   safetyManHours,
   safetyMonthlyManHours,
   safetyPerformanceMetrics,
   safetyWeeklyActivities,
 } from "@/db/schema/hero"
+import { heroSafetyInductions } from "@/db/schema/safety-induction"
 import { getCurrentEmployeeAccessRole } from "@/lib/hero-access"
 import { buildSafetyCharts, buildSafetyKpis } from "@/lib/safety-dashboard/aggregations"
 import type { SafetyDashboardAccess } from "@/lib/safety-dashboard/types"
@@ -85,6 +87,8 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     manHours,
     monthlyManHours,
     weeklyActivities,
+    inspections,
+    inductions,
     access,
   ] = await Promise.all([
     db.select().from(safetyIncidentSummaryYearly).orderBy(desc(safetyIncidentSummaryYearly.year)),
@@ -95,6 +99,8 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     db.select().from(safetyManHours).orderBy(desc(safetyManHours.safetyManHours)),
     db.select().from(safetyMonthlyManHours).orderBy(desc(safetyMonthlyManHours.month)),
     db.select().from(safetyWeeklyActivities).orderBy(desc(safetyWeeklyActivities.activityDate)),
+    db.select().from(safetyInspections).orderBy(desc(safetyInspections.date)),
+    db.select().from(heroSafetyInductions).orderBy(desc(heroSafetyInductions.createdAt)),
     getSafetyAccess(),
   ])
 
@@ -216,6 +222,8 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     manHours,
     monthlyManHours,
     weeklyActivities,
+    inspections,
+    inductions,
     kpis,
     charts,
     filterOptions: {
@@ -223,10 +231,12 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
       categories: Array.from(new Set([
         ...incidentReports.map((row) => row.category),
         ...weeklyActivities.map((row) => row.category),
+        ...inspections.map((row) => row.category),
       ].filter(Boolean))).sort(),
       statuses: Array.from(new Set([
         ...incidentReports.map((row) => row.status),
         ...certifications.map((row) => row.status),
+        ...inspections.map((row) => row.status),
       ].filter(Boolean))).sort(),
       departments: Array.from(new Set([
         ...incidentReports.map((row) => row.department),
@@ -243,6 +253,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
       ].filter(Boolean))).sort(),
       pics: Array.from(new Set([
         ...weeklyActivities.map((row) => row.pic),
+        ...inspections.map((row) => row.picName),
       ].filter(Boolean))).sort(),
       years: Array.from(allYears).sort().reverse(),
       months: [

@@ -9,11 +9,13 @@ import {
   safetyIncidentReports,
   safetyIncidentSummaryMonthly,
   safetyIncidentSummaryYearly,
+  safetyInspections,
   safetyManHours,
   safetyMonthlyManHours,
   safetyPerformanceMetrics,
   safetyWeeklyActivities,
 } from "@/db/schema/hero"
+import { heroSafetyInductions } from "@/db/schema/safety-induction"
 
 type MutationState = { ok: boolean; message: string }
 
@@ -311,6 +313,74 @@ export async function manageSafetyMonthlyManHoursAction(formData: FormData): Pro
 
     await db.insert(safetyMonthlyManHours).values({ ...values, sourceSheet: "manual" })
     return success("Monthly safety manhours ditambahkan.")
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function manageSafetyInspectionAction(formData: FormData): Promise<MutationState> {
+  try {
+    const intent = readString(formData, "intent")
+    if (intent === "delete") {
+      await db.delete(safetyInspections).where(eq(safetyInspections.id, readId(formData)))
+      return success("Inspeksi dihapus.")
+    }
+
+    const dateStr = readString(formData, "date")
+    const values = {
+      title: requireString(formData, "title", "Judul inspeksi"),
+      date: dateStr ? new Date(dateStr) : new Date(),
+      location: readString(formData, "location"),
+      category: readString(formData, "category"),
+      findings: readString(formData, "findings"),
+      recommendation: readString(formData, "recommendation"),
+      status: readString(formData, "status") || "Pending",
+      assessmentScore: Number(readNumberString(formData, "assessmentScore")) || null,
+      picName: readString(formData, "picName"),
+      reportAttachmentUrl: readString(formData, "reportAttachmentUrl"),
+      resultAttachmentUrl: readString(formData, "resultAttachmentUrl"),
+      updatedAt: new Date(),
+    }
+
+    if (intent === "update") {
+      await db.update(safetyInspections).set(values).where(eq(safetyInspections.id, readId(formData)))
+      return success("Inspeksi diperbarui.")
+    }
+
+    await db.insert(safetyInspections).values(values)
+    return success("Inspeksi ditambahkan.")
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function manageSafetyInductionAction(formData: FormData): Promise<MutationState> {
+  try {
+    const intent = readString(formData, "intent")
+    if (intent === "delete") {
+      const id = readString(formData, "id")
+      if (!id) throw new Error("ID tidak valid.")
+      await db.delete(heroSafetyInductions).where(eq(heroSafetyInductions.id, id))
+      return success("Induksi dihapus.")
+    }
+
+    const values = {
+      fullName: requireString(formData, "fullName", "Nama lengkap"),
+      companyOrigin: readString(formData, "companyOrigin"),
+      phoneNumber: readString(formData, "phoneNumber"),
+      purpose: readString(formData, "purpose"),
+      updatedAt: new Date(),
+    }
+
+    if (intent === "update") {
+      const id = readString(formData, "id")
+      if (!id) throw new Error("ID tidak valid.")
+      await db.update(heroSafetyInductions).set(values).where(eq(heroSafetyInductions.id, id))
+      return success("Induksi diperbarui.")
+    }
+
+    await db.insert(heroSafetyInductions).values(values)
+    return success("Induksi ditambahkan.")
   } catch (error) {
     return failure(error)
   }

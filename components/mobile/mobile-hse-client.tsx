@@ -146,14 +146,14 @@ const hseFieldActions = [
     title: "Inspection",
     description: "Buka daftar safety inspection.",
     icon: ClipboardCheck,
-    href: "/dashboard/safety/inspections",
+    href: "/mobile/hse/inspections",
     tone: "bg-[#eef7ed] text-[#166534]",
   },
   {
     title: "Induction",
     description: "Akses safety induction pekerja/tamu.",
     icon: Stethoscope,
-    href: "/dashboard/safety-induction",
+    href: "/mobile/hse/induction",
     tone: "bg-[#f2efff] text-[#5b21b6]",
   },
 ];
