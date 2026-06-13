@@ -62,6 +62,12 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const managerSig = getApprovedSig(allApprovals, 'central_service_manager')
   const hrSig = getApprovedSig(allApprovals, 'hr')
 
+  // Calculate achievement score
+  const aVals = (review.performanceActivities ?? []).map((a: any) => a.achievement).filter(Boolean)
+  const bVals = [review.compDisciplineAch, review.compSkillAch, review.compResultAch, review.compQualityAch, review.compCustomerAch, review.compTeamworkAch].filter(Boolean)
+  const allVals = [...aVals, ...bVals]
+  const achievementScore = allVals.length > 0 ? allVals.reduce((sum: number, val: string) => sum + (val === 'exceed' ? 115 : val === 'meet' ? 100 : 80), 0) / allVals.length : 0
+
   // ── PDF Page 1: Details, Profile, Performance ──
   const pdfPage1 = (
     <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm' }}>
@@ -159,6 +165,32 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           ))}
         </tbody>
       </table>
+
+      <div className="font-bold ml-4 mb-1">Achievement Definition</div>
+      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+        <tbody>
+          <tr>
+            <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore >= 106} readOnly /> Exceed Requirement (106% - 125%)</td>
+            <td className="text-[7pt]">Performance of the employee is exceeding target and He/She consistently <strong>demonstrates right attitude and behavior</strong> which are aligned with the competence.</td>
+          </tr>
+          <tr>
+            <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore >= 95 && achievementScore < 106} readOnly /> Meet Requirement (95% - 105%)</td>
+            <td className="text-[7pt]">Performance of the employee is meeting target and in overall He/She <strong>demonstrates attitude and behavior</strong> which are aligned with the competence.</td>
+          </tr>
+          <tr>
+            <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore > 0 && achievementScore < 95} readOnly /> Below Requirement (&lt; 95%)</td>
+            <td className="text-[7pt]">Performance of the employee is not meeting target and He/She still <strong>demonstrating some attitudes and/ or behaviors</strong> which are not aligned with the competence.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div className="font-bold ml-4 mb-1">Recommendation</div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 text-[7pt]">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'confirm_permanent'} readOnly /> Confirm to Permanent</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'terminate_probation'} readOnly /> Unsuccessful Probationary (termination)</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'contract_extended'} readOnly /> Contract Extended {review.contractExtendedMonths ? `${review.contractExtendedMonths} months` : ''}</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'contract_ended'} readOnly /> Contract ended</label>
+      </div>
 
       <div className="font-bold mb-4">Signatories</div>
       <div className="grid grid-cols-2 gap-x-8 gap-y-10 mb-8">
