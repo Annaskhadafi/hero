@@ -301,17 +301,17 @@ export default function CentralServicePage() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const PAGE_SIZE = 50
+  const [pageSize, setPageSize] = useState(50)
 
   useEffect(() => {
     fetchEmployees()
-  }, [search, syncFilter, page])
+  }, [search, syncFilter, page, pageSize])
 
   const fetchEmployees = async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      params.append('limit', String(PAGE_SIZE))
+      params.append('limit', String(pageSize))
       params.append('page', String(page))
       if (search) params.append('search', search)
       if (syncFilter !== 'all') params.append('syncStatus', syncFilter)
@@ -948,7 +948,19 @@ export default function CentralServicePage() {
               Selanjutnya <ChevronRight className="size-4" />
             </Button>
           </div>
-          <span className="text-muted-foreground text-xs">{PAGE_SIZE} per halaman</span>
+          <div className="flex items-center gap-2">
+            <Select value={String(pageSize)} onValueChange={(val) => { setPageSize(Number(val)); setPage(1) }}>
+              <SelectTrigger className="h-8 w-28 rounded-lg border-0 bg-white text-xs shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10 baris</SelectItem>
+                <SelectItem value="25">25 baris</SelectItem>
+                <SelectItem value="50">50 baris</SelectItem>
+                <SelectItem value="100">100 baris</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
