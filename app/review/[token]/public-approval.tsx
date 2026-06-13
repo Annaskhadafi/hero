@@ -289,9 +289,9 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         * { box-sizing: border-box; margin: 0; padding: 0; }
                         body { font-family: 'Manrope', 'Inter', Arial, sans-serif; }
                         .page { width: 210mm; height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
-                        .content { position: relative; z-index: 10; padding: 40mm 20mm 35mm 20mm; font-size: 9pt; line-height: 1.3; color: black; height: 100%; overflow: hidden; }
-                        table { width: 100%; border-collapse: collapse; margin-bottom: 0.75rem; }
-                        td, th { border: 1px solid black; padding: 4px 6px; font-size: 9pt; }
+                        .content { position: relative; z-index: 10; padding: 18mm 12mm 15mm 12mm; font-size: 7pt; line-height: 1.2; color: black; height: 100%; overflow: hidden; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
+                        td, th { border: 1px solid black; padding: 2px 4px; font-size: 7pt; }
                         th { font-weight: bold; background: #f8fafc; }
                         .font-bold { font-weight: bold; }
                         .text-center { text-align: center; }
@@ -299,16 +299,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         .capitalize { text-transform: capitalize; }
                         .grid { display: grid; }
                         .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-                        .gap-x-8 { column-gap: 2rem; }
-                        .gap-y-10 { row-gap: 2.5rem; }
-                        .mb-1 { margin-bottom: 0.25rem; }
-                        .mb-3 { margin-bottom: 0.75rem; }
-                        .mb-4 { margin-bottom: 1rem; }
-                        .mb-8 { margin-bottom: 2rem; }
-                        .ml-4 { margin-left: 1rem; }
-                        .mt-2 { margin-top: 0.5rem; }
-                        input[type="checkbox"] { margin-right: 4px; }
-                        img { max-height: 64px; object-fit: contain; }
+                        .gap-x-8 { column-gap: 1.5rem; }
+                        .gap-y-10 { row-gap: 2rem; }
+                        .mb-1 { margin-bottom: 0.2rem; }
+                        .mb-3 { margin-bottom: 0.5rem; }
+                        .mb-4 { margin-bottom: 0.75rem; }
+                        .mb-8 { margin-bottom: 1.5rem; }
+                        .ml-4 { margin-left: 0.75rem; }
+                        .mt-2 { margin-top: 0.4rem; }
+                        input[type="checkbox"] { margin-right: 3px; }
+                        img { max-height: 50px; object-fit: contain; }
                         .border-b { border-bottom: 1px solid black; }
                         .w-full { width: 100%; }
                       </style>
