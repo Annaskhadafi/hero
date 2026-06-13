@@ -22,6 +22,7 @@ import {
   ChevronRight,
   ChevronLeft,
   FileText,
+  MoreVertical,
 } from 'lucide-react'
 
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
@@ -49,6 +50,8 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -791,7 +794,7 @@ export default function CentralServicePage() {
                     </TableHead>
                   ) : null
                 })}
-                <TableHead className="w-[100px]">Aksi</TableHead>
+                <TableHead className="w-16">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -876,65 +879,47 @@ export default function CentralServicePage() {
                             <ContractLeftBadge days={getContractLeftDays(emp.contractDurationEnd)} />
                           </TableCell>
                         ) : null}
-                        <TableCell className="py-3.5 text-right">
-                          <div className="flex gap-1 justify-end">
-                            <Button size="sm" variant="ghost" onClick={() => setViewEmployee(emp)} title="View">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => window.location.href = `/dashboard/hc/contract-review/form?employeeSn=${emp.employeeSn}`} title="Contract Review">
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditEmployee(emp)} title="Edit">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(emp.id)} title="Delete">
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </div>
+                        <TableCell className="py-3.5 text-right w-[100px]">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreVertical className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-[160px]">
+                              <DropdownMenuItem onClick={() => setViewEmployee(emp)}>
+                                <Eye className="mr-2 h-4 w-4" /> Detail
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => window.location.href = `/dashboard/hc/contract-review/form?employeeSn=${emp.employeeSn}`}>
+                                <FileText className="mr-2 h-4 w-4" /> Contract Review
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setEditEmployee(emp)}>
+                                <Edit className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(emp.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="bg-muted/30 hover:bg-muted/40">
-                          <TableCell colSpan={12} className="py-3 px-4">
-                            <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm md:grid-cols-5">
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Level Staff</span>
-                                <p>{emp.levelName || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Gender</span>
-                                <p>{emp.gender || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Agama</span>
-                                <p>{emp.religion || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Pendidikan</span>
-                                <p>{emp.education || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Join Date</span>
-                                <p>{emp.joinDate || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Contract Start</span>
-                                <p>{emp.contractDurationStart || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Contract End</span>
-                                <p>{emp.contractDurationEnd || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Permanent Date</span>
-                                <p>{emp.permanentDate || '-'}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground text-xs font-semibold uppercase">Tgl Lahir</span>
-                                <p>{emp.birthDate || '-'}</p>
-                              </div>
+                          <TableCell colSpan={1 + COLUMNS.filter(c => columnVisibility[c.key]).length} className="py-1.5 px-4">
+                            <div className="flex flex-wrap gap-x-6 gap-y-0.5 text-xs">
+                              <div className="w-36"><span className="text-muted-foreground font-semibold uppercase">Level Staff</span><p className="truncate">{emp.levelName || '-'}</p></div>
+                              <div className="w-20"><span className="text-muted-foreground font-semibold uppercase">Gender</span><p className="truncate">{emp.gender || '-'}</p></div>
+                              <div className="w-20"><span className="text-muted-foreground font-semibold uppercase">Agama</span><p className="truncate">{emp.religion || '-'}</p></div>
+                              <div className="w-28"><span className="text-muted-foreground font-semibold uppercase">Pendidikan</span><p className="truncate">{emp.education || '-'}</p></div>
+                              <div className="w-24"><span className="text-muted-foreground font-semibold uppercase">Join Date</span><p className="truncate">{emp.joinDate || '-'}</p></div>
+                              <div className="w-24"><span className="text-muted-foreground font-semibold uppercase">Contract Start</span><p className="truncate">{emp.contractDurationStart || '-'}</p></div>
+                              <div className="w-24"><span className="text-muted-foreground font-semibold uppercase">Contract End</span><p className="truncate">{emp.contractDurationEnd || '-'}</p></div>
+                              <div className="w-24"><span className="text-muted-foreground font-semibold uppercase">Permanent</span><p className="truncate">{emp.permanentDate || '-'}</p></div>
+                              <div className="w-24"><span className="text-muted-foreground font-semibold uppercase">Tgl Lahir</span><p className="truncate">{emp.birthDate || '-'}</p></div>
                             </div>
                           </TableCell>
+                          <TableCell className="w-16" />
                         </TableRow>
                       )}
                     </Fragment>
