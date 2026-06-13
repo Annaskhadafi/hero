@@ -1,7 +1,8 @@
 import { ContractReviewClientForm } from "./client-form"
 import { db } from "@/db"
-import { hrEmployees, hrDepartments, hrPositions, hrOrgNodes, masterSections, employees as userMgmtEmployees } from "@/db/schema/hero"
-import { eq, or, sql } from "drizzle-orm"
+import { hrEmployees, hrDepartments, hrPositions, hrOrgNodes, masterSections } from "@/db/schema/hero"
+import { centralServiceEmployees } from "@/db/schema/central-service"
+import { eq } from "drizzle-orm"
 
 export const metadata = {
   title: "Form Contract Review - HC",
@@ -29,33 +30,28 @@ export default async function ContractReviewFormPage() {
     .leftJoin(masterSections, eq(hrEmployees.sectionId, masterSections.id))
     .where(eq(hrEmployees.isActive, true))
 
-  // Also fetch User Management employees as fallback (Central Service employees live here)
-  const umEmps = await db
+  const csEmps = await db
     .select({
-      employeeSn: userMgmtEmployees.employeeSn,
-      jobTitle: userMgmtEmployees.jobTitle,
-      section: userMgmtEmployees.section,
-      department: userMgmtEmployees.department,
+      employeeSn: centralServiceEmployees.employeeSn,
+      position: centralServiceEmployees.position,
+      section: centralServiceEmployees.section,
+      siteName: centralServiceEmployees.siteName,
     })
-    .from(userMgmtEmployees)
-    .where(eq(userMgmtEmployees.isActive, true))
+    .from(centralServiceEmployees)
 
-  // Merge: if hrEmployees has position, use it; otherwise fallback to userMgmt jobTitle
-  const snToUm = new Map<string, typeof umEmps[number]>()
-  for (const u of umEmps) {
-    const plain = u.employeeSn.replace(/^EMP-/i, "")
-    snToUm.set(plain, u)
-    snToUm.set(u.employeeSn, u)
+  const csBySn = new Map<string, typeof csEmps[number]>()
+  for (const c of csEmps) {
+    csBySn.set(c.employeeSn, c)
+    csBySn.set(`EMP-${c.employeeSn}`, c)
   }
 
   const employees = hrEmps.map((emp) => {
-    const um = snToUm.get(emp.employeeId)
-    const hasPosition = Boolean(emp.position)
+    const cs = csBySn.get(emp.employeeId)
     return {
       ...emp,
-      position: hasPosition ? emp.position : (um?.jobTitle || emp.position || ""),
-      section: emp.section || um?.section || "",
-      department: emp.department || um?.department || "",
+      position: emp.position || cs?.position || "",
+      section: emp.section || cs?.section || "",
+      department: emp.department || "Central Services",
     }
   })
 
