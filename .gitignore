@@ -54,3 +54,19 @@ next-env.d.ts
 .claude/worktrees/
 graphify-out/
 .code-review-graph/
+
+# local scratch/inspection files
+scratch/
+
+# local utility scripts (not deployed)
+scripts/add_employee_columns.ts
+scripts/deduplicate-sites.ts
+scripts/inspect-sections.ts
+scripts/sync-existing-org-nodes.ts
+scripts/sync-new-karyawan.ts
+
+# excel/data files
+*.xlsx
+*.xls
+tmp_*.txt
+test.ts
