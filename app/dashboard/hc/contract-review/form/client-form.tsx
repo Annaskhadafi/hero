@@ -311,6 +311,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   const achCategory = achievementScore >= 106 ? "exceed" : achievementScore >= 95 ? "meet" : achievementScore > 0 ? "below" : ""
 
+  const getApprovedSignature = (...roles: string[]) => {
+    return approvalHistory?.find((step: any) => step.status === 'approved' && step.signatureDataUrl && roles.includes(step.approverRole))?.signatureDataUrl || ''
+  }
+
+  const leaderApprovalSig = getApprovedSignature('pjo_or_te_initial', 'section_head_initial')
+  const employeeApprovalSig = getApprovedSignature('employee')
+  const sectionHeadApprovalSig = getApprovedSignature('section_head_confirmation')
+  const managerApprovalSig = getApprovedSignature('central_service_manager')
+  const hrApprovalSig = getApprovedSignature('hr')
+
   const handleSave = () => {
     startTransition(async () => {
       const { leaderTitle, superiorTitle, hrTitle, nextSuperiorTitle, ...formToSave } = form
@@ -622,62 +632,70 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <div>
             <div className="text-xs text-muted-foreground mb-1">Leader Signature</div>
             <div className="h-20 flex items-end">
-              {previewLeaderSig ? (
-                <img src={previewLeaderSig} alt="Leader TTD" className="h-16 object-contain" />
+              {leaderApprovalSig || previewLeaderSig ? (
+                <img src={leaderApprovalSig || previewLeaderSig} alt="Leader TTD" className="h-16 object-contain" />
               ) : null}
             </div>
-            <div className="border-b border-black w-full mb-1">{form.leaderName}</div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.leaderName}</div>
             <div className="text-xs">{form.leaderTitle || 'Leader'}</div>
           </div>
         )}
         <div>
           <div className="text-xs text-muted-foreground mb-1">Employee Signature</div>
-          <div className="h-20 flex items-end" />
-          <div className="border-b border-black w-full mb-1">{selectedEmp?.name || form.employeeNameStr || '\u00A0'}</div>
+          <div className="h-20 flex items-end">
+            {employeeApprovalSig ? <img src={employeeApprovalSig} alt="Employee TTD" className="h-16 object-contain" /> : null}
+          </div>
+          <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{selectedEmp?.name || form.employeeNameStr || '\u00A0'}</div>
           <div className="text-xs">{selectedEmp?.position || 'Employee'}</div>
         </div>
         {form.superiorName && (
           <div>
             <div className="text-xs text-muted-foreground mb-1">Superior Signature</div>
-            <div className="h-20 flex items-end" />
-            <div className="border-b border-black w-full mb-1">{form.superiorName}</div>
+            <div className="h-20 flex items-end">
+              {sectionHeadApprovalSig ? <img src={sectionHeadApprovalSig} alt="Superior TTD" className="h-16 object-contain" /> : null}
+            </div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.superiorName}</div>
             <div className="text-xs">{form.superiorTitle || 'Superior'}</div>
           </div>
         )}
         {form.hrName && (
           <div>
             <div className="text-xs text-muted-foreground mb-1">HR Signature</div>
-            <div className="h-20 flex items-end" />
-            <div className="border-b border-black w-full mb-1">{form.hrName}</div>
+            <div className="h-20 flex items-end">
+              {hrApprovalSig ? <img src={hrApprovalSig} alt="HR TTD" className="h-16 object-contain" /> : null}
+            </div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.hrName}</div>
             <div className="text-xs">{form.hrTitle || 'HR'}</div>
           </div>
         )}
         {form.nextSuperiorName && (
           <div>
             <div className="text-xs text-muted-foreground mb-1">Next Superior Signature</div>
-            <div className="h-20 flex items-end" />
-            <div className="border-b border-black w-full mb-1">{form.nextSuperiorName}</div>
+            <div className="h-20 flex items-end">
+              {managerApprovalSig ? <img src={managerApprovalSig} alt="Next Superior TTD" className="h-16 object-contain" /> : null}
+            </div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.nextSuperiorName}</div>
             <div className="text-xs">{form.nextSuperiorTitle || 'Manager'}</div>
           </div>
         )}
         <div>
-          <div className="font-bold mb-4">Letter Issuance by HR</div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2">
+          <div className="font-bold mb-2">Letter Issuance by HR</div>
+          <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
-              Permanent Confirmation
+              <span>Permanent Confirmation</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
-              Contract extension
+              <span>Contract extension</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
-              Unsuccessful probation notification
+              <span>Unsuccessful probation notification</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
-              End of contract notification
+              <span>End of contract notification</span>
             </label>
           </div>
         </div>

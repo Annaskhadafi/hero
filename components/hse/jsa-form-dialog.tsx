@@ -86,6 +86,7 @@ const ppeOptions = [
 
 const jsaSchema = z.object({
   jsaNumber: z.string().optional().default(''),
+  creatorName: z.string().min(1, 'Harus diisi'),
   jobDescription: z.string().min(1, 'Harus diisi'),
   equipmentNumber: z.string().min(1, 'Harus diisi'),
   teamMembers: z.string().min(1, 'Harus diisi'),
@@ -114,9 +115,11 @@ interface JsaFormDialogProps {
   onOpenChange: (open: boolean) => void
   initialData?: any
   id?: string
+  publicMode?: boolean
+  onSuccess?: (id?: string) => void
 }
 
-export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDialogProps) {
+export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode = false, onSuccess }: JsaFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [executorSignature, setExecutorSignature] = React.useState<File | null>(null)
   const [customEquipment, setCustomEquipment] = React.useState('')
@@ -127,6 +130,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
     resolver: zodResolver(jsaSchema),
     defaultValues: {
       jsaNumber: initialData?.jsaNumber ?? '',
+      creatorName: initialData?.signatures?.creatorName ?? '',
       jobDescription: initialData?.jobDescription ?? '',
       equipmentNumber: initialData?.equipmentNumber ?? '',
       teamMembers: initialData?.teamMembers ?? '',
@@ -159,6 +163,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
 
         form.reset({
           jsaNumber: initialData.jsaNumber || '',
+          creatorName: initialData.signatures?.creatorName || '',
           jobDescription: initialData.jobDescription || '',
           equipmentNumber: initialData.equipmentNumber || '',
           teamMembers: initialData.teamMembers || '',
@@ -175,6 +180,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
         setCustomPpe('')
         form.reset({
           jsaNumber: 'AUTO',
+          creatorName: '',
           jobDescription: '',
           equipmentNumber: '',
           teamMembers: '',
@@ -204,6 +210,8 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
       }
 
       const signatures = {
+        ...(initialData?.signatures || {}),
+        creatorName: data.creatorName,
         executorUrl: signatureUrl,
         executorDate: new Date().toISOString()
       }
@@ -222,7 +230,8 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
       }, data.steps.map((s, idx) => ({ ...s, stepOrder: idx + 1 })), id)
 
       if (res.success) {
-        toast.success(id ? 'JSA berhasil diupdate' : 'JSA berhasil dibuat')
+        toast.success(publicMode ? 'Form JSA berhasil dikirim' : id ? 'JSA berhasil diupdate' : 'JSA berhasil dibuat')
+        onSuccess?.(res.id)
         onOpenChange(false)
       }
     } catch (err: any) {
@@ -236,7 +245,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] lg:max-w-7xl xl:max-w-[1400px] h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle>{id ? 'Edit JSA' : 'Buat JSA Baru'}</DialogTitle>
+          <DialogTitle>{publicMode ? 'Form Job Safety Analysis (JSA)' : id ? 'Edit JSA' : 'Buat JSA Baru'}</DialogTitle>
         </DialogHeader>
         
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
@@ -252,6 +261,19 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
                       <FormLabel>No. JSA</FormLabel>
                       <FormControl>
                         <Input placeholder="Otomatis" disabled {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="creatorName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nama Pembuat JSA</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Nama pembuat" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -624,12 +646,14 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id }: JsaFormDi
         </div>
         
         <DialogFooter className="px-6 py-4 border-t bg-slate-50">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            Batal
-          </Button>
+          {!publicMode && (
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+          )}
           <Button onClick={form.handleSubmit(onSubmit)} disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {id ? 'Simpan Perubahan' : 'Buat JSA'}
+            {publicMode ? 'Kirim Form JSA' : id ? 'Simpan Perubahan' : 'Buat JSA'}
           </Button>
         </DialogFooter>
       </DialogContent>

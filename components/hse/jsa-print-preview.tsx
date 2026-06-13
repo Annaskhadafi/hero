@@ -29,6 +29,8 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
   if (!data) return null
 
   const { steps = [] } = data
+  const signatures = data.signatures || {}
+  const creatorName = signatures.creatorName || data.teamMembers?.split(',')[0]?.trim() || 'Operator'
 
   const getCheckmark = (condition: boolean) => (condition ? '✓' : '')
 
@@ -89,7 +91,7 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
                 <tbody>
                   <tr>
                     <td className="border border-black p-1 font-semibold w-1/3">Dibuat oleh</td>
-                    <td className="border border-black p-1">{data.executorName || 'Operator'}</td>
+                    <td className="border border-black p-1">{creatorName}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-1 font-semibold">Tanggal</td>
@@ -261,22 +263,23 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
                 <div className="flex items-center gap-4 mb-2">
                   <span className="w-4">1.</span>
                   <div className="flex-1 flex flex-col items-center">
-                    {data.signatures?.executorUrl ? (
+                    {signatures.executorUrl ? (
                       <div className="h-16 w-32 relative">
-                        <img src={data.signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" />
+                        <img src={signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" />
                       </div>
                     ) : (
                       <div className="h-16 border-b border-dotted border-black w-full" />
                     )}
+                    <p className="mt-1 text-center text-[9pt] font-semibold">{creatorName}</p>
                   </div>
-                  <span className="w-24 border-b border-dotted border-black h-8 leading-8 text-center">{data.signatures?.executorDate ? new Date(data.signatures.executorDate).toLocaleDateString() : ''}</span>
+                  <span className="w-24 border-b border-dotted border-black h-8 leading-8 text-center">{signatures.executorDate ? new Date(signatures.executorDate).toLocaleDateString() : ''}</span>
                 </div>
               </div>
               <div className="border border-black p-4 w-1/2 min-h-[160px]">
                 <p className="font-semibold underline mb-8">Verifikasi ( Departement HSE )</p>
                 <div className="mt-16">
-                  <p className="mb-1">Nama : {data.signatures?.verifierName || '_________________________'}</p>
-                  <p>Tanggal : {data.signatures?.verifierDate ? new Date(data.signatures.verifierDate).toLocaleDateString() : '_________________________'}</p>
+                  <p className="mb-1">Nama : {signatures.verifierName || '_________________________'}</p>
+                  <p>Tanggal : {signatures.verifierDate ? new Date(signatures.verifierDate).toLocaleDateString() : '_________________________'}</p>
                 </div>
               </div>
             </div>

@@ -10,17 +10,18 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
   if (!data) return notFound()
 
   const { steps = [] } = data
-  const executorName = data.teamMembers?.split(',')[0]?.trim() || 'Operator'
   const equipmentUsed = Array.isArray(data.equipmentUsed) ? data.equipmentUsed : []
   const requirements = Array.isArray(data.requirements) ? data.requirements : []
   const permits = Array.isArray(data.permits) ? data.permits : []
   const ppeRequirements = Array.isArray(data.ppeRequirements) ? data.ppeRequirements : []
   const signatures = data.signatures as Partial<{
+    creatorName: string
     executorUrl: string
     executorDate: string
     verifierName: string
     verifierDate: string
   }>
+  const creatorName = signatures.creatorName || data.teamMembers?.split(',')[0]?.trim() || 'Operator'
   const getCheckmark = (condition: boolean) => (condition ? '✓' : '')
 
   return (
@@ -59,7 +60,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
             <tbody>
               <tr>
                 <td className="border border-black p-1 font-semibold w-1/3">Dibuat oleh</td>
-                <td className="border border-black p-1">{executorName}</td>
+                <td className="border border-black p-1">{creatorName}</td>
               </tr>
               <tr>
                 <td className="border border-black p-1 font-semibold">Tanggal</td>
@@ -238,6 +239,7 @@ export default async function PrintJsaPage({ params }: { params: Promise<{ id: s
                 ) : (
                   <div className="h-16 border-b border-dotted border-black w-full" />
                 )}
+                <p className="mt-1 text-center text-[9pt] font-semibold">{creatorName}</p>
               </div>
               <span className="w-24 border-b border-dotted border-black h-8 leading-8 text-center">{signatures.executorDate ? new Date(signatures.executorDate).toLocaleDateString() : ''}</span>
             </div>

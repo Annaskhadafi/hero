@@ -68,9 +68,9 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const allVals = [...aVals, ...bVals]
   const achievementScore = allVals.length > 0 ? allVals.reduce((sum: number, val: string) => sum + (val === 'exceed' ? 115 : val === 'meet' ? 100 : 80), 0) / allVals.length : 0
 
-  // ── PDF Page 1: Details, Profile, Performance ──
+  // PDF Page 1: Details, Profile, Performance, Competency
   const pdfPage1 = (
-    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm' }}>
+    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
@@ -133,16 +133,11 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           )}
         </tbody>
       </table>
-    </div>
-  )
 
-  // ── PDF Page 2: Competency, Signatories, Letter Issuance ──
-  const pdfPage2 = (
-    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm' }}>
-      <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+      <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency ( Knowledge & Behavior )</div>
+      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <thead>
-          <tr className="bg-slate-50">
+          <tr className="bg-slate-50 text-center">
             <th className="w-[45%]">Activities</th>
             <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
             <th className="w-[25%]">Remark</th>
@@ -165,7 +160,12 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           ))}
         </tbody>
       </table>
+    </div>
+  )
 
+  // PDF Page 2: Achievement, Signatories, Letter Issuance
+  const pdfPage2 = (
+    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="font-bold ml-4 mb-1">Achievement Definition</div>
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <tbody>
@@ -200,7 +200,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             <div className="h-20 flex items-end">
               {leaderSig && <img src={leaderSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
             </div>
-            <div className="border-b border-black w-full mb-1">{review.leaderName}</div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.leaderName}</div>
             <div className="text-xs">{review.leaderTitle || 'Leader'}</div>
           </div>
         )}
@@ -209,7 +209,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           <div className="h-20 flex items-end">
             {employeeSig && <img src={employeeSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
           </div>
-          <div className="border-b border-black w-full mb-1">{employee?.name || review.employeeNameStr || '\u00A0'}</div>
+          <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{employee?.name || review.employeeNameStr || '\u00A0'}</div>
           <div className="text-xs">{employee?.position || 'Employee'}</div>
         </div>
         {review.superiorName && (
@@ -218,7 +218,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             <div className="h-20 flex items-end">
               {sectionHeadSig && <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
             </div>
-            <div className="border-b border-black w-full mb-1">{review.superiorName}</div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.superiorName}</div>
             <div className="text-xs">{review.superiorTitle || 'Superior'}</div>
           </div>
         )}
@@ -228,7 +228,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             <div className="h-20 flex items-end">
               {hrSig && <img src={hrSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
             </div>
-            <div className="border-b border-black w-full mb-1">{review.hrName}</div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.hrName}</div>
             <div className="text-xs">{review.hrTitle || 'HR'}</div>
           </div>
         )}
@@ -238,17 +238,17 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             <div className="h-20 flex items-end">
               {managerSig && <img src={managerSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
             </div>
-            <div className="border-b border-black w-full mb-1">{review.nextSuperiorName}</div>
+            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.nextSuperiorName}</div>
             <div className="text-xs">{review.nextSuperiorTitle || 'Manager'}</div>
           </div>
         )}
         <div>
-          <div className="font-bold mb-4">Letter Issuance by HR</div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2"><input type="checkbox" checked={review.letterIssuance === 'permanent_confirmation'} readOnly /> Permanent Confirmation</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={review.letterIssuance === 'contract_extension'} readOnly /> Contract extension</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={review.letterIssuance === 'unsuccessful_probation'} readOnly /> Unsuccessful probation notification</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={review.letterIssuance === 'end_of_contract'} readOnly /> End of contract notification</label>
+          <div className="font-bold mb-2">Letter Issuance by HR</div>
+          <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'permanent_confirmation'} readOnly /> <span>Permanent Confirmation</span></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'contract_extension'} readOnly /> <span>Contract extension</span></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'unsuccessful_probation'} readOnly /> <span>Unsuccessful probation notification</span></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'end_of_contract'} readOnly /> <span>End of contract notification</span></label>
           </div>
         </div>
       </div>

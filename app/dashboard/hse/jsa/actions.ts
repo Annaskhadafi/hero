@@ -1,10 +1,81 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { eq, desc } from 'drizzle-orm'
+import { eq, desc, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { heroJsas, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'
+import { heroJsas, heroJsaSettings, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'
 import { getServerSession } from '@/lib/auth-session'
+
+export type JsaSettings = {
+  notificationRecipients: string
+  defaultSignerName: string
+  defaultSignerTitle: string
+  defaultSignerEmail: string
+}
+
+const DEFAULT_JSA_SETTINGS: JsaSettings = {
+  notificationRecipients: '',
+  defaultSignerName: '',
+  defaultSignerTitle: '',
+  defaultSignerEmail: '',
+}
+
+let jsaSettingsTablePromise: Promise<void> | null = null
+
+async function ensureJsaSettingsTable() {
+  if (!jsaSettingsTablePromise) {
+    jsaSettingsTablePromise = db.execute(sql`
+      create table if not exists hero_jsa_settings (
+        id uuid primary key default gen_random_uuid(),
+        setting_key varchar(255) not null unique,
+        setting_value jsonb not null default '{}'::jsonb,
+        updated_at timestamp not null default now()
+      )
+    `).then(() => undefined).catch((error) => {
+      jsaSettingsTablePromise = null
+      throw error
+    })
+  }
+
+  return jsaSettingsTablePromise
+}
+
+export async function getJsaSettings(): Promise<JsaSettings> {
+  await ensureJsaSettingsTable()
+
+  const [row] = await db
+    .select()
+    .from(heroJsaSettings)
+    .where(eq(heroJsaSettings.settingKey, 'jsa_workflow'))
+    .limit(1)
+
+  return { ...DEFAULT_JSA_SETTINGS, ...((row?.settingValue as Partial<JsaSettings> | undefined) ?? {}) }
+}
+
+export async function saveJsaSettings(settings: JsaSettings) {
+  const session = await getServerSession()
+  if (!session?.user) throw new Error('Unauthorized')
+
+  await ensureJsaSettingsTable()
+
+  const [existing] = await db
+    .select({ id: heroJsaSettings.id })
+    .from(heroJsaSettings)
+    .where(eq(heroJsaSettings.settingKey, 'jsa_workflow'))
+    .limit(1)
+
+  if (existing) {
+    await db
+      .update(heroJsaSettings)
+      .set({ settingValue: settings, updatedAt: new Date() })
+      .where(eq(heroJsaSettings.id, existing.id))
+  } else {
+    await db.insert(heroJsaSettings).values({ settingKey: 'jsa_workflow', settingValue: settings })
+  }
+
+  revalidatePath('/dashboard/hse/jsa')
+  return { success: true }
+}
 
 export async function getJsaList() {
   return db.select().from(heroJsas).orderBy(desc(heroJsas.createdAt))
@@ -32,7 +103,7 @@ export async function saveJsa(
   id?: string
 ) {
   const session = await getServerSession()
-  if (!session?.user) throw new Error('Unauthorized')
+  if (id && !session?.user) throw new Error('Unauthorized')
 
   if (id) {
     const jsaId = id
@@ -72,6 +143,7 @@ export async function saveJsa(
   }
 
   revalidatePath('/dashboard/hse/jsa')
+  revalidatePath('/jsa')
   return { success: true, id }
 }
 

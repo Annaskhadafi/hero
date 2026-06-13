@@ -31,6 +31,13 @@ export const heroJsaSteps = pgTable('hero_jsa_steps', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
+export const heroJsaSettings = pgTable('hero_jsa_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  settingKey: varchar('setting_key', { length: 255 }).notNull().unique(),
+  settingValue: jsonb('setting_value').notNull().default({}),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
 export type Jsa = typeof heroJsas.$inferSelect
 export type NewJsa = typeof heroJsas.$inferInsert
 export type JsaStep = typeof heroJsaSteps.$inferSelect
