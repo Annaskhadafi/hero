@@ -1,19 +1,40 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useActionState, useEffect, useMemo, useState, useTransition, Fragment } from 'react'
+import { useRouter } from 'next/navigation'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  CheckCircle,
+  AlertCircle,
+  Edit,
+  Trash2,
+  Eye,
+  Plus,
+  Check,
+  X,
+  Search,
+  Upload,
+  Download,
+  RefreshCw,
+  Filter,
+  Users,
+  MapPin,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react'
+
+import { AdminMetricGrid } from '@/components/admin-metric-grid'
+import { AdminPageShell } from '@/components/admin-page-shell'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import {
   Dialog,
   DialogContent,
@@ -23,27 +44,29 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
-  Upload,
-  CheckCircle,
-  AlertCircle,
-  Edit,
-  Trash2,
-  Eye,
-  Plus,
-  Check,
-  ChevronDown,
-  X,
-  Search,
-  Download,
-} from 'lucide-react'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -60,7 +83,16 @@ type Employee = {
   site: string
   department: string
   position: string
+  levelName: string
   employmentStatus: string
+  gender: string
+  religion: string
+  education: string
+  joinDate: string | null
+  contractDurationStart: string | null
+  contractDurationEnd: string | null
+  permanentDate: string | null
+  birthDate: string | null
   isSyncedToUserManagement: boolean
 }
 
@@ -77,128 +109,191 @@ const EMPTY_NEW_EMPLOYEE = {
   employmentType: 'permanent',
 }
 
-// ─── MultiSelectFilter ────────────────────────────────────────────────────────
+const COLUMNS = [
+  { key: 'sn', label: 'SN' },
+  { key: 'name', label: 'Nama' },
+  { key: 'email', label: 'Email' },
+  { key: 'department', label: 'Department' },
+  { key: 'section', label: 'Section' },
+  { key: 'jobTitle', label: 'Job Title' },
+  { key: 'site', label: 'Site' },
+  { key: 'status', label: 'Status' },
+  { key: 'contractLeft', label: 'Contract Left' },
+  { key: 'sync', label: 'Sync' },
+] as const
 
-function MultiSelectFilter({
-  label,
+const DETAIL_COLUMNS = [
+  { key: 'levelStaff', label: 'Level Staff' },
+  { key: 'gender', label: 'Gender' },
+  { key: 'agama', label: 'Agama' },
+  { key: 'pendidikan', label: 'Pendidikan' },
+  { key: 'joinDate', label: 'Join Date' },
+  { key: 'contractStart', label: 'Contract Start' },
+  { key: 'contractEnd', label: 'Contract End' },
+  { key: 'permanentDate', label: 'Permanent Date' },
+  { key: 'tglLahir', label: 'Tgl Lahir' },
+] as const
+
+const ALL_COLUMNS = [...COLUMNS, ...DETAIL_COLUMNS] as readonly { key: string; label: string }[]
+
+function getContractLeftDays(contractEnd: string | null): number | null {
+  if (!contractEnd) return null
+  const end = new Date(contractEnd)
+  const now = new Date()
+  const diffMs = end.getTime() - now.getTime()
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
+}
+
+function ContractLeftBadge({ days }: { days: number | null }) {
+  if (days === null) return <span className="text-muted-foreground text-sm">-</span>
+  if (days <= 0) return <Badge variant="outline" className="bg-red-50 text-red-700 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">Expired</Badge>
+  if (days <= 30) return <Badge variant="outline" className="bg-orange-50 text-orange-600 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">{days} hari</Badge>
+  if (days <= 90) return <Badge variant="outline" className="bg-amber-50 text-amber-600 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">{days} hari</Badge>
+  return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-2.5 py-0.5 text-[10px] font-semibold">{days} hari</Badge>
+}
+
+// ─── MultiSelectDropdown ──────────────────────────────────────────────────────
+
+function MultiSelectDropdown({
   options,
   selected,
   onChange,
+  placeholder,
+  label,
 }: {
-  label: string
   options: string[]
   selected: string[]
-  onChange: (values: string[]) => void
+  onChange: (selected: string[]) => void
+  placeholder: string
+  label: string
 }) {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q ? options.filter((o) => o.toLowerCase().includes(q)) : options
-  }, [options, query])
+  const filteredOptions = options.filter((option) =>
+    option.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
-  const displayLabel =
+  const displayText =
     selected.length === 0
-      ? `Semua ${label}`
+      ? placeholder
       : selected.length === 1
         ? selected[0]
-        : `${selected.length} ${label}`
+        : `${selected.length} dipilih`
 
-  const toggle = (val: string) =>
-    onChange(selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val])
+  function toggleOption(option: string) {
+    if (selected.includes(option)) {
+      onChange(selected.filter((item) => item !== option))
+      return
+    }
+    onChange([...selected, option])
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className="border-border/70 hover:bg-muted/40 h-9 w-[200px] justify-between rounded-lg bg-white px-3 text-[13px] font-medium shadow-none"
+          role="combobox"
+          aria-expanded={open}
+          className="bg-surface-container-lowest text-muted-foreground hover:bg-surface-container-lowest h-9 min-w-[160px] justify-between rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
         >
-          <span className="truncate text-left">{displayLabel}</span>
-          <div className="flex items-center gap-1">
-            {selected.length > 0 && (
-              <X
-                className="text-muted-foreground hover:text-foreground size-3.5"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onChange([])
-                }}
-              />
-            )}
-            <ChevronDown className="text-muted-foreground size-4" />
-          </div>
+          <span className="truncate">{displayText}</span>
+          <Filter className="ml-2 size-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="border-border/80 w-[260px] rounded-xl border bg-white p-2 shadow-lg"
-      >
-        <div className="relative mb-2">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+      <PopoverContent className="w-[280px] p-0" align="start">
+        <Command>
+          <CommandInput
             placeholder={`Cari ${label.toLowerCase()}...`}
-            className="border-border/70 bg-muted/30 h-9 rounded-lg pl-9 shadow-none"
-            autoFocus
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            className="h-9"
           />
-        </div>
-        <div className="border-border/60 max-h-64 overflow-auto rounded-lg border bg-white p-1">
-          <button
-            type="button"
-            className="hover:bg-muted/50 flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm"
-            onClick={() => onChange([])}
-          >
-            <span>Semua {label}</span>
-            {selected.length > 0 && <X className="text-muted-foreground size-4" />}
-          </button>
-          {filtered.length === 0 && (
-            <p className="text-muted-foreground px-3 py-2 text-sm">Tidak ditemukan</p>
-          )}
-          {filtered.map((opt) => {
-            const isSelected = selected.includes(opt)
-            return (
-              <button
-                key={opt}
-                type="button"
-                className="hover:bg-muted/50 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm"
-                onClick={() => toggle(opt)}
-              >
-                <span
-                  className={cn(
-                    'border-border/80 grid size-4 flex-shrink-0 place-items-center rounded border bg-white',
-                    isSelected && 'border-primary bg-primary text-primary-foreground'
-                  )}
+          <CommandList className="max-h-[220px]">
+            <CommandEmpty>Tidak ada {label.toLowerCase()}.</CommandEmpty>
+            <CommandGroup>
+              {filteredOptions.map((option) => (
+                <CommandItem
+                  key={option}
+                  onSelect={() => toggleOption(option)}
+                  className="flex items-center gap-2 px-2 py-2"
                 >
-                  {isSelected && <Check className="size-3" />}
-                </span>
-                <span className="truncate">{opt}</span>
-              </button>
-            )
-          })}
-        </div>
+                  <Checkbox checked={selected.includes(option)} />
+                  <span className="flex-1 truncate text-sm">{option}</span>
+                  {selected.includes(option) ? <Check className="text-primary size-4" /> : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+          {selected.length > 0 ? (
+            <div className="border-border/70 border-t p-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onChange([])}
+                className="text-muted-foreground h-8 w-full justify-center text-xs"
+              >
+                Bersihkan pilihan
+              </Button>
+            </div>
+          ) : null}
+        </Command>
       </PopoverContent>
     </Popover>
+  )
+}
+
+// ─── FilterChip ───────────────────────────────────────────────────────────────
+
+function FilterChip({ children, onRemove }: { children: React.ReactNode; onRemove: () => void }) {
+  return (
+    <Badge
+      variant="secondary"
+      className="surface-chip text-foreground flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium"
+    >
+      {children}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="text-muted-foreground hover:bg-surface-container-low grid size-4 place-items-center rounded-full transition"
+        aria-label="Hapus filter"
+      >
+        <X className="size-3" />
+      </button>
+    </Badge>
   )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CentralServicePage() {
+  const router = useRouter()
+  const [isRefreshing, startRefreshTransition] = useTransition()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [syncFilter, setSyncFilter] = useState('all')
   const [selectedSections, setSelectedSections] = useState<string[]>([])
   const [selectedSites, setSelectedSites] = useState<string[]>([])
-  const [stats, setStats] = useState({ total: 0, synced: 0, unsynced: 0 })
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
 
   const [viewEmployee, setViewEmployee] = useState<Employee | null>(null)
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [newEmployee, setNewEmployee] = useState({ ...EMPTY_NEW_EMPLOYEE })
   const [saving, setSaving] = useState(false)
+
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+    sn: true, name: true, email: true, department: true, section: true,
+    jobTitle: true, site: true, status: true, contractLeft: true, sync: true,
+    levelStaff: false, gender: false, agama: false, pendidikan: false,
+    joinDate: false, contractStart: false, contractEnd: false,
+    permanentDate: false, tglLahir: false,
+  })
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
+  const [sortKey, setSortKey] = useState<string>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   useEffect(() => {
     fetchEmployees()
@@ -208,7 +303,7 @@ export default function CentralServicePage() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      params.append('limit', '10000') // unlimited scroll
+      params.append('limit', '10000')
       if (search) params.append('search', search)
       if (syncFilter !== 'all') params.append('syncStatus', syncFilter)
       const response = await fetch(`/api/central-service/employees?${params}`)
@@ -219,7 +314,6 @@ export default function CentralServicePage() {
           site: emp.siteName,
         }))
         setEmployees(parsed)
-        setStats(data.stats)
       }
     } catch (error) {
       console.error(error)
@@ -228,7 +322,6 @@ export default function CentralServicePage() {
     }
   }
 
-  // Unique options derived from loaded data
   const sectionOptions = useMemo(
     () => Array.from(new Set(employees.map((e) => e.section).filter(Boolean))).sort(),
     [employees]
@@ -237,26 +330,69 @@ export default function CentralServicePage() {
     () => Array.from(new Set(employees.map((e) => e.site).filter(Boolean))).sort(),
     [employees]
   )
-
-  // Client-side filter
-  const visibleEmployees = useMemo(
-    () =>
-      employees.filter((emp) => {
-        if (selectedSections.length > 0 && !selectedSections.includes(emp.section)) return false
-        if (selectedSites.length > 0 && !selectedSites.includes(emp.site)) return false
-        return true
-      }),
-    [employees, selectedSections, selectedSites]
+  const statusOptions = useMemo(
+    () => Array.from(new Set(employees.map((e) => e.employmentStatus).filter(Boolean))).sort(),
+    [employees]
   )
 
-  const dynamicStats = useMemo(() => {
-    const total = visibleEmployees.length
-    const active = visibleEmployees.filter((e) => e.employmentStatus === 'active').length
-    const inactive = total - active
-    const synced = visibleEmployees.filter((e) => e.isSyncedToUserManagement).length
-    const unsynced = total - synced
+  const filteredEmployees = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    const filtered = employees.filter((emp) => {
+      const haystack = [emp.employeeSn, emp.fullName, emp.email, emp.section, emp.site, emp.department, emp.position]
+        .join(' ')
+        .toLowerCase()
+      const matchesKeyword = !query || haystack.includes(query)
+      const matchesSection = selectedSections.length === 0 || selectedSections.includes(emp.section)
+      const matchesSite = selectedSites.length === 0 || selectedSites.includes(emp.site)
+      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(emp.employmentStatus)
+      const matchesSync =
+        syncFilter === 'all' ||
+        (syncFilter === 'synced' && emp.isSyncedToUserManagement) ||
+        (syncFilter === 'unsynced' && !emp.isSyncedToUserManagement)
+      return matchesKeyword && matchesSection && matchesSite && matchesStatus && matchesSync
+    })
 
-    const sitesCount = visibleEmployees.reduce(
+    if (!sortKey) return filtered
+
+    const getSortVal = (e: Employee): string => {
+      switch (sortKey) {
+        case 'sn': return e.employeeSn
+        case 'name': return e.fullName
+        case 'email': return e.email ?? ''
+        case 'department': return e.department
+        case 'section': return e.section
+        case 'jobTitle': return e.position
+        case 'levelStaff': return e.levelName ?? ''
+        case 'site': return e.site
+        case 'status': return e.employmentStatus
+        case 'gender': return e.gender ?? ''
+        case 'agama': return e.religion ?? ''
+        case 'pendidikan': return e.education ?? ''
+        case 'joinDate': return e.joinDate ?? ''
+        case 'contractStart': return e.contractDurationStart ?? ''
+        case 'contractEnd': return e.contractDurationEnd ?? ''
+        case 'contractLeft': return String(getContractLeftDays(e.contractDurationEnd) ?? 999999)
+        case 'permanentDate': return e.permanentDate ?? ''
+        case 'tglLahir': return e.birthDate ?? ''
+        case 'sync': return e.isSyncedToUserManagement ? 'Synced' : 'Not Synced'
+        default: return ''
+      }
+    }
+
+    return [...filtered].sort((a, b) => {
+      const va = getSortVal(a)
+      const vb = getSortVal(b)
+      const cmp = va.localeCompare(vb)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [employees, search, selectedSections, selectedSites, selectedStatuses, syncFilter, sortKey, sortDir])
+
+  const dynamicStats = useMemo(() => {
+    const total = filteredEmployees.length
+    const active = filteredEmployees.filter((e) => e.employmentStatus === 'active').length
+    const synced = filteredEmployees.filter((e) => e.isSyncedToUserManagement).length
+    const unsynced = total - synced
+    const sitesCount = filteredEmployees.reduce(
       (acc, emp) => {
         if (!emp.site) return acc
         acc[emp.site] = (acc[emp.site] || 0) + 1
@@ -265,9 +401,23 @@ export default function CentralServicePage() {
       {} as Record<string, number>
     )
     const topSite = Object.entries(sitesCount).sort((a, b) => b[1] - a[1])[0] || ['-', 0]
+    return { total, active, synced, unsynced, topSite }
+  }, [filteredEmployees])
 
-    return { total, active, inactive, synced, unsynced, topSite }
-  }, [visibleEmployees])
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    selectedSections.length > 0 ||
+    selectedSites.length > 0 ||
+    selectedStatuses.length > 0 ||
+    syncFilter !== 'all'
+
+  function resetFilters() {
+    setSearch('')
+    setSelectedSections([])
+    setSelectedSites([])
+    setSelectedStatuses([])
+    setSyncFilter('all')
+  }
 
   const handleDelete = async (id: number) => {
     if (!confirm('Yakin hapus karyawan ini?')) return
@@ -334,50 +484,28 @@ export default function CentralServicePage() {
       setSaving(false)
     }
   }
-  const handleExportExcel = () => {
-    if (visibleEmployees.length === 0) {
+
+  function exportVisibleEmployees() {
+    if (filteredEmployees.length === 0) {
       toast.error('Tidak ada data untuk diekspor')
       return
     }
-
-    const headers = [
-      'SN',
-      'Nama',
-      'Email',
-      'Section',
-      'Site',
-      'Department',
-      'Position',
-      'Status',
-      'Sync',
-    ]
-
-    const rows = visibleEmployees.map((emp) => [
-      emp.employeeSn,
-      emp.fullName,
-      emp.email || '',
-      emp.section || '',
-      emp.site || '',
-      emp.department || '',
-      emp.position || '',
-      emp.employmentStatus,
-      emp.isSyncedToUserManagement ? 'Synced' : 'Not Synced',
+    const headers = ['SN', 'Nama', 'Email', 'Department', 'Section', 'Job Title', 'Level Staff', 'Site', 'Status', 'Gender', 'Agama', 'Pendidikan', 'Join Date', 'Contract Start', 'Contract End', 'Contract Left', 'Permanent Date', 'Tgl Lahir', 'Sync']
+    const rows = filteredEmployees.map((emp) => [
+      emp.employeeSn, emp.fullName, emp.email || '', emp.department, emp.section || '',
+      emp.position, emp.levelName || '-', emp.site || '', emp.employmentStatus,
+      emp.gender || '-', emp.religion || '-', emp.education || '-', emp.joinDate || '-',
+      emp.contractDurationStart || '-', emp.contractDurationEnd || '-',
+      getContractLeftDays(emp.contractDurationEnd) ?? '-', emp.permanentDate || '-',
+      emp.birthDate || '-', emp.isSyncedToUserManagement ? 'Synced' : 'Not Synced',
     ])
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [
-        headers.join(';'),
-        ...rows.map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')),
-      ].join('\r\n')
-
-    const encodedUri = encodeURI(csvContent)
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [
+      headers.join(';'),
+      ...rows.map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')),
+    ].join('\r\n')
     const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute(
-      'download',
-      `employee_central_service_${new Date().toISOString().split('T')[0]}.csv`
-    )
+    link.setAttribute('href', encodeURI(csvContent))
+    link.setAttribute('download', `central-service-employees_${new Date().toISOString().split('T')[0]}.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -385,333 +513,489 @@ export default function CentralServicePage() {
   }
 
   return (
-    <div className="container mx-auto space-y-5 py-5">
-      <div className="admin-daily-card rounded-[1.1rem] px-5 py-4">
-        <h1 className="font-display text-foreground text-2xl font-semibold tracking-tight">
-          Central Service Employees
-        </h1>
-        <p className="text-muted-foreground text-sm">Kelola semua karyawan Central Service</p>
-      </div>
+    <AdminPageShell
+      eyebrow="Central Services"
+      title="Central Service Employees"
+      description="Kelola semua karyawan Central Service dalam satu workspace table-first."
+      badge={`${filteredEmployees.length}/${employees.length} visible`}
+      actions={
+        <>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            id="import-file"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const formData = new FormData()
+              formData.append('file', file)
+              formData.append('userId', 'current-user-id')
+              try {
+                const res = await fetch('/api/central-service/employees/import', {
+                  method: 'POST',
+                  body: formData,
+                })
+                const result = await res.json()
+                if (result.success) {
+                  fetchEmployees()
+                  toast.success(`Import selesai! ${result.successCount} berhasil`)
+                } else toast.error('Import gagal')
+              } catch {
+                toast.error('Import gagal')
+              }
+              e.target.value = ''
+            }}
+          />
+          <Button
+            variant="outline"
+            className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+            onClick={() => document.getElementById('import-file')?.click()}
+          >
+            <Upload className="size-4" />
+            Import Excel
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+            onClick={() => startRefreshTransition(() => router.refresh())}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin')} />
+          </Button>
+          <Button
+            onClick={() => setAddOpen(true)}
+            className="bg-primary text-primary-foreground h-10 rounded-xl px-4 text-sm font-semibold"
+          >
+            <Plus className="mr-1.5 size-4" />
+            Tambah Karyawan
+          </Button>
+        </>
+      }
+    >
+      <AdminMetricGrid
+        items={[
+          {
+            label: 'Total Karyawan',
+            value: dynamicStats.total.toLocaleString(),
+            meta: 'Semua karyawan Central Service.',
+          },
+          {
+            label: 'Active',
+            value: dynamicStats.active.toLocaleString(),
+            meta: 'Karyawan dengan status aktif.',
+          },
+          {
+            label: 'Not Synced',
+            value: dynamicStats.unsynced.toLocaleString(),
+            meta: 'Belum sync ke User Management.',
+          },
+          {
+            label: 'Top Site',
+            value: String(dynamicStats.topSite[0]),
+            meta: `${dynamicStats.topSite[1]} karyawan`,
+          },
+        ]}
+      />
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="surface-module-card border-0 shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between space-y-0">
-              <div className="space-y-1">
-                <p className="text-muted-foreground text-sm font-medium">Total Karyawan</p>
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-foreground text-2xl font-bold">{dynamicStats.total}</h2>
-                  <span className="text-muted-foreground text-xs font-medium">Karyawan</span>
-                </div>
-              </div>
-              <div className="bg-primary/10 text-primary rounded-xl p-3" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="surface-module-card border-0 shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between space-y-0">
-              <div className="space-y-1">
-                <p className="text-muted-foreground text-sm font-medium">Active Employees</p>
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-foreground text-2xl font-bold">{dynamicStats.active}</h2>
-                  <span className="text-muted-foreground flex items-center gap-1 text-xs font-medium">
-                    <CheckCircle className="size-3" /> Aktif
-                  </span>
-                </div>
-              </div>
-              <div className="bg-primary/10 text-primary rounded-xl p-3" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="surface-module-card border-0 shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between space-y-0">
-              <div className="space-y-1">
-                <p className="text-muted-foreground text-sm font-medium">Not Synced</p>
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-foreground text-2xl font-bold">{dynamicStats.unsynced}</h2>
-                  <span className="text-muted-foreground flex items-center gap-1 text-xs font-medium">
-                    Butuh Sync
-                  </span>
-                </div>
-              </div>
-              <div className="bg-primary/10 text-primary rounded-xl p-3" />
-            </div>
-            {dynamicStats.total > 0 && (
-              <div className="bg-surface-container-low mt-4 h-1.5 w-full overflow-hidden rounded-full">
-                <div
-                  className="bg-primary h-full rounded-full"
-                  style={{ width: `${(dynamicStats.synced / dynamicStats.total) * 100}%` }}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="surface-module-card border-0 shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between space-y-0">
-              <div className="space-y-1">
-                <p className="text-muted-foreground text-sm font-medium">Top Site</p>
-                <div className="flex flex-col">
-                  <h2
-                    className="text-foreground max-w-[120px] truncate text-xl font-bold"
-                    title={String(dynamicStats.topSite[0])}
-                  >
-                    {dynamicStats.topSite[0]}
-                  </h2>
-                  <span className="text-muted-foreground text-xs font-medium">
-                    {dynamicStats.topSite[1]} Karyawan
-                  </span>
-                </div>
-              </div>
-              <div className="bg-primary/10 text-primary rounded-xl p-3" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Table Card */}
-      <Card className="surface-module-card rounded-[1.1rem] border-0">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Employee List</CardTitle>
-              <CardDescription>Import dari Excel atau tambah manual</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Input
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                id="import-file"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  const formData = new FormData()
-                  formData.append('file', file)
-                  formData.append('userId', 'current-user-id')
-                  try {
-                    const res = await fetch('/api/central-service/employees/import', {
-                      method: 'POST',
-                      body: formData,
-                    })
-                    const result = await res.json()
-                    if (result.success) {
-                      fetchEmployees()
-                      toast.success(`Import selesai! ${result.successCount} berhasil`)
-                    } else toast.error('Import gagal')
-                  } catch {
-                    toast.error('Import gagal')
-                  }
-                  e.target.value = ''
-                }}
-              />
-              <Button
-                variant="outline"
-                onClick={() => document.getElementById('import-file')?.click()}
+      {hasActiveFilters ? (
+        <div className="surface-muted-card rounded-[1rem] p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {search.trim() ? (
+              <FilterChip onRemove={() => setSearch('')}>
+                Cari: {search.trim()}
+              </FilterChip>
+            ) : null}
+            {selectedSections.map((section) => (
+              <FilterChip
+                key={section}
+                onRemove={() => setSelectedSections((c) => c.filter((s) => s !== section))}
               >
-                <Upload className="mr-2 h-4 w-4" />
-                Import Excel
-              </Button>
-              <Button variant="outline" onClick={handleExportExcel}>
-                <Download className="mr-2 h-4 w-4" />
-                Export Excel
-              </Button>
-              <Button onClick={() => setAddOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Tambah Karyawan
-              </Button>
-            </div>
+                Section: {section}
+              </FilterChip>
+            ))}
+            {selectedSites.map((site) => (
+              <FilterChip
+                key={site}
+                onRemove={() => setSelectedSites((c) => c.filter((s) => s !== site))}
+              >
+                Site: {site}
+              </FilterChip>
+            ))}
+            {selectedStatuses.map((status) => (
+              <FilterChip
+                key={status}
+                onRemove={() => setSelectedStatuses((c) => c.filter((s) => s !== status))}
+              >
+                Status: {status}
+              </FilterChip>
+            ))}
+            {syncFilter !== 'all' ? (
+              <FilterChip onRemove={() => setSyncFilter('all')}>
+                Sync: {syncFilter === 'synced' ? 'Synced' : 'Not Synced'}
+              </FilterChip>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetFilters}
+              className="text-muted-foreground h-8 rounded-full px-3 text-xs"
+            >
+              Reset semua
+            </Button>
           </div>
-        </CardHeader>
+        </div>
+      ) : null}
 
-        <CardContent className="space-y-4">
-          {/* Filters */}
-          <div className="bg-surface-container-low flex flex-wrap items-center gap-2 rounded-xl p-2">
-            <Input
-              placeholder="Cari nama, SN, atau email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 max-w-[240px] bg-white"
-            />
-            <MultiSelectFilter
-              label="Section"
+      <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-foreground text-sm font-semibold">Daftar Karyawan</p>
+            <p className="text-muted-foreground text-xs">Filter, cari, dan kelola data karyawan Central Service.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-[220px] sm:flex-none">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input
+                placeholder="Cari nama, SN, atau email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="bg-surface-container-lowest h-9 rounded-xl border-0 pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              />
+            </div>
+            <MultiSelectDropdown
               options={sectionOptions}
               selected={selectedSections}
               onChange={setSelectedSections}
+              placeholder="Semua section"
+              label="Section"
             />
-            <MultiSelectFilter
-              label="Site"
+            <MultiSelectDropdown
               options={siteOptions}
               selected={selectedSites}
               onChange={setSelectedSites}
+              placeholder="Semua site"
+              label="Site"
+            />
+            <MultiSelectDropdown
+              options={statusOptions}
+              selected={selectedStatuses}
+              onChange={setSelectedStatuses}
+              placeholder="Semua status"
+              label="Status"
             />
             <Select value={syncFilter} onValueChange={setSyncFilter}>
-              <SelectTrigger className="h-9 w-[160px] bg-white">
-                <SelectValue />
+              <SelectTrigger className="bg-surface-container-lowest text-muted-foreground h-9 min-w-[160px] rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                <SelectValue placeholder="Semua sync" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Employees</SelectItem>
+                <SelectItem value="all">Semua Sync</SelectItem>
                 <SelectItem value="synced">Synced Only</SelectItem>
                 <SelectItem value="unsynced">Not Synced</SelectItem>
               </SelectContent>
             </Select>
-            {(selectedSections.length > 0 || selectedSites.length > 0) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={() => {
-                  setSelectedSections([])
-                  setSelectedSites([])
-                }}
-              >
-                <X className="mr-1 h-3 w-3" />
-                Reset Filter
-              </Button>
-            )}
           </div>
+        </div>
 
-          {/* Table */}
-          <div className="ring-border/60 scrollbar-thin scrollbar-thumb-accent relative max-h-[600px] overflow-y-auto rounded-xl bg-white ring-1">
-            <Table>
-              <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
-                <TableRow>
-                  <TableHead>SN</TableHead>
-                  <TableHead>Nama</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Job Title</TableHead>
-                  <TableHead>Level Staff</TableHead>
-                  <TableHead>Site/Location</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Gender</TableHead>
-                  <TableHead>Agama</TableHead>
-                  <TableHead>Pendidikan</TableHead>
-                  <TableHead>Join Date</TableHead>
-                  <TableHead>Contract Start</TableHead>
-                  <TableHead>Contract End</TableHead>
-                  <TableHead>Permanent Date</TableHead>
-                  <TableHead>Tgl Lahir</TableHead>
-                  <TableHead>Sync</TableHead>
-                  <TableHead>Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={19} className="text-muted-foreground py-10 text-center">
-                      Loading...
-                    </TableCell>
-                  </TableRow>
-                ) : visibleEmployees.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={19} className="text-muted-foreground py-10 text-center">
-                      Tidak ada karyawan ditemukan
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  visibleEmployees.map((emp: any) => (
-                    <TableRow key={emp.id}>
-                      <TableCell className="font-mono text-sm">{emp.employeeSn}</TableCell>
-                      <TableCell className="font-medium">{emp.fullName}</TableCell>
-                      <TableCell>
-                        {emp.email || (
-                          <Badge variant="outline" className="text-xs">
-                            No Email
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>{emp.department}</TableCell>
-                      <TableCell>
-                        {emp.section || (
-                          <Badge variant="outline" className="text-xs">
-                            -
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>{emp.position}</TableCell>
-                      <TableCell>{emp.levelName || '-'}</TableCell>
-                      <TableCell>
-                        {emp.site || (
-                          <Badge variant="outline" className="text-xs">
-                            -
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={emp.employmentStatus === 'active' ? 'default' : 'secondary'}
-                        >
-                          {emp.employmentStatus}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{emp.gender || '-'}</TableCell>
-                      <TableCell>{emp.religion || '-'}</TableCell>
-                      <TableCell>{emp.education || '-'}</TableCell>
-                      <TableCell>{emp.joinDate || '-'}</TableCell>
-                      <TableCell>{emp.contractDurationStart || '-'}</TableCell>
-                      <TableCell>{emp.contractDurationEnd || '-'}</TableCell>
-                      <TableCell>{emp.permanentDate || '-'}</TableCell>
-                      <TableCell>{emp.birthDate || '-'}</TableCell>
-                      <TableCell>
-                        {emp.isSyncedToUserManagement ? (
-                          <Badge className="bg-green-600">
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Synced
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-orange-600">
-                            <AlertCircle className="mr-1 h-3 w-3" />
-                            Not Synced
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setViewEmployee(emp)}
-                            title="View"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditEmployee(emp)}
-                            title="Edit"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(emp.id)}
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (expandedRows.size === filteredEmployees.length) {
+                setExpandedRows(new Set())
+              } else {
+                setExpandedRows(new Set(filteredEmployees.map((e) => e.id)))
+              }
+            }}
+            className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+          >
+            {expandedRows.size === filteredEmployees.length ? (
+              <><ChevronDown className="mr-1.5 size-3.5" /> Collapse All</>
+            ) : (
+              <><ChevronRight className="mr-1.5 size-3.5" /> Expand All</>
+            )}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              >
+                <Eye className="mr-1.5 size-3.5" />
+                Kolom
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+              {ALL_COLUMNS.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col.key}
+                  checked={columnVisibility[col.key]}
+                  onCheckedChange={(checked) =>
+                    setColumnVisibility((prev) => ({ ...prev, [col.key]: checked }))
+                  }
+                >
+                  {col.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportVisibleEmployees}
+            className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+          >
+            <Download className="mr-1.5 size-3.5" />
+            Export
+          </Button>
+        </div>
+
+        <div className="bg-surface-container-low overflow-x-auto rounded-[1rem] p-2">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-8" />
+                {COLUMNS.map((col) =>
+                  columnVisibility[col.key] ? (
+                    <TableHead
+                      key={col.key}
+                      className="cursor-pointer select-none"
+                      onClick={() => {
+                        if (sortKey === col.key) {
+                          setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+                        } else {
+                          setSortKey(col.key)
+                          setSortDir('asc')
+                        }
+                      }}
+                    >
+                      {col.label}
+                    </TableHead>
+                  ) : null
                 )}
-              </TableBody>
-            </Table>
+                <TableHead className="w-[100px]">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={12} className="text-muted-foreground py-12 text-center text-sm">
+                    Loading...
+                  </TableCell>
+                </TableRow>
+              ) : filteredEmployees.length > 0 ? (
+                filteredEmployees.map((emp) => {
+                  const isExpanded = expandedRows.has(emp.id)
+                  return (
+                    <Fragment key={emp.id}>
+                      <TableRow className="hover:bg-white/55">
+                        <TableCell className="py-3.5 w-8">
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground rounded p-0.5 transition"
+                            onClick={() => {
+                              setExpandedRows((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(emp.id)) next.delete(emp.id)
+                                else next.add(emp.id)
+                                return next
+                              })
+                            }}
+                          >
+                            {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                          </button>
+                        </TableCell>
+                        {columnVisibility.sn ? (
+                          <TableCell className="py-3.5">
+                            <span className="text-foreground/80 font-mono text-sm">{emp.employeeSn}</span>
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.name ? (
+                          <TableCell className="py-3.5">
+                            <div className="min-w-0">
+                              <p className="text-foreground truncate font-medium">{emp.fullName}</p>
+                              <p className="text-muted-foreground truncate text-sm">{emp.phoneNumber || '-'}</p>
+                            </div>
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.email ? (
+                          <TableCell className="py-3.5">
+                            {emp.email ? (
+                              <span className="text-foreground/85 text-sm">{emp.email}</span>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">No Email</Badge>
+                            )}
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.department ? (
+                          <TableCell className="py-3.5">
+                            <Badge variant="secondary" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                              {emp.department}
+                            </Badge>
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.section ? (
+                          <TableCell className="text-foreground/85 py-3.5 text-sm">{emp.section || '-'}</TableCell>
+                        ) : null}
+                        {columnVisibility.jobTitle ? (
+                          <TableCell className="py-3.5">
+                            <Badge variant="outline" className="bg-surface-container-lowest text-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                              {emp.position || '-'}
+                            </Badge>
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.site ? (
+                          <TableCell className="text-foreground/85 py-3.5 text-sm">{emp.site || '-'}</TableCell>
+                        ) : null}
+                        {columnVisibility.status ? (
+                          <TableCell className="py-3.5">
+                            <Badge
+                              variant={emp.employmentStatus === 'active' ? 'default' : 'secondary'}
+                              className="rounded-full"
+                            >
+                              {emp.employmentStatus}
+                            </Badge>
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.contractLeft ? (
+                          <TableCell className="py-3.5">
+                            <ContractLeftBadge days={getContractLeftDays(emp.contractDurationEnd)} />
+                          </TableCell>
+                        ) : null}
+                        {columnVisibility.sync ? (
+                          <TableCell className="py-3.5">
+                            {emp.isSyncedToUserManagement ? (
+                              <Badge className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-3 py-1 text-[10px]">
+                                <CheckCircle className="mr-1 h-3 w-3" />
+                                Synced
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-orange-50 text-orange-600 rounded-full border-0 px-3 py-1 text-[10px]">
+                                <AlertCircle className="mr-1 h-3 w-3" />
+                                Not Synced
+                              </Badge>
+                            )}
+                          </TableCell>
+                        ) : null}
+                        <TableCell className="py-3.5 text-right">
+                          <div className="flex gap-1 justify-end">
+                            <Button size="sm" variant="ghost" onClick={() => setViewEmployee(emp)} title="View">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditEmployee(emp)} title="Edit">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => handleDelete(emp.id)} title="Delete">
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/40">
+                          <TableCell colSpan={12} className="py-3 px-4">
+                            <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm md:grid-cols-5">
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Level Staff</span>
+                                <p>{emp.levelName || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Gender</span>
+                                <p>{emp.gender || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Agama</span>
+                                <p>{emp.religion || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Pendidikan</span>
+                                <p>{emp.education || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Join Date</span>
+                                <p>{emp.joinDate || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Contract Start</span>
+                                <p>{emp.contractDurationStart || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Contract End</span>
+                                <p>{emp.contractDurationEnd || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Permanent Date</span>
+                                <p>{emp.permanentDate || '-'}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground text-xs font-semibold uppercase">Tgl Lahir</span>
+                                <p>{emp.birthDate || '-'}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  )
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={12} className="text-muted-foreground py-12 text-center text-sm">
+                    Tidak ada karyawan yang cocok dengan filter saat ini.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        <p className="text-muted-foreground mt-2 text-xs">
+          Menampilkan {filteredEmployees.length} dari {employees.length} karyawan
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="surface-muted-card rounded-[1rem] p-4">
+          <div className="flex items-center gap-3">
+            <span className="bg-primary/10 text-primary grid size-10 place-items-center rounded-xl">
+              <Users className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs font-semibold uppercase">Total scope</p>
+              <p className="text-foreground text-sm font-medium">
+                {employees.length.toLocaleString()} karyawan terdaftar
+              </p>
+            </div>
           </div>
-          <p className="text-muted-foreground text-xs">
-            Menampilkan {visibleEmployees.length} dari {employees.length} karyawan
-          </p>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="surface-muted-card rounded-[1rem] p-4">
+          <div className="flex items-center gap-3">
+            <span className="bg-emerald-100 text-emerald-700 grid size-10 place-items-center rounded-xl">
+              <CheckCircle className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs font-semibold uppercase">Synced</p>
+              <p className="text-foreground text-sm font-medium">
+                {dynamicStats.synced.toLocaleString()} sudah sync
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="surface-muted-card rounded-[1rem] p-4">
+          <div className="flex items-center gap-3">
+            <span className="bg-orange-100 text-orange-600 grid size-10 place-items-center rounded-xl">
+              <MapPin className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs font-semibold uppercase">Current view</p>
+              <p className="text-foreground text-sm font-medium">
+                {filteredEmployees.length.toLocaleString()} karyawan ditampilkan
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── Add Employee Dialog ── */}
       <Dialog
@@ -825,9 +1109,7 @@ export default function CentralServicePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>
-              Batal
-            </Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Batal</Button>
             <Button onClick={handleAddEmployee} disabled={saving}>
               {saving ? 'Menyimpan...' : 'Simpan'}
             </Button>
@@ -878,9 +1160,7 @@ export default function CentralServicePage() {
               </div>
               <div>
                 <Label className="text-muted-foreground text-xs">Status</Label>
-                <Badge
-                  variant={viewEmployee.employmentStatus === 'active' ? 'default' : 'secondary'}
-                >
+                <Badge variant={viewEmployee.employmentStatus === 'active' ? 'default' : 'secondary'}>
                   {viewEmployee.employmentStatus}
                 </Badge>
               </div>
@@ -888,7 +1168,7 @@ export default function CentralServicePage() {
                 <Label className="text-muted-foreground text-xs">Sync Status</Label>
                 <div className="mt-1">
                   {viewEmployee.isSyncedToUserManagement ? (
-                    <Badge className="bg-green-600">
+                    <Badge className="bg-emerald-50 text-emerald-700">
                       <CheckCircle className="mr-1 h-3 w-3" />
                       Synced to User Management
                     </Badge>
@@ -903,17 +1183,8 @@ export default function CentralServicePage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewEmployee(null)}>
-              Tutup
-            </Button>
-            <Button
-              onClick={() => {
-                setEditEmployee(viewEmployee)
-                setViewEmployee(null)
-              }}
-            >
-              Edit
-            </Button>
+            <Button variant="outline" onClick={() => setViewEmployee(null)}>Tutup</Button>
+            <Button onClick={() => { setEditEmployee(viewEmployee); setViewEmployee(null) }}>Edit</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -950,9 +1221,7 @@ export default function CentralServicePage() {
                 <Label>Phone Number</Label>
                 <Input
                   value={editEmployee.phoneNumber || ''}
-                  onChange={(e) =>
-                    setEditEmployee({ ...editEmployee, phoneNumber: e.target.value })
-                  }
+                  onChange={(e) => setEditEmployee({ ...editEmployee, phoneNumber: e.target.value })}
                 />
               </div>
               <div>
@@ -966,13 +1235,7 @@ export default function CentralServicePage() {
                 <Label>Site / Lokasi</Label>
                 <Input
                   value={editEmployee.site}
-                  onChange={(e) =>
-                    setEditEmployee({
-                      ...editEmployee,
-                      site: e.target.value,
-                      siteName: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setEditEmployee({ ...editEmployee, site: e.target.value, siteName: e.target.value })}
                 />
               </div>
               <div>
@@ -1001,15 +1264,13 @@ export default function CentralServicePage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditEmployee(null)}>
-              Batal
-            </Button>
+            <Button variant="outline" onClick={() => setEditEmployee(null)}>Batal</Button>
             <Button onClick={handleSaveEdit} disabled={saving}>
               {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPageShell>
   )
 }
