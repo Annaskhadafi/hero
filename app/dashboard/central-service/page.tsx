@@ -20,6 +20,7 @@ import {
   MapPin,
   ChevronDown,
   ChevronRight,
+  FileText,
 } from 'lucide-react'
 
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
@@ -554,6 +555,14 @@ export default function CentralServicePage() {
           >
             <Upload className="size-4" />
             Import Excel
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+            onClick={() => window.location.href = '/dashboard/hc/contract-review/form'}
+          >
+            <FileText className="size-4" />
+            Contract Review
           </Button>
           <Button
             variant="outline"
