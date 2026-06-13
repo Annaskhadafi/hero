@@ -159,14 +159,15 @@ const hseFieldActions = [
 ];
 
 const hseAdminFeatures = [
+  { title: "Observasi & Emergency", href: "/mobile/hse/observasi-emergency", icon: AlertTriangle, meta: "Catat observasi & insiden lengkap" },
   { title: "Incident Report", href: "/mobile/hse/incident-report", icon: AlertTriangle, meta: "Investigasi & laporan" },
   { title: "Corrective Action", href: "/mobile/hse/corrective-action", icon: CheckCircle2, meta: "Follow-up & close-out" },
   { title: "HIRADC", href: "/mobile/hse/hiradc", icon: Flame, meta: "Risk register" },
   { title: "JSA", href: "/mobile/hse/jsa", icon: FileCheck2, meta: "Job safety analysis" },
   { title: "Izin Kerja PTW", href: "/mobile/hse/ptw", icon: HardHat, meta: "Permit to work" },
-  { title: "Inventaris HSE", href: "/dashboard/hse/inventaris", icon: Boxes, meta: "APD & equipment" },
+  { title: "Inventaris HSE", href: "/mobile/hse/inventaris", icon: Boxes, meta: "APD & equipment" },
   { title: "Checklist", href: "/mobile/hse/checklist", icon: ListChecks, meta: "Template & daily check" },
-  { title: "Safety Data", href: "/dashboard/safety/data", icon: NotebookTabs, meta: "Performance dashboard" },
+  { title: "Safety Data", href: "/mobile/hse/safety-data", icon: NotebookTabs, meta: "Performance dashboard" },
   { title: "SIA/SIO Tools", href: "/mobile/hse/sia-sio-tools", icon: ClipboardList, meta: "Sertifikasi tools" },
 ];
 

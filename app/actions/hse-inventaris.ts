@@ -73,6 +73,7 @@ export async function createHseInventory(formData: {
       .returning()
 
     revalidatePath("/dashboard/hse/inventaris")
+    revalidatePath("/mobile/hse/inventaris")
     return { success: true, data: newItem }
   } catch (error) {
     console.error("Failed to create HSE inventory:", error)
@@ -122,6 +123,7 @@ export async function updateHseInventory(
       .returning()
 
     revalidatePath("/dashboard/hse/inventaris")
+    revalidatePath("/mobile/hse/inventaris")
     return { success: true, data: updatedItem }
   } catch (error) {
     console.error("Failed to update HSE inventory:", error)
@@ -141,6 +143,7 @@ export async function updateHseInventoryStatus(id: number, condition: string) {
       .returning()
 
     revalidatePath("/dashboard/hse/inventaris")
+    revalidatePath("/mobile/hse/inventaris")
     return { success: true, data: updatedItem }
   } catch (error) {
     console.error("Failed to update HSE inventory status:", error)
@@ -152,6 +155,7 @@ export async function deleteHseInventory(id: number) {
   try {
     await db.delete(hseInventories).where(eq(hseInventories.id, id))
     revalidatePath("/dashboard/hse/inventaris")
+    revalidatePath("/mobile/hse/inventaris")
     return { success: true }
   } catch (error) {
     console.error("Failed to delete HSE inventory:", error)

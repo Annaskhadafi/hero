@@ -1,6 +1,7 @@
 'use server'
 
 import { eq, desc, and, or, ilike } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { hseIncidentRecords } from '@/db/schema/hero'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
@@ -90,6 +91,8 @@ export async function createIncidentRecord(payload: {
       })
       .returning()
 
+    revalidatePath('/dashboard/hse/incident-report')
+    revalidatePath('/mobile/hse/observasi-emergency')
     return { success: true, data: inserted }
   } catch (error: any) {
     console.error('Error creating incident record:', error)
@@ -125,6 +128,8 @@ export async function updateIncidentRecord(
       .where(eq(hseIncidentRecords.id, id))
       .returning()
 
+    revalidatePath('/dashboard/hse/incident-report')
+    revalidatePath('/mobile/hse/observasi-emergency')
     return { success: true, data: updated }
   } catch (error: any) {
     console.error('Error updating incident record:', error)
@@ -136,6 +141,8 @@ export async function deleteIncidentRecord(id: number) {
   try {
     await requireIncidentPermission('delete')
     await db.delete(hseIncidentRecords).where(eq(hseIncidentRecords.id, id))
+    revalidatePath('/dashboard/hse/incident-report')
+    revalidatePath('/mobile/hse/observasi-emergency')
     return { success: true }
   } catch (error: any) {
     console.error('Error deleting incident record:', error)
