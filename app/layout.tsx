@@ -51,6 +51,46 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const removeBisAttributes = (node) => {
+                  if (node.nodeType === 1) {
+                    if (node.hasAttribute('bis_skin_checked')) {
+                      node.removeAttribute('bis_skin_checked');
+                    }
+                    const children = node.querySelectorAll('[bis_skin_checked]');
+                    for (let i = 0; i < children.length; i++) {
+                      children[i].removeAttribute('bis_skin_checked');
+                    }
+                  }
+                };
+                const observer = new MutationObserver((mutations) => {
+                  for (let i = 0; i < mutations.length; i++) {
+                    const addedNodes = mutations[i].addedNodes;
+                    for (let j = 0; j < addedNodes.length; j++) {
+                      removeBisAttributes(addedNodes[j]);
+                    }
+                  }
+                });
+                observer.observe(document.documentElement, {
+                  childList: true,
+                  subtree: true
+                });
+                document.addEventListener('DOMContentLoaded', () => {
+                  observer.disconnect();
+                  const elements = document.querySelectorAll('[bis_skin_checked]');
+                  for (let i = 0; i < elements.length; i++) {
+                    elements[i].removeAttribute('bis_skin_checked');
+                  }
+                });
+              })();
+            `
+          }}
+        />
+      </head>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning

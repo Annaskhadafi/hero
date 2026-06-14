@@ -1,14 +1,13 @@
 import { redirect } from "next/navigation";
 import { eq, asc } from "drizzle-orm";
-import { BookOpenCheck, Award, Compass, ExternalLink, AlertCircle, Sparkles } from "lucide-react";
+import { BookOpenCheck, Award, Compass, ExternalLink, AlertCircle } from "lucide-react";
 
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
 import { getLmsProgressFromDb, syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 import { MobileLmsSelector } from "@/components/mobile/mobile-lms-selector";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { MobileLmsCoursesList } from "@/components/mobile/mobile-lms-courses-list";
 
 interface LmsCourse {
   course_id: number;
@@ -16,21 +15,8 @@ interface LmsCourse {
   progress: number;
   status: string;
   grade: number | null;
-}
-
-function renderStatusBadge(status: string) {
-  switch (status.toLowerCase()) {
-    case "passed":
-    case "completed":
-      return <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] text-[10px] font-bold">Selesai</Badge>;
-    case "failed":
-      return <Badge className="border-0 bg-red-100 text-red-700 text-[10px] font-bold">Gagal</Badge>;
-    case "in_progress":
-    case "enrolled":
-      return <Badge className="border-0 bg-[#fff1cf] text-[#8a5a00] text-[10px] font-bold">Belajar</Badge>;
-    default:
-      return <Badge className="border-0 bg-slate-100 text-slate-700 text-[10px] font-bold">{status}</Badge>;
-  }
+  startTime: number | null;
+  endTime: number | null;
 }
 
 export default async function MobileLmsDashboardPage({
@@ -203,37 +189,13 @@ export default async function MobileLmsDashboardPage({
 
       <section className="space-y-3">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Progress Kursus Karyawan</p>
-        {courses.map((course) => (
-          <article key={course.course_id} className="rounded-[1.35rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[9px] font-bold text-[#486275]">ID Kursus: #{course.course_id}</p>
-                <h3 className="mt-1 text-sm font-black text-[#082033] line-clamp-2 leading-tight">{course.course_name}</h3>
-              </div>
-              {renderStatusBadge(course.status)}
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-[#486275]">Progress</p>
-                <div className="mt-1 flex items-center gap-2">
-                  <Progress value={course.progress} className="h-1.5 w-full bg-slate-100" />
-                  <span className="text-[11px] font-bold text-[#082033] shrink-0 w-8">{course.progress}%</span>
-                </div>
-              </div>
-              <div className="text-right shrink-0 border-l border-dashed border-[#d8e8f3] pl-4">
-                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-[#486275]">Nilai</p>
-                <p className="mt-1 text-sm font-black text-[#003f78]">{course.grade !== null ? course.grade : "-"}</p>
-              </div>
-            </div>
-          </article>
-        ))}
-        {courses.length === 0 && (
-          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-            {connectionError 
-              ? "Gagal memuat daftar kursus dari server LMS. Pastikan koneksi database aktif."
-              : "Belum ada kursus yang diikuti."}
-          </div>
-        )}
+        <MobileLmsCoursesList
+          courses={courses}
+          employeeEmail={email}
+          employeeSn={targetEmployee.employeeSn || ""}
+          employeeName={employeeName}
+          connectionError={connectionError}
+        />
       </section>
     </div>
   );

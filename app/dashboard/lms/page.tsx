@@ -7,38 +7,14 @@ import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
 import { AdminPageShell } from "@/components/admin-page-shell";
-import { getLmsProgressFromDb, syncLmsToTrainingRecords } from "@/lib/lms-mysql";
+import { getAllLmsProgressFromDb, syncLmsToTrainingRecords } from "@/lib/lms-mysql";
+import { LmsGroupedTable } from "@/components/lms-grouped-table";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 
-interface LmsCourse {
-  course_id: number;
-  course_name: string;
-  progress: number;
-  status: string;
-  grade: number | null;
-}
 
-// Function to map status to visual friendly badges
-function renderStatusBadge(status: string) {
-  switch (status.toLowerCase()) {
-    case "passed":
-    case "completed":
-      return <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10 border-0 rounded-full px-3 py-1 font-medium">Selesai</Badge>;
-    case "failed":
-      return <Badge className="bg-rose-500/10 text-rose-600 hover:bg-rose-500/10 border-0 rounded-full px-3 py-1 font-medium">Gagal</Badge>;
-    case "in_progress":
-    case "enrolled":
-      return <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/10 border-0 rounded-full px-3 py-1 font-medium">Sedang Belajar</Badge>;
-    default:
-      return <Badge className="bg-slate-500/10 text-slate-600 hover:bg-slate-500/10 border-0 rounded-full px-3 py-1 font-medium">{status}</Badge>;
-  }
-}
 
 export default async function LmsDashboardPage() {
   const session = await getServerSession();
@@ -64,28 +40,69 @@ export default async function LmsDashboardPage() {
 
   const lmsUrl = process.env.LMS_SITE_URL || "https://chitralearning.com";
 
-  let courses: LmsCourse[] = [];
+  // Fetch HERO employees to map WordPress users to official HERO data
+  const employeeRows = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      department: employees.department,
+    })
+    .from(employees);
+
+  const employeesByEmail = new Map<string, typeof employeeRows[number]>();
+  const employeesBySn = new Map<string, typeof employeeRows[number]>();
+
+  for (const emp of employeeRows) {
+    if (emp.email) {
+      employeesByEmail.set(emp.email.toLowerCase().trim(), emp);
+    }
+    if (emp.employeeSn) {
+      employeesBySn.set(emp.employeeSn.toLowerCase().trim(), emp);
+    }
+  }
+
+  let lmsRecords: any[] = [];
   let connectionError = false;
 
   try {
-    // Sync LMS data to HERO training records table
+    // Sync currently logged in user's LMS records
     await syncLmsToTrainingRecords(email);
 
-    // Retrieve courses progress directly from LMS DB
-    courses = await getLmsProgressFromDb(email, sn);
+    // Retrieve all progress records from LMS DB
+    const rawRecords = await getAllLmsProgressFromDb();
+
+    // Map raw records to HERO employee data
+    lmsRecords = rawRecords.map((rec: any) => {
+      let matchedEmployee = null;
+
+      if (rec.user_email) {
+        matchedEmployee = employeesByEmail.get(rec.user_email.toLowerCase().trim());
+      }
+      
+      if (!matchedEmployee && rec.user_login) {
+        matchedEmployee = employeesBySn.get(rec.user_login.toLowerCase().trim());
+      }
+
+      return {
+        ...rec,
+        employeeName: matchedEmployee?.name || rec.display_name || "Karyawan Lainnya",
+        employeeSn: matchedEmployee?.employeeSn || rec.user_login || "-",
+        department: matchedEmployee?.department || "Lainnya",
+      };
+    });
   } catch (error) {
-    console.error("[LMS DB] Connection error fetching course progress:", error);
+    console.error("[LMS DB] Connection error fetching all LMS progress:", error);
     connectionError = true;
   }
 
-  // Calculate quick metrics
-  const totalCourses = courses.length;
-  const completedCourses = courses.filter(
+  // Calculate quick metrics across all records
+  const totalCourses = new Set(lmsRecords.map((r) => r.course_id)).size;
+  const totalStudents = new Set(lmsRecords.map((r) => r.user_email)).size;
+  const completedRecords = lmsRecords.filter(
     (c) => c.progress === 100 || c.status.toLowerCase() === "completed" || c.status.toLowerCase() === "passed"
   ).length;
-  const averageProgress = totalCourses > 0 
-    ? Math.round(courses.reduce((sum, c) => sum + c.progress, 0) / totalCourses) 
-    : 0;
 
   return (
     <AdminPageShell
@@ -97,9 +114,9 @@ export default async function LmsDashboardPage() {
       <AdminMetricGrid
         mode="compact"
         items={[
-          { label: "Total Kursus Diikuti", value: `${totalCourses}`, meta: "Modul pelatihan aktif" },
-          { label: "Kursus Selesai", value: `${completedCourses}`, meta: "Sertifikasi berhasil didapatkan" },
-          { label: "Rata-rata Progress", value: `${averageProgress}%`, meta: "Penyelesaian materi belajar" },
+          { label: "Total Kursus Terdaftar", value: `${totalCourses}`, meta: "Modul pelatihan aktif" },
+          { label: "Karyawan Belajar", value: `${totalStudents}`, meta: "Karyawan aktif belajar" },
+          { label: "Modul Terselesaikan", value: `${completedRecords}`, meta: "Sertifikasi berhasil didapatkan" },
         ]}
       />
 
@@ -142,10 +159,10 @@ export default async function LmsDashboardPage() {
         <CardHeader className="pb-0">
           <CardTitle className="flex items-center gap-2 text-lg text-foreground font-semibold">
             <BookOpen className="size-5 text-primary" />
-            Workspace Progress Kursus Anda
+            Workspace Progress Kursus Karyawan
           </CardTitle>
           <CardDescription className="text-sm">
-            Daftar modul pembelajaran aktif yang terdaftar di akun LMS Anda.
+            Daftar seluruh progress modul pembelajaran karyawan Chitra Paratama.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
@@ -163,50 +180,7 @@ export default async function LmsDashboardPage() {
               </Button>
             }
           >
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="min-w-[320px] font-semibold">Nama Kursus</TableHead>
-                  <TableHead className="min-w-[240px] font-semibold">Progress Belajar</TableHead>
-                  <TableHead className="min-w-[140px] font-semibold">Status</TableHead>
-                  <TableHead className="min-w-[120px] font-semibold text-right">Nilai Akhir</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {courses.length > 0 ? (
-                  courses.map((course) => (
-                    <TableRow key={course.course_id} className="hover:bg-surface-container-low/70">
-                      <TableCell className="align-middle py-4">
-                        <div className="space-y-1">
-                          <p className="font-semibold text-foreground text-sm line-clamp-2">{course.course_name}</p>
-                          <p className="text-[11px] text-muted-foreground">ID Kursus: #{course.course_id}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-middle py-4">
-                        <div className="flex items-center gap-3">
-                          <Progress value={course.progress} className="h-2 w-full max-w-[180px] bg-slate-100" />
-                          <span className="text-xs font-semibold text-foreground shrink-0 w-8">{course.progress}%</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="align-middle py-4">
-                        {renderStatusBadge(course.status)}
-                      </TableCell>
-                      <TableCell className="align-middle py-4 text-right font-semibold text-sm text-foreground pr-6">
-                        {course.grade !== null ? course.grade : "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={4} className="h-32 text-center text-muted-foreground text-sm">
-                      {connectionError 
-                        ? "Gagal memuat daftar kursus dari server LMS. Pastikan koneksi server WordPress aktif."
-                        : "Belum ada kursus yang Anda ikuti di LMS Chitra Learning."}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <LmsGroupedTable lmsRecords={lmsRecords} connectionError={connectionError} />
           </MinimalTableShell>
         </CardContent>
       </Card>

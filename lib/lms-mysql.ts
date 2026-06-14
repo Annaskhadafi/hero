@@ -55,7 +55,8 @@ export async function getLmsProgressFromDb(email: string, sn: string) {
 
     // 2. Query user courses and progress
     const [courseRows]: any = await connection.query(
-      `SELECT uc.course_id, uc.progress_percent as progress, uc.final_grade, uc.status, p.post_title as course_name
+      `SELECT uc.course_id, uc.progress_percent as progress, uc.final_grade, uc.status, p.post_title as course_name,
+              uc.start_time as startTime, uc.end_time as endTime
        FROM wp_stm_lms_user_courses uc
        JOIN wp_posts p ON uc.course_id = p.ID
        WHERE uc.user_id = ? AND p.post_status = 'publish'`,
@@ -68,12 +69,54 @@ export async function getLmsProgressFromDb(email: string, sn: string) {
       progress: row.progress || 0,
       status: row.status,
       grade: row.final_grade !== null ? Number(row.final_grade) : null,
+      startTime: row.startTime || null,
+      endTime: row.endTime || null,
     }));
 
     await connection.end();
     return courses;
   } catch (error) {
     console.error("[LMS MySQL] Error querying LMS progress:", error);
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (e) {}
+    }
+    throw error;
+  }
+}
+
+export async function getAllLmsProgressFromDb() {
+  let connection;
+  try {
+    connection = await mysql.createConnection(lmsDbConfig);
+
+    const [courseRows]: any = await connection.query(
+      `SELECT uc.course_id, uc.progress_percent as progress, uc.final_grade, uc.status, p.post_title as course_name,
+              u.user_email, u.display_name, u.user_login, uc.start_time as startTime, uc.end_time as endTime
+       FROM wp_stm_lms_user_courses uc
+       JOIN wp_posts p ON uc.course_id = p.ID
+       JOIN wp_users u ON uc.user_id = u.ID
+       WHERE p.post_status = 'publish'`
+    );
+
+    const records = courseRows.map((row: any) => ({
+      course_id: row.course_id,
+      course_name: row.course_name,
+      user_email: row.user_email,
+      display_name: row.display_name,
+      user_login: row.user_login,
+      progress: row.progress || 0,
+      status: row.status,
+      grade: row.final_grade !== null ? Number(row.final_grade) : null,
+      startTime: row.startTime || null,
+      endTime: row.endTime || null,
+    }));
+
+    await connection.end();
+    return records;
+  } catch (error) {
+    console.error("[LMS MySQL] Error querying all LMS progress:", error);
     if (connection) {
       try {
         await connection.end();
@@ -151,3 +194,140 @@ export async function syncLmsToTrainingRecords(email: string) {
     return { success: false, error: String(error) };
   }
 }
+
+export async function getLmsUserCourseCurriculum(courseId: number, email: string, sn: string) {
+  let connection;
+  try {
+    connection = await mysql.createConnection(lmsDbConfig);
+
+    // Find WordPress user ID
+    let userId: number | null = null;
+    const [userRows]: any = await connection.query(
+      "SELECT ID FROM wp_users WHERE user_email = ? LIMIT 1",
+      [email]
+    );
+
+    if (userRows.length > 0) {
+      userId = userRows[0].ID;
+    } else if (sn) {
+      const [metaRows]: any = await connection.query(
+        "SELECT user_id FROM wp_usermeta WHERE meta_key = 'employee_sn' AND meta_value = ? LIMIT 1",
+        [sn]
+      );
+      if (metaRows.length > 0) {
+        userId = metaRows[0].user_id;
+      } else {
+        const [usernameRows]: any = await connection.query(
+          "SELECT ID FROM wp_users WHERE user_login = ? LIMIT 1",
+          [sn]
+        );
+        if (usernameRows.length > 0) {
+          userId = usernameRows[0].ID;
+        }
+      }
+    }
+
+    if (!userId) {
+      await connection.end();
+      return [];
+    }
+
+    // Query curriculum sections for this course
+    const [sections]: any[] = await connection.query(
+      "SELECT id, title, `order` FROM wp_stm_lms_curriculum_sections WHERE course_id = ? ORDER BY `order` ASC",
+      [courseId]
+    );
+
+    if (sections.length === 0) {
+      await connection.end();
+      return [];
+    }
+
+    const sectionIds = sections.map((s: any) => s.id);
+
+    // Query all materials (lessons/quizzes) in these sections
+    const [materials]: any[] = await connection.query(
+      `SELECT m.section_id, m.post_id, m.post_type, p.post_title as title
+       FROM wp_stm_lms_curriculum_materials m
+       JOIN wp_posts p ON m.post_id = p.ID
+       WHERE m.section_id IN (${sectionIds.join(",")})
+       ORDER BY m.section_id ASC, m.\`order\` ASC`
+    );
+
+    // Query user's lesson progress
+    const [userLessons]: any[] = await connection.query(
+      "SELECT lesson_id, progress, start_time, end_time FROM wp_stm_lms_user_lessons WHERE course_id = ? AND user_id = ?",
+      [courseId, userId]
+    );
+
+    const lessonsMap = new Map();
+    for (const ul of userLessons) {
+      lessonsMap.set(ul.lesson_id, ul);
+    }
+
+    // Query user's quiz progress
+    const [userQuizzes]: any[] = await connection.query(
+      "SELECT quiz_id, progress, status FROM wp_stm_lms_user_quizzes WHERE course_id = ? AND user_id = ?",
+      [courseId, userId]
+    );
+
+    const quizzesMap = new Map();
+    for (const uq of userQuizzes) {
+      quizzesMap.set(uq.quiz_id, uq);
+    }
+
+    await connection.end();
+
+    // Map materials into sections
+    return sections.map((section: any) => {
+      const sectionMaterials = materials
+        .filter((m: any) => m.section_id === section.id)
+        .map((m: any) => {
+          const isQuiz = m.post_type === "stm-quizzes";
+          let progress = 0;
+          let status = "not_started";
+          let detail = null;
+
+          if (isQuiz) {
+            const quizProgress = quizzesMap.get(m.post_id);
+            if (quizProgress) {
+              progress = quizProgress.progress || 0;
+              status = quizProgress.status || "started";
+              detail = `Score: ${progress}%`;
+            }
+          } else {
+            const lessonProgress = lessonsMap.get(m.post_id);
+            if (lessonProgress) {
+              progress = lessonProgress.progress || 0;
+              status = lessonProgress.end_time > 0 ? "completed" : "started";
+              detail = lessonProgress.end_time > 0 ? "Selesai" : "Sedang dipelajari";
+            }
+          }
+
+          return {
+            post_id: m.post_id,
+            title: m.title,
+            post_type: m.post_type,
+            progress,
+            status,
+            detail,
+          };
+        });
+
+      return {
+        section_id: section.id,
+        title: section.title,
+        materials: sectionMaterials,
+      };
+    });
+  } catch (error) {
+    console.error("[LMS MySQL] Error querying curriculum details:", error);
+    if (connection) {
+      try {
+        await connection.end();
+      } catch (e) {}
+    }
+    return [];
+  }
+}
+
