@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
 import { AdminPageShell } from "@/components/admin-page-shell";
+import { getLmsProgressFromDb, syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
@@ -61,42 +62,19 @@ export default async function LmsDashboardPage() {
   const sn = employee?.employeeSn || email;
   const employeeName = employee?.name || session.user.name || "Karyawan";
 
-  const secret = process.env.LMS_JWT_SECRET;
   const lmsUrl = process.env.LMS_SITE_URL || "https://chitralearning.com";
 
   let courses: LmsCourse[] = [];
   let connectionError = false;
 
-  if (secret) {
-    try {
-      // Fetch course progress with timeout to prevent blocking page rendering
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 seconds timeout
+  try {
+    // Sync LMS data to HERO training records table
+    await syncLmsToTrainingRecords(email);
 
-      const apiUrl = `${lmsUrl}/wp-json/hero-lms/v1/progress?email=${encodeURIComponent(email)}&sn=${encodeURIComponent(sn)}`;
-      
-      const response = await fetch(apiUrl, {
-        headers: {
-          Authorization: `Bearer ${secret}`,
-          Accept: "application/json",
-        },
-        signal: controller.signal,
-        cache: "no-store", // Do not cache, retrieve fresh progress
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        courses = await response.json();
-      } else {
-        console.error(`[LMS API] Failed to fetch progress: ${response.status} ${response.statusText}`);
-        connectionError = true;
-      }
-    } catch (error) {
-      console.error("[LMS API] Connection error fetching course progress:", error);
-      connectionError = true;
-    }
-  } else {
+    // Retrieve courses progress directly from LMS DB
+    courses = await getLmsProgressFromDb(email, sn);
+  } catch (error) {
+    console.error("[LMS DB] Connection error fetching course progress:", error);
     connectionError = true;
   }
 

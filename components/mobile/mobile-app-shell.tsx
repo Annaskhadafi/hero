@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import {
   BarChart3,
   Bell,
+  BookOpen,
   CheckCircle2,
   ClipboardList,
   Dumbbell,
@@ -56,6 +57,7 @@ const drawerItems = [
   { label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
   { label: 'Daily Report', href: '/mobile/reports', icon: FileText },
   { label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },
+  { label: 'LMS Chitra Learning', href: '/mobile/lms', icon: BookOpen },
   { label: 'Training', href: '/mobile/training', icon: ShieldAlert },
   { label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
   { label: 'Gamification', href: '/mobile/gamification', icon: Trophy },

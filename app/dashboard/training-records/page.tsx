@@ -13,6 +13,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getOperationalCrudOptions, getTrainingRecordPageData } from "@/lib/hero-admin";
+import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
+import { getServerSession } from "@/lib/auth-session";
+import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
+import { eq } from "drizzle-orm";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -65,13 +70,39 @@ export default async function TrainingRecordsPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [data, options, resolvedSearchParams] = await Promise.all([
+  const resolvedSearchParams = await searchParams;
+
+  // Sync current user's LMS records first
+  const session = await getServerSession();
+  if (session?.user?.email) {
+    try {
+      await syncLmsToTrainingRecords(session.user.email);
+    } catch (error) {
+      console.error("[LMS Sync Admin Self] Error:", error);
+    }
+  }
+
+  // Also sync selected employee's LMS records if filtered
+  const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
+  if (selectedEmployeeId) {
+    try {
+      const [emp] = await db
+        .select({ email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, Number(selectedEmployeeId)))
+        .limit(1);
+      if (emp?.email) {
+        await syncLmsToTrainingRecords(emp.email);
+      }
+    } catch (error) {
+      console.error("[LMS Sync Admin Selected] Error:", error);
+    }
+  }
+
+  const [data, options] = await Promise.all([
     getTrainingRecordPageData(),
     getOperationalCrudOptions(),
-    searchParams,
   ]);
-
-  const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
   const selectedYear = getSearchParamValue(resolvedSearchParams, "year");
   const referenceDate = startOfDayInAppTimeZone(new Date());

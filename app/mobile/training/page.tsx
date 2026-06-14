@@ -4,6 +4,7 @@ import { Award, BookOpenCheck, CalendarClock, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
 import { getMobileHc } from "@/lib/mobile-data";
+import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -38,6 +39,13 @@ function formatDate(value: Date) {
 export default async function MobileTrainingPage() {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
+
+  // Sync LMS completed courses to local training records before fetching
+  try {
+    await syncLmsToTrainingRecords(session.user.email);
+  } catch (error) {
+    console.error("[LMS Sync Mobile] Error syncing training records:", error);
+  }
 
   const data = await getMobileHc(session.user.email);
   if (!data) return null;
