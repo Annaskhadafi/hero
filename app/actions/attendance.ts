@@ -2,7 +2,7 @@
 
 import { db } from '@/db'
 import { attendanceRecords, employees, masterAttendanceShifts, sites } from '@/db/schema/hero'
-import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
+import { attendancePermissionRequests, timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
 import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
@@ -10,7 +10,7 @@ import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { eq, and, gte, lte, desc, sql, asc } from 'drizzle-orm'
+import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
 
 async function ensureEmployeeSite<
@@ -277,6 +277,18 @@ function dayNumberFromDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? Number(value.slice(-2)) : null
 }
 
+function dateRangeDays(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return []
+
+  const days: string[] = []
+  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    days.push(cursor.toISOString().slice(0, 10))
+  }
+  return days
+}
+
 async function getMobileAttendanceShiftOptions() {
   const shifts = await db
     .select({
@@ -460,18 +472,29 @@ export async function submitAttendancePermission(formData: FormData) {
 
     const permissionType = getTrimmedFormValue(formData, 'permissionType')
     const requestDate = getTrimmedFormValue(formData, 'requestDate')
+    const endDate = getTrimmedFormValue(formData, 'endDate') || requestDate
+    const sickCategory = getTrimmedFormValue(formData, 'sickCategory')
+    const lateReason = getTrimmedFormValue(formData, 'lateReason')
+    const returnTime = getTrimmedFormValue(formData, 'returnTime')
     const reason = getTrimmedFormValue(formData, 'reason')
-    const period = periodFromDate(requestDate)
-    const day = dayNumberFromDate(requestDate)
+    const requestedDays = permissionType === 'sick' ? dateRangeDays(requestDate, endDate) : [requestDate]
 
-    if (!period || !day) return { success: false, error: 'Tanggal izin tidak valid.' }
-    if (!['sick', 'urgent', 'leave'].includes(permissionType)) {
+    if (requestedDays.length === 0) return { success: false, error: 'Tanggal izin tidak valid.' }
+    if (!['sick', 'late'].includes(permissionType)) {
       return { success: false, error: 'Tipe izin tidak valid.' }
     }
+    if (permissionType === 'sick' && !sickCategory) {
+      return { success: false, error: 'Kategori sakit wajib dipilih.' }
+    }
+    if (permissionType === 'late' && (!lateReason || !returnTime)) {
+      return { success: false, error: 'Izin terlambat wajib isi alasan dan jam kembali/masuk kantor.' }
+    }
 
-    const status = permissionType === 'sick' ? 'sick' : 'leave'
     let photoUrl = ''
     const file = formData.get('file')
+    if (permissionType === 'sick' && requestedDays.length > 1 && !(file instanceof File && file.size > 0)) {
+      return { success: false, error: 'Sakit lebih dari 1 hari wajib lampirkan surat keterangan dokter.' }
+    }
     if (file instanceof File && file.size > 0) {
       const uploadResult = await uploadFile(formData)
       if (!uploadResult.success || !uploadResult.url) {
@@ -482,23 +505,110 @@ export async function submitAttendancePermission(formData: FormData) {
 
     await ensureSchedulingTimesheetTables()
     const now = new Date()
+    await db
+      .insert(attendancePermissionRequests)
+      .values({
+        siteId: employee.siteId,
+        employeeId: employee.id,
+        permissionType,
+        startDate: requestDate,
+        endDate: permissionType === 'sick' ? endDate : requestDate,
+        sickCategory: permissionType === 'sick' ? sickCategory : '',
+        lateReason: permissionType === 'late' ? lateReason : '',
+        returnTime: permissionType === 'late' ? returnTime : '',
+        reason,
+        attachmentUrl: photoUrl,
+        status: 'pending',
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          attendancePermissionRequests.employeeId,
+          attendancePermissionRequests.startDate,
+          attendancePermissionRequests.permissionType,
+        ],
+        set: {
+          endDate: permissionType === 'sick' ? endDate : requestDate,
+          sickCategory: permissionType === 'sick' ? sickCategory : '',
+          lateReason: permissionType === 'late' ? lateReason : '',
+          returnTime: permissionType === 'late' ? returnTime : '',
+          reason,
+          attachmentUrl: photoUrl,
+          status: 'pending',
+          approverNote: '',
+          approvedAt: null,
+          rejectedAt: null,
+          updatedAt: now,
+        },
+      })
+
+    revalidatePath('/mobile/attendance')
+    revalidatePath('/mobile/attendance/permission')
+    revalidatePath('/dashboard/scheduling-timesheet/attendance')
+    revalidatePath('/dashboard/scheduling-timesheet/permission')
+    revalidatePath('/dashboard/hc/permission')
+    return { success: true, message: 'Izin terkirim. Menunggu approval HR.' }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Izin gagal disimpan.' }
+  }
+}
+
+async function getCurrentUserId() {
+  const session = await auth.api.getSession({ headers: await headers() })
+  return session?.user?.id ?? null
+}
+
+async function applyApprovedPermissionRequest(requestId: number, approverNote: string, approved: boolean) {
+  await ensureSchedulingTimesheetTables()
+  const [request] = await db
+    .select()
+    .from(attendancePermissionRequests)
+    .where(eq(attendancePermissionRequests.id, requestId))
+    .limit(1)
+
+  if (!request) return { success: false, error: 'Request izin tidak ditemukan.' }
+
+  const approverUserId = await getCurrentUserId()
+  const now = new Date()
+
+  if (!approved) {
+    await db
+      .update(attendancePermissionRequests)
+      .set({ status: 'rejected', approverUserId, approverNote, rejectedAt: now, updatedAt: now })
+      .where(eq(attendancePermissionRequests.id, requestId))
+    revalidatePath('/dashboard/hc/permission')
+    revalidatePath('/mobile/attendance/permission')
+    return { success: true, message: 'Izin ditolak.' }
+  }
+
+  const days = request.permissionType === 'sick'
+    ? dateRangeDays(String(request.startDate), String(request.endDate))
+    : [String(request.startDate)]
+  const status = request.permissionType === 'sick' ? 'sick' : 'present'
+
+  for (const requestDay of days) {
+    const period = periodFromDate(requestDay)
+    const day = dayNumberFromDate(requestDay)
+    if (!period || !day) continue
     const note = [
-      permissionType === 'sick' ? 'Izin Sakit' : permissionType === 'urgent' ? 'Izin Urgent' : 'Izin',
-      reason,
-      photoUrl ? `Lampiran: ${photoUrl}` : '',
-    ]
-      .filter(Boolean)
-      .join(' | ')
+      request.permissionType === 'sick' ? 'Izin Sakit' : 'Izin Terlambat',
+      request.permissionType === 'sick' ? `Kategori Sakit: ${request.sickCategory}` : `Alasan Terlambat: ${request.lateReason}`,
+      request.permissionType === 'late' ? `Jam Kembali/Masuk: ${request.returnTime}` : '',
+      days.length > 1 ? `Rentang: ${request.startDate} s/d ${request.endDate}` : '',
+      request.reason ? `Catatan: ${request.reason}` : '',
+      request.attachmentUrl ? `Lampiran: ${request.attachmentUrl}` : '',
+      approverNote ? `Approval Note: ${approverNote}` : '',
+    ].filter(Boolean).join(' | ')
 
     await db
       .insert(timesheetAttendanceRealOverrides)
       .values({
-        siteId: employee.siteId,
+        siteId: request.siteId,
         period,
-        employeeId: employee.id,
+        employeeId: request.employeeId,
         day,
         status,
-        clockIn: '',
+        clockIn: request.permissionType === 'late' ? request.returnTime : '',
         clockOut: '',
         note,
         source: 'manual',
@@ -513,20 +623,60 @@ export async function submitAttendancePermission(formData: FormData) {
         ],
         set: {
           status,
-          clockIn: '',
+          clockIn: request.permissionType === 'late' ? request.returnTime : '',
           clockOut: '',
           note,
           source: 'manual',
           updatedAt: now,
         },
       })
-
-    revalidatePath('/mobile/attendance')
-    revalidatePath('/dashboard/scheduling-timesheet/attendance')
-    return { success: true, message: 'Izin tersimpan dan masuk ke Attendance.' }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Izin gagal disimpan.' }
   }
+
+  await db
+    .update(attendancePermissionRequests)
+    .set({ status: 'approved', approverUserId, approverNote, approvedAt: now, updatedAt: now })
+    .where(eq(attendancePermissionRequests.id, requestId))
+
+  revalidatePath('/mobile/attendance')
+  revalidatePath('/mobile/attendance/permission')
+  revalidatePath('/dashboard/scheduling-timesheet/attendance')
+  revalidatePath('/dashboard/hc/permission')
+  return { success: true, message: 'Izin disetujui dan masuk ke attendance.' }
+}
+
+export async function approveAttendancePermissionRequest(formData: FormData) {
+  const id = Number(formData.get('id'))
+  if (!Number.isFinite(id)) return { success: false, error: 'ID request tidak valid.' }
+  return applyApprovedPermissionRequest(id, getTrimmedFormValue(formData, 'approverNote'), true)
+}
+
+export async function rejectAttendancePermissionRequest(formData: FormData) {
+  const id = Number(formData.get('id'))
+  if (!Number.isFinite(id)) return { success: false, error: 'ID request tidak valid.' }
+  return applyApprovedPermissionRequest(id, getTrimmedFormValue(formData, 'approverNote'), false)
+}
+
+export async function getMyAttendancePermissionRequests() {
+  const employee = await getCurrentEmployee()
+  if (!employee) return []
+  await ensureSchedulingTimesheetTables()
+  return db
+    .select({
+      id: attendancePermissionRequests.id,
+      permissionType: attendancePermissionRequests.permissionType,
+      startDate: attendancePermissionRequests.startDate,
+      endDate: attendancePermissionRequests.endDate,
+      sickCategory: attendancePermissionRequests.sickCategory,
+      lateReason: attendancePermissionRequests.lateReason,
+      returnTime: attendancePermissionRequests.returnTime,
+      reason: attendancePermissionRequests.reason,
+      status: attendancePermissionRequests.status,
+      approverNote: attendancePermissionRequests.approverNote,
+      createdAt: attendancePermissionRequests.createdAt,
+    })
+    .from(attendancePermissionRequests)
+    .where(eq(attendancePermissionRequests.employeeId, employee.id))
+    .orderBy(desc(attendancePermissionRequests.createdAt))
 }
 
 export async function getTodayAttendanceLogs() {
@@ -562,4 +712,17 @@ export async function getTodayAttendanceLogs() {
   )
 
   return { success: true, employee, logs: logsWithPhotoPreview }
+}
+
+export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {
+  if (!ids.length) return { success: false, error: 'Tidak ada data dipilih.' }
+
+  await ensureSchedulingTimesheetTables()
+
+  await db
+    .delete(attendancePermissionRequests)
+    .where(inArray(attendancePermissionRequests.id, ids))
+
+  revalidatePath('/dashboard/hc/permission')
+  return { success: true, message: `${ids.length} data izin berhasil dihapus.` }
 }

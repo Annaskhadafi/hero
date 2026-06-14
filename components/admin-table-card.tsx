@@ -27,7 +27,7 @@ export function AdminTableCard({
 }: {
   title: string;
   description?: string;
-  columns: string[];
+  columns: (string | React.ReactNode)[];
   rows: (string | React.ReactNode)[][];
   dateFilter?: boolean | "auto";
   filters?: React.ReactNode;
@@ -68,15 +68,15 @@ export function AdminTableCard({
           actions={actions}
           presets={presets}
           scorecards={scorecards}
-          columnOptions={columnOptions ?? columns.map((column, index) => ({ key: column, label: column, required: index === 0 }))}
+          columnOptions={columnOptions ?? columns.map((column, index) => ({ key: typeof column === 'string' ? column : `col-${index}`, label: typeof column === 'string' ? column : `Kolom ${index + 1}`, required: index === 0 }))}
           access={access}
           showImport={showImport}
         >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                {columns.map((column) => (
-                  <TableHead key={column} className="h-10 text-[0.68rem] font-semibold uppercase text-muted-foreground">
+                {columns.map((column, index) => (
+                  <TableHead key={`col-${index}`} className="h-10 text-[0.68rem] font-semibold uppercase text-muted-foreground">
                     {column}
                   </TableHead>
                 ))}
