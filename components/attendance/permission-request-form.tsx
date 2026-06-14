@@ -19,6 +19,10 @@ export function PermissionRequestForm({ variant = 'desktop' }: PermissionRequest
   const router = useRouter()
   const [type, setType] = useState('sick')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [sickCategory, setSickCategory] = useState('Demam')
+  const [lateReason, setLateReason] = useState('Keperluan Keluarga')
+  const [returnTime, setReturnTime] = useState('')
   const [reason, setReason] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -28,10 +32,11 @@ export function PermissionRequestForm({ variant = 'desktop' }: PermissionRequest
   const helper = useMemo(
     () =>
       type === 'sick'
-        ? 'Cell attendance berubah menjadi Sakit. Foto surat sakit opsional.'
-        : 'Cell attendance berubah menjadi Izin. Bukti foto opsional.',
+        ? 'Izin sakit lebih dari 1 hari wajib lampirkan surat keterangan dokter.'
+        : 'Izin terlambat wajib isi alasan dan jam kembali/masuk kantor.',
     [type]
   )
+  const isMultiDaySick = type === 'sick' && endDate > date
 
   function handleSubmit(formData: FormData) {
     setError('')
@@ -77,8 +82,7 @@ export function PermissionRequestForm({ variant = 'desktop' }: PermissionRequest
               className="flex h-10 w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
             >
               <option value="sick">Sakit</option>
-              <option value="urgent">Izin Urgent</option>
-              <option value="leave">Izin Lainnya</option>
+              <option value="late">Terlambat</option>
             </select>
           </div>
           <div className="space-y-1.5">
@@ -92,18 +96,71 @@ export function PermissionRequestForm({ variant = 'desktop' }: PermissionRequest
             />
           </div>
         </div>
+        {type === 'sick' ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Tanggal Akhir Sakit</Label>
+              <Input
+                type="date"
+                name="endDate"
+                value={endDate}
+                min={date}
+                onChange={(event) => setEndDate(event.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Kategori Sakit</Label>
+              <select
+                name="sickCategory"
+                value={sickCategory}
+                onChange={(event) => setSickCategory(event.target.value)}
+                className="flex h-10 w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
+              >
+                <option>Demam</option>
+                <option>Flu / Batuk</option>
+                <option>Sakit Kepala</option>
+                <option>Gangguan Pencernaan</option>
+                <option>Nyeri Badan</option>
+                <option>Rawat Jalan</option>
+                <option>Lainnya</option>
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Alasan Terlambat</Label>
+              <select
+                name="lateReason"
+                value={lateReason}
+                onChange={(event) => setLateReason(event.target.value)}
+                className="flex h-10 w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
+              >
+                <option>Keperluan Keluarga</option>
+                <option>Keperluan Pribadi</option>
+                <option>Kendala Cuaca</option>
+                <option>Ban Bocor</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Jam Kembali / Masuk Kantor</Label>
+              <Input type="time" name="returnTime" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} required />
+            </div>
+          </div>
+        )}
         <div className="space-y-1.5">
-          <Label>Alasan</Label>
+          <Label>{type === 'sick' ? 'Catatan Sakit' : 'Detail Alasan'}</Label>
           <Textarea
             name="reason"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Contoh: sakit demam / izin keluarga mendadak"
+            placeholder={type === 'sick' ? 'Contoh: demam tinggi sejak malam' : 'Contoh: hujan deras dan akses jalan tertutup'}
           />
         </div>
         <div className="space-y-1.5">
           <Label className="inline-flex items-center gap-2">
-            <FileImage className="size-4" /> Foto Surat / Bukti (Opsional)
+            <FileImage className="size-4" /> {isMultiDaySick ? 'Surat Dokter (Wajib)' : 'Foto Surat / Bukti (Opsional)'}
           </Label>
           <input type="hidden" name="uploadTarget" value="attendance" />
           <Input type="file" name="file" accept="image/*" />

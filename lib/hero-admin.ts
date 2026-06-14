@@ -813,6 +813,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   {
+    menuArea: 'main',
+    section: 'HR',
+    title: 'LMS Chitra Learning',
+    url: '/dashboard/lms',
+    iconName: 'book-open',
+    resource: 'lms_integration',
+    sortOrder: 18,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
     menuArea: 'secondary',
     section: 'HR',
     title: 'User Management',

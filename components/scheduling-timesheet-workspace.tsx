@@ -71,6 +71,7 @@ import { toast } from 'sonner'
 import {
   attendanceStatusLabel,
   calculateAttendanceOvertime,
+  minutesFromTime,
   normalizeAttendanceStatus,
   type AttendanceCellStatus,
 } from '@/lib/timesheet/attendance-real'
@@ -177,6 +178,7 @@ type ManualAttendanceCell = {
   clockOut: string
   note: string
   source?: 'attendance' | 'manual' | 'excel'
+  isLatePending?: boolean
 }
 
 type SavedAttendanceOverride = {
@@ -2481,9 +2483,11 @@ export function SchedulingTimesheetWorkspace({
     const status = normalizeAttendanceStatus(
       real.clockIn?.status ?? real.clockOut?.status ?? real.records[0]?.status
     )
+    const clockIn = timeFromIso(real.clockIn?.eventTime)
+    const isLatePending = status === 'present' && clockIn && minutesFromTime(clockIn) !== null && (minutesFromTime(clockIn) ?? 0) > 8 * 60
     return {
       status,
-      clockIn: timeFromIso(real.clockIn?.eventTime),
+      clockIn,
       clockOut: timeFromIso(real.clockOut?.eventTime),
       note:
         real.clockIn?.locationNote ||
@@ -2491,6 +2495,7 @@ export function SchedulingTimesheetWorkspace({
         real.records[0]?.locationNote ||
         'Face/location attendance',
       source: 'attendance',
+      isLatePending: Boolean(isLatePending),
     }
   }
 
@@ -3242,7 +3247,7 @@ export function SchedulingTimesheetWorkspace({
       }
       return stats
     },
-    { present: 0, empty: 0, sick: 0, leave: 0, absent: 0 } as Record<AttendanceCellStatus, number>
+    { present: 0, late_pending: 0, empty: 0, sick: 0, leave: 0, absent: 0, off: 0 } as Record<AttendanceCellStatus, number>
   )
 
   // Source summary stats for AttendanceSummaryBar (Req 7.1, 7.2, 7.5)
@@ -4151,7 +4156,7 @@ export function SchedulingTimesheetWorkspace({
                     const statuses = cells.map((cell) => cell.status)
                     return [
                       row.employee.name,
-                      statuses.filter((status) => status === 'present').length,
+                        statuses.filter((status) => status === 'present').length,
                       statuses.filter((status) => status === 'empty').length,
                       statuses.filter((status) => status === 'sick').length,
                       statuses.filter((status) => status === 'leave').length,
@@ -4762,7 +4767,7 @@ export function SchedulingTimesheetWorkspace({
                                       title={holidayName}
                                     >
                                       <button
-                                        className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${isHolidayDay ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
+                                        className={`relative h-[76px] w-[44px] rounded-xl px-2 py-2 text-left text-[11px] font-semibold ${cell.isLatePending ? 'bg-purple-100 text-purple-950 ring-1 ring-purple-300' : isHolidayDay ? attendanceHolidayCellClass : attendanceCellClass(cell.status)} ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                         onClick={() =>
                                           multiSelectAttendance
                                             ? toggleAttendanceSelection(row.employee.id, day)
@@ -4792,7 +4797,7 @@ export function SchedulingTimesheetWorkspace({
                                             L
                                           </span>
                                         ) : null}
-                                        <span>{attendanceStatusLabel(cell.status)}</span>
+                                        <span>{cell.isLatePending ? 'Late' : attendanceStatusLabel(cell.status)}</span>
                                         {cell.clockIn || cell.clockOut ? (
                                           <span className="mt-1 block font-mono text-[10px]">
                                             {cell.clockIn || '--:--'}-{cell.clockOut || '--:--'}

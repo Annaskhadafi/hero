@@ -254,6 +254,24 @@ export default async function MobileDashboardPage() {
         </Link>
       </section>
 
+      <section>
+        <Link
+          prefetch={false}
+          href="/api/lms/sso"
+          target="_blank"
+          className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[#f0fdf4] border border-[#bbf7d0] px-4 py-4 text-[#14532d] shadow-[0_14px_30px_rgba(20,83,45,0.06)] active:scale-[0.98]"
+        >
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#166534]">Chitra Learning LMS</p>
+            <p className="mt-1 text-base font-black text-[#14532d]">Buka LMS & Mulai Belajar</p>
+            <p className="mt-1 text-xs font-semibold text-[#166534]">Akses ribuan materi sertifikasi online</p>
+          </div>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#dcfce7] text-[#15803d]">
+            <Sparkles className="size-4" />
+          </span>
+        </Link>
+      </section>
+
       <MobilePortalChitraSlider apps={portalApps} />
 
       <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">

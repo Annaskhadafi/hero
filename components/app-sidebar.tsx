@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import {
+  IconBook,
   IconChartBar,
   IconChecklist,
   IconClockHour4,
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/sidebar"
 
 const iconMap = {
+  "book-open": IconBook,
   "chart-bar": IconChartBar,
   checklist: IconChecklist,
   clock: IconClockHour4,
