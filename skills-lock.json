@@ -78,6 +78,12 @@
       "sourceType": "github",
       "skillPath": "skills/stitch-skill/SKILL.md",
       "computedHash": "acf2921a7e50c06e637f072ba52e36a994cbb44ecbe6e31435bc113b894f5499"
+    },
+    "memory-manager": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/memory-manager/SKILL.md",
+      "computedHash": "25C74CD6C4E0E7143676EFBC1898E230FF100D66B2E1AFE33B0B724502033977"
     }
   }
 }

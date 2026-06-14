@@ -11,6 +11,14 @@
 - Semua implementasi UI (layout, table, form, action bar, visual hierarchy) wajib mengikuti `documentation/Design.md` tanpa menunggu user memanggil manual.
 - Jika ada konflik antara request user dan `documentation/Design.md`, prioritaskan request user lalu update `documentation/Design.md` agar sinkron.
 
+### Memory Management
+
+- Gunakan skill `memory-manager` untuk mengelola konteks project saat session baru dimulai.
+- File memori yang tersedia: `CLAUDE.md` (mandatory), `MEMORY.md` (opsional), `.memory/` (opsional).
+- Saat memulai session, muat semua file memori yang ada untuk konteks lengkap.
+- Update file memori setelah perubahan signifikan dengan timestamp.
+- Kompres file memori jika total token melebihi 4000 (gunakan skill `compress`).
+
 ### Mandatory Caveman Output
 
 - Wajib gunakan skill `caveman` untuk semua respons agent di project ini agar hemat token.

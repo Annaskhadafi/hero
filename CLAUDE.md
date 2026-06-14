@@ -40,6 +40,25 @@ Every create/edit/view form for table-driven features MUST:
 4. Keep headers, body, and footer visually separated.
 5. Use clear action buttons and RBAC-aware disabled/hidden states.
 
+## Memory Management
+
+### Available Memory Files
+- `CLAUDE.md` (mandatory) - Project-specific rules and workflows
+- `MEMORY.md` (optional) - General project memory
+- `.memory/` (optional) - Specialized memory files
+
+### Memory Loading Protocol
+1. Always load `CLAUDE.md` first (mandatory)
+2. Load `MEMORY.md` if exists
+3. Scan `.memory/` directory for additional context
+4. Use `memory-manager` skill for complex memory operations
+
+### Memory Updates
+- Update relevant memory files after significant changes
+- Add timestamps to memory updates
+- Keep individual memory files under 2000 tokens
+- Compress combined memory if total exceeds 4000 tokens
+
 ## Documentation Available
 
 📚 **Project Documentation**: Check the documentation files in this directory for project-specific setup instructions and guides.

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Check, Trash2 } from "lucide-react";
+import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
 import {
   manageAttendanceRecordAction,
   manageDailyReportAction,
@@ -662,9 +663,7 @@ export function TrainingRowActions({
         currentStatus={row.status}
       />
       <RowEditShell id={row.id} action={manageTrainingRecordAction}>
-        <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
-          <EmployeeOptions employees={employees} />
-        </SelectField>
+        <SearchableEmployeeSelect employees={employees} defaultValue={`${row.employeeId}`} />
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField name="trainingName" label="Training" defaultValue={row.trainingName} />
           <TextField name="provider" label="Provider" defaultValue={row.provider} />
@@ -1042,9 +1041,7 @@ export function HcCrudForms({
         description="Catat sertifikasi, expiry, dan status training karyawan."
         action={manageTrainingRecordAction}
       >
-        <SelectField name="employeeId" label="Karyawan">
-          <EmployeeOptions employees={employees} />
-        </SelectField>
+        <SearchableEmployeeSelect employees={employees} />
         <TextField name="trainingName" label="Training" placeholder="Nama training / sertifikasi" />
         <TextField name="provider" label="Provider" placeholder="Provider training" defaultValue="-" />
         <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={new Date().getFullYear()} />

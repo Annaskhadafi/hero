@@ -12,16 +12,60 @@ const lmsDbConfig = {
   connectTimeout: 5000,
 };
 
+// Global Connection Pool
+declare global {
+  var lmsDbPool: mysql.Pool | undefined;
+  var lmsLastSyncTimes: Map<string, number> | undefined;
+  var lmsCachedAllProgress: {
+    data: any[];
+    timestamp: number;
+  } | undefined;
+  var lmsCachedUserProgress: Map<string, {
+    data: any[];
+    timestamp: number;
+  }> | undefined;
+}
+
+if (!globalThis.lmsLastSyncTimes) {
+  globalThis.lmsLastSyncTimes = new Map<string, number>();
+}
+
+function getPool() {
+  if (!globalThis.lmsDbPool) {
+    globalThis.lmsDbPool = mysql.createPool({
+      ...lmsDbConfig,
+      connectionLimit: 5,
+      maxIdle: 2,
+      idleTimeout: 30000, // 30 seconds idle timeout
+      waitForConnections: true,
+      queueLimit: 0,
+    });
+  }
+  return globalThis.lmsDbPool;
+}
+
 export async function getLmsProgressFromDb(email: string, sn: string) {
-  let connection;
+  const now = Date.now();
+  const cacheDuration = 120000; // Cache for 2 minutes (120,000 ms)
+
+  if (!globalThis.lmsCachedUserProgress) {
+    globalThis.lmsCachedUserProgress = new Map();
+  }
+
+  const cached = globalThis.lmsCachedUserProgress.get(email);
+  if (cached && (now - cached.timestamp < cacheDuration)) {
+    console.log(`[LMS MySQL] Returning cached LMS progress data for ${email}`);
+    return cached.data;
+  }
+
   try {
-    connection = await mysql.createConnection(lmsDbConfig);
+    const pool = getPool();
 
     // 1. Resolve user ID from wp_users or wp_usermeta
     let userId: number | null = null;
 
     // First try: Search by email
-    const [userRows]: any = await connection.query(
+    const [userRows]: any = await pool.query(
       "SELECT ID FROM wp_users WHERE user_email = ? LIMIT 1",
       [email]
     );
@@ -30,7 +74,7 @@ export async function getLmsProgressFromDb(email: string, sn: string) {
       userId = userRows[0].ID;
     } else if (sn) {
       // Second try: Search by employee_sn meta key
-      const [metaRows]: any = await connection.query(
+      const [metaRows]: any = await pool.query(
         "SELECT user_id FROM wp_usermeta WHERE meta_key = 'employee_sn' AND meta_value = ? LIMIT 1",
         [sn]
       );
@@ -38,7 +82,7 @@ export async function getLmsProgressFromDb(email: string, sn: string) {
         userId = metaRows[0].user_id;
       } else {
         // Third try: Search by username (user_login) matching sn
-        const [usernameRows]: any = await connection.query(
+        const [usernameRows]: any = await pool.query(
           "SELECT ID FROM wp_users WHERE user_login = ? LIMIT 1",
           [sn]
         );
@@ -49,12 +93,11 @@ export async function getLmsProgressFromDb(email: string, sn: string) {
     }
 
     if (!userId) {
-      await connection.end();
       return [];
     }
 
     // 2. Query user courses and progress
-    const [courseRows]: any = await connection.query(
+    const [courseRows]: any = await pool.query(
       `SELECT uc.course_id, uc.progress_percent as progress, uc.final_grade, uc.status, p.post_title as course_name,
               uc.start_time as startTime, uc.end_time as endTime
        FROM wp_stm_lms_user_courses uc
@@ -73,25 +116,36 @@ export async function getLmsProgressFromDb(email: string, sn: string) {
       endTime: row.endTime || null,
     }));
 
-    await connection.end();
+    globalThis.lmsCachedUserProgress.set(email, {
+      data: courses,
+      timestamp: now,
+    });
+
     return courses;
   } catch (error) {
     console.error("[LMS MySQL] Error querying LMS progress:", error);
-    if (connection) {
-      try {
-        await connection.end();
-      } catch (e) {}
+    const fallback = globalThis.lmsCachedUserProgress?.get(email);
+    if (fallback) {
+      console.log(`[LMS MySQL] Error encountered. Falling back to expired cached data for ${email}.`);
+      return fallback.data;
     }
     throw error;
   }
 }
 
 export async function getAllLmsProgressFromDb() {
-  let connection;
-  try {
-    connection = await mysql.createConnection(lmsDbConfig);
+  const now = Date.now();
+  const cacheDuration = 60000; // Cache for 1 minute (60,000 ms)
 
-    const [courseRows]: any = await connection.query(
+  if (globalThis.lmsCachedAllProgress && (now - globalThis.lmsCachedAllProgress.timestamp < cacheDuration)) {
+    console.log("[LMS MySQL] Returning cached LMS progress data");
+    return globalThis.lmsCachedAllProgress.data;
+  }
+
+  try {
+    const pool = getPool();
+
+    const [courseRows]: any = await pool.query(
       `SELECT uc.course_id, uc.progress_percent as progress, uc.final_grade, uc.status, p.post_title as course_name,
               u.user_email, u.display_name, u.user_login, uc.start_time as startTime, uc.end_time as endTime
        FROM wp_stm_lms_user_courses uc
@@ -113,14 +167,17 @@ export async function getAllLmsProgressFromDb() {
       endTime: row.endTime || null,
     }));
 
-    await connection.end();
+    globalThis.lmsCachedAllProgress = {
+      data: records,
+      timestamp: now,
+    };
+
     return records;
   } catch (error) {
     console.error("[LMS MySQL] Error querying all LMS progress:", error);
-    if (connection) {
-      try {
-        await connection.end();
-      } catch (e) {}
+    if (globalThis.lmsCachedAllProgress) {
+      console.log("[LMS MySQL] Error encountered. Falling back to expired cached data.");
+      return globalThis.lmsCachedAllProgress.data;
     }
     throw error;
   }
@@ -128,6 +185,12 @@ export async function getAllLmsProgressFromDb() {
 
 export async function syncLmsToTrainingRecords(email: string) {
   try {
+    const now = Date.now();
+    const lastSync = globalThis.lmsLastSyncTimes?.get(email) || 0;
+    if (now - lastSync < 2 * 60 * 1000) {
+      return { success: true, synced: 0 };
+    }
+
     // 1. Fetch employee info
     const [employee] = await db
       .select({
@@ -145,14 +208,20 @@ export async function syncLmsToTrainingRecords(email: string) {
     // 2. Fetch courses from WordPress MySQL
     const courses = await getLmsProgressFromDb(email, sn);
 
-    if (courses.length === 0) return { success: true, synced: 0 };
+    if (courses.length === 0) {
+      globalThis.lmsLastSyncTimes?.set(email, now);
+      return { success: true, synced: 0 };
+    }
 
     // 3. Filter completed courses
     const completedCourses = courses.filter(
       (c: any) => c.progress === 100 || c.status.toLowerCase() === "completed" || c.status.toLowerCase() === "passed"
     );
 
-    if (completedCourses.length === 0) return { success: true, synced: 0 };
+    if (completedCourses.length === 0) {
+      globalThis.lmsLastSyncTimes?.set(email, now);
+      return { success: true, synced: 0 };
+    }
 
     // 4. Fetch existing HERO training records for this employee
     const existingRecords = await db
@@ -188,6 +257,7 @@ export async function syncLmsToTrainingRecords(email: string) {
       }
     }
 
+    globalThis.lmsLastSyncTimes?.set(email, now);
     return { success: true, synced: syncCount };
   } catch (error) {
     console.error("[LMS Sync] Error running sync to training records:", error);
@@ -196,13 +266,12 @@ export async function syncLmsToTrainingRecords(email: string) {
 }
 
 export async function getLmsUserCourseCurriculum(courseId: number, email: string, sn: string) {
-  let connection;
   try {
-    connection = await mysql.createConnection(lmsDbConfig);
+    const pool = getPool();
 
     // Find WordPress user ID
     let userId: number | null = null;
-    const [userRows]: any = await connection.query(
+    const [userRows]: any = await pool.query(
       "SELECT ID FROM wp_users WHERE user_email = ? LIMIT 1",
       [email]
     );
@@ -210,14 +279,14 @@ export async function getLmsUserCourseCurriculum(courseId: number, email: string
     if (userRows.length > 0) {
       userId = userRows[0].ID;
     } else if (sn) {
-      const [metaRows]: any = await connection.query(
+      const [metaRows]: any = await pool.query(
         "SELECT user_id FROM wp_usermeta WHERE meta_key = 'employee_sn' AND meta_value = ? LIMIT 1",
         [sn]
       );
       if (metaRows.length > 0) {
         userId = metaRows[0].user_id;
       } else {
-        const [usernameRows]: any = await connection.query(
+        const [usernameRows]: any = await pool.query(
           "SELECT ID FROM wp_users WHERE user_login = ? LIMIT 1",
           [sn]
         );
@@ -228,25 +297,23 @@ export async function getLmsUserCourseCurriculum(courseId: number, email: string
     }
 
     if (!userId) {
-      await connection.end();
       return [];
     }
 
     // Query curriculum sections for this course
-    const [sections]: any[] = await connection.query(
+    const [sections]: any[] = await pool.query(
       "SELECT id, title, `order` FROM wp_stm_lms_curriculum_sections WHERE course_id = ? ORDER BY `order` ASC",
       [courseId]
     );
 
     if (sections.length === 0) {
-      await connection.end();
       return [];
     }
 
     const sectionIds = sections.map((s: any) => s.id);
 
     // Query all materials (lessons/quizzes) in these sections
-    const [materials]: any[] = await connection.query(
+    const [materials]: any[] = await pool.query(
       `SELECT m.section_id, m.post_id, m.post_type, p.post_title as title
        FROM wp_stm_lms_curriculum_materials m
        JOIN wp_posts p ON m.post_id = p.ID
@@ -255,7 +322,7 @@ export async function getLmsUserCourseCurriculum(courseId: number, email: string
     );
 
     // Query user's lesson progress
-    const [userLessons]: any[] = await connection.query(
+    const [userLessons]: any[] = await pool.query(
       "SELECT lesson_id, progress, start_time, end_time FROM wp_stm_lms_user_lessons WHERE course_id = ? AND user_id = ?",
       [courseId, userId]
     );
@@ -266,7 +333,7 @@ export async function getLmsUserCourseCurriculum(courseId: number, email: string
     }
 
     // Query user's quiz progress
-    const [userQuizzes]: any[] = await connection.query(
+    const [userQuizzes]: any[] = await pool.query(
       "SELECT quiz_id, progress, status FROM wp_stm_lms_user_quizzes WHERE course_id = ? AND user_id = ?",
       [courseId, userId]
     );
@@ -275,8 +342,6 @@ export async function getLmsUserCourseCurriculum(courseId: number, email: string
     for (const uq of userQuizzes) {
       quizzesMap.set(uq.quiz_id, uq);
     }
-
-    await connection.end();
 
     // Map materials into sections
     return sections.map((section: any) => {
@@ -322,12 +387,7 @@ export async function getLmsUserCourseCurriculum(courseId: number, email: string
     });
   } catch (error) {
     console.error("[LMS MySQL] Error querying curriculum details:", error);
-    if (connection) {
-      try {
-        await connection.end();
-      } catch (e) {}
-    }
-    return [];
+    throw error;
   }
 }
 

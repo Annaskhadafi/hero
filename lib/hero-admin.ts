@@ -3086,7 +3086,7 @@ export async function getTrainingRecordPageData() {
         employeeId: trainingRecords.employeeId,
         employeeName: employees.name,
         employeeSn: employees.employeeSn,
-        role: employees.role,
+        role: employees.jobTitle,
         department: employees.department,
         trainingName: trainingRecords.trainingName,
         provider: trainingRecords.provider,
@@ -3138,8 +3138,9 @@ export async function getOperationalCrudOptions() {
         id: employees.id,
         name: employees.name,
         email: employees.email,
-        role: employees.role,
+        role: employees.jobTitle,
         siteId: employees.siteId,
+        employeeSn: employees.employeeSn,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
