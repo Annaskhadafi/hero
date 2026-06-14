@@ -1,18 +1,35 @@
 import Link from 'next/link'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { FileText } from 'lucide-react'
-import { getAttendancePermissionDashboardData } from '@/lib/attendance-permission-dashboard'
+import { getAttendancePermissionDashboardData, type IzinDashboardKpis, type IzinDashboardCharts, type AttendancePermissionRow } from '@/lib/attendance-permission-dashboard'
 import { IzinDashboardTabs } from '@/components/izin-dashboard/izin-dashboard-tabs'
+
+const emptyKpis: IzinDashboardKpis = { total: 0, sick: 0, late: 0, departments: 0, pending: 0, approved: 0, rejected: 0, thisMonth: 0 }
+const emptyCharts: IzinDashboardCharts = { sickByCategory: [], lateByReason: [], frequentLateEmployees: [], frequentSickEmployees: [], byDepartment: [], sickByDay: [], monthlyTrend: [], siteDistribution: [], byLocation: [] }
 
 export default async function HcPermissionDashboardPage(props: {
   searchParams?: Promise<{ dateFrom?: string; dateTo?: string; siteId?: string }>
 }) {
   const params = await props.searchParams
-  const data = await getAttendancePermissionDashboardData({
-    dateFrom: params?.dateFrom,
-    dateTo: params?.dateTo,
-    siteId: params?.siteId,
-  })
+
+  let rows: AttendancePermissionRow[] = []
+  let kpis = emptyKpis
+  let charts = emptyCharts
+  let sites: { id: number; name: string }[] = []
+
+  try {
+    const result = await getAttendancePermissionDashboardData({
+      dateFrom: params?.dateFrom,
+      dateTo: params?.dateTo,
+      siteId: params?.siteId,
+    })
+    rows = result.rows
+    kpis = result.kpis
+    charts = result.charts
+    sites = result.sites
+  } catch (error) {
+    console.error('[izin-dashboard] Failed to load data:', error)
+  }
 
   return (
     <AdminPageShell
@@ -29,7 +46,7 @@ export default async function HcPermissionDashboardPage(props: {
         </Link>
       }
     >
-      <IzinDashboardTabs data={data} />
+      <IzinDashboardTabs data={{ rows, kpis, charts, sites }} />
     </AdminPageShell>
   )
 }
