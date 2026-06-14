@@ -235,6 +235,30 @@ export async function ensureSchedulingTimesheetTables() {
     await tx.execute(sql`alter table hero_timesheet_attendance_real_overrides add column if not exists validation_flags jsonb not null default '[]'::jsonb;`);
     await tx.execute(sql`alter table hero_timesheet_attendance_real_overrides add column if not exists work_minutes integer;`);
     await tx.execute(sql`create index if not exists hero_timesheet_attendance_real_overrides_import_preview_idx on hero_timesheet_attendance_real_overrides(import_preview_id);`);
+    await tx.execute(sql`
+      create table if not exists hero_attendance_permission_requests (
+        id serial primary key,
+        site_id integer not null references hero_sites(id) on delete cascade,
+        employee_id integer not null references hero_employees(id) on delete cascade,
+        permission_type text not null,
+        start_date date not null,
+        end_date date not null,
+        sick_category text not null default '',
+        late_reason text not null default '',
+        return_time text not null default '',
+        reason text not null default '',
+        attachment_url text not null default '',
+        status text not null default 'pending',
+        approver_user_id text references "user"(id) on delete set null,
+        approver_note text not null default '',
+        approved_at timestamp,
+        rejected_at timestamp,
+        created_at timestamp not null default now(),
+        updated_at timestamp not null default now()
+      );
+    `);
+    await tx.execute(sql`create unique index if not exists hero_attendance_permission_requests_employee_date_uidx on hero_attendance_permission_requests(employee_id, start_date, permission_type);`);
+    await tx.execute(sql`create index if not exists hero_attendance_permission_requests_status_idx on hero_attendance_permission_requests(status, created_at);`);
   }).catch((error) => {
     schedulingInfrastructurePromise = null;
     throw error;

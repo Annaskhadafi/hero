@@ -351,3 +351,26 @@ export const timesheetAttendanceRealOverrides = pgTable("hero_timesheet_attendan
 }, (table) => ({
   employeeDayUnique: uniqueIndex("hero_timesheet_attendance_real_overrides_employee_day_uidx").on(table.siteId, table.period, table.employeeId, table.day),
 }));
+
+export const attendancePermissionRequests = pgTable("hero_attendance_permission_requests", {
+  id: serial("id").primaryKey(),
+  siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+  employeeId: integer("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+  permissionType: text("permission_type").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  sickCategory: text("sick_category").notNull().default(""),
+  lateReason: text("late_reason").notNull().default(""),
+  returnTime: text("return_time").notNull().default(""),
+  reason: text("reason").notNull().default(""),
+  attachmentUrl: text("attachment_url").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  approverUserId: text("approver_user_id").references(() => user.id, { onDelete: "set null" }),
+  approverNote: text("approver_note").notNull().default(""),
+  approvedAt: timestamp("approved_at"),
+  rejectedAt: timestamp("rejected_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  employeeDateIdx: uniqueIndex("hero_attendance_permission_requests_employee_date_uidx").on(table.employeeId, table.startDate, table.permissionType),
+}));
