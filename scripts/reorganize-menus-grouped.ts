@@ -11,6 +11,7 @@ type MenuSeed = {
   resource: string;
   sortOrder: number;
   isVisible?: boolean;
+  menuArea?: string;
 };
 
 const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
