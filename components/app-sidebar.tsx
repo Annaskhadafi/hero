@@ -57,6 +57,7 @@ type SidebarMenuItem = {
   url: string
   iconName: keyof typeof iconMap | string
   sortOrder?: number
+  groupLabel?: string | null
 }
 
 type SidebarDocumentItem = {
@@ -76,14 +77,13 @@ type SidebarUser = {
 const DESKTOP_MENU_ORDER = [
   "Portal Chitra",
   "Aktivitas Harian",
-  "Central Service",
-  "Repair & Retread Operation",
-  "Warehouse Repair",
   "Roster & Timesheet",
   "Approval",
   "Data Induk",
-  "HC",
+  "Human Capital",
+  "Attendance",
   "HSE",
+  "Central Service",
   "Laporan",
   "Pengaturan",
 ] as const
@@ -91,14 +91,13 @@ const DESKTOP_MENU_ORDER = [
 const desktopMenuIconMap = {
   "Portal Chitra": IconDashboard,
   "Aktivitas Harian": IconChecklist,
-  "Central Service": IconDatabase,
-  "Repair & Retread Operation": IconSettings,
-  "Warehouse Repair": IconDatabase,
   "Roster & Timesheet": IconClockHour4,
   Approval: IconMail,
   "Data Induk": IconDatabase,
-  HC: IconUsers,
+  "Human Capital": IconUsers,
+  Attendance: IconClockHour4,
   HSE: IconShieldHalfFilled,
+  "Central Service": IconDatabase,
   Laporan: IconReport,
   Pengaturan: IconSettings,
 } as const
@@ -106,13 +105,9 @@ const desktopMenuIconMap = {
 const sectionLabelMap: Record<string, string> = {
   "Daily Activity": "Aktivitas Harian",
   "Central Service": "Central Service",
-  "Repair & Retread Operation": "Repair & Retread Operation",
-  "Warehouse Repair": "Warehouse Repair",
   Approval: "Approval",
   "Master Data": "Data Induk",
-  "Scheduling Time Sheet": "Roster & Timesheet",
-  "Roster & Timesheet": "Roster & Timesheet",
-  HR: "HC",
+  HR: "Human Capital",
   HSE: "HSE",
   Report: "Laporan",
   Setting: "Pengaturan",
@@ -122,12 +117,14 @@ export function AppSidebar({
   navMain,
   navSecondary,
   documents,
+  groupLabelColor = "#6B7280",
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   user: SidebarUser
   navMain: readonly SidebarMenuItem[]
   navSecondary: readonly SidebarMenuItem[]
   documents: readonly SidebarDocumentItem[]
+  groupLabelColor?: string
 }) {
   const desktopItems = [...navMain, ...navSecondary].map((item) => ({
     section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
@@ -135,6 +132,7 @@ export function AppSidebar({
     url: item.url,
     sortOrder: item.sortOrder ?? 999,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
+    groupLabel: item.groupLabel ?? null,
   }))
   const documentItems = documents.map((item) => ({
     section: item.section ?? "Dokumen",
@@ -156,7 +154,11 @@ export function AppSidebar({
       icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
       items: desktopItems
         .filter((item) => item.section === section)
-        .sort((left, right) => left.sortOrder - right.sortOrder),
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((item) => ({
+          ...item,
+          groupLabel: item.groupLabel,
+        })),
     }))
     .filter((group) => group.items.length > 0)
 
@@ -189,7 +191,7 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent className="gap-1 px-2">
-        <NavMain groups={desktopGroups} showQuickCreate />
+        <NavMain groups={desktopGroups} showQuickCreate groupLabelColor={groupLabelColor} />
         {documentItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-2" />

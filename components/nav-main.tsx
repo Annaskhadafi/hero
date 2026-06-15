@@ -31,21 +31,39 @@ function isMenuItemActive(pathname: string, url: string) {
   return url !== "#" && pathname === url
 }
 
+type NavItem = {
+  section?: string
+  title: string
+  url: string
+  icon?: Icon
+  groupLabel?: string | null
+}
+
+type NavGroup = {
+  title: string
+  icon?: Icon
+  items: NavItem[]
+}
+
+function groupItemsByLabel(items: NavItem[]): Map<string | null, NavItem[]> {
+  const groups = new Map<string | null, NavItem[]>()
+  for (const item of items) {
+    const key = item.groupLabel ?? null
+    const existing = groups.get(key) ?? []
+    existing.push(item)
+    groups.set(key, existing)
+  }
+  return groups
+}
+
 export function NavMain({
   groups,
   showQuickCreate = false,
+  groupLabelColor = "#6B7280",
 }: {
-  groups: {
-    title: string
-    icon?: Icon
-    items: {
-      section?: string
-      title: string
-      url: string
-      icon?: Icon
-    }[]
-  }[]
+  groups: NavGroup[]
   showQuickCreate?: boolean
+  groupLabelColor?: string
 }) {
   const pathname = usePathname()
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
@@ -80,6 +98,53 @@ export function NavMain({
       return hasChanged ? next : previous
     })
   }, [groups, pathname])
+
+  function renderItems(items: NavItem[], section?: string) {
+    const grouped = groupItemsByLabel(items)
+    const hasGroups = grouped.size > 1 || !grouped.has(null)
+
+    if (!hasGroups) {
+      return items.map((item) => (
+        <SidebarMenuSubItem key={item.url}>
+          <SidebarMenuSubButton
+            asChild
+            isActive={isMenuItemActive(pathname, item.url)}
+            className="min-h-8 rounded-md px-2 text-[13px]"
+          >
+            <Link href={item.url}>
+              <span>{item.title}</span>
+            </Link>
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
+      ))
+    }
+
+    return Array.from(grouped.entries()).map(([groupLabel, groupItems]) => (
+      <React.Fragment key={groupLabel ?? "__ungrouped__"}>
+        {groupLabel && (
+          <li
+            className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em]"
+            style={{ color: groupLabelColor }}
+          >
+            {groupLabel}
+          </li>
+        )}
+        {groupItems.map((item) => (
+          <SidebarMenuSubItem key={item.url}>
+            <SidebarMenuSubButton
+              asChild
+              isActive={isMenuItemActive(pathname, item.url)}
+              className="min-h-8 rounded-md px-2 text-[13px]"
+            >
+              <Link href={item.url}>
+                <span>{item.title}</span>
+              </Link>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        ))}
+      </React.Fragment>
+    ))
+  }
 
   return (
     <SidebarGroup>
@@ -137,20 +202,7 @@ export function NavMain({
                   </CollapsibleTrigger>
                   <CollapsibleContent>
                     <SidebarMenuSub className="mt-0.5">
-                      {group.items.map((item) => (
-                        <SidebarMenuSubItem key={item.url}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={isMenuItemActive(pathname, item.url)}
-                            className="min-h-8 rounded-md px-2 text-[13px]"
-                          >
-                            <Link href={item.url}>
-                              {item.icon && <item.icon />}
-                              <span>{item.title}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
+                      {renderItems(group.items, group.title)}
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>

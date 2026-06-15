@@ -17,6 +17,7 @@ import {
   masterPositions,
   masterSections,
   navbarMenuItems,
+  navbarGroupLabelStyles,
   navbarThemes,
   orgChartNodes,
   orgChartStructures,
@@ -379,10 +380,10 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
-  // Daily Activity
+  // Aktivitas Harian
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Input Aktivitas Harian',
     url: '/dashboard/activity-hub/my-day',
     iconName: 'dashboard',
@@ -393,7 +394,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Monitoring Tim & SPL',
     url: '/dashboard/activity-hub/team-board',
     iconName: 'list-details',
@@ -404,7 +405,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Kamus Aktivitas',
     url: '/dashboard/activity-hub/library',
     iconName: 'database',
@@ -415,7 +416,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Route Template Harian',
     url: '/dashboard/activity-hub/routes',
     iconName: 'list-details',
@@ -426,7 +427,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Rule Aktivitas Global',
     url: '/dashboard/activity-hub/configuration',
     iconName: 'settings',
@@ -437,7 +438,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Pengajuan Lembur (Request)',
     url: '/dashboard/overtime-requests',
     iconName: 'checklist',
@@ -448,7 +449,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Daily Activity',
+    section: 'Aktivitas Harian',
     title: 'Timesheet Realisasi',
     url: '/dashboard/timesheet',
     iconName: 'folder',
@@ -457,6 +458,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  // Roster & Timesheet
   {
     menuArea: 'main',
     section: 'Roster & Timesheet',
@@ -491,24 +493,13 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   {
-    menuArea: 'secondary',
-    section: 'Attendance',
-    title: 'Sync Log',
-    url: '/dashboard/scheduling-timesheet/attendance',
-    iconName: 'checklist',
-    resource: 'scheduling_timesheet_attendance',
-    sortOrder: 4,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
     menuArea: 'main',
     section: 'Roster & Timesheet',
     title: 'Field Break Schedule',
     url: '/dashboard/scheduling-timesheet/field-break',
     iconName: 'list-details',
     resource: 'scheduling_timesheet_field_break',
-    sortOrder: 5,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -519,7 +510,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/scheduling-timesheet/payroll',
     iconName: 'report',
     resource: 'scheduling_timesheet_payroll',
-    sortOrder: 6,
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -560,29 +551,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Approval',
-    title: 'Approval Blueprint',
-    url: '/dashboard/activity-hub/blueprint',
-    iconName: 'file-word',
-    resource: 'activity_blueprint',
-    sortOrder: 4,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Approval',
     title: 'Notification Center',
     url: '/dashboard/notifications',
     iconName: 'mail',
     resource: 'notification_center',
-    sortOrder: 5,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
-  // Master Data
+  // Data Induk
   {
     menuArea: 'secondary',
-    section: 'Master Data',
+    section: 'Data Induk',
     title: 'Master Data',
     url: '/dashboard/master-data',
     iconName: 'database',
@@ -593,7 +573,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'secondary',
-    section: 'Master Data',
+    section: 'Data Induk',
     title: 'Form Builder',
     url: '/dashboard/form-studio',
     iconName: 'file-word',
@@ -602,10 +582,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
-  // HR
+  // Human Capital
   {
     menuArea: 'main',
-    section: 'HR',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
     title: 'HC Overview',
     url: '/dashboard/hc',
     iconName: 'users',
@@ -616,7 +597,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'HR',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
     title: 'Employee Data',
     url: '/dashboard/hc/employee',
     iconName: 'users',
@@ -627,95 +609,128 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Recruitment',
-    url: '/dashboard/hc/recruitment',
-    iconName: 'user-plus',
-    resource: 'hc_recruitment',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
+    title: 'Surat',
+    url: '/dashboard/hc/surat',
+    iconName: 'file-word',
+    resource: 'hc_surat',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Online Tests',
-    url: '/dashboard/hc/recruitment/tests',
-    iconName: 'file-text',
-    resource: 'hc_recruitment_tests',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
+    title: 'Izin Sakit & Terlambat',
+    url: '/dashboard/hc/permission',
+    iconName: 'shield-alert',
+    resource: 'hc_attendance_permission',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Certificates',
-    url: '/dashboard/hc/certificate',
-    iconName: 'address-card',
-    resource: 'hc_certificate',
-    sortOrder: 4,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HR',
-    title: 'Technical Engineer',
-    url: '/dashboard/hc/technical-engineer',
-    iconName: 'wrench',
-    resource: 'hc_technical_engineer',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
+    title: 'Contract Review',
+    url: '/dashboard/hc/contract-review',
+    iconName: 'file-signature',
+    resource: 'hc_contract_review',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Surat',
-    url: '/dashboard/hc/surat',
-    iconName: 'file-word',
-    resource: 'hc_surat',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
+    title: 'Disciplinary',
+    url: '/dashboard/hc/disciplinary',
+    iconName: 'shield-alert',
+    resource: 'hc_disciplinary',
     sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Surat Tugas',
-    url: '/dashboard/hc/surat-tugas',
-    iconName: 'envelope-open',
-    resource: 'hc_st',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
+    title: 'Org Structure',
+    url: '/dashboard/hc/org-chart',
+    iconName: 'git-branch',
+    resource: 'hc_org_chart',
     sortOrder: 7,
-    isVisible: false,
+    isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Surat Archive',
-    url: '/dashboard/hc/surat/archive',
-    iconName: 'archive',
-    resource: 'hc_surat_archive',
-    sortOrder: 11,
-    isVisible: false,
+    section: 'Human Capital',
+    groupLabel: 'Recruitment Management',
+    title: 'Recruitment',
+    url: '/dashboard/hc/recruitment',
+    iconName: 'users',
+    resource: 'hc_recruitment',
+    sortOrder: 8,
+    isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
+    section: 'Human Capital',
+    groupLabel: 'Recruitment Management',
+    title: 'Online Tests',
+    url: '/dashboard/hc/recruitment/tests',
+    iconName: 'file-text',
+    resource: 'hc_recruitment_tests',
+    sortOrder: 9,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Human Capital',
+    groupLabel: 'Training Center',
     title: 'Training Enhancement',
     url: '/dashboard/hc/training',
     iconName: 'target',
     resource: 'hc_training_enhanced',
+    sortOrder: 10,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Human Capital',
+    groupLabel: 'Training Center',
+    title: 'Training Records',
+    url: '/dashboard/training-records',
+    iconName: 'list-details',
+    resource: 'training_records',
+    sortOrder: 11,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Human Capital',
+    groupLabel: 'Training Center',
+    title: 'LMS Chitra Learning',
+    url: '/dashboard/lms',
+    iconName: 'book-open',
+    resource: 'lms_integration',
     sortOrder: 12,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
+    section: 'Human Capital',
+    groupLabel: 'Performance & Development',
     title: 'Performance',
     url: '/dashboard/hc/performance',
     iconName: 'trending-up',
@@ -726,50 +741,31 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Disciplinary',
-    url: '/dashboard/hc/disciplinary',
-    iconName: 'shield-alert',
-    resource: 'hc_disciplinary',
+    section: 'Human Capital',
+    groupLabel: 'Performance & Development',
+    title: 'Technical Engineer',
+    url: '/dashboard/hc/technical-engineer',
+    iconName: 'wrench',
+    resource: 'hc_technical_engineer',
     sortOrder: 14,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'HR',
-    title: 'Contract Review',
-    url: '/dashboard/hc/contract-review',
-    iconName: 'file-signature',
-    resource: 'hc_contract_review',
-    sortOrder: 14, // sort order can be overlapping, it's just an int
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HR',
-    title: 'Org Structure',
-    url: '/dashboard/hc/org-chart',
-    iconName: 'git-branch',
-    resource: 'hc_org_chart',
+    section: 'Human Capital',
+    groupLabel: 'Performance & Development',
+    title: 'Certificates',
+    url: '/dashboard/hc/certificate',
+    iconName: 'address-card',
+    resource: 'hc_certificate',
     sortOrder: 15,
     isVisible: true,
     openInNewTab: false,
   },
+  // Attendance
   {
-    menuArea: 'main',
-    section: 'HR',
-    title: 'Izin Sakit & Terlambat',
-    url: '/dashboard/hc/permission',
-    iconName: 'shield-alert',
-    resource: 'hc_attendance_permission',
-    sortOrder: 16,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
+    menuArea: 'secondary',
     section: 'Attendance',
     title: 'Live / Import',
     url: '/dashboard/attendance',
@@ -802,35 +798,13 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   {
-    menuArea: 'main',
-    section: 'HR',
-    title: 'Training Records',
-    url: '/dashboard/training-records',
-    iconName: 'list-details',
-    resource: 'training_records',
-    sortOrder: 16,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HR',
-    title: 'LMS Chitra Learning',
-    url: '/dashboard/lms',
-    iconName: 'book-open',
-    resource: 'lms_integration',
-    sortOrder: 18,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
     menuArea: 'secondary',
-    section: 'HR',
-    title: 'User Management',
-    url: '/dashboard/security/users',
-    iconName: 'users',
-    resource: 'security_users',
-    sortOrder: 17,
+    section: 'Attendance',
+    title: 'Sync Log',
+    url: '/dashboard/scheduling-timesheet/attendance',
+    iconName: 'checklist',
+    resource: 'scheduling_timesheet_attendance',
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -838,6 +812,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Management',
     title: 'HSE',
     url: '/dashboard/hse',
     iconName: 'shield',
@@ -849,6 +824,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Management',
     title: 'Safety Dashboard',
     url: '/dashboard/safety',
     iconName: 'activity',
@@ -860,6 +836,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Management',
     title: 'Safety Data Management',
     url: '/dashboard/safety/data',
     iconName: 'list-details',
@@ -871,6 +848,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Management',
     title: 'Safety Inspections',
     url: '/dashboard/safety/inspections',
     iconName: 'checklist',
@@ -882,6 +860,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
     title: 'HSE Checklists',
     url: '/dashboard/hse/checklist-generator',
     iconName: 'checklist',
@@ -893,6 +872,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
     title: 'HIRADC',
     url: '/dashboard/hse/hiradc',
     iconName: 'file-spreadsheet',
@@ -904,6 +884,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
     title: 'SIA/SIO & Tools Certification',
     url: '/dashboard/hse/sia-sio-tools-certification',
     iconName: 'checklist',
@@ -915,6 +896,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
     title: 'Inventaris',
     url: '/dashboard/hse/inventaris',
     iconName: 'checklist',
@@ -926,10 +908,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
-    title: 'Incident Report',
-    url: '/dashboard/hse/incident-report',
-    iconName: 'alert-triangle',
-    resource: 'hse_incident_report',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'Izin Kerja PTW',
+    url: '/dashboard/hse/izin-kerja-ptw',
+    iconName: 'checklist',
+    resource: 'hse_izin_kerja_ptw',
     sortOrder: 9,
     isVisible: true,
     openInNewTab: false,
@@ -937,10 +920,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
-    title: 'Izin Kerja PTW',
-    url: '/dashboard/hse/izin-kerja-ptw',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'JSA',
+    url: '/dashboard/hse/jsa',
     iconName: 'checklist',
-    resource: 'hse_izin_kerja_ptw',
+    resource: 'hse_jsa',
     sortOrder: 10,
     isVisible: true,
     openInNewTab: false,
@@ -948,18 +932,20 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
-    title: 'JSA',
-    url: '/dashboard/hse/jsa',
-    iconName: 'checklist',
-    resource: 'hse_jsa',
+    groupLabel: 'Incident Management',
+    title: 'Incident Report',
+    url: '/dashboard/hse/incident-report',
+    iconName: 'alert-triangle',
+    resource: 'hse_incident_report',
     sortOrder: 11,
     isVisible: true,
     openInNewTab: false,
   },
-  // Repair & Retread Operation
+  // Central Service
   {
     menuArea: 'main',
-    section: 'Repair & Retread Operation',
+    section: 'Central Service',
+    groupLabel: 'Repair & Retread',
     title: 'WIP Repair',
     url: '/dashboard/repair-retread/wip-repair',
     iconName: 'settings',
@@ -970,7 +956,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Repair & Retread Operation',
+    section: 'Central Service',
+    groupLabel: 'Repair & Retread',
     title: 'WIP Dashboard',
     url: '/dashboard/repair-retread/wip-repair/dashboard',
     iconName: 'chart-bar',
@@ -981,7 +968,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Repair & Retread Operation',
+    section: 'Central Service',
+    groupLabel: 'Repair & Retread',
     title: 'Master Barang Repair',
     url: '/dashboard/repair-retread/master-barang-repair',
     iconName: 'database',
@@ -992,7 +980,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Repair & Retread Operation',
+    section: 'Central Service',
+    groupLabel: 'Repair & Retread',
     title: 'Stock Material SAP',
     url: '/dashboard/repair-retread/stock-material-sap',
     iconName: 'database',
@@ -1001,122 +990,130 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
-  // Warehouse Repair
   {
     menuArea: 'main',
-    section: 'Warehouse Repair',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
     title: 'Dashboard',
     url: '/dashboard/warehouse-repair',
     iconName: 'chart-bar',
     resource: 'warehouse_repair_dashboard',
-    sortOrder: 1,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Data Barang',
-    url: '/dashboard/warehouse-repair/barang',
-    iconName: 'database',
-    resource: 'warehouse_repair_barang',
-    sortOrder: 2,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Jenis Barang',
-    url: '/dashboard/warehouse-repair/jenis',
-    iconName: 'folder',
-    resource: 'warehouse_repair_jenis',
-    sortOrder: 3,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Satuan',
-    url: '/dashboard/warehouse-repair/satuan',
-    iconName: 'folder',
-    resource: 'warehouse_repair_satuan',
-    sortOrder: 4,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Barang Masuk',
-    url: '/dashboard/warehouse-repair/barang-masuk',
-    iconName: 'checklist',
-    resource: 'warehouse_repair_barang_masuk',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Barang Keluar',
-    url: '/dashboard/warehouse-repair/barang-keluar',
-    iconName: 'list-details',
-    resource: 'warehouse_repair_barang_keluar',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Data Barang',
+    url: '/dashboard/warehouse-repair/barang',
+    iconName: 'database',
+    resource: 'warehouse_repair_barang',
     sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Laporan Stok',
-    url: '/dashboard/warehouse-repair/laporan-stok',
-    iconName: 'report',
-    resource: 'warehouse_repair_laporan_stok',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Jenis Barang',
+    url: '/dashboard/warehouse-repair/jenis',
+    iconName: 'folder',
+    resource: 'warehouse_repair_jenis',
     sortOrder: 7,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Laporan Barang Masuk',
-    url: '/dashboard/warehouse-repair/laporan-barang-masuk',
-    iconName: 'report',
-    resource: 'warehouse_repair_laporan_barang_masuk',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Satuan',
+    url: '/dashboard/warehouse-repair/satuan',
+    iconName: 'folder',
+    resource: 'warehouse_repair_satuan',
     sortOrder: 8,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
-    section: 'Warehouse Repair',
-    title: 'Laporan Barang Keluar',
-    url: '/dashboard/warehouse-repair/laporan-barang-keluar',
-    iconName: 'report',
-    resource: 'warehouse_repair_laporan_barang_keluar',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Barang Masuk',
+    url: '/dashboard/warehouse-repair/barang-masuk',
+    iconName: 'checklist',
+    resource: 'warehouse_repair_barang_masuk',
     sortOrder: 9,
     isVisible: true,
     openInNewTab: false,
   },
-  // Logistik
   {
     menuArea: 'main',
-    section: 'Logistik',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Barang Keluar',
+    url: '/dashboard/warehouse-repair/barang-keluar',
+    iconName: 'list-details',
+    resource: 'warehouse_repair_barang_keluar',
+    sortOrder: 10,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Laporan Stok',
+    url: '/dashboard/warehouse-repair/laporan-stok',
+    iconName: 'report',
+    resource: 'warehouse_repair_laporan_stok',
+    sortOrder: 11,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Laporan Barang Masuk',
+    url: '/dashboard/warehouse-repair/laporan-barang-masuk',
+    iconName: 'report',
+    resource: 'warehouse_repair_laporan_barang_masuk',
+    sortOrder: 12,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Warehouse Repair',
+    title: 'Laporan Barang Keluar',
+    url: '/dashboard/warehouse-repair/laporan-barang-keluar',
+    iconName: 'report',
+    resource: 'warehouse_repair_laporan_barang_keluar',
+    sortOrder: 13,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Logistics',
     title: 'Cargo Manifest',
     url: '/dashboard/cargo-manifest',
     iconName: 'folder',
     resource: 'cargo_manifest',
-    sortOrder: 1,
+    sortOrder: 14,
     isVisible: true,
     openInNewTab: false,
   },
-  // Report
+  // Laporan
   {
     menuArea: 'main',
-    section: 'Report',
+    section: 'Laporan',
     title: 'Analytics',
     url: '/dashboard/analytics',
     iconName: 'chart-bar',
@@ -1127,7 +1124,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Report',
+    section: 'Laporan',
     title: 'Reports',
     url: '/dashboard/reports',
     iconName: 'report',
@@ -1138,7 +1135,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Report',
+    section: 'Laporan',
     title: 'Points Overview',
     url: '/dashboard/leaderboard',
     iconName: 'settings',
@@ -1149,7 +1146,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Report',
+    section: 'Laporan',
     title: 'Security Overview',
     url: '/dashboard/security',
     iconName: 'database',
@@ -1160,7 +1157,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Report',
+    section: 'Laporan',
     title: 'Audit Log',
     url: '/dashboard/security/audit-logs',
     iconName: 'report',
@@ -1169,10 +1166,10 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
-  // Settings
+  // Pengaturan
   {
     menuArea: 'main',
-    section: 'Setting',
+    section: 'Pengaturan',
     title: 'Role Management',
     url: '/dashboard/security/roles',
     iconName: 'shield',
@@ -1183,34 +1180,45 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'secondary',
-    section: 'Setting',
-    title: 'Navbar Setting',
-    url: '/dashboard/settings/navbar',
-    iconName: 'settings',
-    resource: 'settings_navbar',
+    section: 'Pengaturan',
+    title: 'User Management',
+    url: '/dashboard/security/users',
+    iconName: 'users',
+    resource: 'security_users',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'secondary',
-    section: 'Setting',
-    title: 'Portal Chitra Settings',
-    url: '/dashboard/settings/portal-chitra',
+    section: 'Pengaturan',
+    title: 'Navbar Setting',
+    url: '/dashboard/settings/navbar',
     iconName: 'settings',
-    resource: 'settings_portal_chitra',
+    resource: 'settings_navbar',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'secondary',
-    section: 'Setting',
+    section: 'Pengaturan',
+    title: 'Portal Chitra Settings',
+    url: '/dashboard/settings/portal-chitra',
+    iconName: 'settings',
+    resource: 'settings_portal_chitra',
+    sortOrder: 4,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'secondary',
+    section: 'Pengaturan',
     title: 'Email Delivery Log',
     url: '/dashboard/settings/email',
     iconName: 'mail',
     resource: 'settings_email',
-    sortOrder: 4,
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1223,11 +1231,7 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
   const firstUrlIndex = menuItems.findIndex((candidate) => candidate.url === item.url)
 
   return firstResourceIndex === index && firstUrlIndex === index
-}).map((item) =>
-  item.resource === 'activity_blueprint'
-    ? { ...item, menuArea: 'secondary', section: 'Setting', isVisible: false }
-    : item
-)
+}).map((item) => ({ ...item, menuArea: item.menuArea ?? 'main', section: item.section ?? 'Menu' }))
 
 const DEPRECATED_MENU_RESOURCES = ['slow_moving', 'hc_surat_keterangan']
 const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving', '/dashboard/hc/surat-keterangan']
@@ -2534,11 +2538,12 @@ export async function ensureHeroGovernanceSeedData() {
         existingMenuItem.resource !== menuSeed.resource ||
         existingMenuItem.sortOrder !== menuSeed.sortOrder ||
         existingMenuItem.isVisible !== menuSeed.isVisible ||
-        existingMenuItem.openInNewTab !== menuSeed.openInNewTab
+        existingMenuItem.openInNewTab !== menuSeed.openInNewTab ||
+        existingMenuItem.groupLabel !== (menuSeed as any).groupLabel
       ) {
         await db
           .update(navbarMenuItems)
-          .set(menuSeed)
+          .set(menuSeed as any)
           .where(eq(navbarMenuItems.id, existingMenuItem.id))
       }
     }
@@ -3924,6 +3929,16 @@ export async function getNavbarSettingsData() {
   return { theme, menuItems: dedupeMenuItemsByPage(menuItems) }
 }
 
+export async function getGroupLabelStyles() {
+  await ensureHeroGovernanceSeedData()
+  const [style] = await db
+    .select()
+    .from(navbarGroupLabelStyles)
+    .where(eq(navbarGroupLabelStyles.section, "__global__"))
+    .limit(1)
+  return style?.textColor ?? "#6B7280"
+}
+
 export async function getSecurityRoleOptions() {
   await ensureHeroGovernanceSeedData()
 
@@ -3961,6 +3976,7 @@ export async function getSidebarDataForUser(email: string) {
         sortOrder?: number
         isVisible?: boolean
         openInNewTab?: boolean
+        groupLabel?: string | null
       }>,
       navSecondary: [] as Array<{
         id?: number
@@ -3973,6 +3989,7 @@ export async function getSidebarDataForUser(email: string) {
         sortOrder?: number
         isVisible?: boolean
         openInNewTab?: boolean
+        groupLabel?: string | null
       }>,
       documents: [] as Array<{
         id?: number
@@ -3985,6 +4002,7 @@ export async function getSidebarDataForUser(email: string) {
         sortOrder?: number
         isVisible?: boolean
         openInNewTab?: boolean
+        groupLabel?: string | null
       }>,
     }
   }
@@ -4002,6 +4020,7 @@ export async function getSidebarDataForUser(email: string) {
       sortOrder: navbarMenuItems.sortOrder,
       isVisible: navbarMenuItems.isVisible,
       openInNewTab: navbarMenuItems.openInNewTab,
+      groupLabel: navbarMenuItems.groupLabel,
     })
     .from(roleMenuPermissions)
     .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))

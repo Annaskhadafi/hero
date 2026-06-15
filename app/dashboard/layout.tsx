@@ -8,6 +8,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { isMobileUserAgent } from '@/lib/device'
 import {
   getEmployeeDisplayDataByEmail,
+  getGroupLabelStyles,
   getNavbarSettingsData,
   getSidebarDataForUser,
 } from '@/lib/hero-admin'
@@ -31,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get('sidebar_state')?.value === 'true'
-  const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications] = await Promise.all([
+  const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications, groupLabelColor] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
     getEmployeeDisplayDataByEmail(session.user.email),
@@ -39,6 +40,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       console.error('[dashboard] failed to fetch unread notification count', error)
       return 0
     }),
+    getGroupLabelStyles(),
   ])
 
   return (
@@ -61,6 +63,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         navMain={sidebarData.navMain}
         navSecondary={sidebarData.navSecondary}
         documents={sidebarData.documents}
+        groupLabelColor={groupLabelColor}
       />
       <SidebarInset data-admin-dashboard-shell>
         <SiteHeader

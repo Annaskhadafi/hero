@@ -1079,6 +1079,20 @@ export const navbarMenuItems = pgTable('hero_navbar_menu_items', {
   sortOrder: integer('sort_order').notNull().default(0),
   isVisible: boolean('is_visible').notNull().default(true),
   openInNewTab: boolean('open_in_new_tab').notNull().default(false),
+  itemType: text('item_type').notNull().default('menu'),
+  parentId: integer('parent_id'),
+  groupLabel: text('group_label'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const navbarGroupLabelStyles = pgTable('hero_navbar_group_label_styles', {
+  id: serial('id').primaryKey(),
+  section: text('section').notNull(),
+  groupLabel: text('group_label').notNull(),
+  textColor: text('text_color').notNull().default('#6B7280'),
+  backgroundColor: text('background_color'),
+  fontWeight: text('font_weight').notNull().default('semibold'),
+  fontSize: text('font_size').notNull().default('10px'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
