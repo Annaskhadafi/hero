@@ -1,76 +1,255 @@
 "use server"
 
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
-import { z } from "zod"
+import { getWarehouseDbPool } from "@/lib/warehouse-mysql"
 
-import { db } from "@/db"
-import { warehouseRepairInbound, warehouseRepairItems, warehouseRepairItemTypes, warehouseRepairOutbound, warehouseRepairUnits } from "@/db/schema/warehouse-repair"
+const READ_ONLY_ERROR = { success: false, error: "Mode lihat saja aktif. Perubahan data dinonaktifkan." };
 
-const ROOT = "/dashboard/warehouse-repair"
-
-const itemSchema = z.object({ itemCode: z.string().optional(), itemName: z.string().min(1), typeId: z.number().nullable().optional(), minimumStock: z.number().min(0), unitId: z.number().nullable().optional(), photoUrl: z.string().optional(), isActive: z.boolean().default(true) })
-const typeSchema = z.object({ typeCode: z.string().optional(), typeName: z.string().min(1), isActive: z.boolean().default(true) })
-const unitSchema = z.object({ unitCode: z.string().optional(), unitName: z.string().min(1), isActive: z.boolean().default(true) })
-const trxSchema = z.object({ transactionDate: z.string().min(1), itemId: z.number().min(1), quantity: z.number().min(1), note: z.string().optional() })
-
-type TxKind = "inbound" | "outbound"
-
-export async function ensureWarehouseRepairTables() {
-  await db.execute(sql`
-    create table if not exists hero_warehouse_repair_item_types (id serial primary key, type_code text not null unique, type_name text not null, is_active boolean not null default true, created_at timestamp not null default now(), updated_at timestamp not null default now());
-    create table if not exists hero_warehouse_repair_units (id serial primary key, unit_code text not null unique, unit_name text not null, is_active boolean not null default true, created_at timestamp not null default now(), updated_at timestamp not null default now());
-    create table if not exists hero_warehouse_repair_items (id serial primary key, item_code text not null unique, item_name text not null, type_id integer references hero_warehouse_repair_item_types(id) on delete set null, minimum_stock integer not null default 0, stock integer not null default 0, unit_id integer references hero_warehouse_repair_units(id) on delete set null, photo_url text not null default '', is_active boolean not null default true, created_at timestamp not null default now(), updated_at timestamp not null default now());
-    create table if not exists hero_warehouse_repair_inbound (id serial primary key, transaction_no text not null unique, transaction_date date not null, item_id integer not null references hero_warehouse_repair_items(id) on delete cascade, quantity integer not null, note text not null default '', created_at timestamp not null default now());
-    create table if not exists hero_warehouse_repair_outbound (id serial primary key, transaction_no text not null unique, transaction_date date not null, item_id integer not null references hero_warehouse_repair_items(id) on delete cascade, quantity integer not null, note text not null default '', created_at timestamp not null default now());
-  `)
+// Read functions connecting to MySQL databaseics
+export async function getWarehouseRepairTypes() {
+  const pool = getWarehouseDbPool();
+  try {
+    const [rows]: any = await pool.query("SELECT * FROM tbl_jenis ORDER BY nama_jenis ASC");
+    return rows.map((row: any) => ({
+      id: Number(row.id_jenis),
+      typeCode: `J-${row.id_jenis}`,
+      typeName: row.nama_jenis,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching types:", error);
+    return [];
+  }
 }
 
-function codePrefix(name: string) { return name.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3) || "WR" }
-async function nextCode(table: "items" | "types" | "units", prefix: string) {
-  await ensureWarehouseRepairTables()
-  const column = table === "items" ? warehouseRepairItems.itemCode : table === "types" ? warehouseRepairItemTypes.typeCode : warehouseRepairUnits.unitCode
-  const from = table === "items" ? warehouseRepairItems : table === "types" ? warehouseRepairItemTypes : warehouseRepairUnits
-  const rows = await db.select({ code: column }).from(from as any)
-  const nums = rows.map((r) => Number(String(r.code).replace(/\D/g, ""))).filter(Number.isFinite)
-  return `${prefix}${String((Math.max(0, ...nums) + 1)).padStart(4, "0")}`
+export async function getWarehouseRepairUnits() {
+  const pool = getWarehouseDbPool();
+  try {
+    const [rows]: any = await pool.query("SELECT * FROM tbl_satuan ORDER BY nama_satuan ASC");
+    return rows.map((row: any) => ({
+      id: Number(row.id_satuan),
+      unitCode: `S-${row.id_satuan}`,
+      unitName: row.nama_satuan,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching units:", error);
+    return [];
+  }
 }
-async function nextTransactionNo(kind: TxKind, date: string) {
-  const prefix = kind === "inbound" ? "TM" : "TK"
-  const compact = date.replace(/-/g, "")
-  const table = kind === "inbound" ? warehouseRepairInbound : warehouseRepairOutbound
-  const rows = await db.select({ transactionNo: table.transactionNo }).from(table).where(eq(table.transactionDate, date))
-  const nums = rows.map((r) => Number(r.transactionNo.split("-").pop())).filter(Number.isFinite)
-  return `${prefix}-${compact}-${String(Math.max(0, ...nums) + 1).padStart(4, "0")}`
-}
-function touchAll() { [ROOT, `${ROOT}/barang`, `${ROOT}/jenis`, `${ROOT}/satuan`, `${ROOT}/barang-masuk`, `${ROOT}/barang-keluar`, `${ROOT}/laporan-stok`, `${ROOT}/laporan-barang-masuk`, `${ROOT}/laporan-barang-keluar`].forEach((path) => revalidatePath(path)) }
 
-export async function getWarehouseRepairTypes() { await ensureWarehouseRepairTables(); return db.select().from(warehouseRepairItemTypes).orderBy(asc(warehouseRepairItemTypes.typeName)) }
-export async function getWarehouseRepairUnits() { await ensureWarehouseRepairTables(); return db.select().from(warehouseRepairUnits).orderBy(asc(warehouseRepairUnits.unitName)) }
 export async function getWarehouseRepairItems() {
-  await ensureWarehouseRepairTables()
-  return db.select({ id: warehouseRepairItems.id, itemCode: warehouseRepairItems.itemCode, itemName: warehouseRepairItems.itemName, typeId: warehouseRepairItems.typeId, typeName: warehouseRepairItemTypes.typeName, minimumStock: warehouseRepairItems.minimumStock, stock: warehouseRepairItems.stock, unitId: warehouseRepairItems.unitId, unitName: warehouseRepairUnits.unitName, photoUrl: warehouseRepairItems.photoUrl, isActive: warehouseRepairItems.isActive, createdAt: warehouseRepairItems.createdAt, updatedAt: warehouseRepairItems.updatedAt }).from(warehouseRepairItems).leftJoin(warehouseRepairItemTypes, eq(warehouseRepairItems.typeId, warehouseRepairItemTypes.id)).leftJoin(warehouseRepairUnits, eq(warehouseRepairItems.unitId, warehouseRepairUnits.id)).orderBy(desc(warehouseRepairItems.id))
+  const pool = getWarehouseDbPool();
+  try {
+    const [rows]: any = await pool.query(`
+      SELECT b.*, j.nama_jenis, s.nama_satuan 
+      FROM tbl_barang b
+      LEFT JOIN tbl_jenis j ON b.jenis = j.id_jenis
+      LEFT JOIN tbl_satuan s ON b.satuan = s.id_satuan
+      ORDER BY b.id_barang DESC
+    `);
+    return rows.map((row: any) => ({
+      id: parseInt(row.id_barang.replace(/\D/g, ""), 10) || 0,
+      itemCode: row.id_barang,
+      itemName: row.nama_barang,
+      typeId: row.jenis ? Number(row.jenis) : null,
+      typeName: row.nama_jenis || null,
+      minimumStock: row.stok_minimum ? Number(row.stok_minimum) : 0,
+      stock: row.stok ? Number(row.stok) : 0,
+      unitId: row.satuan ? Number(row.satuan) : null,
+      unitName: row.nama_satuan || null,
+      photoUrl: row.foto ? `/api/uploads/${row.foto}` : "",
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching items:", error);
+    return [];
+  }
 }
-export async function getWarehouseRepairInbound() { await ensureWarehouseRepairTables(); return db.select({ id: warehouseRepairInbound.id, transactionNo: warehouseRepairInbound.transactionNo, transactionDate: warehouseRepairInbound.transactionDate, itemId: warehouseRepairInbound.itemId, itemCode: warehouseRepairItems.itemCode, itemName: warehouseRepairItems.itemName, quantity: warehouseRepairInbound.quantity, note: warehouseRepairInbound.note, createdAt: warehouseRepairInbound.createdAt }).from(warehouseRepairInbound).innerJoin(warehouseRepairItems, eq(warehouseRepairInbound.itemId, warehouseRepairItems.id)).orderBy(desc(warehouseRepairInbound.transactionDate), desc(warehouseRepairInbound.id)) }
-export async function getWarehouseRepairOutbound() { await ensureWarehouseRepairTables(); return db.select({ id: warehouseRepairOutbound.id, transactionNo: warehouseRepairOutbound.transactionNo, transactionDate: warehouseRepairOutbound.transactionDate, itemId: warehouseRepairOutbound.itemId, itemCode: warehouseRepairItems.itemCode, itemName: warehouseRepairItems.itemName, quantity: warehouseRepairOutbound.quantity, note: warehouseRepairOutbound.note, createdAt: warehouseRepairOutbound.createdAt }).from(warehouseRepairOutbound).innerJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id)).orderBy(desc(warehouseRepairOutbound.transactionDate), desc(warehouseRepairOutbound.id)) }
 
-export async function getWarehouseRepairPageData() { const [items, types, units, inbound, outbound] = await Promise.all([getWarehouseRepairItems(), getWarehouseRepairTypes(), getWarehouseRepairUnits(), getWarehouseRepairInbound(), getWarehouseRepairOutbound()]); return { items, types, units, inbound, outbound } }
-export async function getWarehouseRepairDashboardData() { const data = await getWarehouseRepairPageData(); return { ...data, metrics: { items: data.items.length, lowStock: data.items.filter((i) => i.stock <= i.minimumStock).length, inbound: data.inbound.length, outbound: data.outbound.length, totalStock: data.items.reduce((s, i) => s + i.stock, 0) } } }
+export async function getWarehouseRepairInbound() {
+  const pool = getWarehouseDbPool();
+  try {
+    const [rows]: any = await pool.query(`
+      SELECT m.*, b.nama_barang 
+      FROM tbl_barang_masuk m
+      LEFT JOIN tbl_barang b ON m.barang = b.id_barang
+      ORDER BY m.tanggal DESC, m.id_transaksi DESC
+    `);
+    return rows.map((row: any) => ({
+      id: parseInt(row.id_transaksi.replace(/\D/g, ""), 10) || 0,
+      transactionNo: row.id_transaksi,
+      transactionDate: row.tanggal ? new Date(row.tanggal).toISOString().slice(0, 10) : "",
+      itemId: parseInt(row.barang.replace(/\D/g, ""), 10) || 0,
+      itemCode: row.barang,
+      itemName: row.nama_barang || "Barang Tidak Dikenal",
+      quantity: row.jumlah ? Number(row.jumlah) : 0,
+      note: row.keterangan || "",
+      createdAt: row.tanggal ? new Date(row.tanggal) : new Date()
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching inbound:", error);
+    return [];
+  }
+}
 
-export async function upsertWarehouseRepairType(input: z.infer<typeof typeSchema>, id?: number) { try { await ensureWarehouseRepairTables(); const parsed = typeSchema.parse(input); const values = { typeCode: (parsed.typeCode?.trim() || await nextCode("types", codePrefix(parsed.typeName))), typeName: parsed.typeName.trim(), isActive: parsed.isActive, updatedAt: new Date() }; if (id) await db.update(warehouseRepairItemTypes).set(values).where(eq(warehouseRepairItemTypes.id, id)); else await db.insert(warehouseRepairItemTypes).values(values); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal menyimpan jenis barang" } } }
-export async function upsertWarehouseRepairUnit(input: z.infer<typeof unitSchema>, id?: number) { try { await ensureWarehouseRepairTables(); const parsed = unitSchema.parse(input); const values = { unitCode: (parsed.unitCode?.trim() || await nextCode("units", codePrefix(parsed.unitName))), unitName: parsed.unitName.trim(), isActive: parsed.isActive, updatedAt: new Date() }; if (id) await db.update(warehouseRepairUnits).set(values).where(eq(warehouseRepairUnits.id, id)); else await db.insert(warehouseRepairUnits).values(values); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal menyimpan satuan" } } }
-export async function upsertWarehouseRepairItem(input: z.infer<typeof itemSchema>, id?: number) { try { await ensureWarehouseRepairTables(); const parsed = itemSchema.parse(input); const values = { itemCode: (parsed.itemCode?.trim() || await nextCode("items", "B")), itemName: parsed.itemName.trim(), typeId: parsed.typeId ?? null, minimumStock: parsed.minimumStock, unitId: parsed.unitId ?? null, photoUrl: parsed.photoUrl?.trim() ?? "", isActive: parsed.isActive, updatedAt: new Date() }; if (id) await db.update(warehouseRepairItems).set(values).where(eq(warehouseRepairItems.id, id)); else await db.insert(warehouseRepairItems).values({ ...values, stock: 0 }); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal menyimpan barang" } } }
-export async function deleteWarehouseRepairType(id: number) { await ensureWarehouseRepairTables(); await db.delete(warehouseRepairItemTypes).where(eq(warehouseRepairItemTypes.id, id)); touchAll(); return { success: true } }
-export async function deleteWarehouseRepairUnit(id: number) { await ensureWarehouseRepairTables(); await db.delete(warehouseRepairUnits).where(eq(warehouseRepairUnits.id, id)); touchAll(); return { success: true } }
-export async function deleteWarehouseRepairItem(id: number) { await ensureWarehouseRepairTables(); await db.delete(warehouseRepairItems).where(eq(warehouseRepairItems.id, id)); touchAll(); return { success: true } }
+export async function getWarehouseRepairOutbound() {
+  const pool = getWarehouseDbPool();
+  try {
+    const [rows]: any = await pool.query(`
+      SELECT k.*, b.nama_barang 
+      FROM tbl_barang_keluar k
+      LEFT JOIN tbl_barang b ON k.barang = b.id_barang
+      ORDER BY k.tanggal DESC, k.id_transaksi DESC
+    `);
+    return rows.map((row: any) => ({
+      id: parseInt(row.id_transaksi.replace(/\D/g, ""), 10) || 0,
+      transactionNo: row.id_transaksi,
+      transactionDate: row.tanggal ? new Date(row.tanggal).toISOString().slice(0, 10) : "",
+      itemId: parseInt(row.barang.replace(/\D/g, ""), 10) || 0,
+      itemCode: row.barang,
+      itemName: row.nama_barang || "Barang Tidak Dikenal",
+      quantity: row.jumlah ? Number(row.jumlah) : 0,
+      note: row.keterangan || "",
+      createdAt: row.tanggal ? new Date(row.tanggal) : new Date()
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching outbound:", error);
+    return [];
+  }
+}
 
-export async function createWarehouseRepairInbound(input: z.infer<typeof trxSchema>) { try { await ensureWarehouseRepairTables(); const parsed = trxSchema.parse(input); const no = await nextTransactionNo("inbound", parsed.transactionDate); await db.insert(warehouseRepairInbound).values({ transactionNo: no, transactionDate: parsed.transactionDate, itemId: parsed.itemId, quantity: parsed.quantity, note: parsed.note ?? "" }); await db.update(warehouseRepairItems).set({ stock: sql`${warehouseRepairItems.stock} + ${parsed.quantity}`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, parsed.itemId)); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal menyimpan barang masuk" } } }
-export async function createWarehouseRepairOutbound(input: z.infer<typeof trxSchema>) { try { await ensureWarehouseRepairTables(); const parsed = trxSchema.parse(input); const [item] = await db.select().from(warehouseRepairItems).where(eq(warehouseRepairItems.id, parsed.itemId)).limit(1); if (!item || item.stock < parsed.quantity) return { success: false, error: "Stok tidak mencukupi" }; const no = await nextTransactionNo("outbound", parsed.transactionDate); await db.insert(warehouseRepairOutbound).values({ transactionNo: no, transactionDate: parsed.transactionDate, itemId: parsed.itemId, quantity: parsed.quantity, note: parsed.note ?? "" }); await db.update(warehouseRepairItems).set({ stock: sql`${warehouseRepairItems.stock} - ${parsed.quantity}`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, parsed.itemId)); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal menyimpan barang keluar" } } }
-export async function updateWarehouseRepairInbound(id: number, input: z.infer<typeof trxSchema>) { try { await ensureWarehouseRepairTables(); const parsed = trxSchema.parse(input); const [row] = await db.select().from(warehouseRepairInbound).where(eq(warehouseRepairInbound.id, id)).limit(1); if (!row) return { success: false, error: "Transaksi barang masuk tidak ditemukan" }; await db.update(warehouseRepairItems).set({ stock: sql`GREATEST(${warehouseRepairItems.stock} - ${row.quantity}, 0)`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, row.itemId)); await db.update(warehouseRepairInbound).set({ transactionDate: parsed.transactionDate, itemId: parsed.itemId, quantity: parsed.quantity, note: parsed.note ?? "" }).where(eq(warehouseRepairInbound.id, id)); await db.update(warehouseRepairItems).set({ stock: sql`${warehouseRepairItems.stock} + ${parsed.quantity}`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, parsed.itemId)); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal mengubah barang masuk" } } }
-export async function updateWarehouseRepairOutbound(id: number, input: z.infer<typeof trxSchema>) { try { await ensureWarehouseRepairTables(); const parsed = trxSchema.parse(input); const [row] = await db.select().from(warehouseRepairOutbound).where(eq(warehouseRepairOutbound.id, id)).limit(1); if (!row) return { success: false, error: "Transaksi barang keluar tidak ditemukan" }; await db.update(warehouseRepairItems).set({ stock: sql`${warehouseRepairItems.stock} + ${row.quantity}`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, row.itemId)); const [item] = await db.select().from(warehouseRepairItems).where(eq(warehouseRepairItems.id, parsed.itemId)).limit(1); if (!item || item.stock < parsed.quantity) { await db.update(warehouseRepairItems).set({ stock: sql`GREATEST(${warehouseRepairItems.stock} - ${row.quantity}, 0)`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, row.itemId)); return { success: false, error: "Stok tidak mencukupi" } } await db.update(warehouseRepairOutbound).set({ transactionDate: parsed.transactionDate, itemId: parsed.itemId, quantity: parsed.quantity, note: parsed.note ?? "" }).where(eq(warehouseRepairOutbound.id, id)); await db.update(warehouseRepairItems).set({ stock: sql`${warehouseRepairItems.stock} - ${parsed.quantity}`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, parsed.itemId)); touchAll(); return { success: true } } catch (e) { console.error(e); return { success: false, error: "Gagal mengubah barang keluar" } } }
-export async function deleteWarehouseRepairInbound(id: number) { await ensureWarehouseRepairTables(); const [row] = await db.select().from(warehouseRepairInbound).where(eq(warehouseRepairInbound.id, id)).limit(1); if (row) { await db.delete(warehouseRepairInbound).where(eq(warehouseRepairInbound.id, id)); await db.update(warehouseRepairItems).set({ stock: sql`GREATEST(${warehouseRepairItems.stock} - ${row.quantity}, 0)`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, row.itemId)); } touchAll(); return { success: true } }
-export async function deleteWarehouseRepairOutbound(id: number) { await ensureWarehouseRepairTables(); const [row] = await db.select().from(warehouseRepairOutbound).where(eq(warehouseRepairOutbound.id, id)).limit(1); if (row) { await db.delete(warehouseRepairOutbound).where(eq(warehouseRepairOutbound.id, id)); await db.update(warehouseRepairItems).set({ stock: sql`${warehouseRepairItems.stock} + ${row.quantity}`, updatedAt: new Date() }).where(eq(warehouseRepairItems.id, row.itemId)); } touchAll(); return { success: true } }
+export async function getWarehouseRepairPageData() {
+  const [items, types, units, inbound, outbound] = await Promise.all([
+    getWarehouseRepairItems(),
+    getWarehouseRepairTypes(),
+    getWarehouseRepairUnits(),
+    getWarehouseRepairInbound(),
+    getWarehouseRepairOutbound()
+  ]);
+  return { items, types, units, inbound, outbound };
+}
 
-export async function getWarehouseRepairStockReport(filter: "all" | "minimum" = "all") { const items = await getWarehouseRepairItems(); return filter === "minimum" ? items.filter((i) => i.stock <= i.minimumStock) : items }
-export async function getWarehouseRepairInboundReport(start?: string, end?: string) { await ensureWarehouseRepairTables(); const conditions = [start ? gte(warehouseRepairInbound.transactionDate, start) : undefined, end ? lte(warehouseRepairInbound.transactionDate, end) : undefined].filter(Boolean) as any[]; return db.select({ id: warehouseRepairInbound.id, transactionNo: warehouseRepairInbound.transactionNo, transactionDate: warehouseRepairInbound.transactionDate, itemCode: warehouseRepairItems.itemCode, itemName: warehouseRepairItems.itemName, quantity: warehouseRepairInbound.quantity, note: warehouseRepairInbound.note }).from(warehouseRepairInbound).innerJoin(warehouseRepairItems, eq(warehouseRepairInbound.itemId, warehouseRepairItems.id)).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(warehouseRepairInbound.transactionDate)) }
-export async function getWarehouseRepairOutboundReport(start?: string, end?: string) { await ensureWarehouseRepairTables(); const conditions = [start ? gte(warehouseRepairOutbound.transactionDate, start) : undefined, end ? lte(warehouseRepairOutbound.transactionDate, end) : undefined].filter(Boolean) as any[]; return db.select({ id: warehouseRepairOutbound.id, transactionNo: warehouseRepairOutbound.transactionNo, transactionDate: warehouseRepairOutbound.transactionDate, itemCode: warehouseRepairItems.itemCode, itemName: warehouseRepairItems.itemName, quantity: warehouseRepairOutbound.quantity, note: warehouseRepairOutbound.note }).from(warehouseRepairOutbound).innerJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id)).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(warehouseRepairOutbound.transactionDate)) }
+export async function getWarehouseRepairDashboardData() {
+  const data = await getWarehouseRepairPageData();
+  return {
+    ...data,
+    metrics: {
+      items: data.items.length,
+      lowStock: data.items.filter((i: any) => i.stock <= i.minimumStock).length,
+      inbound: data.inbound.length,
+      outbound: data.outbound.length,
+      totalStock: data.items.reduce((s: number, i: any) => s + i.stock, 0)
+    }
+  };
+}
+
+// Write/Mutation functions returning read-only error
+export async function upsertWarehouseRepairType(input: any, id?: number) { return READ_ONLY_ERROR; }
+export async function upsertWarehouseRepairUnit(input: any, id?: number) { return READ_ONLY_ERROR; }
+export async function upsertWarehouseRepairItem(input: any, id?: number) { return READ_ONLY_ERROR; }
+export async function deleteWarehouseRepairType(id: number) { return READ_ONLY_ERROR; }
+export async function deleteWarehouseRepairUnit(id: number) { return READ_ONLY_ERROR; }
+export async function deleteWarehouseRepairItem(id: number) { return READ_ONLY_ERROR; }
+
+export async function createWarehouseRepairInbound(input: any) { return READ_ONLY_ERROR; }
+export async function createWarehouseRepairOutbound(input: any) { return READ_ONLY_ERROR; }
+export async function updateWarehouseRepairInbound(id: number, input: any) { return READ_ONLY_ERROR; }
+export async function updateWarehouseRepairOutbound(id: number, input: any) { return READ_ONLY_ERROR; }
+export async function deleteWarehouseRepairInbound(id: number) { return READ_ONLY_ERROR; }
+export async function deleteWarehouseRepairOutbound(id: number) { return READ_ONLY_ERROR; }
+
+// Report functions with date-range filters
+export async function getWarehouseRepairStockReport(filter: "all" | "minimum" = "all") {
+  const items = await getWarehouseRepairItems();
+  return filter === "minimum" ? items.filter((i: any) => i.stock <= i.minimumStock) : items;
+}
+
+export async function getWarehouseRepairInboundReport(start?: string, end?: string) {
+  const pool = getWarehouseDbPool();
+  try {
+    let sqlQuery = `
+      SELECT m.*, b.nama_barang 
+      FROM tbl_barang_masuk m
+      LEFT JOIN tbl_barang b ON m.barang = b.id_barang
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+    
+    if (start) {
+      conditions.push("m.tanggal >= ?");
+      params.push(start);
+    }
+    if (end) {
+      conditions.push("m.tanggal <= ?");
+      params.push(end);
+    }
+    
+    if (conditions.length > 0) {
+      sqlQuery += " WHERE " + conditions.join(" AND ");
+    }
+    
+    sqlQuery += " ORDER BY m.tanggal DESC, m.id_transaksi DESC";
+    
+    const [rows]: any = await pool.query(sqlQuery, params);
+    return rows.map((row: any) => ({
+      id: parseInt(row.id_transaksi.replace(/\D/g, ""), 10) || 0,
+      transactionNo: row.id_transaksi,
+      transactionDate: row.tanggal ? new Date(row.tanggal).toISOString().slice(0, 10) : "",
+      itemCode: row.barang,
+      itemName: row.nama_barang || "Barang Tidak Dikenal",
+      quantity: row.jumlah ? Number(row.jumlah) : 0,
+      note: row.keterangan || ""
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching inbound report:", error);
+    return [];
+  }
+}
+
+export async function getWarehouseRepairOutboundReport(start?: string, end?: string) {
+  const pool = getWarehouseDbPool();
+  try {
+    let sqlQuery = `
+      SELECT k.*, b.nama_barang 
+      FROM tbl_barang_keluar k
+      LEFT JOIN tbl_barang b ON k.barang = b.id_barang
+    `;
+    const params: any[] = [];
+    const conditions: string[] = [];
+    
+    if (start) {
+      conditions.push("k.tanggal >= ?");
+      params.push(start);
+    }
+    if (end) {
+      conditions.push("k.tanggal <= ?");
+      params.push(end);
+    }
+    
+    if (conditions.length > 0) {
+      sqlQuery += " WHERE " + conditions.join(" AND ");
+    }
+    
+    sqlQuery += " ORDER BY k.tanggal DESC, k.id_transaksi DESC";
+    
+    const [rows]: any = await pool.query(sqlQuery, params);
+    return rows.map((row: any) => ({
+      id: parseInt(row.id_transaksi.replace(/\D/g, ""), 10) || 0,
+      transactionNo: row.id_transaksi,
+      transactionDate: row.tanggal ? new Date(row.tanggal).toISOString().slice(0, 10) : "",
+      itemCode: row.barang,
+      itemName: row.nama_barang || "Barang Tidak Dikenal",
+      quantity: row.jumlah ? Number(row.jumlah) : 0,
+      note: row.keterangan || ""
+    }));
+  } catch (error) {
+    console.error("[Warehouse MySQL] Error fetching outbound report:", error);
+    return [];
+  }
+}

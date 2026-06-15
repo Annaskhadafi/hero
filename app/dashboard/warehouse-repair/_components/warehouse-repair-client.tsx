@@ -34,7 +34,7 @@ type Row = Record<string, any>
 type Props = { mode: Mode; data: { items: Row[]; types: Row[]; units: Row[]; inbound: Row[]; outbound: Row[]; metrics?: Record<string, number> } }
 type ActionResult = { success: boolean; error?: string }
 
-const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true, canSelectAll: true }
+const access: TableRbacAccess = { canView: true, canEdit: false, canDelete: false, canSelectAll: false }
 const itemColumns = ["Kode", "Nama Barang", "Jenis", "Satuan", "Stok", "Minimum", "Status", "Aksi"]
 const itemReportColumns = itemColumns.slice(0, -1)
 const masterColumns = ["Kode", "Nama", "Status", "Aksi"]

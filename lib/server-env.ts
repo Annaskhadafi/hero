@@ -98,4 +98,16 @@ export const serverEnv = {
   get s3UploadPrefix() {
     return getFirstEnvValue(["S3_UPLOAD_PREFIX", "OBJECT_STORAGE_PREFIX"]);
   },
+  // ─── Tire Pattern Designer ────────────────────────────────────────────────
+  get tirePatternApiUrl() {
+    return getFirstEnvValue(["TIRE_PATTERN_API_URL", "OLLAMA_URL"]) ||
+      "https://openrouter.ai/api/v1/chat/completions";
+  },
+  get tirePatternApiKey() {
+    return getFirstEnvValue(["TIRE_PATTERN_API_KEY", "OLLAMA_API_KEY"]);
+  },
+  get tirePatternModel() {
+    return getFirstEnvValue(["TIRE_PATTERN_MODEL"]) ||
+      "anthropic/claude-3.5-sonnet";
+  },
 };

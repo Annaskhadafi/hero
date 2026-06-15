@@ -993,6 +993,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Central Service',
+    groupLabel: 'Repair & Retread',
+    title: 'Pattern Designer',
+    url: '/dashboard/repair-retread/pattern-designer',
+    iconName: 'pen-tool',
+    resource: 'retread_pattern_designer',
+    sortOrder: 5,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
     groupLabel: 'Warehouse Repair',
     title: 'Dashboard',
     url: '/dashboard/warehouse-repair',
