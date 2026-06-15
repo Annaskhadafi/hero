@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { savePattern } from '@/app/actions/tire-pattern-actions'
 import type { DesignerState, PatternConfig } from '@/app/dashboard/repair-retread/pattern-designer/pattern-designer-client'
+import { drawPattern } from './utils'
 
 const PATTERN_TYPES = [
   { id: 'zig-zag', label: 'Zig-Zag', icon: '⚡' },
@@ -16,127 +17,9 @@ const PATTERN_TYPES = [
   { id: 'rib', label: 'Rib', icon: '〰️' },
   { id: 'block', label: 'Block', icon: '⬛' },
   { id: 'mixed', label: 'Mixed', icon: '🔀' },
+  { id: 'traction', label: 'Traction (OTR)', icon: '🚜' },
   { id: 'custom', label: 'Custom', icon: '✏️' },
 ] as const
-
-// ─── Canvas 2D Pattern Generator ────────────────────────────────────────────
-
-function drawPattern(
-  ctx: CanvasRenderingContext2D,
-  config: PatternConfig,
-  canvasWidth: number,
-  canvasHeight: number,
-) {
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
-
-  // Background: rubber color
-  ctx.fillStyle = '#2a2a2a'
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight)
-
-  const grooveColor = '#111111'
-  const rubberColor = '#3d3d3d'
-  const grooveWidthPx = Math.max(4, (config.grooveWidthMm / config.repeatUnitMm) * canvasWidth * 0.4)
-
-  ctx.fillStyle = rubberColor
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight)
-
-  const angleRad = (config.grooveAngle * Math.PI) / 180
-  const tanA = Math.abs(Math.tan(angleRad)) || 0.001
-
-  switch (config.type) {
-    case 'zig-zag': {
-      const repeatPx = Math.max(20, (config.repeatUnitMm / 300) * canvasWidth)
-      ctx.strokeStyle = grooveColor
-      ctx.lineWidth = grooveWidthPx
-      ctx.lineCap = 'square'
-
-      for (let y = -canvasHeight; y < canvasHeight * 2; y += repeatPx) {
-        ctx.beginPath()
-        let x = 0
-        let going = true
-        while (x < canvasWidth) {
-          const segW = repeatPx / (2 * tanA)
-          if (going) {
-            ctx.moveTo(x, y)
-            ctx.lineTo(x + segW, y + repeatPx / 2)
-          } else {
-            ctx.lineTo(x + segW, y)
-          }
-          x += segW
-          going = !going
-        }
-        ctx.stroke()
-      }
-      break
-    }
-    case 'lug': {
-      const blockH = Math.max(15, (config.repeatUnitMm / 300) * canvasHeight)
-      const blockW = canvasWidth * (1 - config.patternDensity / 100 + 0.3)
-      ctx.fillStyle = grooveColor
-      for (let y = 0; y < canvasHeight * 2; y += blockH * 1.5) {
-        for (let x = 0; x < canvasWidth; x += blockW * 1.8) {
-          const offset = (Math.floor(y / (blockH * 1.5)) % 2) * (blockW * 0.9)
-          ctx.fillRect(x + offset, y, blockW, grooveWidthPx)
-        }
-      }
-      break
-    }
-    case 'rib': {
-      const ribSpacing = canvasWidth / Math.max(3, Math.round(canvasWidth / (config.repeatUnitMm / 300 * canvasWidth)))
-      ctx.fillStyle = grooveColor
-      for (let x = ribSpacing / 2; x < canvasWidth; x += ribSpacing) {
-        ctx.fillRect(x - grooveWidthPx / 2, 0, grooveWidthPx, canvasHeight)
-      }
-      break
-    }
-    case 'block': {
-      const bSize = Math.max(20, (config.repeatUnitMm / 300) * Math.min(canvasWidth, canvasHeight))
-      ctx.fillStyle = grooveColor
-      for (let y = 0; y < canvasHeight; y += bSize) {
-        for (let x = 0; x < canvasWidth; x += bSize) {
-          ctx.fillRect(x, y, grooveWidthPx, bSize)
-          ctx.fillRect(x, y, bSize, grooveWidthPx)
-        }
-      }
-      break
-    }
-    case 'mixed': {
-      // Center rib
-      ctx.fillStyle = grooveColor
-      ctx.fillRect(canvasWidth / 2 - grooveWidthPx / 2, 0, grooveWidthPx, canvasHeight)
-      // Side lug
-      const lugH = Math.max(15, (config.repeatUnitMm / 300) * canvasHeight)
-      for (let y = 0; y < canvasHeight; y += lugH * 1.8) {
-        ctx.fillRect(0, y, canvasWidth * 0.4, grooveWidthPx)
-        ctx.fillRect(canvasWidth * 0.6, y + lugH * 0.9, canvasWidth * 0.4, grooveWidthPx)
-      }
-      break
-    }
-    default: {
-      // Custom: simple diagonal grooves
-      const step = Math.max(20, (config.repeatUnitMm / 300) * canvasWidth * 0.5)
-      ctx.strokeStyle = grooveColor
-      ctx.lineWidth = grooveWidthPx
-      for (let x = -canvasHeight; x < canvasWidth + canvasHeight; x += step) {
-        ctx.beginPath()
-        ctx.moveTo(x, 0)
-        ctx.lineTo(x - canvasHeight / tanA, canvasHeight)
-        ctx.stroke()
-      }
-    }
-  }
-
-  // Grid overlay (subtle)
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)'
-  ctx.lineWidth = 0.5
-  const gridSize = 50
-  for (let x = 0; x < canvasWidth; x += gridSize) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasHeight); ctx.stroke()
-  }
-  for (let y = 0; y < canvasHeight; y += gridSize) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasWidth, y); ctx.stroke()
-  }
-}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 

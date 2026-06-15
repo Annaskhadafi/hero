@@ -270,6 +270,7 @@ export default function PatternDesignerClient({ presets, userEmail }: Props) {
           <Step4ThreeDViewer
             state={state}
             dispatch={dispatch}
+            presets={presets}
             onNext={goNext}
             onBack={goBack}
           />

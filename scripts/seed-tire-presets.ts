@@ -36,10 +36,33 @@ const presets = [
   { code: '650-16', label: '650-16', width: 165, ar: 100, rim: 16, cat: 'truck' },
   { code: '600-16', label: '600-16', width: 152, ar: 100, rim: 16, cat: 'truck' },
   // ── OTR / Alat Berat ──────────────────────────────────────────────────────
-  { code: '1400-24', label: '1400-24 (OTR)', width: 356, ar: 100, rim: 24, cat: 'otr' },
-  { code: '1800-25', label: '1800-25 (OTR)', width: 457, ar: 100, rim: 25, cat: 'otr' },
-  { code: '2100-25', label: '2100-25 (OTR)', width: 533, ar: 100, rim: 25, cat: 'otr' },
-  { code: '2400-25', label: '2400-25 (OTR Besar)', width: 610, ar: 100, rim: 25, cat: 'otr' },
+  // Ring 20"
+  { code: '1200-20-OTR', label: '12.00-20 (OTR)', width: 315, ar: 100, rim: 20, cat: 'otr' },
+  { code: '1400-20-OTR', label: '14.00-20 (OTR)', width: 375, ar: 100, rim: 20, cat: 'otr' },
+  { code: '1600-20-OTR', label: '16.00-20 (OTR)', width: 430, ar: 100, rim: 20, cat: 'otr' },
+  // Ring 24"
+  { code: '1300-24', label: '13.00-24 (OTR Grader)', width: 330, ar: 100, rim: 24, cat: 'otr' },
+  { code: '1400-24', label: '14.00-24 (OTR)', width: 362, ar: 100, rim: 24, cat: 'otr' },
+  { code: '1600-24', label: '16.00-24 (OTR)', width: 430, ar: 100, rim: 24, cat: 'otr' },
+  { code: '1800-24', label: '18.00-24 (OTR)', width: 495, ar: 100, rim: 24, cat: 'otr' },
+  // Ring 25" (Bias / Radial Loader)
+  { code: '15.5-25', label: '15.5-25 (OTR)', width: 395, ar: 100, rim: 25, cat: 'otr' },
+  { code: '17.5-25', label: '17.5-25 (OTR Loader)', width: 445, ar: 100, rim: 25, cat: 'otr' },
+  { code: '20.5-25', label: '20.5-25 (OTR Loader)', width: 520, ar: 100, rim: 25, cat: 'otr' },
+  { code: '23.5-25', label: '23.5-25 (OTR Loader)', width: 595, ar: 100, rim: 25, cat: 'otr' },
+  { code: '26.5-25', label: '26.5-25 (OTR Loader)', width: 675, ar: 100, rim: 25, cat: 'otr' },
+  { code: '29.5-25', label: '29.5-25 (OTR Loader)', width: 750, ar: 100, rim: 25, cat: 'otr' },
+  { code: '1600-25', label: '16.00-25 (OTR)', width: 430, ar: 100, rim: 25, cat: 'otr' },
+  { code: '1800-25', label: '18.00-25 (OTR)', width: 495, ar: 100, rim: 25, cat: 'otr' },
+  { code: '2100-25', label: '2100-25 (OTR)', width: 570, ar: 100, rim: 25, cat: 'otr' },
+  { code: '2400-25', label: '2400-25 (OTR Besar)', width: 650, ar: 100, rim: 25, cat: 'otr' },
+  // Ring 29"
+  { code: '26.5-29', label: '26.5-29 (OTR)', width: 675, ar: 100, rim: 29, cat: 'otr' },
+  { code: '29.5-29', label: '29.5-29 (OTR)', width: 750, ar: 100, rim: 29, cat: 'otr' },
+  { code: '33.25-29', label: '33.25-29 (OTR)', width: 845, ar: 100, rim: 29, cat: 'otr' },
+  { code: '1800-29', label: '18.00-29 (OTR)', width: 495, ar: 100, rim: 29, cat: 'otr' },
+  { code: '2100-29', label: '2100-29 (OTR)', width: 570, ar: 100, rim: 29, cat: 'otr' },
+  { code: '2400-29', label: '2400-29 (OTR)', width: 650, ar: 100, rim: 29, cat: 'otr' },
 ]
 
 async function main() {
