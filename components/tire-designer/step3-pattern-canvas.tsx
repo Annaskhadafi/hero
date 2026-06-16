@@ -21,6 +21,16 @@ const PATTERN_TYPES = [
   { id: 'custom', label: 'Custom', icon: '✏️' },
 ] as const
 
+const TIRE_LIKE_PATTERN_PRESETS: Record<string, Partial<PatternConfig>> = {
+  'zig-zag': { grooveAngle: 45, grooveWidthMm: 16, grooveDepthMm: 18, patternDensity: 35, repeatUnitMm: 96 },
+  lug: { grooveAngle: 35, grooveWidthMm: 18, grooveDepthMm: 18, patternDensity: 35, repeatUnitMm: 112 },
+  rib: { grooveAngle: 0, grooveWidthMm: 12, grooveDepthMm: 14, patternDensity: 45, repeatUnitMm: 100 },
+  block: { grooveAngle: 35, grooveWidthMm: 15, grooveDepthMm: 17, patternDensity: 40, repeatUnitMm: 92 },
+  mixed: { grooveAngle: 35, grooveWidthMm: 16, grooveDepthMm: 18, patternDensity: 35, repeatUnitMm: 104 },
+  traction: { grooveAngle: 38, grooveWidthMm: 18, grooveDepthMm: 20, patternDensity: 30, repeatUnitMm: 118 },
+  custom: { grooveAngle: 45, grooveWidthMm: 14, grooveDepthMm: 16, patternDensity: 40, repeatUnitMm: 96 },
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 interface Props {
@@ -42,10 +52,10 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
   const [config, setConfig] = useState<PatternConfig>(() => ({
     type: state.patternConfig?.type || state.selectedPatternPreset || analysis?.patternType || 'zig-zag',
     grooveAngle: state.patternConfig?.grooveAngle ?? analysis?.suggestedGrooveAngle ?? 45,
-    grooveWidthMm: state.patternConfig?.grooveWidthMm ?? analysis?.suggestedGrooveWidthMm ?? 8,
-    grooveDepthMm: state.patternConfig?.grooveDepthMm ?? analysis?.suggestedGrooveDepthMm ?? 12,
-    patternDensity: state.patternConfig?.patternDensity ?? analysis?.patternDensity ?? 50,
-    repeatUnitMm: state.patternConfig?.repeatUnitMm ?? 42,
+    grooveWidthMm: state.patternConfig?.grooveWidthMm ?? analysis?.suggestedGrooveWidthMm ?? 16,
+    grooveDepthMm: state.patternConfig?.grooveDepthMm ?? analysis?.suggestedGrooveDepthMm ?? 18,
+    patternDensity: state.patternConfig?.patternDensity ?? analysis?.patternDensity ?? 35,
+    repeatUnitMm: state.patternConfig?.repeatUnitMm ?? 96,
     hasCenterGroove: state.patternConfig?.hasCenterGroove ?? analysis?.hasCenterGroove ?? false,
     hasLateralGrooves: state.patternConfig?.hasLateralGrooves ?? true,
     sipesDensity: state.patternConfig?.sipesDensity ?? 0,
@@ -65,7 +75,12 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
   }, [redraw])
 
   const handleConfigChange = (key: keyof PatternConfig, value: number | string | boolean) => {
-    setConfig((prev) => ({ ...prev, [key]: value }))
+    setConfig((prev) => {
+      if (key === 'type') {
+        return { ...prev, ...TIRE_LIKE_PATTERN_PRESETS[String(value)], type: String(value) }
+      }
+      return { ...prev, [key]: value }
+    })
   }
 
   const handleSave = async () => {

@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import type { DesignerState, PatternConfig } from '@/app/dashboard/repair-retread/pattern-designer/pattern-designer-client'
 import type { TireSizePreset } from '@/db/schema/tire-pattern'
-import { drawPattern } from './utils'
+import { drawPattern, drawPatternDepthMask, getPatternPitchPx } from './utils'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -33,9 +33,43 @@ const PATTERN_TYPES = [
   { id: 'custom', label: 'Custom', icon: '✏️' },
 ] as const
 
+const TIRE_LIKE_PATTERN_PRESETS: Record<string, Partial<PatternConfig>> = {
+  'zig-zag': { grooveAngle: 45, grooveWidthMm: 16, grooveDepthMm: 18, patternDensity: 35, repeatUnitMm: 96 },
+  lug: { grooveAngle: 35, grooveWidthMm: 18, grooveDepthMm: 18, patternDensity: 35, repeatUnitMm: 112 },
+  rib: { grooveAngle: 0, grooveWidthMm: 12, grooveDepthMm: 14, patternDensity: 45, repeatUnitMm: 100 },
+  block: { grooveAngle: 35, grooveWidthMm: 15, grooveDepthMm: 17, patternDensity: 40, repeatUnitMm: 92 },
+  mixed: { grooveAngle: 35, grooveWidthMm: 16, grooveDepthMm: 18, patternDensity: 35, repeatUnitMm: 104 },
+  traction: { grooveAngle: 38, grooveWidthMm: 18, grooveDepthMm: 20, patternDensity: 30, repeatUnitMm: 118 },
+  custom: { grooveAngle: 45, grooveWidthMm: 14, grooveDepthMm: 16, patternDensity: 40, repeatUnitMm: 96 },
+}
+
+const configureTreadTexture = (texture: THREE.Texture, isDepthMap = false) => {
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.rotation = Math.PI / 2
+  texture.center.set(0.5, 0.5)
+  texture.colorSpace = isDepthMap ? THREE.NoColorSpace : THREE.SRGBColorSpace
+  texture.anisotropy = 8
+  texture.minFilter = isDepthMap ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.generateMipmaps = !isDepthMap
+  texture.needsUpdate = true
+}
+
+const grooveDepthToWorld = (depthMm: number) => {
+  return Math.min(0.095, Math.max(0.025, depthMm / 230))
+}
+
+const getTreadMaterial = (mesh: THREE.Mesh | null) => {
+  if (!mesh) return null
+  const material = mesh.material
+  return Array.isArray(material) ? (material[1] as THREE.MeshStandardMaterial) : (material as THREE.MeshStandardMaterial)
+}
+
 export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, onBack }: Props) {
   const mountRef = useRef<HTMLDivElement>(null)
   const offscreenCanvasRef = useRef<HTMLCanvasElement>(null)
+  const depthCanvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
@@ -43,11 +77,12 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
   const tireMeshRef = useRef<THREE.Mesh | null>(null)
   const rimMeshRef = useRef<THREE.Mesh | null>(null)
   const textureRef = useRef<THREE.Texture | null>(null)
+  const displacementTextureRef = useRef<THREE.Texture | null>(null)
   const dirLightRef = useRef<THREE.DirectionalLight | null>(null)
   const sideLightRef = useRef<THREE.DirectionalLight | null>(null)
   
   const animFrameRef = useRef<number>(0)
-  const [isAutoRotate, setIsAutoRotate] = useState(true)
+  const [isAutoRotate, setIsAutoRotate] = useState(false)
   const [lightIntensity, setLightIntensity] = useState(70)
   const [isThreeLoaded, setIsThreeLoaded] = useState(true)
   const [isTaking, setIsTaking] = useState(false)
@@ -61,8 +96,8 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     grooveAngle: state.patternConfig?.grooveAngle ?? 45,
     grooveWidthMm: state.patternConfig?.grooveWidthMm ?? 8,
     grooveDepthMm: state.patternConfig?.grooveDepthMm ?? 12,
-    patternDensity: state.patternConfig?.patternDensity ?? 50,
-    repeatUnitMm: state.patternConfig?.repeatUnitMm ?? 42,
+    patternDensity: state.patternConfig?.patternDensity ?? 35,
+    repeatUnitMm: state.patternConfig?.repeatUnitMm ?? 96,
     hasCenterGroove: state.patternConfig?.hasCenterGroove ?? false,
     hasLateralGrooves: state.patternConfig?.hasLateralGrooves ?? true,
     sipesDensity: state.patternConfig?.sipesDensity ?? 0,
@@ -77,12 +112,18 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
   // ─── Offscreen Canvas Redraw Loop ─────────────────────────────────────────────
   useEffect(() => {
     const canvas = offscreenCanvasRef.current
-    if (!canvas) return
+    const depthCanvas = depthCanvasRef.current
+    if (!canvas || !depthCanvas) return
     const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const depthCtx = depthCanvas.getContext('2d')
+    if (!ctx || !depthCtx) return
 
     // Draw the 2D pattern offscreen
     drawPattern(ctx, localConfig, canvas.width, canvas.height)
+    drawPatternDepthMask(depthCtx, localConfig, depthCanvas.width, depthCanvas.height)
+    if (displacementTextureRef.current) {
+      displacementTextureRef.current.needsUpdate = true
+    }
     
     // Generate new Data URL and send it to global state
     const dataUrl = canvas.toDataURL('image/png')
@@ -98,6 +139,8 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     loader.load(patternDataUrl, (tex) => {
       if (textureRef.current) {
         textureRef.current.image = tex.image
+        textureRef.current.source = tex.source
+        configureTreadTexture(textureRef.current)
         textureRef.current.needsUpdate = true
       }
     })
@@ -115,10 +158,12 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
   // ─── Bump scale depth listener ──────────────────────────────────────────────
   useEffect(() => {
     if (tireMeshRef.current) {
-      const mat = tireMeshRef.current.material as THREE.MeshStandardMaterial
+      const mat = getTreadMaterial(tireMeshRef.current)
       if (mat) {
-        // Map groove depth (6-25mm) to bumpScale (0.2 to 1.2) for deep heavy-duty grooves
-        mat.bumpScale = Math.min(1.2, Math.max(0.2, (localConfig.grooveDepthMm / 60) * 3.5))
+        const depthWorld = grooveDepthToWorld(localConfig.grooveDepthMm)
+        mat.bumpScale = depthWorld * 3.5
+        mat.displacementScale = depthWorld
+        mat.displacementBias = -depthWorld
         mat.needsUpdate = true
       }
     }
@@ -129,15 +174,19 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     if (textureRef.current) {
       const canvasWidth = 700
       const canvasHeight = 380
-      const repeatPx = Math.max(20, (localConfig.repeatUnitMm / 300) * canvasWidth)
+      const repeatPx = getPatternPitchPx(localConfig, canvasWidth)
       const repeatsInTexture = canvasHeight / repeatPx
       const totalRepeats = dims.circumferenceMm / localConfig.repeatUnitMm
       const repeatCircumference = totalRepeats / repeatsInTexture
 
       textureRef.current.repeat.set(repeatCircumference, 1)
       textureRef.current.needsUpdate = true
+      if (displacementTextureRef.current) {
+        displacementTextureRef.current.repeat.set(repeatCircumference, 1)
+        displacementTextureRef.current.needsUpdate = true
+      }
     }
-  }, [dims.circumferenceMm, localConfig.repeatUnitMm])
+  }, [dims.circumferenceMm, localConfig])
 
   // ─── Tire dimension scaling listener ──────────────────────────────────────────
   useEffect(() => {
@@ -210,37 +259,40 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
 
     // Tire mesh using LatheGeometry for OTR flat tread
     const points: THREE.Vector2[] = []
-    const profilePoints = [
-      { x: 0.72, y: -0.38 }, // 0: bead inner
-      { x: 0.74, y: -0.42 }, // 1: bead toe
-      { x: 0.78, y: -0.45 }, // 2: bead heel
-      { x: 0.95, y: -0.48 }, // 3: lower sidewall
-      { x: 1.25, y: -0.49 }, // 4: mid sidewall
-      { x: 1.55, y: -0.45 }, // 5: upper sidewall
-      { x: 1.65, y: -0.40 }, // 6: shoulder
-      { x: 1.68, y: -0.36 }, // 7: tread edge
-      { x: 1.68, y: -0.30 }, // 8: tread flat
-      { x: 1.68, y: -0.15 }, // 9: tread flat
-      { x: 1.68, y: 0.0 },   // 10: tread flat center
-      { x: 1.68, y: 0.15 },  // 11: tread flat
-      { x: 1.68, y: 0.30 },  // 12: tread flat
-      { x: 1.68, y: 0.36 },  // 13: tread edge right
-      { x: 1.65, y: 0.40 },  // 14: shoulder right
-      { x: 1.55, y: 0.45 },  // 15: upper sidewall right
-      { x: 1.25, y: 0.49 },  // 16: mid sidewall right
-      { x: 0.95, y: 0.48 },  // 17: lower sidewall right
-      { x: 0.78, y: 0.45 },  // 18: bead heel right
-      { x: 0.74, y: 0.42 },  // 19: bead toe right
-      { x: 0.72, y: 0.38 },  // 20: bead inner right
+    const profilePoints: Array<{ x: number; y: number }> = [
+      { x: 0.72, y: -0.38 },
+      { x: 0.74, y: -0.42 },
+      { x: 0.78, y: -0.45 },
+      { x: 0.95, y: -0.48 },
+      { x: 1.25, y: -0.49 },
+      { x: 1.55, y: -0.45 },
+      { x: 1.65, y: -0.40 },
     ]
+    const treadStartIndex = profilePoints.length
+    const treadSubdivisions = 72
+    for (let i = 0; i <= treadSubdivisions; i++) {
+      const t = i / treadSubdivisions
+      profilePoints.push({ x: 1.68, y: -0.36 + t * 0.72 })
+    }
+    const treadEndIndex = profilePoints.length - 1
+    profilePoints.push(
+      { x: 1.65, y: 0.40 },
+      { x: 1.55, y: 0.45 },
+      { x: 1.25, y: 0.49 },
+      { x: 0.95, y: 0.48 },
+      { x: 0.78, y: 0.45 },
+      { x: 0.74, y: 0.42 },
+      { x: 0.72, y: 0.38 },
+    )
     profilePoints.forEach(p => points.push(new THREE.Vector2(p.x, p.y)))
 
-    const tireGeom = new THREE.LatheGeometry(points, 64)
+    const tireGeom = new THREE.LatheGeometry(points, 384)
 
-    // Adjust UV mapping so texture maps only to the flat tread (indices 7 to 13)
+    // Adjust UV mapping so texture maps only to the flat tread.
     const uvAttr = tireGeom.attributes.uv
-    const vStart = 7 / 20
-    const vEnd = 13 / 20
+    const profileMaxIndex = profilePoints.length - 1
+    const vStart = treadStartIndex / profileMaxIndex
+    const vEnd = treadEndIndex / profileMaxIndex
     for (let i = 0; i < uvAttr.count; i++) {
       const u = uvAttr.getX(i)
       const v = uvAttr.getY(i)
@@ -253,6 +305,29 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
       uvAttr.setXY(i, u, newV)
     }
     uvAttr.needsUpdate = true
+
+    tireGeom.clearGroups()
+    const indexAttr = tireGeom.index
+    const positionAttr = tireGeom.attributes.position
+    if (indexAttr) {
+      for (let i = 0; i < indexAttr.count; i += 3) {
+        let radialTotal = 0
+        let widthTotal = 0
+        for (let j = 0; j < 3; j++) {
+          const vertexIndex = indexAttr.getX(i + j)
+          const x = positionAttr.getX(vertexIndex)
+          const y = positionAttr.getY(vertexIndex)
+          const z = positionAttr.getZ(vertexIndex)
+          radialTotal += Math.sqrt(x * x + z * z)
+          widthTotal += y
+        }
+
+        const averageRadius = radialTotal / 3
+        const averageWidth = widthTotal / 3
+        const isTreadFace = averageRadius > 1.64 && Math.abs(averageWidth) <= 0.37
+        tireGeom.addGroup(i, 3, isTreadFace ? 1 : 0)
+      }
+    }
     
     // Texture creation
     const loader = new THREE.TextureLoader()
@@ -269,15 +344,12 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
       texture = new THREE.CanvasTexture(placeholderCanvas)
     }
 
-    texture.wrapS = THREE.ClampToEdgeWrapping
-    texture.wrapT = THREE.RepeatWrapping
-    texture.rotation = Math.PI / 2
-    texture.center.set(0.5, 0.5)
+    configureTreadTexture(texture)
     
     // Dynamic initial repeat to match scale 1:1 on the circumference
     const canvasWidth = 700
     const canvasHeight = 380
-    const repeatPx = Math.max(20, (localConfig.repeatUnitMm / 300) * canvasWidth)
+    const repeatPx = getPatternPitchPx(localConfig, canvasWidth)
     const repeatsInTexture = canvasHeight / repeatPx
     const totalRepeats = dims.circumferenceMm / localConfig.repeatUnitMm
     const initRepeatCircumference = totalRepeats / repeatsInTexture
@@ -285,18 +357,35 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
 
     textureRef.current = texture
 
-    const initBumpScale = Math.min(1.2, Math.max(0.2, (localConfig.grooveDepthMm / 60) * 3.5))
+    const depthCanvas = depthCanvasRef.current
+    const displacementTexture = depthCanvas ? new THREE.CanvasTexture(depthCanvas) : texture
+    configureTreadTexture(displacementTexture, true)
+    displacementTexture.repeat.copy(texture.repeat)
+    displacementTextureRef.current = displacementTexture
 
-    const material = new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.42,
-      metalness: 0.05,
-      bumpMap: texture,
-      bumpScale: initBumpScale,
+    const initDepthWorld = grooveDepthToWorld(localConfig.grooveDepthMm)
+
+    const sidewallMaterial = new THREE.MeshStandardMaterial({
+      color: 0x555555,
+      roughness: 0.5,
+      metalness: 0.03,
       side: THREE.DoubleSide,
     })
 
-    const tire = new THREE.Mesh(tireGeom, material)
+    const treadMaterial = new THREE.MeshStandardMaterial({
+      map: texture,
+      color: 0xd0d0d0,
+      roughness: 0.58,
+      metalness: 0.02,
+      bumpMap: displacementTexture,
+      bumpScale: initDepthWorld * 3.5,
+      displacementMap: displacementTexture,
+      displacementScale: initDepthWorld,
+      displacementBias: -initDepthWorld,
+      side: THREE.DoubleSide,
+    })
+
+    const tire = new THREE.Mesh(tireGeom, [sidewallMaterial, treadMaterial])
     tire.castShadow = true
     // Rotate to align lath Y-axis to Z-axis
     tire.rotation.x = Math.PI / 2
@@ -393,7 +482,12 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
   }
 
   const handleConfigChange = (key: keyof PatternConfig, value: number | string | boolean) => {
-    setLocalConfig((prev) => ({ ...prev, [key]: value }))
+    setLocalConfig((prev) => {
+      if (key === 'type') {
+        return { ...prev, ...TIRE_LIKE_PATTERN_PRESETS[String(value)], type: String(value) }
+      }
+      return { ...prev, [key]: value }
+    })
   }
 
   const handleScreenshot = () => {
@@ -431,6 +525,12 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
       {/* Hidden offscreen canvas to render texture updates dynamically */}
       <canvas
         ref={offscreenCanvasRef}
+        width={700}
+        height={380}
+        className="hidden"
+      />
+      <canvas
+        ref={depthCanvasRef}
         width={700}
         height={380}
         className="hidden"
@@ -571,20 +671,19 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
             </div>
 
             {/* Kerapatan */}
-            {['lug', 'block', 'mixed'].includes(localConfig.type) && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#64748b]">Kerapatan Motif</span>
-                  <span className="font-mono font-bold text-amber-700">{localConfig.patternDensity}%</span>
-                </div>
-                <Slider
-                  min={20} max={80} step={5}
-                  value={[localConfig.patternDensity]}
-                  onValueChange={([v]) => handleConfigChange('patternDensity', v)}
-                  className="[&_[role=slider]]:bg-amber-500"
-                />
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-[#64748b]">Kerapatan Motif</span>
+                <span className="font-mono font-bold text-amber-700">{localConfig.patternDensity}%</span>
               </div>
-            )}
+              <Slider
+                min={20} max={80} step={5}
+                value={[localConfig.patternDensity]}
+                onValueChange={([v]) => handleConfigChange('patternDensity', v)}
+                className="[&_[role=slider]]:bg-amber-500"
+              />
+              <p className="text-[10px] text-[#64748b]">Lebih rendah = blok lebih besar/jarang seperti ban OTR.</p>
+            </div>
           </div>
 
           {/* SECTION: 3D VIEW CONTROLS */}

@@ -1,5 +1,11 @@
 import type { PatternConfig } from '@/app/dashboard/repair-retread/pattern-designer/pattern-designer-client'
 
+export function getPatternPitchPx(config: PatternConfig, canvasLength: number) {
+  const density = Math.min(90, Math.max(10, config.patternDensity ?? 50))
+  const sparseToDenseScale = 1.55 - (density / 100) * 0.75
+  return Math.max(34, (config.repeatUnitMm / 300) * canvasLength * sparseToDenseScale)
+}
+
 export function drawPattern(
   ctx: CanvasRenderingContext2D,
   config: PatternConfig,
@@ -39,7 +45,7 @@ export function drawPattern(
 
   switch (config.type) {
     case 'zig-zag': {
-      const repeatPx = Math.max(20, (config.repeatUnitMm / 300) * canvasWidth)
+      const repeatPx = getPatternPitchPx(config, canvasWidth)
       ctx.strokeStyle = grooveColor
       ctx.lineWidth = grooveWidthPx
       ctx.lineCap = 'square'
@@ -64,7 +70,7 @@ export function drawPattern(
       break
     }
     case 'lug': {
-      const blockH = Math.max(15, (config.repeatUnitMm / 300) * canvasHeight)
+      const blockH = getPatternPitchPx(config, canvasHeight)
       const blockW = canvasWidth * (1 - config.patternDensity / 100 + 0.3)
       ctx.fillStyle = grooveColor
       for (let y = 0; y < canvasHeight * 2; y += blockH * 1.5) {
@@ -84,7 +90,7 @@ export function drawPattern(
       break
     }
     case 'block': {
-      const bSize = Math.max(20, (config.repeatUnitMm / 300) * Math.min(canvasWidth, canvasHeight))
+      const bSize = getPatternPitchPx(config, Math.min(canvasWidth, canvasHeight))
       ctx.fillStyle = grooveColor
       for (let y = 0; y < canvasHeight; y += bSize) {
         for (let x = 0; x < canvasWidth; x += bSize) {
@@ -96,7 +102,7 @@ export function drawPattern(
     }
     case 'traction': {
       // Chevron/Traction OTR pattern (interlocking diagonal lugs)
-      const repeatPx = Math.max(25, (config.repeatUnitMm / 300) * canvasHeight)
+      const repeatPx = getPatternPitchPx(config, canvasHeight)
       ctx.strokeStyle = grooveColor
       ctx.lineWidth = grooveWidthPx
       ctx.lineCap = 'round'
@@ -130,7 +136,7 @@ export function drawPattern(
       ctx.fillStyle = grooveColor
       ctx.fillRect(canvasWidth / 2 - grooveWidthPx / 2, 0, grooveWidthPx, canvasHeight)
       // Side lug
-      const lugH = Math.max(15, (config.repeatUnitMm / 300) * canvasHeight)
+      const lugH = getPatternPitchPx(config, canvasHeight)
       for (let y = 0; y < canvasHeight; y += lugH * 1.8) {
         ctx.fillRect(0, y, canvasWidth * 0.4, grooveWidthPx)
         ctx.fillRect(canvasWidth * 0.6, y + lugH * 0.9, canvasWidth * 0.4, grooveWidthPx)
@@ -139,7 +145,7 @@ export function drawPattern(
     }
     default: {
       // Custom: simple diagonal grooves
-      const step = Math.max(20, (config.repeatUnitMm / 300) * canvasWidth * 0.5)
+      const step = getPatternPitchPx(config, canvasWidth) * 0.85
       ctx.strokeStyle = grooveColor
       ctx.lineWidth = grooveWidthPx
       for (let x = -canvasHeight; x < canvasWidth + canvasHeight; x += step) {
@@ -164,6 +170,151 @@ export function drawPattern(
 
   // Cover the left and right edges with solid rubber to ensure clean sidewalls in 3D
   ctx.fillStyle = rubberColor
+  ctx.fillRect(0, 0, 12, canvasHeight)
+  ctx.fillRect(canvasWidth - 12, 0, 12, canvasHeight)
+}
+
+export function drawPatternDepthMask(
+  ctx: CanvasRenderingContext2D,
+  config: PatternConfig,
+  canvasWidth: number,
+  canvasHeight: number,
+) {
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
+
+  const surfaceColor = '#ffffff'
+  const grooveColor = '#000000'
+  ctx.fillStyle = surfaceColor
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight)
+
+  const grooveWidthPx = Math.max(4, (config.grooveWidthMm / config.repeatUnitMm) * canvasWidth * 0.4)
+  const angleRad = (config.grooveAngle * Math.PI) / 180
+  const tanA = Math.abs(Math.tan(angleRad)) || 0.001
+
+  if (config.sipesDensity && config.sipesDensity > 0) {
+    ctx.strokeStyle = '#bdbdbd'
+    ctx.lineWidth = 1
+    const sipesGap = Math.max(8, 120 - config.sipesDensity)
+    const sipesAngleRad = ((config.sipesAngle ?? config.grooveAngle ?? 45) * Math.PI) / 180
+    const sipesTan = Math.tan(sipesAngleRad) || 0.001
+
+    for (let x = -canvasHeight; x < canvasWidth + canvasHeight; x += sipesGap) {
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x - canvasHeight / sipesTan, canvasHeight)
+      ctx.stroke()
+    }
+  }
+
+  switch (config.type) {
+    case 'zig-zag': {
+      const repeatPx = getPatternPitchPx(config, canvasWidth)
+      ctx.strokeStyle = grooveColor
+      ctx.lineWidth = grooveWidthPx
+      ctx.lineCap = 'square'
+
+      for (let y = -canvasHeight; y < canvasHeight * 2; y += repeatPx) {
+        ctx.beginPath()
+        let x = 0
+        let going = true
+        while (x < canvasWidth) {
+          const segmentWidth = repeatPx / (2 * tanA)
+          if (going) {
+            ctx.moveTo(x, y)
+            ctx.lineTo(x + segmentWidth, y + repeatPx / 2)
+          } else {
+            ctx.lineTo(x + segmentWidth, y)
+          }
+          x += segmentWidth
+          going = !going
+        }
+        ctx.stroke()
+      }
+      break
+    }
+    case 'lug': {
+      const blockHeight = getPatternPitchPx(config, canvasHeight)
+      const blockWidth = canvasWidth * (1 - config.patternDensity / 100 + 0.3)
+      ctx.fillStyle = grooveColor
+      for (let y = 0; y < canvasHeight * 2; y += blockHeight * 1.5) {
+        for (let x = 0; x < canvasWidth; x += blockWidth * 1.8) {
+          const offset = (Math.floor(y / (blockHeight * 1.5)) % 2) * (blockWidth * 0.9)
+          ctx.fillRect(x + offset, y, blockWidth, grooveWidthPx)
+        }
+      }
+      break
+    }
+    case 'rib': {
+      const ribSpacing = canvasWidth / Math.max(3, Math.round(canvasWidth / ((config.repeatUnitMm / 300) * canvasWidth)))
+      ctx.fillStyle = grooveColor
+      for (let x = ribSpacing / 2; x < canvasWidth; x += ribSpacing) {
+        ctx.fillRect(x - grooveWidthPx / 2, 0, grooveWidthPx, canvasHeight)
+      }
+      break
+    }
+    case 'block': {
+      const blockSize = getPatternPitchPx(config, Math.min(canvasWidth, canvasHeight))
+      ctx.fillStyle = grooveColor
+      for (let y = 0; y < canvasHeight; y += blockSize) {
+        for (let x = 0; x < canvasWidth; x += blockSize) {
+          ctx.fillRect(x, y, grooveWidthPx, blockSize)
+          ctx.fillRect(x, y, blockSize, grooveWidthPx)
+        }
+      }
+      break
+    }
+    case 'traction': {
+      const repeatPx = getPatternPitchPx(config, canvasHeight)
+      ctx.strokeStyle = grooveColor
+      ctx.lineWidth = grooveWidthPx
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+
+      const shoulderX = canvasWidth * 0.18
+      const centerX = canvasWidth * 0.52
+      const overlap = canvasWidth * 0.04
+      const centerOffset = (centerX - shoulderX) * Math.tan(angleRad)
+
+      for (let y = -canvasHeight; y < canvasHeight * 2; y += repeatPx) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(shoulderX, y)
+        ctx.lineTo(centerX, y + centerOffset)
+        ctx.stroke()
+
+        const yRight = y + repeatPx * 0.5
+        ctx.beginPath()
+        ctx.moveTo(canvasWidth, yRight)
+        ctx.lineTo(canvasWidth - shoulderX, yRight)
+        ctx.lineTo(canvasWidth - centerX + overlap, yRight + centerOffset)
+        ctx.stroke()
+      }
+      break
+    }
+    case 'mixed': {
+      ctx.fillStyle = grooveColor
+      ctx.fillRect(canvasWidth / 2 - grooveWidthPx / 2, 0, grooveWidthPx, canvasHeight)
+      const lugHeight = getPatternPitchPx(config, canvasHeight)
+      for (let y = 0; y < canvasHeight; y += lugHeight * 1.8) {
+        ctx.fillRect(0, y, canvasWidth * 0.4, grooveWidthPx)
+        ctx.fillRect(canvasWidth * 0.6, y + lugHeight * 0.9, canvasWidth * 0.4, grooveWidthPx)
+      }
+      break
+    }
+    default: {
+      const step = getPatternPitchPx(config, canvasWidth) * 0.85
+      ctx.strokeStyle = grooveColor
+      ctx.lineWidth = grooveWidthPx
+      for (let x = -canvasHeight; x < canvasWidth + canvasHeight; x += step) {
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x - canvasHeight / tanA, canvasHeight)
+        ctx.stroke()
+      }
+    }
+  }
+
+  ctx.fillStyle = surfaceColor
   ctx.fillRect(0, 0, 12, canvasHeight)
   ctx.fillRect(canvasWidth - 12, 0, 12, canvasHeight)
 }
