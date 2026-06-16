@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import {
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2 } from "lucide-react";
+import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp } from "lucide-react";
 import {
   createEmployee,
   updateEmployee,
@@ -214,6 +215,7 @@ export function EmployeeClientPage({
   filterOptions: FilterOptions;
   access: TableRbacAccess;
 }) {
+  const router = useRouter();
   const [data, setData] = useState<Employee[]>(initialData);
 
   // Dialog state
@@ -643,17 +645,29 @@ export function EmployeeClientPage({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <EnterpriseActionButtons
-                        access={access}
-                        onView={() => handleOpenView(emp)}
-                        onEdit={() => handleOpenEdit(emp)}
-                        onDelete={() => handleOpenDelete(emp)}
-                        labels={{
-                          view: "Detail karyawan",
-                          edit: "Ubah data",
-                          delete: "Hapus karyawan",
-                        }}
-                      />
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="denseIcon"
+                          onClick={() => router.push(`/dashboard/hc/employee/${emp.id}`)}
+                          title="Profil Produktivitas"
+                          className="hover:bg-violet-50 text-violet-600 hover:text-violet-700"
+                        >
+                          <TrendingUp className="size-4" />
+                        </Button>
+                        <EnterpriseActionButtons
+                          access={access}
+                          onView={() => handleOpenView(emp)}
+                          onEdit={() => handleOpenEdit(emp)}
+                          onDelete={() => handleOpenDelete(emp)}
+                          labels={{
+                            view: "Detail karyawan",
+                            edit: "Ubah data",
+                            delete: "Hapus karyawan",
+                          }}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

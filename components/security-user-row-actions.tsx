@@ -3,7 +3,8 @@
 import { useActionState, useEffect, useState, useTransition } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Eye, Pencil, ShieldBan, Trash2, Save, UserCog, Key, Ban } from 'lucide-react'
+import Link from 'next/link'
+import { Eye, Pencil, ShieldBan, Trash2, Save, UserCog, Key, Ban, TrendingUp } from 'lucide-react'
 import { manageSecurityUserAction, type AdminMutationState } from '@/app/dashboard/admin-actions'
 import { getBirthDateInputValue, normalizeBirthDateValue } from '@/lib/birth-date'
 import type { SecurityUserRecord } from '@/lib/hero-admin'
@@ -151,7 +152,16 @@ export function SecurityUserRowActions({
   }, [departments, open, sections, user.department, user.section, user.siteId])
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
+      <Link
+        href={`/dashboard/hc/employee/${user.id}`}
+        className="text-violet-600 hover:bg-violet-50 hover:text-violet-700 rounded-xl p-2 inline-flex items-center justify-center transition-colors"
+        title="Lihat Produktivitas Karyawan"
+      >
+        <TrendingUp className="size-4" />
+      </Link>
+
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -196,7 +206,17 @@ export function SecurityUserRowActions({
                   <p className="text-muted-foreground text-sm break-all">{user.email}</p>
                 </div>
               </div>
-              <AdminStatusBadge value={user.status} />
+              <div className="flex flex-col items-end gap-2">
+                <AdminStatusBadge value={user.status} />
+                <Link
+                  href={`/dashboard/hc/employee/${user.id}`}
+                  onClick={() => setOpen(false)}
+                  className="bg-violet-600 hover:bg-violet-700 text-white hover:text-white border-0 text-xs flex items-center gap-1.5 h-8 px-3 rounded-xl shadow-sm transition-colors cursor-pointer"
+                >
+                  <Eye className="size-3.5" />
+                  <span>Lihat Produktivitas</span>
+                </Link>
+              </div>
             </div>
 
             {/* Profile Data Table */}
@@ -607,5 +627,6 @@ export function SecurityUserRowActions({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

@@ -443,6 +443,7 @@ type MinimalTableShellProps = {
   summaryClassName?: string
   tableViewportClassName?: string
   dateFilter?: boolean | 'auto'
+  disableDomManipulation?: boolean
 }
 
 type TableSnapshot = {
@@ -484,6 +485,7 @@ export function MinimalTableShell({
   summaryClassName,
   tableViewportClassName,
   dateFilter = 'auto',
+  disableDomManipulation = false,
 }: MinimalTableShellProps) {
   const shellRef = React.useRef<HTMLDivElement>(null)
   const [query, setQuery] = React.useState('')
@@ -557,11 +559,12 @@ export function MinimalTableShell({
     )
 
     const bodyRows = Array.from(table.querySelectorAll('tbody tr')) as HTMLTableRowElement[]
+    const detailRows = bodyRows.filter((row) => row.dataset.tableDetailRow === 'true')
     const emptyRows = bodyRows.filter((row) => {
       const cells = Array.from(row.cells)
-      return cells.length === 1 && cells[0]?.colSpan > 1
+      return row.dataset.tableDetailRow !== 'true' && cells.length === 1 && cells[0]?.colSpan > 1
     })
-    const dataRows = bodyRows.filter((row) => !emptyRows.includes(row))
+    const dataRows = bodyRows.filter((row) => !emptyRows.includes(row) && !detailRows.includes(row))
 
     return { table, tbody, headerCells, emptyRows, dataRows }
   })
@@ -714,6 +717,13 @@ export function MinimalTableShell({
       const matchesFilters = sortedRows.includes(row)
       row.dataset.filterMatch = matchesFilters ? 'true' : 'false'
       row.toggleAttribute('hidden', !(matchesFilters && visibleRows.has(row)))
+
+      const detailRow =
+        row.nextElementSibling instanceof HTMLTableRowElement &&
+        row.nextElementSibling.dataset.tableDetailRow === 'true'
+          ? row.nextElementSibling
+          : null
+      detailRow?.toggleAttribute('hidden', !(matchesFilters && visibleRows.has(row)))
     })
 
     snapshot.emptyRows.forEach((row) => {
@@ -723,7 +733,15 @@ export function MinimalTableShell({
     // Reorder DOM rows to match active sort + pagination.
     if (pagedRows.length > 0) {
       for (const row of pagedRows) {
+        const detailRow =
+          row.nextElementSibling instanceof HTMLTableRowElement &&
+          row.nextElementSibling.dataset.tableDetailRow === 'true'
+            ? row.nextElementSibling
+            : null
         snapshot.tbody.appendChild(row)
+        if (detailRow) {
+          snapshot.tbody.appendChild(detailRow)
+        }
       }
     }
 
@@ -733,6 +751,7 @@ export function MinimalTableShell({
   })
 
   React.useEffect(() => {
+    if (disableDomManipulation) return
     wireSortableHeaders()
     applyFilters()
   }, [
@@ -743,6 +762,7 @@ export function MinimalTableShell({
     sortColumnIndex,
     sortDirection,
     children,
+    disableDomManipulation,
   ])
 
   React.useEffect(() => {
@@ -757,6 +777,7 @@ export function MinimalTableShell({
 
   const mutationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   React.useEffect(() => {
+    if (disableDomManipulation) return
     const root = shellRef.current
     if (!root) {
       return
@@ -781,9 +802,10 @@ export function MinimalTableShell({
       observer.disconnect()
       if (mutationTimerRef.current) clearTimeout(mutationTimerRef.current)
     }
-  }, [applyFilters, wireSortableHeaders])
+  }, [applyFilters, wireSortableHeaders, disableDomManipulation])
 
   React.useEffect(() => {
+    if (disableDomManipulation) return
     const root = shellRef.current?.parentElement
     if (!root) {
       return
@@ -805,7 +827,7 @@ export function MinimalTableShell({
       root.removeEventListener('change', handleChange)
       root.removeEventListener('input', handleChange)
     }
-  }, [applyFilters])
+  }, [applyFilters, disableDomManipulation])
 
   const handleReset = React.useCallback(() => {
     setQuery('')
@@ -933,75 +955,77 @@ export function MinimalTableShell({
         </div>
       </div>
 
-      <div
-        className={cn(
-          'border-border/70 text-muted-foreground flex flex-col gap-2 rounded-[0.95rem] border bg-white px-3 py-2.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between',
-          summaryClassName
-        )}
-      >
-        <div className="flex items-center gap-2">
-          <span>Rows</span>
-          <select
-            value={pageSize}
-            onChange={(event) => setPageSize(Number(event.target.value))}
-            className="border-border/70 bg-muted/30 text-foreground h-8 rounded-lg border px-2 text-[13px] shadow-none"
-            disabled={filteredCount === 0}
-          >
-            {[25, 50, 100].map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1 text-left sm:items-center sm:text-center">
-          <span className="tabular-nums">
-            Showing {pageStart}-{pageEnd} of {filteredCount} {label}
-            {filteredCount !== totalCount ? ` (total ${totalCount})` : ''}
-          </span>
-          {dateFilterSupported && dateRange?.from ? (
-            <Badge
-              variant="outline"
-              className="bg-surface-container-low w-fit rounded-full border-0 px-3 py-1"
+      {!disableDomManipulation ? (
+        <div
+          className={cn(
+            'border-border/70 text-muted-foreground flex flex-col gap-2 rounded-[0.95rem] border bg-white px-3 py-2.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between',
+            summaryClassName
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <span>Rows</span>
+            <select
+              value={pageSize}
+              onChange={(event) => setPageSize(Number(event.target.value))}
+              className="border-border/70 bg-muted/30 text-foreground h-8 rounded-lg border px-2 text-[13px] shadow-none"
+              disabled={filteredCount === 0}
             >
-              {dateRange.to
-                ? `${format(dateRange.from, 'dd MMM yyyy')} - ${format(dateRange.to, 'dd MMM yyyy')}`
-                : format(dateRange.from, 'dd MMM yyyy')}
-            </Badge>
+              {[25, 50, 100].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1 text-left sm:items-center sm:text-center">
+            <span className="tabular-nums">
+              Showing {pageStart}-{pageEnd} of {filteredCount} {label}
+              {filteredCount !== totalCount ? ` (total ${totalCount})` : ''}
+            </span>
+            {dateFilterSupported && dateRange?.from ? (
+              <Badge
+                variant="outline"
+                className="bg-surface-container-low w-fit rounded-full border-0 px-3 py-1"
+              >
+                {dateRange.to
+                  ? `${format(dateRange.from, 'dd MMM yyyy')} - ${format(dateRange.to, 'dd MMM yyyy')}`
+                  : format(dateRange.from, 'dd MMM yyyy')}
+              </Badge>
+            ) : null}
+          </div>
+
+          {filteredCount > 0 ? (
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-muted-foreground text-xs font-medium tabular-nums">
+                Page {Math.min(pageIndex + 1, totalPages)} / {totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pageIndex === 0}
+                onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                className="border-border/70 h-8 rounded-lg border bg-white px-2 text-[13px] shadow-none"
+              >
+                <IconChevronLeft className="size-4" />
+                Prev
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pageIndex >= totalPages - 1}
+                onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+                className="border-border/70 h-8 rounded-lg border bg-white px-2 text-[13px] shadow-none"
+              >
+                Next
+                <IconChevronRight className="size-4" />
+              </Button>
+            </div>
           ) : null}
         </div>
-
-        {filteredCount > 0 ? (
-          <div className="flex items-center justify-end gap-2">
-            <span className="text-muted-foreground text-xs font-medium tabular-nums">
-              Page {Math.min(pageIndex + 1, totalPages)} / {totalPages}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pageIndex === 0}
-              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-              className="border-border/70 h-8 rounded-lg border bg-white px-2 text-[13px] shadow-none"
-            >
-              <IconChevronLeft className="size-4" />
-              Prev
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pageIndex >= totalPages - 1}
-              onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
-              className="border-border/70 h-8 rounded-lg border bg-white px-2 text-[13px] shadow-none"
-            >
-              Next
-              <IconChevronRight className="size-4" />
-            </Button>
-          </div>
-        ) : null}
-      </div>
+      ) : null}
 
       {scorecards?.length ? <EnterpriseScorecards items={scorecards} /> : null}
 

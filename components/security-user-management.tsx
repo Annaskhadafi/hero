@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
+import { Fragment, useActionState, useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   BriefcaseBusiness,
@@ -14,6 +14,9 @@ import {
   Upload,
   Users2,
   X,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 import {
@@ -288,14 +291,17 @@ export function SecurityUserManagement({
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
-    name: true, sn: true, department: true, section: true, jobTitle: true,
-    levelStaff: true, peran: true, lokasiSite: true, tipeStatus: true,
-    gender: true, agama: true, pendidikan: true, maritalStatus: true,
-    poh: true, joinDate: true, contractStart: true, contractEnd: true,
-    permanentDate: true, tglLahir: true, statusAkun: true,
+    name: true, sn: true, department: true, section: false, jobTitle: true,
+    levelStaff: false, peran: true, lokasiSite: true, tipeStatus: false,
+    gender: false, agama: false, pendidikan: false, maritalStatus: false,
+    poh: false, joinDate: false, contractStart: false, contractEnd: false,
+    permanentDate: false, tglLahir: false, statusAkun: true,
   })
+  const [expandedRowIds, setExpandedRowIds] = useState<number[]>([])
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const [rawCsv, setRawCsv] = useState('')
   const [mapping, setMapping] = useState<UserImportMapping>({})
   const [actionState, formAction, isPending] = useActionState(
@@ -424,6 +430,12 @@ export function SecurityUserManagement({
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites, users, sortKey, sortDir])
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
+  const safePage = Math.min(page, totalPages - 1)
+  const paginatedUsers = filteredUsers.slice(safePage * pageSize, (safePage + 1) * pageSize)
+
+  useEffect(() => { setPage(0) }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites])
 
   const currentYear = new Date().getFullYear()
   const activeUsersCount = users.filter((user) => user.status === 'active').length
@@ -827,6 +839,7 @@ export function SecurityUserManagement({
           fileName="security-users"
           searchEnabled={false}
           showImport={false}
+          disableDomManipulation
           filters={
             <>
               <div className="relative w-full sm:w-[220px] sm:flex-none">
@@ -921,6 +934,7 @@ export function SecurityUserManagement({
                       }}
                     />
                   </TableHead>
+                  <TableHead className="w-10" />
                   {COLUMNS.map((col) =>
                     columnVisibility[col.key] ? (
                       <TableHead
@@ -943,21 +957,52 @@ export function SecurityUserManagement({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers.length > 0 ? (
-                  filteredUsers.map((user, index) => (
-                    <TableRow key={`${user.id}-${index}`} className="hover:bg-white/55">
-                      <TableCell className="py-3.5">
-                        <Checkbox
-                          checked={selectedIds.includes(user.id)}
-                          onCheckedChange={(checked) => {
-                            setSelectedIds(
-                              checked
-                                ? [...selectedIds, user.id]
-                                : selectedIds.filter((id: number) => id !== user.id)
-                            )
-                          }}
-                        />
-                      </TableCell>
+                {paginatedUsers.length > 0 ? (
+                  paginatedUsers.map((user, index) => {
+                    const isExpanded = expandedRowIds.includes(user.id);
+                    return (
+                      <Fragment key={user.id}>
+                        <TableRow className="hover:bg-white/55">
+                          <TableCell className="py-3.5">
+                            <Checkbox
+                              checked={selectedIds.includes(user.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedIds(
+                                  checked
+                                    ? [...selectedIds, user.id]
+                                    : selectedIds.filter((id: number) => id !== user.id)
+                                )
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className="py-3.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-expanded={isExpanded}
+                              aria-label={`${isExpanded ? 'Tutup' : 'Buka'} detail ${user.name}`}
+                              className={cn(
+                                "size-7 rounded-lg",
+                                isExpanded
+                                  ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              )}
+                              onClick={() => {
+                                setExpandedRowIds((currentIds) =>
+                                  currentIds.includes(user.id)
+                                    ? currentIds.filter((id) => id !== user.id)
+                                    : [...currentIds, user.id]
+                                )
+                              }}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="size-4" />
+                              ) : (
+                                <ChevronRight className="size-4" />
+                              )}
+                            </Button>
+                          </TableCell>
                       {columnVisibility.name ? (
                         <TableCell className="py-3.5">
                           <div className="flex items-center gap-3">
@@ -1013,7 +1058,15 @@ export function SecurityUserManagement({
                         </TableCell>
                       ) : null}
                       {columnVisibility.gender ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.gender || '-'}</TableCell>
+                        <TableCell className="text-foreground/85 py-3.5 text-sm">
+                          {(() => {
+                            if (!user.gender) return '-';
+                            const g = user.gender.toLowerCase().trim();
+                            if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
+                            if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
+                            return user.gender;
+                          })()}
+                        </TableCell>
                       ) : null}
                       {columnVisibility.agama ? (
                         <TableCell className="text-foreground/85 py-3.5 text-sm">{user.religion || '-'}</TableCell>
@@ -1061,11 +1114,83 @@ export function SecurityUserManagement({
                         />
                       </TableCell>
                     </TableRow>
-                  ))
+                    {isExpanded && (
+                      <TableRow data-table-detail-row="true" className="bg-slate-50/30 hover:bg-slate-50/30">
+                        <TableCell colSpan={3 + COLUMNS.filter(col => columnVisibility[col.key]).length} className="p-4 border-t border-slate-100/50">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm bg-white/70 backdrop-blur-sm rounded-xl p-4 shadow-sm border border-slate-100">
+                            {/* Personal Info */}
+                            <div className="space-y-2.5">
+                              <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Data Pribadi</h4>
+                              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                <span className="text-muted-foreground">Tempat/Tgl Lahir:</span>
+                                <span className="font-medium text-foreground">{user.birthPlaceDate || user.birthDate || '-'}</span>
+                                <span className="text-muted-foreground">Gender:</span>
+                                <span className="font-medium text-foreground">
+                                  {(() => {
+                                    if (!user.gender) return '-';
+                                    const g = user.gender.toLowerCase().trim();
+                                    if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
+                                    if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
+                                    return user.gender;
+                                  })()}
+                                </span>
+                                <span className="text-muted-foreground">Agama:</span>
+                                <span className="font-medium text-foreground">{user.religion || '-'}</span>
+                                <span className="text-muted-foreground">Pendidikan:</span>
+                                <span className="font-medium text-foreground">{user.education || '-'}</span>
+                                <span className="text-muted-foreground">Status Nikah:</span>
+                                <span className="font-medium text-foreground">{user.maritalStatus || '-'}</span>
+                                <span className="text-muted-foreground">Domisili:</span>
+                                <span className="font-medium text-foreground">{user.domicile || '-'}</span>
+                                <span className="text-muted-foreground">No. HP:</span>
+                                <span className="font-medium text-foreground">{user.phoneNumber || '-'}</span>
+                              </div>
+                            </div>
+
+                            {/* Employment Info */}
+                            <div className="space-y-2.5">
+                              <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Kepegawaian</h4>
+                              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                <span className="text-muted-foreground">Tipe Status:</span>
+                                <span className="font-medium text-foreground">{user.employeeStatusType || '-'}</span>
+                                <span className="text-muted-foreground">Level Staff:</span>
+                                <span className="font-medium text-foreground">{user.levelName || '-'}</span>
+                                <span className="text-muted-foreground">POH (Point of Hire):</span>
+                                <span className="font-medium text-foreground">{user.pointOfHire || '-'}</span>
+                                <span className="text-muted-foreground">Seksi (Section):</span>
+                                <span className="font-medium text-foreground">{user.section || '-'}</span>
+                                <span className="text-muted-foreground">Atasan Langsung:</span>
+                                <span className="font-medium text-foreground">{user.directManagerName || '-'}</span>
+                                <span className="text-muted-foreground">Lokasi Kerja:</span>
+                                <span className="font-medium text-foreground">{user.workLocation || '-'}</span>
+                              </div>
+                            </div>
+
+                            {/* Contract & Dates */}
+                            <div className="space-y-2.5">
+                              <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Kontrak & Tanggal</h4>
+                              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                <span className="text-muted-foreground">Tanggal Bergabung:</span>
+                                <span className="font-medium text-foreground">{user.joinDate || '-'}</span>
+                                <span className="text-muted-foreground">Mulai Kontrak:</span>
+                                <span className="font-medium text-foreground">{user.contractDurationStart || '-'}</span>
+                                <span className="text-muted-foreground">Selesai Kontrak:</span>
+                                <span className="font-medium text-foreground">{user.contractDurationEnd || '-'}</span>
+                                <span className="text-muted-foreground">Karyawan Tetap:</span>
+                                <span className="font-medium text-foreground">{user.permanentDate || '-'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={10}
+                      colSpan={24}
                       className="text-muted-foreground py-12 text-center text-sm"
                     >
                       Tidak ada pengguna yang cocok dengan filter saat ini.
@@ -1075,6 +1200,49 @@ export function SecurityUserManagement({
               </TableBody>
             </Table>
           </div>
+          {filteredUsers.length > 0 ? (
+            <div className="flex items-center justify-between px-1 pt-3">
+              <p className="text-muted-foreground text-xs">
+                Menampilkan {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, filteredUsers.length)} dari {filteredUsers.length}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 rounded-lg"
+                  disabled={safePage === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <Button
+                    key={i}
+                    variant={i === safePage ? "default" : "ghost"}
+                    size="icon"
+                    className={cn(
+                      "size-7 rounded-lg text-xs font-medium",
+                      i === safePage
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setPage(i)}
+                  >
+                    {i + 1}
+                  </Button>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 rounded-lg"
+                  disabled={safePage >= totalPages - 1}
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </MinimalTableShell>
       </div>
 
