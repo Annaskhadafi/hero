@@ -8,17 +8,32 @@ export function drawPattern(
 ) {
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
-  // Background: rubber color
-  ctx.fillStyle = '#2a2a2a'
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight)
-
-  const grooveColor = '#111111'
+  // Background: base rubber color
   const rubberColor = '#3d3d3d'
-  const grooveWidthPx = Math.max(4, (config.grooveWidthMm / config.repeatUnitMm) * canvasWidth * 0.4)
-
   ctx.fillStyle = rubberColor
   ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
+  // ─── 1. Draw Sipes (Alur Halus) first, so main grooves overwrite them ───
+  if (config.sipesDensity && config.sipesDensity > 0) {
+    ctx.strokeStyle = '#555555'
+    ctx.lineWidth = 1.5
+    // Density maps to gap distance (lower gap = more dense)
+    const sipesGap = Math.max(8, 120 - config.sipesDensity)
+    const sipesAngleRad = ((config.sipesAngle ?? config.grooveAngle ?? 45) * Math.PI) / 180
+    const sipesTan = Math.tan(sipesAngleRad) || 0.001
+
+    // Draw sipes across the canvas
+    for (let x = -canvasHeight; x < canvasWidth + canvasHeight; x += sipesGap) {
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x - canvasHeight / sipesTan, canvasHeight)
+      ctx.stroke()
+    }
+  }
+
+  // ─── 2. Draw Main Grooves (Alur Utama) ──────────────────────────────────
+  const grooveColor = '#111111'
+  const grooveWidthPx = Math.max(4, (config.grooveWidthMm / config.repeatUnitMm) * canvasWidth * 0.4)
   const angleRad = (config.grooveAngle * Math.PI) / 180
   const tanA = Math.abs(Math.tan(angleRad)) || 0.001
 
@@ -61,7 +76,7 @@ export function drawPattern(
       break
     }
     case 'rib': {
-      const ribSpacing = canvasWidth / Math.max(3, Math.round(canvasWidth / (config.repeatUnitMm / 300 * canvasWidth)))
+      const ribSpacing = canvasWidth / Math.max(3, Math.round(canvasWidth / ((config.repeatUnitMm / 300) * canvasWidth)))
       ctx.fillStyle = grooveColor
       for (let x = ribSpacing / 2; x < canvasWidth; x += ribSpacing) {
         ctx.fillRect(x - grooveWidthPx / 2, 0, grooveWidthPx, canvasHeight)
@@ -146,4 +161,111 @@ export function drawPattern(
   for (let y = 0; y < canvasHeight; y += gridSize) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasWidth, y); ctx.stroke()
   }
+
+  // Cover the left and right edges with solid rubber to ensure clean sidewalls in 3D
+  ctx.fillStyle = rubberColor
+  ctx.fillRect(0, 0, 12, canvasHeight)
+  ctx.fillRect(canvasWidth - 12, 0, 12, canvasHeight)
+}
+
+/**
+ * Generates a clean 1:1 millimetric scale SVG string for CAD/CNC/Laser Engraving integration.
+ * Width is dims.treadWidthMm and height is config.repeatUnitMm.
+ */
+export function generatePatternSVG(config: PatternConfig, dims: { treadWidthMm: number }): string {
+  const treadW = dims.treadWidthMm
+  const repeatH = config.repeatUnitMm
+  const gWidth = config.grooveWidthMm
+
+  let svgContent = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${treadW}mm" height="${repeatH}mm" viewBox="0 0 ${treadW} ${repeatH}">
+  <rect width="100%" height="100%" fill="#3d3d3d" />
+  
+  <!-- GROOVES GROUP (Black lines are engraved deeper) -->
+  <g id="grooves" stroke="#111111" stroke-width="${gWidth}" fill="none">
+`
+
+  const angleRad = (config.grooveAngle * Math.PI) / 180
+  const tanA = Math.tan(angleRad) || 0.001
+
+  switch (config.type) {
+    case 'zig-zag': {
+      const numTracks = Math.max(3, Math.round(treadW / 60))
+      const trackWidth = treadW / numTracks
+      const segH = repeatH / 2
+      const amp = segH * tanA
+
+      for (let i = 0; i < numTracks; i++) {
+        const cx = (i + 0.5) * trackWidth
+        svgContent += `    <path d="M ${cx - amp} 0 L ${cx + amp} ${segH} L ${cx - amp} ${repeatH}" stroke-linecap="square" />\n`
+      }
+      break
+    }
+    case 'lug': {
+      const blockW = treadW * (1 - config.patternDensity / 100 + 0.3)
+      svgContent += `    <line x1="0" y1="${repeatH * 0.25}" x2="${blockW}" y2="${repeatH * 0.25}" />\n`
+      svgContent += `    <line x1="${treadW - blockW}" y1="${repeatH * 0.75}" x2="${treadW}" y2="${repeatH * 0.75}" />\n`
+      break
+    }
+    case 'rib': {
+      const numRibs = Math.max(3, Math.round(treadW / 50))
+      const ribSpacing = treadW / numRibs
+      for (let x = ribSpacing / 2; x < treadW; x += ribSpacing) {
+        svgContent += `    <line x1="${x}" y1="0" x2="${x}" y2="${repeatH}" />\n`
+      }
+      break
+    }
+    case 'block': {
+      svgContent += `    <line x1="0" y1="0" x2="${treadW}" y2="0" />\n`
+      const numBlocks = Math.max(4, Math.round(treadW / 50))
+      const bSize = treadW / numBlocks
+      for (let x = 0; x <= treadW; x += bSize) {
+        svgContent += `    <line x1="${x}" y1="0" x2="${x}" y2="${repeatH}" />\n`
+      }
+      break
+    }
+    case 'traction': {
+      const shoulderX = treadW * 0.18
+      const centerX = treadW * 0.52
+      const overlap = treadW * 0.04
+      const centerOffset = (centerX - shoulderX) * Math.tan(angleRad)
+
+      svgContent += `    <path d="M 0 0 L ${shoulderX} 0 L ${centerX} ${centerOffset}" stroke-linecap="round" stroke-linejoin="round" />\n`
+      svgContent += `    <path d="M ${treadW} ${repeatH * 0.5} L ${treadW - shoulderX} ${repeatH * 0.5} L ${treadW - centerX + overlap} ${repeatH * 0.5 + centerOffset}" stroke-linecap="round" stroke-linejoin="round" />\n`
+      break
+    }
+    case 'mixed': {
+      svgContent += `    <line x1="${treadW / 2}" y1="0" x2="${treadW / 2}" y2="${repeatH}" />\n`
+      svgContent += `    <line x1="0" y1="${repeatH * 0.25}" x2="${treadW * 0.35}" y2="${repeatH * 0.25}" />\n`
+      svgContent += `    <line x1="${treadW * 0.65}" y1="${repeatH * 0.75}" x2="${treadW}" y2="${repeatH * 0.75}" />\n`
+      break
+    }
+    default: {
+      const step = repeatH * 1.5
+      for (let x = -repeatH; x < treadW + repeatH; x += step) {
+        svgContent += `    <line x1="${x}" y1="0" x2="${x - repeatH / tanA}" y2="${repeatH}" />\n`
+      }
+    }
+  }
+
+  svgContent += `  </g>\n`
+
+  // ─── 3. Add Sipes to SVG as Red/Dashed lines (CAD/CNC engraving option) ───
+  if (config.sipesDensity && config.sipesDensity > 0) {
+    svgContent += `
+  <!-- SIPES GROUP (Red dashed lines are for shallow micro-cuts) -->
+  <g id="sipes" stroke="#ef4444" stroke-width="0.5" stroke-dasharray="2,2" fill="none">
+`
+    const sipesGap = Math.max(8, 120 - config.sipesDensity)
+    const sipesAngleRad = ((config.sipesAngle ?? config.grooveAngle ?? 45) * Math.PI) / 180
+    const sipesTan = Math.tan(sipesAngleRad) || 0.001
+
+    for (let x = -repeatH * 3; x < treadW + repeatH * 3; x += sipesGap) {
+      svgContent += `    <line x1="${x.toFixed(1)}" y1="0" x2="${(x - repeatH / sipesTan).toFixed(1)}" y2="${repeatH}" />\n`
+    }
+    svgContent += `  </g>\n`
+  }
+
+  svgContent += `</svg>\n`
+  return svgContent
 }

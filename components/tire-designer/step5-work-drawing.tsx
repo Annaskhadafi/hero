@@ -187,43 +187,74 @@ export default function Step5WorkDrawing({ state, dispatch, onNext, onBack }: Pr
                 <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">POTONGAN MELINTANG (CROSS SECTION)</span>
               </div>
               <div className="p-4">
-                {/* SVG cross-section diagram */}
-                <svg viewBox="0 0 300 120" className="w-full border border-gray-100 rounded bg-white">
-                  {/* Rubber base */}
-                  <rect x="10" y="40" width="280" height="70" fill="#444" rx="4" />
-                  {/* Grooves */}
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <rect
-                      key={i}
-                      x={30 + i * 55}
-                      y="20"
-                      width={cfg.grooveWidthMm * 1.5}
-                      height={cfg.grooveDepthMm * 3}
-                      fill="#1a1a1a"
-                      rx="1"
-                    />
-                  ))}
-                  {/* Tread surface */}
-                  <rect x="10" y="38" width="280" height="4" fill="#555" rx="1" />
+                  {/* Dynamic SVG cross-section diagram */}
+                  {(() => {
+                    let numGrooves = 4
+                    if (cfg.type === 'rib') numGrooves = Math.max(3, Math.min(6, Math.floor(dims.treadWidthMm / 55)))
+                    else if (cfg.type === 'block') numGrooves = Math.max(3, Math.min(5, Math.floor(dims.treadWidthMm / 60)))
+                    else if (cfg.type === 'lug' || cfg.type === 'traction') numGrooves = 2
+                    else if (cfg.type === 'mixed') numGrooves = 3
 
-                  {/* Dimension lines */}
-                  <line x1="30" y1="20" x2="30" y2="8" stroke="#666" strokeWidth="0.5" />
-                  <line x1={30 + cfg.grooveWidthMm * 1.5} y1="20" x2={30 + cfg.grooveWidthMm * 1.5} y2="8" stroke="#666" strokeWidth="0.5" />
-                  <line x1="30" y1="12" x2={30 + cfg.grooveWidthMm * 1.5} y2="12" stroke="#333" strokeWidth="0.8" />
-                  <text x={30 + cfg.grooveWidthMm * 0.75} y="8" textAnchor="middle" fontSize="7" fill="#333">{cfg.grooveWidthMm}mm</text>
+                    const scale = 260 / dims.treadWidthMm
+                    const gWidthPx = Math.max(5, Math.min(25, cfg.grooveWidthMm * scale * 1.5))
+                    const gDepthPx = Math.max(12, Math.min(45, cfg.grooveDepthMm * 1.8))
+                    const spacing = 260 / (numGrooves + 1)
 
-                  {/* Depth */}
-                  <line x1="290" y1="40" x2="300" y2="40" stroke="#666" strokeWidth="0.5" />
-                  <line x1="290" y1={40 + cfg.grooveDepthMm * 3} x2="300" y2={40 + cfg.grooveDepthMm * 3} stroke="#666" strokeWidth="0.5" />
-                  <line x1="295" y1="40" x2="295" y2={40 + cfg.grooveDepthMm * 3} stroke="#333" strokeWidth="0.8" />
-                  <text x="296" y={40 + cfg.grooveDepthMm * 1.5} fontSize="7" fill="#333">{cfg.grooveDepthMm}mm</text>
+                    return (
+                      <svg viewBox="0 0 300 120" className="w-full border border-gray-100 rounded bg-white">
+                        {/* Solid Rubber tread block background */}
+                        <rect x="10" y="20" width="280" height="80" fill="#444" rx="2" />
+                        
+                        {/* Grooves cut into the rubber */}
+                        {Array.from({ length: numGrooves }).map((_, i) => {
+                          const x = 10 + spacing * (i + 1) - gWidthPx / 2
+                          return (
+                            <rect
+                              key={i}
+                              x={x}
+                              y="20"
+                              width={gWidthPx}
+                              height={gDepthPx}
+                              fill="#1a1a1a"
+                              rx={0.5}
+                            />
+                          )
+                        })}
 
-                  {/* Labels */}
-                  <text x="150" y="18" textAnchor="middle" fontSize="6" fill="#aaa">Permukaan Tapak</text>
-                  <text x="150" y="95" textAnchor="middle" fontSize="6" fill="#ccc">Karet Dasar (Base)</text>
-                </svg>
+                        {/* Tread surface line */}
+                        <rect x="10" y="19" width="280" height="1.5" fill="#555" rx="0.5" />
+
+                        {/* Groove width dimension line */}
+                        {(() => {
+                          const firstX = 10 + spacing - gWidthPx / 2
+                          return (
+                            <>
+                              <line x1={firstX} y1="20" x2={firstX} y2="6" stroke="#666" strokeWidth="0.5" />
+                              <line x1={firstX + gWidthPx} y1="20" x2={firstX + gWidthPx} y2="6" stroke="#666" strokeWidth="0.5" />
+                              <line x1={firstX} y1="10" x2={firstX + gWidthPx} y2="10" stroke="#333" strokeWidth="0.8" />
+                              <text x={firstX + gWidthPx / 2} y="7" textAnchor="middle" fontSize="6.5" fill="#333" className="font-mono font-bold">
+                                {cfg.grooveWidthMm}mm
+                              </text>
+                            </>
+                          )
+                        })()}
+
+                        {/* Groove depth dimension line */}
+                        <line x1="291" y1="20" x2="299" y2="20" stroke="#666" strokeWidth="0.5" />
+                        <line x1="291" y1={20 + gDepthPx} x2="299" y2={20 + gDepthPx} stroke="#666" strokeWidth="0.5" />
+                        <line x1="295" y1="20" x2="295" y2={20 + gDepthPx} stroke="#333" strokeWidth="0.8" />
+                        <text x="296" y={20 + gDepthPx / 2 + 2} fontSize="6.5" fill="#333" className="font-mono font-bold">
+                          {cfg.grooveDepthMm}mm
+                        </text>
+
+                        {/* Labels */}
+                        <text x="150" y="16" textAnchor="middle" fontSize="6" fill="#888">Permukaan Tapak</text>
+                        <text x="150" y="90" textAnchor="middle" fontSize="6" fill="#ccc">Karet Dasar (Base Rubber)</text>
+                      </svg>
+                    )
+                  })()}
+                </div>
               </div>
-            </div>
 
             {/* Tech specs */}
             <div className="border border-gray-300 rounded">

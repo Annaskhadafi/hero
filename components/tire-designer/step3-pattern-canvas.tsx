@@ -7,9 +7,9 @@ import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { savePattern } from '@/app/actions/tire-pattern-actions'
+import { savePattern, updatePattern } from '@/app/actions/tire-pattern-actions'
 import type { DesignerState, PatternConfig } from '@/app/dashboard/repair-retread/pattern-designer/pattern-designer-client'
-import { drawPattern } from './utils'
+import { drawPattern, generatePatternSVG } from './utils'
 
 const PATTERN_TYPES = [
   { id: 'zig-zag', label: 'Zig-Zag', icon: '⚡' },
@@ -48,6 +48,8 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
     repeatUnitMm: state.patternConfig?.repeatUnitMm ?? 42,
     hasCenterGroove: state.patternConfig?.hasCenterGroove ?? analysis?.hasCenterGroove ?? false,
     hasLateralGrooves: state.patternConfig?.hasLateralGrooves ?? true,
+    sipesDensity: state.patternConfig?.sipesDensity ?? 0,
+    sipesAngle: state.patternConfig?.sipesAngle ?? 45,
   }))
 
   const redraw = useCallback(() => {
@@ -70,14 +72,14 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
     const canvas = canvasRef.current
     if (!canvas) return
     const dataUrl = canvas.toDataURL('image/png')
-    const svg = '' // placeholder - in production would generate proper SVG
+    const svg = generatePatternSVG(config, dims)
 
     dispatch({ type: 'SET_PATTERN_CONFIG', config })
     dispatch({ type: 'SET_PATTERN_SVG', svg, dataUrl })
 
     setIsSaving(true)
     try {
-      const result = await savePattern({
+      const patternData = {
         name: state.designName || `${dims.sizeCode} ${config.type}`,
         tireSize: dims.sizeCode,
         patternType: config.type,
@@ -86,6 +88,7 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
         grooveDepthMm: config.grooveDepthMm,
         patternDensity: config.patternDensity,
         repeatUnitMm: config.repeatUnitMm,
+        patternSvg: svg,
         patternConfig: config as unknown as Record<string, unknown>,
         analysisResult: state.analysisResult as unknown as Record<string, unknown>,
         analysisModel: 'anthropic/claude-3.5-sonnet',
@@ -95,13 +98,27 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
         tireRimDiameterMm: dims.rimDiameterMm,
         tireCircumferenceMm: dims.circumferenceMm,
         tireTreadWidthMm: dims.treadWidthMm,
-      })
-      if (result.success && result.id) {
-        dispatch({ type: 'SET_SAVED_ID', id: result.id })
-        toast.success('Desain tersimpan ke database!')
+      }
+
+      if (state.savedId) {
+        const result = await updatePattern(state.savedId, patternData)
+        if (result.success) {
+          toast.success('Desain berhasil diperbarui!')
+        } else {
+          toast.error(result.error || 'Gagal memperbarui desain')
+        }
+      } else {
+        const result = await savePattern(patternData)
+        if (result.success && result.id) {
+          dispatch({ type: 'SET_SAVED_ID', id: result.id })
+          toast.success('Desain baru tersimpan ke database!')
+        } else {
+          toast.error(result.error || 'Gagal menyimpan desain')
+        }
       }
     } catch (e) {
       console.error(e)
+      toast.error('Gagal menyimpan ke database')
     } finally {
       setIsSaving(false)
     }
@@ -111,8 +128,9 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
     const canvas = canvasRef.current
     if (canvas) {
       const dataUrl = canvas.toDataURL('image/png')
+      const svg = generatePatternSVG(config, dims)
       dispatch({ type: 'SET_PATTERN_CONFIG', config })
-      dispatch({ type: 'SET_PATTERN_SVG', svg: '', dataUrl })
+      dispatch({ type: 'SET_PATTERN_SVG', svg, dataUrl })
     }
     onNext()
   }
@@ -124,6 +142,18 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
     a.href = canvas.toDataURL('image/png')
     a.download = `pola-${dims.sizeCode}-${config.type}.png`
     a.click()
+  }
+
+  const handleDownloadSVG = () => {
+    const svgContent = generatePatternSVG(config, dims)
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `pola-${dims.sizeCode}-${config.type}.svg`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('File CAD SVG berhasil diunduh!')
   }
 
   return (
@@ -226,6 +256,34 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
             />
           </div>
 
+          {/* Sipes Density */}
+          <div className="space-y-2 border-t pt-3">
+            <div className="flex justify-between">
+              <Label className="text-xs text-[#64748b]">Kerapatan Sipes (Keratan)</Label>
+              <span className="text-xs font-mono font-bold text-[#0f172a]">{config.sipesDensity ?? 0}%</span>
+            </div>
+            <Slider
+              min={0} max={100} step={10}
+              value={[config.sipesDensity ?? 0]}
+              onValueChange={([v]) => handleConfigChange('sipesDensity', v)}
+              className="[&_[role=slider]]:bg-amber-500"
+            />
+          </div>
+
+          {/* Sipes Angle */}
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label className="text-xs text-[#64748b]">Sudut Sipes</Label>
+              <span className="text-xs font-mono font-bold text-[#0f172a]">{config.sipesAngle ?? 45}°</span>
+            </div>
+            <Slider
+              min={0} max={90} step={5}
+              value={[config.sipesAngle ?? 45]}
+              onValueChange={([v]) => handleConfigChange('sipesAngle', v)}
+              className="[&_[role=slider]]:bg-amber-500"
+            />
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -247,7 +305,11 @@ export default function Step3PatternCanvas({ state, dispatch, onNext, onBack, us
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={handleDownload} className="gap-1.5 text-xs h-7">
                 <Download className="w-3 h-3" />
-                Unduh PNG
+                PNG
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleDownloadSVG} className="gap-1.5 text-xs h-7 text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-50">
+                <Download className="w-3 h-3" />
+                CAD (SVG)
               </Button>
               <Button
                 size="sm"

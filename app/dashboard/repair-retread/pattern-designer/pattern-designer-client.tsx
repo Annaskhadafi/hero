@@ -4,7 +4,7 @@ import { useState, useCallback, useReducer } from 'react'
 import { toast } from 'sonner'
 import { CheckCircle2, Circle, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { TireSizePreset } from '@/db/schema/tire-pattern'
+import type { TireSizePreset, TirePattern } from '@/db/schema/tire-pattern'
 
 import Step1ReferenceInput from '@/components/tire-designer/step1-reference-input'
 import Step2TireSize from '@/components/tire-designer/step2-tire-size'
@@ -51,6 +51,8 @@ export interface PatternConfig {
   repeatUnitMm: number
   hasCenterGroove: boolean
   hasLateralGrooves: boolean
+  sipesDensity?: number // 0-100 (optional)
+  sipesAngle?: number // degrees (optional)
 }
 
 export interface DesignerState {
@@ -139,14 +141,60 @@ const STEPS = [
 interface Props {
   presets: TireSizePreset[]
   userEmail: string
+  initialPattern?: TirePattern
 }
 
-export default function PatternDesignerClient({ presets, userEmail }: Props) {
+export default function PatternDesignerClient({ presets, userEmail, initialPattern }: Props) {
   const [currentStep, setCurrentStep] = useState(1)
-  const [state, dispatch] = useReducer(designerReducer, {
-    analysisSource: 'manual',
-    designName: 'Pola Baru',
-  })
+
+  const getInitialState = (): DesignerState => {
+    if (!initialPattern) {
+      return {
+        analysisSource: 'manual',
+        designName: 'Pola Baru',
+      }
+    }
+
+    const dims: TireDimensions | undefined = initialPattern.tireSectionWidthMm
+      ? {
+          sectionWidthMm: initialPattern.tireSectionWidthMm,
+          aspectRatio: initialPattern.tireAspectRatio ?? 100,
+          rimDiameterMm: initialPattern.tireRimDiameterMm ?? 508,
+          circumferenceMm: initialPattern.tireCircumferenceMm ?? 3200,
+          treadWidthMm: initialPattern.tireTreadWidthMm ?? 200,
+          sizeCode: initialPattern.tireSize,
+        }
+      : undefined
+
+    const cfg: PatternConfig = initialPattern.patternConfig
+      ? (initialPattern.patternConfig as unknown as PatternConfig)
+      : {
+          type: initialPattern.patternType,
+          grooveAngle: initialPattern.grooveAngle ?? 45,
+          grooveWidthMm: initialPattern.grooveWidthMm ?? 8,
+          grooveDepthMm: initialPattern.grooveDepthMm ?? 12,
+          patternDensity: initialPattern.patternDensity ?? 50,
+          repeatUnitMm: initialPattern.repeatUnitMm ?? 42,
+          hasCenterGroove: initialPattern.analysisResult ? (initialPattern.analysisResult as any).hasCenterGroove : false,
+          hasLateralGrooves: initialPattern.analysisResult ? (initialPattern.analysisResult as any).hasLateralGrooves : true,
+          sipesDensity: 0,
+          sipesAngle: 45,
+        }
+
+    return {
+      savedId: initialPattern.id,
+      designName: initialPattern.name,
+      referenceImageUrl: initialPattern.referenceImageUrl || undefined,
+      analysisSource: (initialPattern.analysisSource as 'upload' | 'preset' | 'manual') || 'manual',
+      analysisResult: initialPattern.analysisResult ? (initialPattern.analysisResult as unknown as AnalysisResult) : undefined,
+      selectedPatternPreset: initialPattern.patternType,
+      tireDimensions: dims,
+      patternConfig: cfg,
+      patternSvg: initialPattern.patternSvg || undefined,
+    }
+  }
+
+  const [state, dispatch] = useReducer(designerReducer, undefined, getInitialState)
 
   const canGoToStep = useCallback(
     (step: number) => {

@@ -28,6 +28,7 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
   const [showGrid, setShowGrid] = useState(false)
   const [scale, setScale] = useState<'1:1' | '1:2' | '1:4'>('1:2')
   const [isExporting, setIsExporting] = useState(false)
+  const [selectedSheet, setSelectedSheet] = useState<string>('all')
 
   const dims = state.tireDimensions!
   const cfg = state.patternConfig!
@@ -38,6 +39,13 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
   const repeatUnitScaled = cfg.repeatUnitMm / scaleNum
   const numSections = Math.round(dims.circumferenceMm / cfg.repeatUnitMm)
   const treadWidthScaled = dims.treadWidthMm / scaleNum
+
+  const sheetWidthMm = 500 // 500mm printable width per A2 sheet (A2 = 594mm width)
+  const totalSheetsNeeded = Math.ceil(patternLengthScaled / sheetWidthMm)
+
+  const parsedSheet = parseInt(selectedSheet) || 0
+  const prevSheetText = parsedSheet > 1 ? String(parsedSheet - 1) : ''
+  const nextSheetText = parsedSheet < totalSheetsNeeded ? `dan ${parsedSheet + 1}` : ''
 
   // Pixel conversion for preview (1mm = px at screen)
   const previewScale = Math.min(1.2, (700 / patternLengthScaled))
@@ -93,7 +101,7 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
 
         <div className="flex items-center gap-2">
           <Label className="text-xs text-[#64748b]">Skala</Label>
-          <Select value={scale} onValueChange={(v) => setScale(v as typeof scale)}>
+          <Select value={scale} onValueChange={(v) => { setScale(v as typeof scale); setSelectedSheet('all') }}>
             <SelectTrigger className="w-24 h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -101,6 +109,23 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
               <SelectItem value="1:1">1:1 (Asli)</SelectItem>
               <SelectItem value="1:2">1:2</SelectItem>
               <SelectItem value="1:4">1:4</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-[#64748b]">Lembaran (Tiling)</Label>
+          <Select value={selectedSheet} onValueChange={setSelectedSheet}>
+            <SelectTrigger className="w-40 h-8 text-sm font-medium">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Bagian (Scroll)</SelectItem>
+              {Array.from({ length: totalSheetsNeeded }).map((_, i) => (
+                <SelectItem key={i} value={String(i + 1)}>
+                  Lembar {i + 1} ({Math.round(i * sheetWidthMm * scaleNum)} - {Math.round(Math.min(dims.circumferenceMm, (i + 1) * sheetWidthMm * scaleNum))} mm)
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -163,15 +188,16 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
             <div>Jumlah bagian: <strong className="text-amber-300">{numSections} bagian</strong></div>
           </div>
         </div>
-
         {/* Main template area */}
         <div className="p-6 overflow-x-auto">
           {/* A2 paper simulation */}
           <div
             className="relative border border-gray-400 mx-auto bg-white overflow-hidden"
             style={{
-              width: Math.min(patternPxW + 80, 900),
-              minHeight: patternPxH + 100,
+              width: selectedSheet === 'all' 
+                ? Math.min(patternPxW + 80, 950) 
+                : Math.min(sheetWidthMm * previewScale + 80, 950),
+              minHeight: patternPxH + 120,
             }}
           >
             {/* Margin lines (5mm = corner marks) */}
@@ -205,6 +231,9 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
                       backgroundImage: `url(${state.patternCanvasDataUrl})`,
                       backgroundSize: `${repeatUnitScaled * previewScale}px 100%`,
                       backgroundRepeat: 'repeat-x',
+                      backgroundPosition: selectedSheet === 'all'
+                        ? '0px 0px'
+                        : `-${(parseInt(selectedSheet) - 1) * sheetWidthMm * previewScale}px 0px`,
                     }}
                   />
                 ) : (
@@ -215,7 +244,20 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
 
                 {/* Cutting marks between sections */}
                 {showCuttingMarks && Array.from({ length: numSections + 1 }).map((_, i) => {
-                  const x = (i * repeatUnitScaled * previewScale)
+                  const x = i * repeatUnitScaled * previewScale
+                  if (selectedSheet !== 'all') {
+                    const sheetIndex = parseInt(selectedSheet) - 1
+                    const startX = sheetIndex * sheetWidthMm * previewScale
+                    const endX = (sheetIndex + 1) * sheetWidthMm * previewScale
+                    if (x < startX || x > endX) return null
+                    return (
+                      <div
+                        key={i}
+                        className="absolute top-0 bottom-0 border-l-2 border-dashed border-orange-400"
+                        style={{ left: x - startX, opacity: 0.8 }}
+                      />
+                    )
+                  }
                   return (
                     <div
                       key={i}
@@ -228,13 +270,28 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
                 {/* Section numbers */}
                 {showSectionNumbers && Array.from({ length: numSections }).map((_, i) => {
                   const x = (i + 0.5) * repeatUnitScaled * previewScale
+                  if (selectedSheet !== 'all') {
+                    const sheetIndex = parseInt(selectedSheet) - 1
+                    const startX = sheetIndex * sheetWidthMm * previewScale
+                    const endX = (sheetIndex + 1) * sheetWidthMm * previewScale
+                    if (x < startX || x > endX) return null
+                    return (
+                      <div
+                        key={i}
+                        className="absolute top-1 text-[9px] font-bold text-orange-300 bg-black/60 px-1 rounded"
+                        style={{ left: Math.max(0, x - startX - 12) }}
+                      >
+                        {i + 1}{"/"}{numSections}
+                      </div>
+                    )
+                  }
                   return (
                     <div
                       key={i}
                       className="absolute top-1 text-[9px] font-bold text-orange-300 bg-black/60 px-1 rounded"
                       style={{ left: Math.max(0, x - 12) }}
                     >
-                      {i + 1}/{numSections}
+                      {i + 1}{"/"}{numSections}
                     </div>
                   )
                 })}
@@ -242,6 +299,17 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
                 {/* Registration marks */}
                 {Array.from({ length: numSections + 1 }).map((_, i) => {
                   const x = i * repeatUnitScaled * previewScale
+                  if (selectedSheet !== 'all') {
+                    const sheetIndex = parseInt(selectedSheet) - 1
+                    const startX = sheetIndex * sheetWidthMm * previewScale
+                    const endX = (sheetIndex + 1) * sheetWidthMm * previewScale
+                    if (x < startX || x > endX) return null
+                    return (
+                      <div key={i} className="absolute" style={{ left: x - startX - 5, top: -8 }}>
+                        <div className="text-blue-600 text-[10px] font-bold leading-none">+</div>
+                      </div>
+                    )
+                  }
                   return (
                     <div key={i} className="absolute" style={{ left: x - 5, top: -8 }}>
                       <div className="text-blue-600 text-[10px] font-bold leading-none">+</div>
@@ -254,7 +322,11 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
               <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-500">
                 <div className="flex-1 border-t border-gray-400"></div>
                 <span className="mx-1 whitespace-nowrap font-mono">
-                  ← {dims.treadWidthMm} mm / {scaleNum} = {treadWidthScaled.toFixed(0)} mm (di kertas) →
+                  {selectedSheet === 'all' ? (
+                    `← ${dims.treadWidthMm} mm (Lebar Tapak) | Keliling Total: ${dims.circumferenceMm} mm →`
+                  ) : (
+                    `← Lembar ${selectedSheet} dari ${totalSheetsNeeded} | Cakupan: ${Math.round((parseInt(selectedSheet) - 1) * sheetWidthMm * scaleNum)} - ${Math.round(Math.min(dims.circumferenceMm, parseInt(selectedSheet) * sheetWidthMm * scaleNum))} mm →`
+                  )}
                 </span>
                 <div className="flex-1 border-t border-gray-400"></div>
               </div>
@@ -270,11 +342,21 @@ export default function Step6PrintTemplate({ state, dispatch: _dispatch, onBack 
               <div className="mt-4 bg-gray-50 border border-gray-200 rounded p-3 text-xs text-gray-600 space-y-1">
                 <p className="font-bold text-gray-800">Cara Penggunaan:</p>
                 <ol className="list-decimal list-inside space-y-0.5">
-                  <li>Print lembar ini di kertas A2 sesuai skala yang dipilih ({scale})</li>
-                  <li>Gunting setiap bagian mengikuti garis potong oranye</li>
-                  <li>Susun di atas triplek sesuai nomor urut bagian (1/{numSections} s.d. {numSections}/{numSections})</li>
-                  <li>Rekatkan menggunakan tanda registrasi (+) sebagai panduan sambungan</li>
-                  <li>Gambar pola ke triplek mengikuti garis, lalu pahat sesuai kedalaman {cfg.grooveDepthMm}mm</li>
+                  {selectedSheet === 'all' ? (
+                    <>
+                      <li>Print lembaran ini di kertas A2 sesuai skala yang dipilih ({scale})</li>
+                      <li>Gunting setiap bagian mengikuti garis potong oranye</li>
+                      <li>Susun di atas triplek sesuai nomor urut bagian {"(1/"}{numSections}{" s.d. "}{numSections}{"/"}{numSections}{")"}</li>
+                      <li>Rekatkan menggunakan tanda registrasi (+) sebagai panduan sambungan</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>Print lembar ke-{selectedSheet} dari total {totalSheetsNeeded} lembar pada kertas A2 dengan skala {scale}</li>
+                      <li>Sambungkan lembar ini dengan lembar {prevSheetText} {nextSheetText} memakai overlap garis potong</li>
+                      <li>Rekatkan menggunakan tanda registrasi (+) sebagai panduan sambungan</li>
+                    </>
+                  )}
+                  <li>Gambar pola ke ban/triplek mengikuti garis, lalu pahat sesuai kedalaman {cfg.grooveDepthMm}mm</li>
                 </ol>
               </div>
             </div>

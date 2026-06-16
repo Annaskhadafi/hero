@@ -65,6 +65,8 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     repeatUnitMm: state.patternConfig?.repeatUnitMm ?? 42,
     hasCenterGroove: state.patternConfig?.hasCenterGroove ?? false,
     hasLateralGrooves: state.patternConfig?.hasLateralGrooves ?? true,
+    sipesDensity: state.patternConfig?.sipesDensity ?? 0,
+    sipesAngle: state.patternConfig?.sipesAngle ?? 45,
   }))
 
   const isAutoRotateRef = useRef(isAutoRotate)
@@ -110,12 +112,39 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     }
   }, [lightIntensity])
 
+  // ─── Bump scale depth listener ──────────────────────────────────────────────
+  useEffect(() => {
+    if (tireMeshRef.current) {
+      const mat = tireMeshRef.current.material as THREE.MeshStandardMaterial
+      if (mat) {
+        // Map groove depth (6-25mm) to bumpScale (0.2 to 1.2) for deep heavy-duty grooves
+        mat.bumpScale = Math.min(1.2, Math.max(0.2, (localConfig.grooveDepthMm / 60) * 3.5))
+        mat.needsUpdate = true
+      }
+    }
+  }, [localConfig.grooveDepthMm])
+
+  // ─── Texture repeat listener ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (textureRef.current) {
+      const canvasWidth = 700
+      const canvasHeight = 380
+      const repeatPx = Math.max(20, (localConfig.repeatUnitMm / 300) * canvasWidth)
+      const repeatsInTexture = canvasHeight / repeatPx
+      const totalRepeats = dims.circumferenceMm / localConfig.repeatUnitMm
+      const repeatCircumference = totalRepeats / repeatsInTexture
+
+      textureRef.current.repeat.set(repeatCircumference, 1)
+      textureRef.current.needsUpdate = true
+    }
+  }, [dims.circumferenceMm, localConfig.repeatUnitMm])
+
   // ─── Tire dimension scaling listener ──────────────────────────────────────────
   useEffect(() => {
     if (tireMeshRef.current && rimMeshRef.current) {
-      // Scale width of the tire (Z axis) dynamically to represent width differences
+      // Scale width of the tire (local Y axis) dynamically to represent width differences
       const zScale = Math.min(1.2, Math.max(0.65, (dims.treadWidthMm / 350) * 0.8))
-      tireMeshRef.current.scale.set(1, 1, zScale)
+      tireMeshRef.current.scale.set(1, zScale, 1)
       // Scale length of rim cylinder to match tire width
       rimMeshRef.current.scale.set(1, zScale, 1)
     }
@@ -179,8 +208,51 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     scene.add(tireGroup)
     tireGroupRef.current = tireGroup
 
-    // Tire mesh
-    const tireGeom = new THREE.TorusGeometry(1.2, 0.48, 32, 128)
+    // Tire mesh using LatheGeometry for OTR flat tread
+    const points: THREE.Vector2[] = []
+    const profilePoints = [
+      { x: 0.72, y: -0.38 }, // 0: bead inner
+      { x: 0.74, y: -0.42 }, // 1: bead toe
+      { x: 0.78, y: -0.45 }, // 2: bead heel
+      { x: 0.95, y: -0.48 }, // 3: lower sidewall
+      { x: 1.25, y: -0.49 }, // 4: mid sidewall
+      { x: 1.55, y: -0.45 }, // 5: upper sidewall
+      { x: 1.65, y: -0.40 }, // 6: shoulder
+      { x: 1.68, y: -0.36 }, // 7: tread edge
+      { x: 1.68, y: -0.30 }, // 8: tread flat
+      { x: 1.68, y: -0.15 }, // 9: tread flat
+      { x: 1.68, y: 0.0 },   // 10: tread flat center
+      { x: 1.68, y: 0.15 },  // 11: tread flat
+      { x: 1.68, y: 0.30 },  // 12: tread flat
+      { x: 1.68, y: 0.36 },  // 13: tread edge right
+      { x: 1.65, y: 0.40 },  // 14: shoulder right
+      { x: 1.55, y: 0.45 },  // 15: upper sidewall right
+      { x: 1.25, y: 0.49 },  // 16: mid sidewall right
+      { x: 0.95, y: 0.48 },  // 17: lower sidewall right
+      { x: 0.78, y: 0.45 },  // 18: bead heel right
+      { x: 0.74, y: 0.42 },  // 19: bead toe right
+      { x: 0.72, y: 0.38 },  // 20: bead inner right
+    ]
+    profilePoints.forEach(p => points.push(new THREE.Vector2(p.x, p.y)))
+
+    const tireGeom = new THREE.LatheGeometry(points, 64)
+
+    // Adjust UV mapping so texture maps only to the flat tread (indices 7 to 13)
+    const uvAttr = tireGeom.attributes.uv
+    const vStart = 7 / 20
+    const vEnd = 13 / 20
+    for (let i = 0; i < uvAttr.count; i++) {
+      const u = uvAttr.getX(i)
+      const v = uvAttr.getY(i)
+      let newV = 0
+      if (v >= vStart && v <= vEnd) {
+        newV = (v - vStart) / (vEnd - vStart)
+      } else if (v > vEnd) {
+        newV = 1
+      }
+      uvAttr.setXY(i, u, newV)
+    }
+    uvAttr.needsUpdate = true
     
     // Texture creation
     const loader = new THREE.TextureLoader()
@@ -201,60 +273,62 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
     texture.wrapT = THREE.RepeatWrapping
     texture.rotation = Math.PI / 2
     texture.center.set(0.5, 0.5)
-    texture.repeat.set(3.3, 1)
+    
+    // Dynamic initial repeat to match scale 1:1 on the circumference
+    const canvasWidth = 700
+    const canvasHeight = 380
+    const repeatPx = Math.max(20, (localConfig.repeatUnitMm / 300) * canvasWidth)
+    const repeatsInTexture = canvasHeight / repeatPx
+    const totalRepeats = dims.circumferenceMm / localConfig.repeatUnitMm
+    const initRepeatCircumference = totalRepeats / repeatsInTexture
+    texture.repeat.set(initRepeatCircumference, 1)
+
     textureRef.current = texture
+
+    const initBumpScale = Math.min(1.2, Math.max(0.2, (localConfig.grooveDepthMm / 60) * 3.5))
 
     const material = new THREE.MeshStandardMaterial({
       map: texture,
       roughness: 0.42,
       metalness: 0.05,
       bumpMap: texture,
-      bumpScale: 0.28,
+      bumpScale: initBumpScale,
+      side: THREE.DoubleSide,
     })
 
     const tire = new THREE.Mesh(tireGeom, material)
     tire.castShadow = true
+    // Rotate to align lath Y-axis to Z-axis
+    tire.rotation.x = Math.PI / 2
     const initZScale = Math.min(1.2, Math.max(0.65, (dims.treadWidthMm / 350) * 0.8))
-    tire.scale.set(1, 1, initZScale)
+    tire.scale.set(1, initZScale, 1)
     tireGroup.add(tire)
     tireMeshRef.current = tire
 
-    // Rim outer barrel
-    const rimGeom = new THREE.CylinderGeometry(0.72, 0.72, 0.38, 48)
+    // Hollow Rim barrel using LatheGeometry
+    const rimPoints: THREE.Vector2[] = []
+    const rimProfile = [
+      { x: 0.75, y: -0.40 },
+      { x: 0.72, y: -0.39 },
+      { x: 0.715, y: -0.37 },
+      { x: 0.715, y: 0.37 },
+      { x: 0.72, y: 0.39 },
+      { x: 0.75, y: 0.40 },
+    ]
+    rimProfile.forEach(p => rimPoints.push(new THREE.Vector2(p.x, p.y)))
+    const rimGeom = new THREE.LatheGeometry(rimPoints, 48)
+
     const rimMat = new THREE.MeshStandardMaterial({ 
       color: 0x475569,
-      metalness: 0.7, 
-      roughness: 0.3 
+      metalness: 0.8, 
+      roughness: 0.2,
+      side: THREE.DoubleSide,
     })
     const rim = new THREE.Mesh(rimGeom, rimMat)
     rim.rotation.x = Math.PI / 2
     rim.scale.set(1, initZScale, 1)
     tireGroup.add(rim)
     rimMeshRef.current = rim
-
-    // Rim disc
-    const discGeom = new THREE.CylinderGeometry(0.70, 0.70, 0.06, 48)
-    const discMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      metalness: 0.8,
-      roughness: 0.2
-    })
-    const disc = new THREE.Mesh(discGeom, discMat)
-    disc.rotation.x = Math.PI / 2
-    disc.position.z = 0.03
-    tireGroup.add(disc)
-
-    // Hub cap
-    const hubGeom = new THREE.CylinderGeometry(0.22, 0.22, 0.16, 24)
-    const hubMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      metalness: 0.9,
-      roughness: 0.1
-    })
-    const hub = new THREE.Mesh(hubGeom, hubMat)
-    hub.rotation.x = Math.PI / 2
-    hub.position.z = 0.06
-    tireGroup.add(hub)
 
     // Floor
     const floorGeom = new THREE.PlaneGeometry(20, 20)
@@ -464,6 +538,34 @@ export default function Step4ThreeDViewer({ state, dispatch, presets, onNext, on
                 min={20} max={120} step={2}
                 value={[localConfig.repeatUnitMm]}
                 onValueChange={([v]) => handleConfigChange('repeatUnitMm', v)}
+                className="[&_[role=slider]]:bg-amber-500"
+              />
+            </div>
+
+            {/* Sipes Density */}
+            <div className="space-y-1 border-t pt-2 mt-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-[#64748b]">Kerapatan Sipes</span>
+                <span className="font-mono font-bold text-amber-700">{localConfig.sipesDensity ?? 0}%</span>
+              </div>
+              <Slider
+                min={0} max={100} step={10}
+                value={[localConfig.sipesDensity ?? 0]}
+                onValueChange={([v]) => handleConfigChange('sipesDensity', v)}
+                className="[&_[role=slider]]:bg-amber-500"
+              />
+            </div>
+
+            {/* Sipes Angle */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-[#64748b]">Sudut Sipes</span>
+                <span className="font-mono font-bold text-amber-700">{localConfig.sipesAngle ?? 45}°</span>
+              </div>
+              <Slider
+                min={0} max={90} step={5}
+                value={[localConfig.sipesAngle ?? 45]}
+                onValueChange={([v]) => handleConfigChange('sipesAngle', v)}
                 className="[&_[role=slider]]:bg-amber-500"
               />
             </div>
