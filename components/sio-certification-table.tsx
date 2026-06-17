@@ -7,7 +7,6 @@ import { AdminStatusBadge } from "@/components/admin-status-badge"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { sendSingleSioReminder } from "@/lib/sio-reminder"
 
 interface SioRow {
   id: number
@@ -143,15 +142,20 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
     if (!reminderRow) return
     setSending(true)
     try {
-      const res = await sendSingleSioReminder({
-        employeeName: reminderRow.employeeName || '',
-        certName: reminderRow.certName,
-        certType: reminderRow.certType,
-        expiryDate: reminderRow.expiryDate ? (typeof reminderRow.expiryDate === 'string' ? reminderRow.expiryDate : reminderRow.expiryDate.toISOString().split('T')[0]) : null,
-        toEmail: editToEmail,
-        ccEmail: editCc,
+      const res = await fetch('/dashboard/api/sio-send-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeName: reminderRow.employeeName || '',
+          certName: reminderRow.certName,
+          certType: reminderRow.certType,
+          expiryDate: reminderRow.expiryDate ? (typeof reminderRow.expiryDate === 'string' ? reminderRow.expiryDate : reminderRow.expiryDate.toISOString().split('T')[0]) : null,
+          toEmail: editToEmail,
+          ccEmail: editCc,
+        }),
       })
-      if (res.status === 'success') setSent(true)
+      const json = await res.json()
+      if (json.status === 'success') setSent(true)
     } catch {} finally {
       setSending(false)
     }
