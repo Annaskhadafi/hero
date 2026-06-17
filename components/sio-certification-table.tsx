@@ -7,7 +7,7 @@ import { AdminStatusBadge } from "@/components/admin-status-badge"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { sendSioExpiryReminders } from "@/lib/sio-reminder"
+import { sendSingleSioReminder } from "@/lib/sio-reminder"
 
 interface SioRow {
   id: number
@@ -143,8 +143,15 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
     if (!reminderRow) return
     setSending(true)
     try {
-      const res = await sendSioExpiryReminders(60)
-      setSent(true)
+      const res = await sendSingleSioReminder({
+        employeeName: reminderRow.employeeName || '',
+        certName: reminderRow.certName,
+        certType: reminderRow.certType,
+        expiryDate: reminderRow.expiryDate ? (typeof reminderRow.expiryDate === 'string' ? reminderRow.expiryDate : reminderRow.expiryDate.toISOString().split('T')[0]) : null,
+        toEmail: editToEmail,
+        ccEmail: editCc,
+      })
+      if (res.status === 'success') setSent(true)
     } catch {} finally {
       setSending(false)
     }

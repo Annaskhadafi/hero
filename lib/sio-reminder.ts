@@ -318,6 +318,101 @@ export async function updateSectionHeadEmail(
   }
 }
 
+export interface SingleReminderPayload {
+  employeeName: string
+  certName: string
+  certType: string
+  expiryDate: string | null
+  toEmail: string
+  ccEmail: string
+}
+
+export async function sendSingleSioReminder(
+  payload: SingleReminderPayload
+): Promise<{ status: string; message: string }> {
+  try {
+    const smtpSettings = await getEmailSmtpSettingsData()
+    if (!smtpSettings?.isActive || !smtpSettings.host) {
+      return { status: 'error', message: 'SMTP email belum dikonfigurasi. Settings > Email.' }
+    }
+
+    const daysLeft = payload.expiryDate
+      ? Math.ceil((new Date(payload.expiryDate).getTime() - Date.now()) / 86400000)
+      : 0
+
+    const subject = `[Reminder] Sertifikasi ${payload.certType} akan expired — ${payload.employeeName}`
+    const text = `Yth. Section Head,\n\nSertifikasi berikut akan segera berakhir:\n\nKaryawan: ${payload.employeeName}\nSertifikat: ${payload.certName}\nTipe: ${payload.certType}\nMasa Berlaku: ${payload.expiryDate || '-'}\nSisa Hari: ${daysLeft} hari\n\nHarap segera mengambil tindakan perpanjangan.\n\nEmail dikirim otomatis oleh HERO.`
+    const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;">
+  <h2 style="color:#92400e;">Peringatan Expiry Sertifikasi</h2>
+  <p>Yth. Section Head,</p>
+  <p>Berikut sertifikasi yang akan segera berakhir:</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+    <tr style="background:#fef3c7;">
+      <th style="padding:8px;text-align:left;border:1px solid #e2e8f0;">Karyawan</th>
+      <th style="padding:8px;text-align:left;border:1px solid #e2e8f0;">Sertifikat</th>
+      <th style="padding:8px;text-align:left;border:1px solid #e2e8f0;">Tipe</th>
+      <th style="padding:8px;text-align:left;border:1px solid #e2e8f0;">Masa Berlaku</th>
+      <th style="padding:8px;text-align:left;border:1px solid #e2e8f0;">Sisa Hari</th>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${payload.employeeName}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${payload.certName}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${payload.certType}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;">${payload.expiryDate || '-'}</td>
+      <td style="padding:8px;border:1px solid #e2e8f0;font-weight:bold;color:${daysLeft <= 0 ? '#dc2626' : daysLeft <= 30 ? '#d97706' : '#16a34a'};">${daysLeft} hari</td>
+    </tr>
+  </table>
+  <p style="color:#64748b;font-size:12px;">Harap segera mengambil tindakan perpanjangan atau penggantian.</p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">
+  <p style="color:#94a3b8;font-size:11px;">Email ini dikirim otomatis oleh sistem HERO.</p>
+</div>`
+
+    // Send to Section Head
+    await sendEmailViaSmtp(
+      {
+        host: smtpSettings.host,
+        port: smtpSettings.port,
+        encryption: smtpSettings.encryption as 'tls' | 'ssl' | 'none',
+        username: smtpSettings.username,
+        passwordSecret: smtpSettings.passwordSecret,
+        fromEmail: smtpSettings.fromEmail,
+        fromName: smtpSettings.fromName,
+        replyToEmail: smtpSettings.replyToEmail,
+        timeoutSeconds: smtpSettings.timeoutSeconds,
+      },
+      { to: payload.toEmail, subject, html, text }
+    )
+
+    // Send CC if provided
+    const ccList = payload.ccEmail
+      ? payload.ccEmail.split(',').map((e) => e.trim()).filter(Boolean)
+      : []
+    for (const cc of ccList) {
+      try {
+        await sendEmailViaSmtp(
+          {
+            host: smtpSettings.host,
+            port: smtpSettings.port,
+            encryption: smtpSettings.encryption as 'tls' | 'ssl' | 'none',
+            username: smtpSettings.username,
+            passwordSecret: smtpSettings.passwordSecret,
+            fromEmail: smtpSettings.fromEmail,
+            fromName: smtpSettings.fromName,
+            replyToEmail: smtpSettings.replyToEmail,
+            timeoutSeconds: smtpSettings.timeoutSeconds,
+          },
+          { to: cc, subject: `CC: ${subject}`, html, text }
+        )
+      } catch {}
+    }
+
+    return { status: 'success', message: `Reminder terkirim ke ${payload.toEmail}${ccList.length > 0 ? ` + ${ccList.length} CC` : ''}.` }
+  } catch (err) {
+    return { status: 'error', message: err instanceof Error ? err.message : 'Gagal kirim email.' }
+  }
+}
+
 export async function saveSioReminderConfig(formData: FormData) {
   try {
     const additionalRecipients = (formData.get('additionalRecipients') as string) || ''
