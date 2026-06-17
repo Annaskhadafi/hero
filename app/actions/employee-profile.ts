@@ -10,6 +10,7 @@ import {
   hrSites,
   employees,
   trainingRecords,
+  sioCertifications,
   hcEmployeeContractReviews,
   hcPerformanceReviews,
   hcPerformanceCycles,
@@ -192,7 +193,17 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
       .orderBy(desc(trainingRecords.completedYear));
   }
 
-  // 5. Fetch contract reviews
+  // 5. Fetch SIO/POP/POM certifications
+  let sioCertificationsData: any[] = [];
+  if (employeeIds.length > 0) {
+    sioCertificationsData = await db
+      .select()
+      .from(sioCertifications)
+      .where(inArray(sioCertifications.employeeId, employeeIds))
+      .orderBy(desc(sioCertifications.expiryDate));
+  }
+
+  // 6. Fetch contract reviews
   const contractReviews = await db
     .select()
     .from(hcEmployeeContractReviews)
@@ -423,6 +434,7 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
     hrEmployee: hrEmp,
     gamifiedEmployee: activeGamifiedEmp,
     trainings,
+    sioCertifications: sioCertificationsData,
     contractReviews,
     performanceReviews,
     disciplinaryActions,

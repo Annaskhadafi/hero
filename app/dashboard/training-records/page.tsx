@@ -228,7 +228,7 @@ export default async function TrainingRecordsPage({
           </TabsTrigger>
           <TabsTrigger value="sio" className="flex items-center gap-1.5">
             <ShieldCheck className="size-4 text-primary" />
-            SIO Database
+            SIO & POP
           </TabsTrigger>
         </TabsList>
 

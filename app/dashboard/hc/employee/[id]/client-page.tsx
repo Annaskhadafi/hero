@@ -94,6 +94,7 @@ interface EmployeeProfileClientPageProps {
       directManagerId: number | null;
     } | null;
     trainings: any[];
+    sioCertifications: any[];
     contractReviews: any[];
     performanceReviews: any[];
     disciplinaryActions: any[];
@@ -123,6 +124,7 @@ export function EmployeeProfileClientPage({
     hrEmployee: emp,
     gamifiedEmployee,
     trainings,
+    sioCertifications: sioCertificationsData,
     contractReviews,
     performanceReviews,
     disciplinaryActions,
@@ -799,6 +801,73 @@ export function EmployeeProfileClientPage({
                             </TableCell>
                           </TableRow>
                         ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* SIO / POP / POM Certifications */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-bold">Sertifikasi SIO / POP / POM</CardTitle>
+                <CardDescription className="text-xs">Sertifikasi alat berat dan izin operasi</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(!sioCertificationsData || sioCertificationsData.length === 0) ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                    <IconShield className="size-10 text-muted-foreground/30 mb-2" />
+                    <span className="text-sm font-medium">Belum ada sertifikasi SIO/POP/POM</span>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Tipe</TableHead>
+                          <TableHead>Sertifikat</TableHead>
+                          <TableHead>Penerbit</TableHead>
+                          <TableHead>Tanggal</TableHead>
+                          <TableHead>Masa Berlaku</TableHead>
+                          <TableHead>Sisa Hari</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sioCertificationsData.map((c: any) => {
+                          const days = c.expiryDate ? Math.ceil((new Date(c.expiryDate).getTime() - Date.now()) / 86400000) : null
+                          return (
+                            <TableRow key={c.id}>
+                              <TableCell>
+                                <Badge variant="outline" className="text-[10px] border-muted">{c.certType}</Badge>
+                              </TableCell>
+                              <TableCell className="font-semibold text-slate-800">
+                                {c.certName}
+                                {c.certNumber && <span className="text-muted-foreground ml-1 text-xs">#{c.certNumber}</span>}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{c.issuingBody || '-'}</TableCell>
+                              <TableCell className="text-xs">{c.certDate ? formatDate(c.certDate) : '-'}</TableCell>
+                              <TableCell className="text-xs">{c.expiryDate ? formatDate(c.expiryDate) : '-'}</TableCell>
+                              <TableCell className="text-xs">
+                                {days !== null ? (
+                                  <span className={cn(days <= 0 ? 'text-rose-600 font-bold' : days <= 30 ? 'text-amber-600 font-bold' : 'text-emerald-600')}>
+                                    {days <= 0 ? `${Math.abs(days)} hr lewat` : `${days} hr`}
+                                  </span>
+                                ) : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={cn("text-xs font-semibold rounded-full px-2 py-0.5",
+                                  c.status === 'active' ? 'bg-emerald-100 text-emerald-800' :
+                                  c.status === 'expiring_soon' ? 'bg-amber-100 text-amber-800' :
+                                  'bg-rose-100 text-rose-800'
+                                )}>
+                                  {c.status === 'active' ? 'Aktif' : c.status === 'expiring_soon' ? 'Hampir Berakhir' : 'Expired'}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   </div>

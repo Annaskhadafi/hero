@@ -6093,7 +6093,7 @@ export async function manageSioCertAction(
       }
       const expiryDate = (raw.expiryDate as string) || null
       const status = (raw.status as string) || inferSioStatus(expiryDate)
-      const [cert] = await db.insert(sioCertifications).values({
+      const insertData: typeof sioCertifications.$inferInsert = {
         employeeId,
         certType,
         certNumber: (raw.certNumber as string) || null,
@@ -6103,8 +6103,9 @@ export async function manageSioCertAction(
         expiryDate,
         status,
         notes: (raw.notes as string) || null,
-        lastSyncFrom: 'manual' as const,
-      }).returning({ id: sioCertifications.id })
+        lastSyncFrom: 'manual',
+      }
+      const [cert] = await db.insert(sioCertifications).values(insertData).returning({ id: sioCertifications.id })
 
       const awardPoints = raw.awardPoints === 'true'
       if (awardPoints) {

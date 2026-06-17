@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { ShieldCheck, TableProperties, Activity } from "lucide-react"
+import { ShieldCheck, TableProperties, Activity, FileSpreadsheet } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AdminMetricGrid } from "@/components/admin-metric-grid"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,6 +11,8 @@ import { SioCertificationTable } from "@/components/sio-certification-table"
 import { SioCreateDialog, SioEditDialog } from "@/components/sio-certification-dialogs"
 import { SioDashboardSection } from "@/components/sio-certification-dashboard"
 import { SioImportDialog } from "@/components/sio-certification-import"
+import { SioReminderPanel } from "@/components/sio-reminder-settings"
+import { computeAggregates } from "@/lib/sio-certification"
 
 interface EmployeeOption {
   id: number
@@ -50,6 +52,13 @@ interface DashboardAgg {
   expiredList: { employeeName: string; certName: string; certType: string; daysOverdue: number }[]
 }
 
+const TYPE_TABS = [
+  { value: 'all', label: 'Semua' },
+  { value: 'SIO', label: 'SIO' },
+  { value: 'POP', label: 'POP' },
+  { value: 'POM', label: 'POM' },
+]
+
 export function SioDatabaseTab({
   rows,
   employees,
@@ -62,6 +71,17 @@ export function SioDatabaseTab({
   const router = useRouter()
   const [editRow, setEditRow] = useState<SioRow | null>(null)
   const [editOpen, setEditOpen] = useState(false)
+  const [typeFilter, setTypeFilter] = useState('all')
+
+  const filteredRows = useMemo(
+    () => typeFilter === 'all' ? rows : rows.filter((r) => r.certType === typeFilter),
+    [rows, typeFilter]
+  )
+
+  const filteredAgg = useMemo(
+    () => computeAggregates(filteredRows, new Date()),
+    [filteredRows]
+  )
 
   const handleRefresh = useCallback(() => {
     router.refresh()
@@ -81,30 +101,53 @@ export function SioDatabaseTab({
       </TabsList>
 
       <TabsContent value="workspace" className="space-y-5 outline-none">
-        <AdminMetricGrid
-          mode="compact"
-          items={[
-            { label: "Sertifikat SIO/POP", value: `${agg.totalRecords}`, meta: "Total seluruh sertifikat" },
-            { label: "Aktif", value: `${agg.activeCount}`, meta: "Masih berlaku" },
-            { label: "Segera expired", value: `${agg.expiringCount}`, meta: "≤ 30 hari" },
-            { label: "Expired", value: `${agg.expiredCount}`, meta: "Habis masa berlaku" },
-          ]}
-        />
+        <div className="flex items-center justify-between">
+          <AdminMetricGrid
+            mode="compact"
+            items={[
+              { label: "Sertifikat", value: `${filteredAgg.totalRecords}`, meta: typeFilter === 'all' ? "SIO / POP / POM" : typeFilter },
+              { label: "Aktif", value: `${filteredAgg.activeCount}`, meta: "Masih berlaku" },
+              { label: "Segera expired", value: `${filteredAgg.expiringCount}`, meta: "≤ 30 hari" },
+              { label: "Expired", value: `${filteredAgg.expiredCount}`, meta: "Habis masa berlaku" },
+            ]}
+          />
+        </div>
+
+        <SioReminderPanel />
 
         <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
           <CardHeader className="pb-0">
-            <CardTitle className="flex items-center gap-2 text-xl text-foreground font-semibold">
-              <ShieldCheck className="size-5 text-primary" />
-              Database Sertifikasi SIO / POP / POM
-            </CardTitle>
-            <CardDescription>
-              Kelola sertifikasi SIO, POP, dan POM karyawan. Import dari Excel, tambah manual, dan pantau expiry.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-xl text-foreground font-semibold">
+                  <ShieldCheck className="size-5 text-primary" />
+                  Database Sertifikasi
+                </CardTitle>
+                <CardDescription>
+                  Kelola sertifikasi SIO, POP, dan POM karyawan. Terhubung dg User Management & poin produktivitas.
+                </CardDescription>
+              </div>
+              <div className="flex gap-1 bg-surface-container-low/50 rounded-lg p-1">
+                {TYPE_TABS.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => setTypeFilter(t.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      typeFilter === t.value
+                        ? 'bg-white text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="pt-4">
             <MinimalTableShell
               label="sio certifications"
-              fileName="sio-certifications"
+              fileName={`sio-certifications-${typeFilter}`}
               searchPlaceholder="Cari nama, sertifikat, tipe..."
               dateFilter={false}
               showImport={false}
@@ -117,7 +160,7 @@ export function SioDatabaseTab({
               }
             >
               <SioCertificationTable
-                rows={rows}
+                rows={filteredRows}
                 onEdit={(row) => { setEditRow(row); setEditOpen(true) }}
                 onDelete={(row) => { setEditRow(row); setEditOpen(true) }}
               />
@@ -127,7 +170,22 @@ export function SioDatabaseTab({
       </TabsContent>
 
       <TabsContent value="dashboard" className="space-y-5 outline-none">
-        <SioDashboardSection agg={agg} />
+        <div className="flex gap-1 bg-surface-container-low/50 rounded-lg p-1 w-fit mb-4">
+          {TYPE_TABS.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTypeFilter(t.value)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                typeFilter === t.value
+                  ? 'bg-white text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <SioDashboardSection agg={filteredAgg} />
       </TabsContent>
 
       <SioEditDialog
