@@ -1,6 +1,7 @@
-import { eq, and, or, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
+import { getAllSectionHeads } from '@/lib/sio-reminder'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
@@ -8,55 +9,34 @@ export async function GET(request: Request) {
   if (!employeeId) return Response.json({ name: null, email: null }, { status: 400 })
 
   try {
-    // 1. Get employee info (department for fallback)
+    // 1. Get employee info
     const [emp] = await db
-      .select({
-        managerId: employees.directManagerId,
-        department: employees.department,
-        section: employees.section,
-      })
+      .select({ department: employees.department, section: employees.section })
       .from(employees)
       .where(eq(employees.id, employeeId))
       .limit(1)
 
-    if (!emp) return Response.json({ name: null, email: null })
+    if (!emp) return Response.json({ name: '(tidak ditemukan)', email: '(tidak ditemukan)' })
 
-    // 2. Try directManagerId first
-    if (emp.managerId) {
-      const [mgr] = await db
-        .select({ name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, emp.managerId))
-        .limit(1)
-      if (mgr) return Response.json(mgr)
+    // 2. Get all section heads (same data as Reminder Settings)
+    const allHeads = await getAllSectionHeads()
+
+    // 3. Find the section head for this employee's department/section
+    const dept = emp.department?.trim().toLowerCase() || ''
+    const section = emp.section?.trim().toLowerCase() || ''
+
+    // Priority: same department + same section > same department only
+    let head = allHeads.find(
+      (h) => h.department?.trim().toLowerCase() === dept && h.section?.trim().toLowerCase() === section
+    )
+    if (!head) {
+      head = allHeads.find((h) => h.department?.trim().toLowerCase() === dept)
     }
 
-    // 3. Fallback: find manager/head in same department
-    const dept = emp.department?.trim()
-    if (dept) {
-      const heads = await db
-        .select({ name: employees.name, email: employees.email })
-        .from(employees)
-        .where(
-          and(
-            eq(employees.isActive, true),
-            eq(employees.department, dept),
-            or(
-              sql`LOWER(${employees.jobTitle}) LIKE '%manager%'`,
-              sql`LOWER(${employees.jobTitle}) LIKE '%head%'`,
-              sql`LOWER(${employees.role}) LIKE '%manager%'`,
-              sql`LOWER(${employees.role}) LIKE '%head%'`,
-              sql`LOWER(${employees.jobTitle}) LIKE '%supervisor%'`,
-              sql`LOWER(${employees.jobTitle}) LIKE '%coordinator%'`,
-            ),
-          )
-        )
-        .limit(1)
-
-      if (heads.length > 0) return Response.json(heads[0])
+    if (head) {
+      return Response.json({ name: head.name, email: head.email || '(tidak ada email)' })
     }
 
-    // 4. No manager found
     return Response.json({ name: '(tidak ada atasan)', email: '(tidak ada email)' })
   } catch {
     return Response.json({ name: '(error)', email: '(error)' })
