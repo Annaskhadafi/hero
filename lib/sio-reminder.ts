@@ -336,9 +336,13 @@ export async function sendSingleSioReminder(
       return { status: 'error', message: 'SMTP email belum dikonfigurasi. Settings > Email.' }
     }
 
-    const daysLeft = payload.expiryDate
-      ? Math.ceil((new Date(payload.expiryDate).getTime() - Date.now()) / 86400000)
-      : 0
+    let daysLeft = 0
+    if (payload.expiryDate) {
+      const expiry = new Date(payload.expiryDate)
+      if (!isNaN(expiry.getTime())) {
+        daysLeft = Math.ceil((expiry.getTime() - Date.now()) / 86400000)
+      }
+    }
 
     const subject = `[Reminder] Sertifikasi ${payload.certType} akan expired — ${payload.employeeName}`
     const text = `Yth. Section Head,\n\nSertifikasi berikut akan segera berakhir:\n\nKaryawan: ${payload.employeeName}\nSertifikat: ${payload.certName}\nTipe: ${payload.certType}\nMasa Berlaku: ${payload.expiryDate || '-'}\nSisa Hari: ${daysLeft} hari\n\nHarap segera mengambil tindakan perpanjangan.\n\nEmail dikirim otomatis oleh HERO.`
