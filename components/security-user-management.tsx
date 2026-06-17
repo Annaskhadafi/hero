@@ -27,6 +27,7 @@ import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { SecurityUserCreateDialog } from '@/components/security-user-create-dialog'
 import { SecurityUserRowActions } from '@/components/security-user-row-actions'
+import { SecurityUserDashboard } from '@/components/security-user-dashboard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -283,6 +284,7 @@ export function SecurityUserManagement({
 }) {
   const router = useRouter()
   const [isRefreshing, startRefreshTransition] = useTransition()
+  const [activeTab, setActiveTab] = useState<'directory' | 'dashboard'>('directory')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
@@ -745,448 +747,479 @@ export function SecurityUserManagement({
             sections={sections}
             departments={departments}
             positions={positions}
-            sites={sites}
+sites={sites}
           />
         </>
       }
     >
-      <AdminMetricGrid
-        items={[
-          {
-            label: 'Total User',
-            value: users.length.toLocaleString(),
-            meta: 'Semua akun yang terdaftar di HERO.',
-          },
-          {
-            label: 'Active Access',
-            value: activeUsersCount.toLocaleString(),
-            meta: 'Akun dengan akses aktif dan siap dipakai.',
-          },
-          {
-            label: `Bergabung ${currentYear}`,
-            value: newHiresCount.toLocaleString(),
-            meta: 'Karyawan baru pada tahun berjalan.',
-          },
-          {
-            label: 'Cakupan Visible',
-            value: `${visiblePercentage}%`,
-            meta: 'Proporsi data yang masih tampil setelah filter diterapkan.',
-          },
-        ]}
-      />
+      <div className="mb-6 flex border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab('directory')}
+          className={cn(
+            "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer",
+            activeTab === 'directory'
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Direktori Pengguna
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('dashboard')}
+          className={cn(
+            "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer",
+            activeTab === 'dashboard'
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Dashboard Demografis
+        </button>
+      </div>
 
-      {hasActiveFilters ? (
-        <div className="surface-muted-card rounded-[1rem] p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {searchQuery.trim() ? (
-              <FilterChip onRemove={() => setSearchQuery('')}>
-                Cari: {searchQuery.trim()}
-              </FilterChip>
-            ) : null}
-            {selectedDepartments.map((department) => (
-              <FilterChip
-                key={department}
-                onRemove={() =>
-                  setSelectedDepartments((current) => current.filter((item) => item !== department))
-                }
-              >
-                Departemen: {department}
-              </FilterChip>
-            ))}
-            {selectedRoles.map((role) => (
-              <FilterChip
-                key={role}
-                onRemove={() =>
-                  setSelectedRoles((current) => current.filter((item) => item !== role))
-                }
-              >
-                Peran: {role}
-              </FilterChip>
-            ))}
-            {selectedStatusTypes.map((statusType) => (
-              <FilterChip
-                key={statusType}
-                onRemove={() =>
-                  setSelectedStatusTypes((current) => current.filter((item) => item !== statusType))
-                }
-              >
-                Status: {statusType}
-              </FilterChip>
-            ))}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetFilters}
-              className="text-muted-foreground h-8 rounded-full px-3 text-xs"
-            >
-              Reset semua
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {activeTab === 'dashboard' ? (
+        <SecurityUserDashboard users={filteredUsers} />
+      ) : (
+        <>
+          <AdminMetricGrid
+            items={[
+              {
+                label: 'Total User',
+                value: users.length.toLocaleString(),
+                meta: 'Semua akun yang terdaftar di HERO.',
+              },
+              {
+                label: 'Active Access',
+                value: activeUsersCount.toLocaleString(),
+                meta: 'Akun dengan akses aktif dan siap dipakai.',
+              },
+              {
+                label: `Bergabung ${currentYear}`,
+                value: newHiresCount.toLocaleString(),
+                meta: 'Karyawan baru pada tahun berjalan.',
+              },
+              {
+                label: 'Cakupan Visible',
+                value: `${visiblePercentage}%`,
+                meta: 'Proporsi data yang masih tampil setelah filter diterapkan.',
+              },
+            ]}
+          />
 
-      <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
-        <SecurityUserBulkActions
-          selectedIds={selectedIds}
-          onClearSelection={() => setSelectedIds([])}
-          roleOptions={roleOptions}
-        />
-
-        <MinimalTableShell
-          title="Direktori Pengguna"
-          description="Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
-          label="users"
-          fileName="security-users"
-          searchEnabled={false}
-          showImport={false}
-          disableDomManipulation
-          filters={
-            <>
-              <div className="relative w-full sm:w-[220px] sm:flex-none">
-                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-                <Input
-                  placeholder="Cari pengguna..."
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  className="bg-surface-container-lowest h-9 rounded-xl border-0 pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-                />
+          {hasActiveFilters ? (
+            <div className="surface-muted-card rounded-[1rem] p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {searchQuery.trim() ? (
+                  <FilterChip onRemove={() => setSearchQuery('')}>
+                    Cari: {searchQuery.trim()}
+                  </FilterChip>
+                ) : null}
+                {selectedDepartments.map((department) => (
+                  <FilterChip
+                    key={department}
+                    onRemove={() =>
+                      setSelectedDepartments((current) => current.filter((item) => item !== department))
+                    }
+                  >
+                    Departemen: {department}
+                  </FilterChip>
+                ))}
+                {selectedRoles.map((role) => (
+                  <FilterChip
+                    key={role}
+                    onRemove={() =>
+                      setSelectedRoles((current) => current.filter((item) => item !== role))
+                    }
+                  >
+                    Peran: {role}
+                  </FilterChip>
+                ))}
+                {selectedStatusTypes.map((statusType) => (
+                  <FilterChip
+                    key={statusType}
+                    onRemove={() =>
+                      setSelectedStatusTypes((current) => current.filter((item) => item !== statusType))
+                    }
+                  >
+                    Status: {statusType}
+                  </FilterChip>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="text-muted-foreground h-8 rounded-full px-3 text-xs"
+                >
+                  Reset semua
+                </Button>
               </div>
-              <MultiSelectDropdown
-                options={departmentFilterOptions}
-                selected={selectedDepartments}
-                onChange={setSelectedDepartments}
-                placeholder="Semua departemen"
-                label="Departemen"
-              />
-              <MultiSelectDropdown
-                options={roleNames}
-                selected={selectedRoles}
-                onChange={setSelectedRoles}
-                placeholder="Semua peran"
-                label="Peran"
-              />
-              <MultiSelectDropdown
-                options={statusTypeOptions}
-                selected={selectedStatusTypes}
-                onChange={setSelectedStatusTypes}
-                placeholder="All status types"
-                label="Tipe status"
-              />
-              <MultiSelectDropdown
-                options={siteOptions}
-                selected={selectedSites}
-                onChange={setSelectedSites}
-                placeholder="Semua site"
-                label="Site"
-              />
-            </>
-          }
-          actions={
-            <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+            </div>
+          ) : null}
+
+          <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
+            <SecurityUserBulkActions
+              selectedIds={selectedIds}
+              onClearSelection={() => setSelectedIds([])}
+              roleOptions={roleOptions}
+            />
+
+            <MinimalTableShell
+              title="Direktori Pengguna"
+              description="Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
+              label="users"
+              fileName="security-users"
+              searchEnabled={false}
+              showImport={false}
+              disableDomManipulation
+              filters={
+                <>
+                  <div className="relative w-full sm:w-[220px] sm:flex-none">
+                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                    <Input
+                      placeholder="Cari pengguna..."
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      className="bg-surface-container-lowest h-9 rounded-xl border-0 pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                    />
+                  </div>
+                  <MultiSelectDropdown
+                    options={departmentFilterOptions}
+                    selected={selectedDepartments}
+                    onChange={setSelectedDepartments}
+                    placeholder="Semua departemen"
+                    label="Departemen"
+                  />
+                  <MultiSelectDropdown
+                    options={roleNames}
+                    selected={selectedRoles}
+                    onChange={setSelectedRoles}
+                    placeholder="Semua peran"
+                    label="Peran"
+                  />
+                  <MultiSelectDropdown
+                    options={statusTypeOptions}
+                    selected={selectedStatusTypes}
+                    onChange={setSelectedStatusTypes}
+                    placeholder="All status types"
+                    label="Tipe status"
+                  />
+                  <MultiSelectDropdown
+                    options={siteOptions}
+                    selected={selectedSites}
+                    onChange={setSelectedSites}
+                    placeholder="Semua site"
+                    label="Site"
+                  />
+                </>
+              }
+              actions={
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                      >
+                        <EyeOff className="mr-1.5 size-3.5" />
+                        Kolom
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+                      {COLUMNS.map((col) => (
+                        <DropdownMenuCheckboxItem
+                          key={col.key}
+                          checked={columnVisibility[col.key]}
+                          onCheckedChange={(checked) =>
+                            setColumnVisibility((prev) => ({ ...prev, [col.key]: checked }))
+                          }
+                        >
+                          {col.label}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={exportVisibleUsers}
                     className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
                   >
-                    <EyeOff className="mr-1.5 size-3.5" />
-                    Kolom
+                    Export Terfilter
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
-                  {COLUMNS.map((col) => (
-                    <DropdownMenuCheckboxItem
-                      key={col.key}
-                      checked={columnVisibility[col.key]}
-                      onCheckedChange={(checked) =>
-                        setColumnVisibility((prev) => ({ ...prev, [col.key]: checked }))
-                      }
-                    >
-                      {col.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportVisibleUsers}
-                className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-              >
-                Export Terfilter
-              </Button>
-            </>
-          }
-          dateFilter={false}
-        >
-          <div className="bg-surface-container-low overflow-x-auto rounded-[1rem] p-2">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={
-                        selectedIds.length === filteredUsers.length && filteredUsers.length > 0
-                      }
-                      onCheckedChange={(checked) => {
-                        setSelectedIds(checked ? filteredUsers.map((u: any) => u.id) : [])
-                      }}
-                    />
-                  </TableHead>
-                  <TableHead className="w-10" />
-                  {COLUMNS.map((col) =>
-                    columnVisibility[col.key] ? (
-                      <TableHead
-                        key={col.key}
-                        className="cursor-pointer select-none"
-                        onClick={() => {
-                          if (sortKey === col.key) {
-                            setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
-                          } else {
-                            setSortKey(col.key)
-                            setSortDir('asc')
+                </>
+              }
+              dateFilter={false}
+            >
+              <div className="bg-surface-container-low overflow-x-auto rounded-[1rem] p-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={
+                            selectedIds.length === filteredUsers.length && filteredUsers.length > 0
                           }
-                        }}
-                      >
-                        {col.label}
+                          onCheckedChange={(checked) => {
+                            setSelectedIds(checked ? filteredUsers.map((u: any) => u.id) : [])
+                          }}
+                        />
                       </TableHead>
-                    ) : null
-                  )}
-                  <TableHead className="w-[120px]">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedUsers.length > 0 ? (
-                  paginatedUsers.map((user, index) => {
-                    const isExpanded = expandedRowIds.includes(user.id);
-                    return (
-                      <Fragment key={user.id}>
-                        <TableRow className="hover:bg-white/55">
-                          <TableCell className="py-3.5">
-                            <Checkbox
-                              checked={selectedIds.includes(user.id)}
-                              onCheckedChange={(checked) => {
-                                setSelectedIds(
-                                  checked
-                                    ? [...selectedIds, user.id]
-                                    : selectedIds.filter((id: number) => id !== user.id)
-                                )
-                              }}
+                      <TableHead className="w-10" />
+                      {COLUMNS.map((col) =>
+                        columnVisibility[col.key] ? (
+                          <TableHead
+                            key={col.key}
+                            className="cursor-pointer select-none"
+                            onClick={() => {
+                              if (sortKey === col.key) {
+                                setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+                              } else {
+                                setSortKey(col.key)
+                                setSortDir('asc')
+                              }
+                            }}
+                          >
+                            {col.label}
+                          </TableHead>
+                        ) : null
+                      )}
+                      <TableHead className="w-[120px]">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedUsers.length > 0 ? (
+                      paginatedUsers.map((user, index) => {
+                        const isExpanded = expandedRowIds.includes(user.id);
+                        return (
+                          <Fragment key={user.id}>
+                            <TableRow className="hover:bg-white/55">
+                              <TableCell className="py-3.5">
+                                <Checkbox
+                                  checked={selectedIds.includes(user.id)}
+                                  onCheckedChange={(checked) => {
+                                    setSelectedIds(
+                                      checked
+                                        ? [...selectedIds, user.id]
+                                        : selectedIds.filter((id: number) => id !== user.id)
+                                    )
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell className="py-3.5">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-expanded={isExpanded}
+                                  aria-label={`${isExpanded ? 'Tutup' : 'Buka'} detail ${user.name}`}
+                                  className={cn(
+                                    "size-7 rounded-lg",
+                                    isExpanded
+                                      ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                                  )}
+                                  onClick={() => {
+                                    setExpandedRowIds((currentIds) =>
+                                      currentIds.includes(user.id)
+                                        ? currentIds.filter((id) => id !== user.id)
+                                        : [...currentIds, user.id]
+                                    )
+                                  }}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="size-4" />
+                                  ) : (
+                                    <ChevronRight className="size-4" />
+                                  )}
+                                </Button>
+                              </TableCell>
+                          {columnVisibility.name ? (
+                            <TableCell className="py-3.5">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="size-11 rounded-xl shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
+                                  <AvatarImage src={user.profileImage || undefined} alt={user.name} className="object-cover" />
+                                  <AvatarFallback className="bg-primary/10 text-primary rounded-xl text-sm font-semibold">
+                                    {getUserInitials(user.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="text-foreground truncate font-medium">{user.name}</p>
+                                  <p className="text-muted-foreground truncate text-sm">{user.email}</p>
+                                </div>
+                              </div>
+                            </TableCell>
+                          ) : null}
+                          {columnVisibility.sn ? (
+                            <TableCell className="py-3.5">
+                              <span className="text-foreground/80 font-mono text-sm">{user.employeeSn}</span>
+                            </TableCell>
+                          ) : null}
+                          {columnVisibility.department ? (
+                            <TableCell className="py-3.5">
+                              <Badge variant="secondary" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                                {user.department}
+                              </Badge>
+                            </TableCell>
+                          ) : null}
+                          {columnVisibility.section ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.section || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.jobTitle ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">
+                              <Badge variant="outline" className="bg-surface-container-lowest text-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                                {user.jobTitle || '-'}
+                              </Badge>
+                            </TableCell>
+                          ) : null}
+                          {columnVisibility.levelStaff ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.levelName || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.peran ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.accessRole}</TableCell>
+                          ) : null}
+                          {columnVisibility.lokasiSite ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.workLocation || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.tipeStatus ? (
+                            <TableCell className="py-3.5">
+                              <Badge variant="outline" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                                {user.employeeStatusType}
+                              </Badge>
+                            </TableCell>
+                          ) : null}
+                          {columnVisibility.gender ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">
+                              {(() => {
+                                if (!user.gender) return '-';
+                                const g = user.gender.toLowerCase().trim();
+                                if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
+                                if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
+                                return user.gender;
+                              })()}
+                            </TableCell>
+                          ) : null}
+                          {columnVisibility.agama ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.religion || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.pendidikan ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.education || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.maritalStatus ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.maritalStatus || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.poh ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.pointOfHire || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.joinDate ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.joinDate || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.contractStart ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.contractDurationStart || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.contractEnd ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.contractDurationEnd || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.permanentDate ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.permanentDate || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.tglLahir ? (
+                            <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.birthDate || '-'}</TableCell>
+                          ) : null}
+                          {columnVisibility.statusAkun ? (
+                            <TableCell className="py-3.5">
+                              <Badge variant="outline" className={cn("rounded-full border-0 px-3 py-1 text-[10px] uppercase tracking-wide", user.isActive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700")}>
+                                {user.isActive ? 'Active' : 'Non Active'}
+                              </Badge>
+                            </TableCell>
+                          ) : null}
+                          <TableCell className="py-3.5 text-right">
+                            <SecurityUserRowActions
+                              user={user}
+                              managerOptions={managerOptions}
+                              roleOptions={roleOptions}
+                              sections={sections}
+                              departments={departments}
+                              positions={positions}
+                              sites={sites}
                             />
                           </TableCell>
-                          <TableCell className="py-3.5">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-expanded={isExpanded}
-                              aria-label={`${isExpanded ? 'Tutup' : 'Buka'} detail ${user.name}`}
-                              className={cn(
-                                "size-7 rounded-lg",
-                                isExpanded
-                                  ? "bg-primary/10 text-primary hover:bg-primary/20"
-                                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                              )}
-                              onClick={() => {
-                                setExpandedRowIds((currentIds) =>
-                                  currentIds.includes(user.id)
-                                    ? currentIds.filter((id) => id !== user.id)
-                                    : [...currentIds, user.id]
-                                )
-                              }}
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="size-4" />
-                              ) : (
-                                <ChevronRight className="size-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                      {columnVisibility.name ? (
-                        <TableCell className="py-3.5">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="size-11 rounded-xl shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
-                              <AvatarImage src={user.profileImage || undefined} alt={user.name} className="object-cover" />
-                              <AvatarFallback className="bg-primary/10 text-primary rounded-xl text-sm font-semibold">
-                                {getUserInitials(user.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <p className="text-foreground truncate font-medium">{user.name}</p>
-                              <p className="text-muted-foreground truncate text-sm">{user.email}</p>
-                            </div>
-                          </div>
-                        </TableCell>
-                      ) : null}
-                      {columnVisibility.sn ? (
-                        <TableCell className="py-3.5">
-                          <span className="text-foreground/80 font-mono text-sm">{user.employeeSn}</span>
-                        </TableCell>
-                      ) : null}
-                      {columnVisibility.department ? (
-                        <TableCell className="py-3.5">
-                          <Badge variant="secondary" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                            {user.department}
-                          </Badge>
-                        </TableCell>
-                      ) : null}
-                      {columnVisibility.section ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.section || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.jobTitle ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">
-                          <Badge variant="outline" className="bg-surface-container-lowest text-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                            {user.jobTitle || '-'}
-                          </Badge>
-                        </TableCell>
-                      ) : null}
-                      {columnVisibility.levelStaff ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.levelName || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.peran ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.accessRole}</TableCell>
-                      ) : null}
-                      {columnVisibility.lokasiSite ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.workLocation || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.tipeStatus ? (
-                        <TableCell className="py-3.5">
-                          <Badge variant="outline" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                            {user.employeeStatusType}
-                          </Badge>
-                        </TableCell>
-                      ) : null}
-                      {columnVisibility.gender ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">
-                          {(() => {
-                            if (!user.gender) return '-';
-                            const g = user.gender.toLowerCase().trim();
-                            if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
-                            if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
-                            return user.gender;
-                          })()}
-                        </TableCell>
-                      ) : null}
-                      {columnVisibility.agama ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.religion || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.pendidikan ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.education || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.maritalStatus ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.maritalStatus || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.poh ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm">{user.pointOfHire || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.joinDate ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.joinDate || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.contractStart ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.contractDurationStart || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.contractEnd ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.contractDurationEnd || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.permanentDate ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.permanentDate || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.tglLahir ? (
-                        <TableCell className="text-foreground/85 py-3.5 text-sm whitespace-nowrap">{user.birthDate || '-'}</TableCell>
-                      ) : null}
-                      {columnVisibility.statusAkun ? (
-                        <TableCell className="py-3.5">
-                          <Badge variant="outline" className={cn("rounded-full border-0 px-3 py-1 text-[10px] uppercase tracking-wide", user.isActive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700")}>
-                            {user.isActive ? 'Active' : 'Non Active'}
-                          </Badge>
-                        </TableCell>
-                      ) : null}
-                      <TableCell className="py-3.5 text-right">
-                        <SecurityUserRowActions
-                          user={user}
-                          managerOptions={managerOptions}
-                          roleOptions={roleOptions}
-                          sections={sections}
-                          departments={departments}
-                          positions={positions}
-                          sites={sites}
-                        />
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded && (
-                      <TableRow data-table-detail-row="true" className="bg-slate-50/30 hover:bg-slate-50/30">
-                        <TableCell colSpan={3 + COLUMNS.filter(col => columnVisibility[col.key]).length} className="p-4 border-t border-slate-100/50">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm bg-white/70 backdrop-blur-sm rounded-xl p-4 shadow-sm border border-slate-100">
-                            {/* Personal Info */}
-                            <div className="space-y-2.5">
-                              <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Data Pribadi</h4>
-                              <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                <span className="text-muted-foreground">Tempat/Tgl Lahir:</span>
-                                <span className="font-medium text-foreground">{user.birthPlaceDate || user.birthDate || '-'}</span>
-                                <span className="text-muted-foreground">Gender:</span>
-                                <span className="font-medium text-foreground">
-                                  {(() => {
-                                    if (!user.gender) return '-';
-                                    const g = user.gender.toLowerCase().trim();
-                                    if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
-                                    if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
-                                    return user.gender;
-                                  })()}
-                                </span>
-                                <span className="text-muted-foreground">Agama:</span>
-                                <span className="font-medium text-foreground">{user.religion || '-'}</span>
-                                <span className="text-muted-foreground">Pendidikan:</span>
-                                <span className="font-medium text-foreground">{user.education || '-'}</span>
-                                <span className="text-muted-foreground">Status Nikah:</span>
-                                <span className="font-medium text-foreground">{user.maritalStatus || '-'}</span>
-                                <span className="text-muted-foreground">Domisili:</span>
-                                <span className="font-medium text-foreground">{user.domicile || '-'}</span>
-                                <span className="text-muted-foreground">No. HP:</span>
-                                <span className="font-medium text-foreground">{user.phoneNumber || '-'}</span>
-                              </div>
-                            </div>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow data-table-detail-row="true" className="bg-slate-50/30 hover:bg-slate-50/30">
+                            <TableCell colSpan={3 + COLUMNS.filter(col => columnVisibility[col.key]).length} className="p-4 border-t border-slate-100/50">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm bg-white/70 backdrop-blur-sm rounded-xl p-4 shadow-sm border border-slate-100">
+                                {/* Personal Info */}
+                                <div className="space-y-2.5">
+                                  <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Data Pribadi</h4>
+                                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                    <span className="text-muted-foreground">Tempat/Tgl Lahir:</span>
+                                    <span className="font-medium text-foreground">{user.birthPlaceDate || user.birthDate || '-'}</span>
+                                    <span className="text-muted-foreground">Gender:</span>
+                                    <span className="font-medium text-foreground">
+                                      {(() => {
+                                        if (!user.gender) return '-';
+                                        const g = user.gender.toLowerCase().trim();
+                                        if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
+                                        if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
+                                        return user.gender;
+                                      })()}
+                                    </span>
+                                    <span className="text-muted-foreground">Agama:</span>
+                                    <span className="font-medium text-foreground">{user.religion || '-'}</span>
+                                    <span className="text-muted-foreground">Pendidikan:</span>
+                                    <span className="font-medium text-foreground">{user.education || '-'}</span>
+                                    <span className="text-muted-foreground">Status Nikah:</span>
+                                    <span className="font-medium text-foreground">{user.maritalStatus || '-'}</span>
+                                    <span className="text-muted-foreground">Domisili:</span>
+                                    <span className="font-medium text-foreground">{user.domicile || '-'}</span>
+                                    <span className="text-muted-foreground">No. HP:</span>
+                                    <span className="font-medium text-foreground">{user.phoneNumber || '-'}</span>
+                                  </div>
+                                </div>
 
-                            {/* Employment Info */}
-                            <div className="space-y-2.5">
-                              <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Kepegawaian</h4>
-                              <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                <span className="text-muted-foreground">Tipe Status:</span>
-                                <span className="font-medium text-foreground">{user.employeeStatusType || '-'}</span>
-                                <span className="text-muted-foreground">Level Staff:</span>
-                                <span className="font-medium text-foreground">{user.levelName || '-'}</span>
-                                <span className="text-muted-foreground">POH (Point of Hire):</span>
-                                <span className="font-medium text-foreground">{user.pointOfHire || '-'}</span>
-                                <span className="text-muted-foreground">Seksi (Section):</span>
-                                <span className="font-medium text-foreground">{user.section || '-'}</span>
-                                <span className="text-muted-foreground">Atasan Langsung:</span>
-                                <span className="font-medium text-foreground">{user.directManagerName || '-'}</span>
-                                <span className="text-muted-foreground">Lokasi Kerja:</span>
-                                <span className="font-medium text-foreground">{user.workLocation || '-'}</span>
-                              </div>
-                            </div>
+                                {/* Employment Info */}
+                                <div className="space-y-2.5">
+                                  <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Kepegawaian</h4>
+                                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                    <span className="text-muted-foreground">Tipe Status:</span>
+                                    <span className="font-medium text-foreground">{user.employeeStatusType || '-'}</span>
+                                    <span className="text-muted-foreground">Level Staff:</span>
+                                    <span className="font-medium text-foreground">{user.levelName || '-'}</span>
+                                    <span className="text-muted-foreground">POH (Point of Hire):</span>
+                                    <span className="font-medium text-foreground">{user.pointOfHire || '-'}</span>
+                                    <span className="text-muted-foreground">Seksi (Section):</span>
+                                    <span className="font-medium text-foreground">{user.section || '-'}</span>
+                                    <span className="text-muted-foreground">Atasan Langsung:</span>
+                                    <span className="font-medium text-foreground">{user.directManagerName || '-'}</span>
+                                    <span className="text-muted-foreground">Lokasi Kerja:</span>
+                                    <span className="font-medium text-foreground">{user.workLocation || '-'}</span>
+                                  </div>
+                                </div>
 
-                            {/* Contract & Dates */}
-                            <div className="space-y-2.5">
-                              <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Kontrak & Tanggal</h4>
-                              <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                <span className="text-muted-foreground">Tanggal Bergabung:</span>
-                                <span className="font-medium text-foreground">{user.joinDate || '-'}</span>
-                                <span className="text-muted-foreground">Mulai Kontrak:</span>
-                                <span className="font-medium text-foreground">{user.contractDurationStart || '-'}</span>
-                                <span className="text-muted-foreground">Selesai Kontrak:</span>
-                                <span className="font-medium text-foreground">{user.contractDurationEnd || '-'}</span>
-                                <span className="text-muted-foreground">Karyawan Tetap:</span>
-                                <span className="font-medium text-foreground">{user.permanentDate || '-'}</span>
+                                {/* Contract & Dates */}
+                                <div className="space-y-2.5">
+                                  <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">Kontrak & Tanggal</h4>
+                                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                                    <span className="text-muted-foreground">Tanggal Bergabung:</span>
+                                    <span className="font-medium text-foreground">{user.joinDate || '-'}</span>
+                                    <span className="text-muted-foreground">Mulai Kontrak:</span>
+                                    <span className="font-medium text-foreground">{user.contractDurationStart || '-'}</span>
+                                    <span className="text-muted-foreground">Selesai Kontrak:</span>
+                                    <span className="font-medium text-foreground">{user.contractDurationEnd || '-'}</span>
+                                    <span className="text-muted-foreground">Karyawan Tetap:</span>
+                                    <span className="font-medium text-foreground">{user.permanentDate || '-'}</span>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                );
-              })
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })
                 ) : (
                   <TableRow>
                     <TableCell
@@ -1291,6 +1324,8 @@ export function SecurityUserManagement({
           </div>
         </div>
       </div>
-    </AdminPageShell>
-  )
+    </>
+  )}
+</AdminPageShell>
+)
 }

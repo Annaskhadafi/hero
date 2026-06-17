@@ -24,9 +24,34 @@ import {
   hcLeaveTypes,
   wellnessRecords,
   hcCandidateMcu,
-  streakRecords
+  streakRecords,
+  hrServiceBands
 } from "@/db/schema/hero";
 import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
+
+function calculateServiceBand(joinDateStr: string | null | undefined): string | null {
+  if (!joinDateStr) return null;
+  const joinDate = new Date(joinDateStr);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - joinDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffMonths = diffDays / 30.4375;
+  const diffYears = diffDays / 365.25;
+
+  if (diffMonths < 6) {
+    return "Less than 6 months";
+  } else if (diffMonths < 12) {
+    return "6 months to <1 year";
+  } else if (diffYears < 2) {
+    return "1 year to <2 years";
+  } else if (diffYears < 5) {
+    return "2 to <5 years";
+  } else if (diffYears < 10) {
+    return "5 to <10 years";
+  } else {
+    return "10 years or above";
+  }
+}
 
 /**
  * Sanitizes birth dates that got corrupted in database with future years (like 2084 instead of 1984).
@@ -68,7 +93,7 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
       accountStatus: hrEmployees.accountStatus,
       genderCode: hrEmployees.genderCode,
       ageBandCode: hrEmployees.ageBandCode,
-      serviceBandCode: hrEmployees.serviceBandCode,
+      serviceBandCode: hrServiceBands.name,
       educationCode: hrEmployees.educationCode,
       demographicEmployeeStatusCode: hrEmployees.demographicEmployeeStatusCode,
       locationCategoryCode: hrEmployees.locationCategoryCode,
@@ -88,6 +113,7 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
     .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
     .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
     .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
+    .leftJoin(hrServiceBands, eq(hrEmployees.serviceBandCode, hrServiceBands.code))
     .where(eq(hrEmployees.id, hrEmployeeId))
     .limit(1);
 
@@ -132,6 +158,20 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
     if (!hrEmp.location && activeGamifiedEmp.workLocation) {
       hrEmp.location = activeGamifiedEmp.workLocation;
     }
+    if (!hrEmp.contractStart && activeGamifiedEmp.contractDurationStart) {
+      hrEmp.contractStart = activeGamifiedEmp.contractDurationStart;
+    }
+    if (!hrEmp.contractEnd && activeGamifiedEmp.contractDurationEnd) {
+      hrEmp.contractEnd = activeGamifiedEmp.contractDurationEnd;
+    }
+    if (!hrEmp.joinDate && activeGamifiedEmp.joinDate) {
+      hrEmp.joinDate = activeGamifiedEmp.joinDate;
+    }
+  }
+
+  // Calculate service band if null/empty
+  if (!hrEmp.serviceBandCode) {
+    hrEmp.serviceBandCode = calculateServiceBand(hrEmp.joinDate);
   }
 
   // Fallback date sanitization if still in future
@@ -340,6 +380,42 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
       .limit(1);
     if (mgr) {
       managerName = mgr.name;
+    }
+  }
+
+  // Fallback: If no direct manager assigned or found, try to auto-resolve from Department Head/Manager in User Management
+  if (!managerName && (hrEmp.departmentName || activeGamifiedEmp?.department)) {
+    const deptName = hrEmp.departmentName || activeGamifiedEmp?.department;
+    if (deptName) {
+      const [gamifiedManager] = await db
+        .select({ name: employees.name })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.isActive, true),
+            or(
+              eq(employees.department, deptName),
+              eq(employees.department, deptName.replace(/s$/i, '')),
+              eq(employees.department, deptName + 's')
+            ),
+            or(
+              sql`LOWER(${employees.jobTitle}) LIKE '%manager%'`,
+              sql`LOWER(${employees.jobTitle}) LIKE '%head%'`,
+              sql`LOWER(${employees.jobTitle}) LIKE '%coordinator%'`,
+              sql`LOWER(${employees.jobTitle}) LIKE '%supervisor%'`,
+              sql`LOWER(${employees.role}) LIKE '%manager%'`,
+              sql`LOWER(${employees.role}) LIKE '%head%'`,
+              sql`LOWER(${employees.role}) LIKE '%coordinator%'`,
+              sql`LOWER(${employees.role}) LIKE '%supervisor%'`
+            )
+          )
+        )
+        .orderBy(desc(employees.id))
+        .limit(1);
+
+      if (gamifiedManager) {
+        managerName = gamifiedManager.name;
+      }
     }
   }
 

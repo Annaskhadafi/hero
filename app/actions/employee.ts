@@ -3,9 +3,9 @@
 import { db } from "@/db";
 import {
   hrEmployees, hrPositions, hrWorkLocations, hrDepartments, hrSections, hrSites,
-  hrGenders, hrEmployeeStatuses
+  hrGenders, hrEmployeeStatuses, employees
 } from "@/db/schema/hero";
-import { eq, desc, and, inArray, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, sql, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function getEmployeesForContract(filters?: {
@@ -17,39 +17,51 @@ export async function getEmployeesForContract(filters?: {
   const conditions = [eq(hrEmployees.isActive, true)];
 
   if (filters?.departmentId) {
-    conditions.push(eq(hrEmployees.departmentId, filters.departmentId));
+    const cond = or(
+      eq(hrEmployees.departmentId, filters.departmentId),
+      eq(employees.departmentId, filters.departmentId)
+    );
+    if (cond) conditions.push(cond);
   }
   if (filters?.sectionId) {
-    conditions.push(eq(hrEmployees.sectionId, filters.sectionId));
+    const cond = or(
+      eq(hrEmployees.sectionId, filters.sectionId),
+      eq(employees.sectionId, filters.sectionId)
+    );
+    if (cond) conditions.push(cond);
   }
   if (filters?.workLocationId) {
     conditions.push(eq(hrEmployees.workLocationId, filters.workLocationId));
   }
 
-  return await db
+  const rows = await db
     .select({
       id: hrEmployees.id,
       employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      email: hrEmployees.email,
-      joinDate: hrEmployees.joinDate,
-      contractStart: hrEmployees.contractStart,
-      contractEnd: hrEmployees.contractEnd,
-      birthDate: hrEmployees.birthDate,
+      fullName: sql<string>`coalesce(${hrEmployees.fullName}, ${employees.name}, '')`.as('full_name'),
+      email: sql<string | null>`coalesce(${hrEmployees.email}, ${employees.email})`.as('email'),
+      joinDate: sql<string | null>`coalesce(${hrEmployees.joinDate}, ${employees.joinDate})`.as('join_date'),
+      contractStart: sql<string | null>`coalesce(${hrEmployees.contractStart}, ${employees.contractDurationStart})`.as('contract_start'),
+      contractEnd: sql<string | null>`coalesce(${hrEmployees.contractEnd}, ${employees.contractDurationEnd})`.as('contract_end'),
+      birthDate: sql<string | null>`coalesce(${hrEmployees.birthDate}, ${employees.birthDate})`.as('birth_date'),
       accountStatus: hrEmployees.accountStatus,
-      genderCode: hrEmployees.genderCode,
-      jobTitle: hrPositions.rankName,
-      levelName: hrPositions.levelName,
-      departmentName: hrDepartments.name,
-      sectionName: hrSections.name,
+      genderCode: sql<string | null>`coalesce(${hrEmployees.genderCode}, ${employees.gender})`.as('gender_code'),
+      jobTitle: sql<string | null>`coalesce(${hrPositions.rankName}, ${employees.jobTitle})`.as('job_title'),
+      levelName: sql<string | null>`coalesce(${hrPositions.levelName}, ${employees.levelName})`.as('level_name'),
+      departmentName: sql<string | null>`coalesce(${hrDepartments.name}, ${employees.department})`.as('department_name'),
+      sectionName: sql<string | null>`coalesce(${hrSections.name}, ${employees.section})`.as('section_name'),
       siteName: hrSites.name,
-      location: hrWorkLocations.name,
-      departmentId: hrEmployees.departmentId,
-      sectionId: hrEmployees.sectionId,
+      location: sql<string | null>`coalesce(${hrWorkLocations.name}, ${employees.workLocation})`.as('location'),
+      departmentId: sql<number | null>`coalesce(${hrEmployees.departmentId}, ${employees.departmentId})`.as('department_id'),
+      sectionId: sql<number | null>`coalesce(${hrEmployees.sectionId}, ${employees.sectionId})`.as('section_id'),
       workLocationId: hrEmployees.workLocationId,
-      positionId: hrEmployees.positionId,
+      positionId: sql<number | null>`coalesce(${hrEmployees.positionId}, ${employees.positionId})`.as('position_id'),
     })
     .from(hrEmployees)
+    .leftJoin(
+      employees,
+      or(eq(employees.employeeSn, hrEmployees.employeeId), eq(employees.email, hrEmployees.email))
+    )
     .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
     .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
     .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
@@ -57,6 +69,14 @@ export async function getEmployeesForContract(filters?: {
     .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
     .where(and(...conditions))
     .orderBy(desc(hrEmployees.id));
+
+  const uniqueRowsMap = new Map<number, typeof rows[number]>();
+  for (const row of rows) {
+    if (!uniqueRowsMap.has(row.id)) {
+      uniqueRowsMap.set(row.id, row);
+    }
+  }
+  return Array.from(uniqueRowsMap.values());
 }
 
 export async function getEmployeeFilterOptions() {
