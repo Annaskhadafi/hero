@@ -88,22 +88,22 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
     setSending(false)
     setSent(false)
     setLoadingInfo(true)
-    try {
-      const [configRes, managerRes] = await Promise.all([
-        fetch('/dashboard/api/sio-reminder-config'),
-        fetch(`/dashboard/api/sio-manager?employeeId=${row.employeeId}`),
-      ])
-      const config = await configRes.json()
-      const mgr = await managerRes.json()
-      const managerName = mgr.name || '-'
-      const managerEmail = mgr.email || '-'
-      const cc = config.additionalRecipients || '-'
-      setReminderInfo({ managerName, managerEmail, cc })
-    } catch {
-      setReminderInfo({ managerName: '-', managerEmail: '-', cc: '-' })
-    } finally {
-      setLoadingInfo(false)
+    let managerName = '-', managerEmail = '-', cc = '-'
+    const [configRes, mgrRes] = await Promise.allSettled([
+      fetch('/dashboard/api/sio-reminder-config'),
+      fetch(`/dashboard/api/sio-manager?employeeId=${row.employeeId}`),
+    ])
+    if (configRes.status === 'fulfilled' && configRes.value.ok) {
+      const config = await configRes.value.json()
+      cc = config.additionalRecipients || '(kosong)'
     }
+    if (mgrRes.status === 'fulfilled' && mgrRes.value.ok) {
+      const mgr = await mgrRes.value.json()
+      managerName = mgr.name || '(tidak ada atasan)'
+      managerEmail = mgr.email || '(tidak ada email)'
+    }
+    setReminderInfo({ managerName, managerEmail, cc })
+    setLoadingInfo(false)
   }
 
   async function handleSendReminder() {
