@@ -67,9 +67,13 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [reminderRow, setReminderRow] = useState<SioRow | null>(null)
   const [reminderInfo, setReminderInfo] = useState<{ managerName: string; managerEmail: string; cc: string } | null>(null)
+  const [editToEmail, setEditToEmail] = useState('')
+  const [editCc, setEditCc] = useState('')
   const [loadingInfo, setLoadingInfo] = useState(false)
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  const [savingTo, setSavingTo] = useState(false)
+  const [savingCc, setSavingCc] = useState(false)
 
   const grouped = groupByEmployee(rows)
   const groupKeys = Object.keys(grouped)
@@ -102,15 +106,43 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
       managerName = mgr.name || '(tidak ada atasan)'
       managerEmail = mgr.email || '(tidak ada email)'
     }
+    setEditToEmail(managerEmail)
+    setEditCc(cc)
     setReminderInfo({ managerName, managerEmail, cc })
     setLoadingInfo(false)
+  }
+
+  async function handleSaveToEmail() {
+    if (!reminderRow) return
+    setSavingTo(true)
+    try {
+      await fetch('/dashboard/api/sio-section-heads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: reminderRow.employeeId, email: editToEmail }),
+      })
+      setReminderInfo((prev) => prev ? { ...prev, managerEmail: editToEmail } : prev)
+    } catch {}
+    setSavingTo(false)
+  }
+
+  async function handleSaveCc() {
+    setSavingCc(true)
+    try {
+      const fd = new FormData()
+      fd.set('additionalRecipients', editCc)
+      fd.set('reminderDays', '30')
+      fd.set('isActive', 'true')
+      await fetch('/dashboard/api/sio-reminder-config', { method: 'POST', body: fd })
+      setReminderInfo((prev) => prev ? { ...prev, cc: editCc } : prev)
+    } catch {}
+    setSavingCc(false)
   }
 
   async function handleSendReminder() {
     if (!reminderRow) return
     setSending(true)
     try {
-      // Use 0 days to only catch this specific cert (or use a broader range)
       const res = await sendSioExpiryReminders(60)
       setSent(true)
     } catch {} finally {
@@ -297,31 +329,49 @@ export function SioCertificationTable({ rows, onEdit, onDelete }: SioCertificati
             </div>
           ) : (
             <div className="space-y-4 py-2">
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-slate-50">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground mb-2">
-                    <Users className="size-4 text-primary" />
-                    Penerima
+              <div className="p-3 rounded-xl bg-slate-50 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground mb-1">
+                  <Users className="size-4 text-primary" />
+                  Penerima
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Karyawan:</span>
+                  <span className="font-medium">{reminderRow?.employeeName}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Sertifikat:</span>
+                  <span className="font-medium">{reminderRow?.certType} — {reminderRow?.certName}</span>
+                </div>
+                <div className="border-t pt-2">
+                  <label className="text-[10px] font-semibold text-muted-foreground block mb-1">Kepada (Section Head):</label>
+                  <div className="flex gap-1">
+                    <input
+                      type="email"
+                      value={editToEmail}
+                      onChange={(e) => setEditToEmail(e.target.value)}
+                      className="flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm"
+                      placeholder="email@company.com"
+                    />
+                    <Button size="sm" variant="outline" className="h-8 text-[10px] px-2 shrink-0" onClick={handleSaveToEmail} disabled={savingTo}>
+                      {savingTo ? '...' : 'Simpan'}
+                    </Button>
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Karyawan:</span>
-                      <span className="font-medium">{reminderRow?.employeeName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Sertifikat:</span>
-                      <span className="font-medium">{reminderRow?.certType} — {reminderRow?.certName}</span>
-                    </div>
-                    <div className="border-t my-2" />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Kepada (Section Head):</span>
-                      <span className="font-medium text-primary">{reminderInfo?.managerEmail || '-'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">CC:</span>
-                      <span className="font-medium">{reminderInfo?.cc || '-'}</span>
-                    </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-muted-foreground block mb-1">CC:</label>
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={editCc}
+                      onChange={(e) => setEditCc(e.target.value)}
+                      className="flex h-8 w-full rounded-md border border-input bg-white px-2 py-1 text-xs shadow-sm"
+                      placeholder="cc@company.com, lainnya@company.com"
+                    />
+                    <Button size="sm" variant="outline" className="h-8 text-[10px] px-2 shrink-0" onClick={handleSaveCc} disabled={savingCc}>
+                      {savingCc ? '...' : 'Simpan'}
+                    </Button>
                   </div>
+                  <p className="text-[9px] text-muted-foreground mt-0.5">Pisahkan beberapa email dengan koma</p>
                 </div>
               </div>
 
