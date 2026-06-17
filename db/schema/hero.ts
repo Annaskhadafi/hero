@@ -3021,6 +3021,7 @@ export const sioCertifications = pgTable('hero_sio_certifications', {
 export const sioReminderConfig = pgTable('hero_sio_reminder_config', {
   id: serial('id').primaryKey(),
   additionalRecipients: text('additional_recipients').notNull().default(''),
+  excludedManagerIds: text('excluded_manager_ids').notNull().default('[]'),
   reminderDays: integer('reminder_days').notNull().default(30),
   isActive: boolean('is_active').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
