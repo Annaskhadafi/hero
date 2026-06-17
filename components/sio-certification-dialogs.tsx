@@ -2,12 +2,12 @@
 
 import { useActionState, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Pencil, Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { manageSioCertAction } from "@/app/dashboard/admin-actions"
 
 interface EmployeeOption {
@@ -38,7 +38,7 @@ const STATUS_OPTIONS = [
   { value: 'expired', label: 'Expired' },
 ]
 
-const INITIAL_STATE = { status: '', message: '' } as const
+const INITIAL_MUTATION = { status: 'idle' as const, message: '' }
 
 function formatDateInput(d: Date | string | null | undefined): string {
   if (!d) return ''
@@ -54,16 +54,12 @@ export function SioCreateDialog({
   onSuccess: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [state, formAction, isPending] = useActionState(manageSioCertAction, INITIAL_STATE)
-  const { toast } = useToast()
+  const [state, formAction, isPending] = useActionState(manageSioCertAction, INITIAL_MUTATION)
 
   useEffect(() => {
     if (state.status === 'success') {
-      toast({ title: 'Berhasil', description: state.message })
       setOpen(false)
       onSuccess()
-    } else if (state.status === 'error') {
-      toast({ title: 'Gagal', description: state.message })
     }
   }, [state.status])
 
@@ -133,6 +129,9 @@ export function SioCreateDialog({
             <input type="checkbox" name="awardPoints" id="awardPoints-create" value="true" className="size-4" />
             <Label htmlFor="awardPoints-create" className="text-xs">Beri poin produktivitas (+50 SIO, +25 POP/POM)</Label>
           </div>
+          {state.status === 'error' && (
+            <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>
+          )}
           <DialogFooter>
             <Button type="submit" disabled={isPending}>{isPending ? 'Menyimpan...' : 'Simpan'}</Button>
           </DialogFooter>
@@ -155,17 +154,13 @@ export function SioEditDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [state, formAction, isPending] = useActionState(manageSioCertAction, INITIAL_STATE)
+  const [state, formAction, isPending] = useActionState(manageSioCertAction, INITIAL_MUTATION)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const { toast } = useToast()
 
   useEffect(() => {
     if (state.status === 'success') {
-      toast({ title: 'Berhasil', description: state.message })
       onOpenChange(false)
       onSuccess()
-    } else if (state.status === 'error') {
-      toast({ title: 'Gagal', description: state.message })
     }
   }, [state.status])
 
@@ -182,6 +177,9 @@ export function SioEditDialog({
           <form action={formAction}>
             <input type="hidden" name="intent" value="delete" />
             <input type="hidden" name="id" value={row.id} />
+            {state.status === 'error' && (
+              <Alert variant="destructive" className="mb-3"><AlertDescription>{state.message}</AlertDescription></Alert>
+            )}
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>Batal</Button>
               <Button type="submit" variant="destructive" disabled={isPending}>{isPending ? 'Menghapus...' : 'Hapus'}</Button>
@@ -248,6 +246,9 @@ export function SioEditDialog({
               {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          {state.status === 'error' && (
+            <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert>
+          )}
           <DialogFooter className="flex justify-between">
             <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-4 mr-1" /> Hapus

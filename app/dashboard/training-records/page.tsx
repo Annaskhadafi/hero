@@ -21,10 +21,7 @@ import { getServerSession } from "@/lib/auth-session";
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
-import { SioCertificationTable } from "@/components/sio-certification-table";
-import { SioCreateDialog, SioEditDialog } from "@/components/sio-certification-dialogs";
-import { SioDashboardSection } from "@/components/sio-certification-dashboard";
-import { SioImportDialog } from "@/components/sio-certification-import";
+import { SioDatabaseTab } from "@/components/sio-database-tab";
 import { computeAggregates } from "@/lib/sio-certification";
 
 const APP_TIME_ZONE = "Asia/Makassar";

@@ -6067,16 +6067,18 @@ export async function reviewFallbackRecordAction(input: z.infer<typeof reviewFal
 
 // ── SIO / POP / POM Certification Server Actions ──
 
-function inferSioStatus(expiryDate: Date | string | null): string {
+function inferSioStatus(expiryDate: string | null): string {
   if (!expiryDate) return 'active'
-  const expiry = typeof expiryDate === 'string' ? new Date(expiryDate) : expiryDate
-  const days = Math.ceil((expiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+  const days = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
   if (days <= 0) return 'expired'
   if (days <= 30) return 'expiring_soon'
   return 'active'
 }
 
-export async function manageSioCertAction(formData: FormData): Promise<AdminMutationState> {
+export async function manageSioCertAction(
+  _prevState: AdminMutationState,
+  formData: FormData
+): Promise<AdminMutationState> {
   try {
     const raw = Object.fromEntries(formData)
     const intent = raw.intent as string
@@ -6089,23 +6091,20 @@ export async function manageSioCertAction(formData: FormData): Promise<AdminMuta
       if (!employeeId || !certType || !certName) {
         return { status: 'error', message: 'Karyawan, tipe, dan nama sertifikat wajib diisi.' }
       }
-      const expiryDate = raw.expiryDate ? new Date(raw.expiryDate as string) : null
+      const expiryDate = (raw.expiryDate as string) || null
       const status = (raw.status as string) || inferSioStatus(expiryDate)
-      const [cert] = await db
-        .insert(sioCertifications)
-        .values({
-          employeeId,
-          certType,
-          certNumber: (raw.certNumber as string) || null,
-          certName,
-          issuingBody: (raw.issuingBody as string) || null,
-          certDate: raw.certDate ? new Date(raw.certDate as string) : null,
-          expiryDate,
-          status,
-          notes: (raw.notes as string) || null,
-          lastSyncFrom: 'manual',
-        })
-        .returning({ id: sioCertifications.id })
+      const [cert] = await db.insert(sioCertifications).values({
+        employeeId,
+        certType,
+        certNumber: (raw.certNumber as string) || null,
+        certName,
+        issuingBody: (raw.issuingBody as string) || null,
+        certDate: (raw.certDate as string) || null,
+        expiryDate,
+        status,
+        notes: (raw.notes as string) || null,
+        lastSyncFrom: 'manual' as const,
+      }).returning({ id: sioCertifications.id })
 
       const awardPoints = raw.awardPoints === 'true'
       if (awardPoints) {
@@ -6114,7 +6113,7 @@ export async function manageSioCertAction(formData: FormData): Promise<AdminMuta
           employeeId,
           transactionType: 'reward',
           sourceType: 'sio_certification',
-          sourceId: cert[0].id,
+          sourceId: cert!.id,
           category: 'certification',
           label: `Sertifikasi ${certName} — ${certType}`,
           points: pts,
@@ -6142,7 +6141,7 @@ export async function manageSioCertAction(formData: FormData): Promise<AdminMuta
       if (!employeeId || !certType || !certName) {
         return { status: 'error', message: 'Karyawan, tipe, dan nama wajib diisi.' }
       }
-      const expiryDate = raw.expiryDate ? new Date(raw.expiryDate as string) : null
+      const expiryDate = (raw.expiryDate as string) || null
       const status = (raw.status as string) || inferSioStatus(expiryDate)
       await db
         .update(sioCertifications)
@@ -6152,7 +6151,7 @@ export async function manageSioCertAction(formData: FormData): Promise<AdminMuta
           certNumber: (raw.certNumber as string) || null,
           certName,
           issuingBody: (raw.issuingBody as string) || null,
-          certDate: raw.certDate ? new Date(raw.certDate as string) : null,
+          certDate: (raw.certDate as string) || null,
           expiryDate,
           status,
           notes: (raw.notes as string) || null,
@@ -6175,11 +6174,12 @@ export async function manageSioCertAction(formData: FormData): Promise<AdminMuta
 }
 
 const INITIAL_SIO_IMPORT_STATE = { status: 'idle' as const, message: '', importedCount: 0, updatedCount: 0, skippedCount: 0 }
+type SioImportState = { status: string; message: string; importedCount: number; updatedCount: number; skippedCount: number }
 
 export async function importSioCertAction(
-  _previousState: typeof INITIAL_SIO_IMPORT_STATE,
+  _previousState: SioImportState,
   formData: FormData
-): Promise<typeof INITIAL_SIO_IMPORT_STATE> {
+): Promise<SioImportState> {
   try {
     await ensureHeroSeedData()
     const rawCsv = `${formData.get('rawCsv') ?? ''}`.trim()
@@ -6234,8 +6234,8 @@ export async function importSioCertAction(
       }
       if (!employee) { skippedCount++; continue }
 
-      const certDate = row.certDate ? new Date(row.certDate) : null
-      const expiryDate = row.expiryDate ? new Date(row.expiryDate) : null
+      const certDate = row.certDate || null
+      const expiryDate = row.expiryDate || null
       const status = row.status || inferSioStatus(expiryDate)
 
       const key = `${employee.id}:${normalizeSioName(certType)}:${normalizeSioName(certName)}`
