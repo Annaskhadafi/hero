@@ -2995,3 +2995,26 @@ export const hcRecruitmentBatches = pgTable('hero_hc_recruitment_batches', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const sioCertifications = pgTable('hero_sio_certifications', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  certType: text('cert_type').notNull(),
+  certNumber: text('cert_number'),
+  certName: text('cert_name').notNull(),
+  issuingBody: text('issuing_body'),
+  certDate: date('cert_date'),
+  expiryDate: date('expiry_date'),
+  status: text('status').notNull(),
+  notes: text('notes'),
+  lastSyncFrom: text('last_sync_from').notNull().default('manual'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+},
+(table) => ({
+  employeeCertUnique: uniqueIndex('hero_sio_certifications_employee_cert_uq').on(
+    table.employeeId, table.certType, table.certName
+  ),
+}))
+

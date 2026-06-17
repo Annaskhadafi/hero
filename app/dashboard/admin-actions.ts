@@ -59,6 +59,7 @@ import {
   securityRolePermissions,
   securityRoles,
   sites,
+  sioCertifications,
   timesheetEntries,
   trainingRecords,
   wellnessRecords,
@@ -6062,4 +6063,255 @@ export async function reviewFallbackRecordAction(input: z.infer<typeof reviewFal
 
   revalidatePath('/dashboard')
   return { ok: true, newStatus }
+}
+
+// ── SIO / POP / POM Certification Server Actions ──
+
+function inferSioStatus(expiryDate: Date | string | null): string {
+  if (!expiryDate) return 'active'
+  const expiry = typeof expiryDate === 'string' ? new Date(expiryDate) : expiryDate
+  const days = Math.ceil((expiry.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+  if (days <= 0) return 'expired'
+  if (days <= 30) return 'expiring_soon'
+  return 'active'
+}
+
+export async function manageSioCertAction(formData: FormData): Promise<AdminMutationState> {
+  try {
+    const raw = Object.fromEntries(formData)
+    const intent = raw.intent as string
+    await ensureHeroSeedData()
+
+    if (intent === 'create') {
+      const employeeId = Number(raw.employeeId)
+      const certType = raw.certType as string
+      const certName = raw.certName as string
+      if (!employeeId || !certType || !certName) {
+        return { status: 'error', message: 'Karyawan, tipe, dan nama sertifikat wajib diisi.' }
+      }
+      const expiryDate = raw.expiryDate ? new Date(raw.expiryDate as string) : null
+      const status = (raw.status as string) || inferSioStatus(expiryDate)
+      const [cert] = await db
+        .insert(sioCertifications)
+        .values({
+          employeeId,
+          certType,
+          certNumber: (raw.certNumber as string) || null,
+          certName,
+          issuingBody: (raw.issuingBody as string) || null,
+          certDate: raw.certDate ? new Date(raw.certDate as string) : null,
+          expiryDate,
+          status,
+          notes: (raw.notes as string) || null,
+          lastSyncFrom: 'manual',
+        })
+        .returning({ id: sioCertifications.id })
+
+      const awardPoints = raw.awardPoints === 'true'
+      if (awardPoints) {
+        const pts = certType === 'SIO' ? 50 : 25
+        await db.insert(pointEvents).values({
+          employeeId,
+          transactionType: 'reward',
+          sourceType: 'sio_certification',
+          sourceId: cert[0].id,
+          category: 'certification',
+          label: `Sertifikasi ${certName} — ${certType}`,
+          points: pts,
+        })
+        await db.update(employees).set({ totalPoints: sql`${employees.totalPoints} + ${pts}` }).where(eq(employees.id, employeeId))
+      }
+
+      revalidateSioPaths()
+      return { status: 'success', message: 'Sertifikasi berhasil ditambahkan.' + (awardPoints ? ' Poin produktivitas diberikan.' : '') }
+    }
+
+    const id = Number(raw.id)
+    if (!id) return { status: 'error', message: 'ID tidak valid.' }
+
+    if (intent === 'update-status') {
+      await db.update(sioCertifications).set({ status: raw.status as string }).where(eq(sioCertifications.id, id))
+      revalidateSioPaths()
+      return { status: 'success', message: 'Status diperbarui.' }
+    }
+
+    if (intent === 'update') {
+      const employeeId = Number(raw.employeeId)
+      const certType = raw.certType as string
+      const certName = raw.certName as string
+      if (!employeeId || !certType || !certName) {
+        return { status: 'error', message: 'Karyawan, tipe, dan nama wajib diisi.' }
+      }
+      const expiryDate = raw.expiryDate ? new Date(raw.expiryDate as string) : null
+      const status = (raw.status as string) || inferSioStatus(expiryDate)
+      await db
+        .update(sioCertifications)
+        .set({
+          employeeId,
+          certType,
+          certNumber: (raw.certNumber as string) || null,
+          certName,
+          issuingBody: (raw.issuingBody as string) || null,
+          certDate: raw.certDate ? new Date(raw.certDate as string) : null,
+          expiryDate,
+          status,
+          notes: (raw.notes as string) || null,
+        })
+        .where(eq(sioCertifications.id, id))
+      revalidateSioPaths()
+      return { status: 'success', message: 'Sertifikasi diperbarui.' }
+    }
+
+    if (intent === 'delete') {
+      await db.delete(sioCertifications).where(eq(sioCertifications.id, id))
+      revalidateSioPaths()
+      return { status: 'success', message: 'Sertifikasi dihapus.' }
+    }
+
+    return { status: 'error', message: 'Intent tidak dikenal.' }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : 'Gagal memproses sertifikasi.' }
+  }
+}
+
+const INITIAL_SIO_IMPORT_STATE = { status: 'idle' as const, message: '', importedCount: 0, updatedCount: 0, skippedCount: 0 }
+
+export async function importSioCertAction(
+  _previousState: typeof INITIAL_SIO_IMPORT_STATE,
+  formData: FormData
+): Promise<typeof INITIAL_SIO_IMPORT_STATE> {
+  try {
+    await ensureHeroSeedData()
+    const rawCsv = `${formData.get('rawCsv') ?? ''}`.trim()
+    if (!rawCsv) return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: 'Data CSV kosong.' }
+
+    const { records } = parseSioCsv(rawCsv)
+    if (records.length === 0) return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: 'Tidak ada record.' }
+
+    const employeeRows = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email, employeeSn: employees.employeeSn })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+
+    const existingRows = await db
+      .select({ id: sioCertifications.id, employeeId: sioCertifications.employeeId, certType: sioCertifications.certType, certName: sioCertifications.certName })
+      .from(sioCertifications)
+
+    const fuse = new Fuse(
+      employeeRows.map((e) => ({ ...e, normalizedName: normalizeSioName(e.name) })),
+      { keys: ['normalizedName'], threshold: 0.35, includeScore: true }
+    )
+    const employeeBySn = new Map(employeeRows.filter((e) => e.employeeSn).map((e) => [normalizeSioName(e.employeeSn), e]))
+    const employeeByEmail = new Map(employeeRows.filter((e) => e.email).map((e) => [normalizeSioName(e.email), e]))
+    const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>((m, e) => {
+      const k = normalizeSioName(e.name)
+      ;(m.get(k) ?? m.set(k, []).get(k)!).push(e)
+      return m
+    }, new Map())
+
+    const existingByKey = new Map(existingRows.map((r) => [`${r.employeeId}:${normalizeSioName(r.certType)}:${normalizeSioName(r.certName)}`, r]))
+
+    let importedCount = 0
+    let updatedCount = 0
+    let skippedCount = 0
+
+    for (const row of records) {
+      const sn = normalizeSioName(row.employeeSn || '')
+      const name = row.employeeName ? normalizeSioName(row.employeeName) : ''
+      const email = row.email ? normalizeSioName(row.email) : ''
+      const certType = (row.certType || 'SIO').toUpperCase()
+      const certName = (row.certName || '').trim()
+      if (!certName) { skippedCount++; continue }
+
+      let employee = employeeBySn.get(sn) ?? employeeByEmail.get(email) ?? undefined
+      if (!employee && name) {
+        const candidates = employeesByName.get(name)
+        if (candidates?.length === 1) employee = candidates[0]
+        else {
+          const results = fuse.search(name)
+          if (results.length > 0 && (results[0].score ?? 1) <= 0.35) employee = results[0].item
+        }
+      }
+      if (!employee) { skippedCount++; continue }
+
+      const certDate = row.certDate ? new Date(row.certDate) : null
+      const expiryDate = row.expiryDate ? new Date(row.expiryDate) : null
+      const status = row.status || inferSioStatus(expiryDate)
+
+      const key = `${employee.id}:${normalizeSioName(certType)}:${normalizeSioName(certName)}`
+      const existing = existingByKey.get(key)
+
+      if (existing) {
+        await db.update(sioCertifications).set({ certNumber: row.certNumber || null, certDate, expiryDate, status, issuingBody: row.issuingBody || null, lastSyncFrom: 'excel' }).where(eq(sioCertifications.id, existing.id))
+        updatedCount++
+      } else {
+        await db.insert(sioCertifications).values({ employeeId: employee.id, certType, certNumber: row.certNumber || null, certName, issuingBody: row.issuingBody || null, certDate, expiryDate, status, lastSyncFrom: 'excel' })
+        importedCount++
+      }
+    }
+
+    revalidateSioPaths()
+    return { status: 'success', message: `Import selesai. ${importedCount} baru, ${updatedCount} update, ${skippedCount} skip.`, importedCount, updatedCount, skippedCount }
+  } catch (error) {
+    return { ...INITIAL_SIO_IMPORT_STATE, status: 'error', message: error instanceof Error ? error.message : 'Gagal import.' }
+  }
+}
+
+function normalizeSioName(value: string): string {
+  let s = value.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ')
+  const words = s.split(' ')
+  if (words.length > 0 && ['m', 'muhammad', 'mohammad', 'muhamad', 'mochamad'].includes(words[0])) words[0] = 'm'
+  return words.join(' ')
+}
+
+function revalidateSioPaths() {
+  revalidatePath('/dashboard/training-records')
+  revalidatePath('/dashboard')
+  revalidatePath('/dashboard/analytics')
+}
+
+function parseSioCsv(rawCsv: string) {
+  const lines = rawCsv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length < 2) return { records: [] as any[] }
+
+  const h = lines[0].split(',').map((c) => c.trim().toLowerCase())
+  const idx = (name: string) => h.findIndex((c) => c.includes(name))
+
+  const ni = Math.max(idx('name'), 0)
+  const si = Math.max(idx('sn'), idx('employee'), 0)
+  const ci = Math.max(idx('jenis'), idx('cert_name'), 0)
+  const cti = Math.max(idx('cert_type'), idx('tipe'), 0)
+  const cni = Math.max(idx('cert_number'), idx('nomor'), 0)
+  const ibi = Math.max(idx('issuing_body'), idx('note'), idx('penerbit'), 0)
+  const cdi = Math.max(idx('tanggal'), idx('cert_date'), idx('certificate_date'), 0)
+  const edi = Math.max(idx('masa'), idx('expiry'), idx('expiry_date'), idx('berlaku'), 0)
+  const ei = Math.max(idx('email'), 0)
+
+  const records = lines.slice(1).map((line) => {
+    const cols = line.split(',').map((c) => c.trim())
+    return {
+      employeeName: ni > 0 && cols[ni] ? cols[ni] : '',
+      employeeSn: si > 0 ? cols[si] || '' : '',
+      email: ei > 0 ? cols[ei] || '' : '',
+      certType: cti > 0 ? cols[cti] || '' : 'SIO',
+      certName: ci > 0 ? cols[ci] || '' : '',
+      certNumber: cni > 0 ? cols[cni] || '' : '',
+      issuingBody: ibi > 0 ? cols[ibi] || '' : '',
+      certDate: cdi > 0 ? parseSioExcelDate(cols[cdi]) : null,
+      expiryDate: edi > 0 ? parseSioExcelDate(cols[edi]) : null,
+      status: '',
+    }
+  })
+
+  return { records }
+}
+
+function parseSioExcelDate(value: string): string | null {
+  if (!value || value === '-' || value === '') return null
+  const num = Number(value)
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    return new Date((num - 25569) * 86400 * 1000).toISOString().split('T')[0]
+  }
+  const d = new Date(value)
+  return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null
 }

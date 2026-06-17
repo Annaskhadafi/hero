@@ -51,6 +51,7 @@ import {
   sites,
   timesheetEntries,
   trainingRecords,
+  sioCertifications,
   wellnessRecords,
 } from '@/db/schema/hero'
 import { session, user as authUser } from '@/db/schema/auth'
@@ -3161,6 +3162,59 @@ export async function getTrainingRecordPageData() {
     sectionOptions,
     yearOptions,
   }
+}
+
+export async function getSioCertificationPageData() {
+  await ensureHeroSeedData()
+
+  const [rows, employeeOptions] = await Promise.all([
+    db
+      .select({
+        id: sioCertifications.id,
+        employeeId: sioCertifications.employeeId,
+        employeeName: employees.name,
+        employeeSn: employees.employeeSn,
+        role: employees.jobTitle,
+        department: employees.department,
+        section: employees.section,
+        certType: sioCertifications.certType,
+        certNumber: sioCertifications.certNumber,
+        certName: sioCertifications.certName,
+        issuingBody: sioCertifications.issuingBody,
+        certDate: sioCertifications.certDate,
+        expiryDate: sioCertifications.expiryDate,
+        status: sioCertifications.status,
+        notes: sioCertifications.notes,
+        lastSyncFrom: sioCertifications.lastSyncFrom,
+      })
+      .from(sioCertifications)
+      .innerJoin(employees, eq(sioCertifications.employeeId, employees.id))
+      .orderBy(
+        asc(employees.name),
+        asc(sioCertifications.certType),
+        asc(sioCertifications.certName)
+      ),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        department: employees.department,
+        section: employees.section,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
+  ])
+
+  const departmentOptions = Array.from(
+    new Set(employeeOptions.map((e) => e.department).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'id-ID'))
+  const sectionOptions = Array.from(
+    new Set(employeeOptions.map((e) => e.section).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'id-ID'))
+
+  return { rows, employeeOptions, departmentOptions, sectionOptions }
 }
 
 export async function getOperationalCrudOptions() {

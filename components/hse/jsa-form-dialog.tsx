@@ -244,15 +244,15 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] lg:max-w-7xl xl:max-w-[1400px] h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
-        <DialogHeader className="px-6 py-4 border-b">
+        <DialogHeader className="px-4 sm:px-6 py-4 border-b">
           <DialogTitle>{publicMode ? 'Form Job Safety Analysis (JSA)' : id ? 'Edit JSA' : 'Buat JSA Baru'}</DialogTitle>
         </DialogHeader>
         
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
               
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="jsaNumber"
@@ -296,7 +296,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
                   control={form.control}
                   name="jobDescription"
                   render={({ field }) => (
-                    <FormItem className="col-span-2">
+                    <FormItem className="sm:col-span-2">
                       <FormLabel>Penjelasan Pekerjaan</FormLabel>
                       <FormControl>
                         <Textarea placeholder="..." {...field} />
@@ -309,7 +309,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
                   control={form.control}
                   name="teamMembers"
                   render={({ field }) => (
-                    <FormItem className="col-span-2">
+                    <FormItem className="sm:col-span-2">
                       <FormLabel>Anggota Team JSA</FormLabel>
                       <FormControl>
                         <Input placeholder="..." {...field} />
@@ -320,7 +320,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
                 />
               </div>
 
-              <div className="grid grid-cols-4 gap-6 items-start">
+              <div className="grid grid-cols-1 gap-6 items-start sm:grid-cols-2 lg:grid-cols-4">
                 <FormField
                   control={form.control}
                   name="equipmentUsed"
@@ -569,7 +569,8 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
                   </Button>
                 </div>
                 
-                <div className="border rounded-md overflow-hidden bg-white">
+                <div className="overflow-x-auto">
+                <div className="border rounded-md overflow-hidden bg-white min-w-[800px] sm:min-w-0">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-100/80 border-b text-slate-500 font-medium">
                       <tr>
@@ -629,6 +630,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
                     </tbody>
                   </table>
                 </div>
+                </div>
                 {form.formState.errors.steps && (
                   <p className="text-sm font-medium text-destructive mt-2">Mohon lengkapi semua baris urutan pekerjaan.</p>
                 )}
@@ -645,7 +647,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
           </Form>
         </div>
         
-        <DialogFooter className="px-6 py-4 border-t bg-slate-50">
+        <DialogFooter className="px-4 sm:px-6 py-4 border-t bg-slate-50">
           {!publicMode && (
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Batal

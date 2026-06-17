@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Smartphone, TableProperties, Award, TrendingUp, AlertTriangle, Activity, Layers, BookOpen, UserCheck, FileSpreadsheet } from "lucide-react";
+import { Smartphone, TableProperties, Award, TrendingUp, AlertTriangle, Activity, Layers, BookOpen, UserCheck, FileSpreadsheet, ShieldCheck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -15,12 +15,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { TrainingGroupedTable } from "@/components/training-grouped-table";
-import { getOperationalCrudOptions, getTrainingRecordPageData } from "@/lib/hero-admin";
+import { getOperationalCrudOptions, getTrainingRecordPageData, getSioCertificationPageData } from "@/lib/hero-admin";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 import { getServerSession } from "@/lib/auth-session";
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
+import { SioCertificationTable } from "@/components/sio-certification-table";
+import { SioCreateDialog, SioEditDialog } from "@/components/sio-certification-dialogs";
+import { SioDashboardSection } from "@/components/sio-certification-dashboard";
+import { SioImportDialog } from "@/components/sio-certification-import";
+import { computeAggregates } from "@/lib/sio-certification";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -185,6 +190,10 @@ export default async function TrainingRecordsPage({
   ).length;
   const externalRecordsCount = filteredRows.length - lmsRecordsCount;
 
+  // ── SIO Certification Data ──
+  const sioData = await getSioCertificationPageData();
+  const sioAgg = computeAggregates(sioData.rows, referenceDate);
+
   return (
     <AdminPageShell
       eyebrow="M7 • Training Intelligence"
@@ -219,6 +228,10 @@ export default async function TrainingRecordsPage({
           <TabsTrigger value="dashboard" className="flex items-center gap-1.5">
             <Activity className="size-4 text-primary" />
             Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="sio" className="flex items-center gap-1.5">
+            <ShieldCheck className="size-4 text-primary" />
+            SIO Database
           </TabsTrigger>
         </TabsList>
 
@@ -447,6 +460,14 @@ export default async function TrainingRecordsPage({
               </div>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="sio" className="space-y-5 outline-none">
+          <SioDatabaseTab
+            rows={sioData.rows}
+            employees={sioData.employeeOptions}
+            agg={sioAgg}
+          />
         </TabsContent>
       </Tabs>
     </AdminPageShell>
