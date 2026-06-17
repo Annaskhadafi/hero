@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Plus } from "lucide-react"
+import { ImageIcon, Loader2, Plus, Upload, X } from "lucide-react"
 
 import {
   manageSafetyCertificationAction,
@@ -14,12 +14,15 @@ import {
   manageSafetyPerformanceAction,
   manageSafetyWeeklyActivityAction,
 } from "@/app/dashboard/safety/actions"
+import { uploadFile } from "@/app/actions/upload"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { EnterpriseActionButtons, EnterpriseFormGrid, EnterpriseRecordDialog, type TableRbacAccess } from "@/components/ui/enterprise-table-kit"
 import { Combobox } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+
 
 export type SafetyFormOptions = {
   locations?: string[]
@@ -224,6 +227,57 @@ function ManHoursFields({ row, monthly = false, options }: { row?: Partial<ManHo
   )
 }
 
+function UploadFileButton({ name, label, defaultValue }: { name: string; label: string; defaultValue?: string | null }) {
+  const [url, setUrl] = React.useState(defaultValue ?? "")
+  const [uploading, setUploading] = React.useState(false)
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await uploadFile(fd)
+      if (res.success && res.url) {
+        setUrl(res.url)
+      } else {
+        alert("Gagal upload file")
+      }
+    } catch {
+      alert("Gagal upload file")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const fileName = url ? url.split("/").pop() || url : null
+
+  return (
+    <Label className="grid gap-2 text-sm font-medium">
+      {label}
+      <input type="hidden" name={name} value={url} />
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-white p-2.5">
+        <Button type="button" variant="secondary" size="sm" disabled={uploading} className="relative overflow-hidden shrink-0">
+          {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          {uploading ? "Uploading..." : "Pilih File"}
+          <input type="file" className="absolute inset-0 cursor-pointer opacity-0" accept="image/*,.pdf" onChange={handleUpload} disabled={uploading} />
+        </Button>
+        {fileName ? (
+          <>
+            <span className="flex-1 truncate text-xs text-muted-foreground">{fileName}</span>
+            <button type="button" onClick={() => setUrl("")} className="shrink-0 text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+          </>
+        ) : (
+          <span className="flex-1 text-xs text-muted-foreground">Image / PDF (max 5MB)</span>
+        )}
+      </div>
+    </Label>
+  )
+}
+
 function WeeklyActivityFields({ row, options }: { row?: Partial<WeeklyActivityRow>; options?: SafetyFormOptions }) {
   return (
     <EnterpriseFormGrid>
@@ -231,9 +285,38 @@ function WeeklyActivityFields({ row, options }: { row?: Partial<WeeklyActivityRo
       <TextField name="activityDate" label="Tanggal" type="date" defaultValue={formatDateInput(row?.activityDate ?? null)} />
       <ComboboxField name="pic" label="PIC" defaultValue={row?.pic} options={options?.pics} />
       <ComboboxField name="category" label="Kategori" defaultValue={row?.category} options={options?.categories} />
-      <TextField name="imageUrl" label="Image link" defaultValue={row?.imageUrl} />
-      <TextField name="evidenceUrl" label="Evidence link" defaultValue={row?.evidenceUrl} />
+      <UploadFileButton name="imageUrl" label="Image" defaultValue={row?.imageUrl} />
+      <UploadFileButton name="evidenceUrl" label="Evidence" defaultValue={row?.evidenceUrl} />
     </EnterpriseFormGrid>
+  )
+}
+
+export function EvidencePreviewDialog({ imageUrl, evidenceUrl, trigger }: { imageUrl?: string | null; evidenceUrl?: string | null; trigger: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false)
+  const src = imageUrl || evidenceUrl
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      {trigger ? <div onClick={() => setOpen(true)} className="cursor-pointer">{trigger}</div> : null}
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-auto p-0">
+        <DialogTitle className="sr-only">Evidence preview</DialogTitle>
+        {src ? (
+          src.match(/\.(jpe?g|png|gif|webp|svg|bmp)/i) ? (
+            <img src={src} alt="Evidence" className="max-h-[85vh] w-full object-contain" />
+          ) : (
+            <div className="flex flex-col items-center gap-4 p-8 text-center">
+              <ImageIcon className="size-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">File bukan gambar. Buka di tab baru:</p>
+              <Button variant="outline" asChild>
+                <a href={src} target="_blank" rel="noopener noreferrer">Buka File</a>
+              </Button>
+            </div>
+          )
+        ) : (
+          <p className="p-8 text-center text-muted-foreground">Tidak ada evidence</p>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

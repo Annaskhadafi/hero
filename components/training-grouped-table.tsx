@@ -1,11 +1,21 @@
 'use client'
 
 import { useState, Fragment } from "react"
-import { ChevronDown, ChevronRight, CalendarClock, History } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  CalendarClock,
+  History,
+  User,
+  BookOpen,
+  BadgeCheck,
+  AlertTriangle,
+} from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminStatusBadge } from "@/components/admin-status-badge"
 import { TrainingRowActions } from "@/components/operational-crud-panels"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 
 interface TrainingRow {
   id: number
@@ -14,6 +24,7 @@ interface TrainingRow {
   employeeSn: string | null
   role: string | null
   department: string | null
+  section: string | null
   trainingName: string
   provider: string
   completedYear: number
@@ -74,195 +85,253 @@ export function TrainingGroupedTable({
   employees,
   categoryOptions,
 }: TrainingGroupedTableProps) {
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({})
   const referenceDate = startOfDayInAppTimeZone(new Date())
 
-  // Group training records by employeeId + trainingName
-  const groups: Record<string, { latest: TrainingRow; history: TrainingRow[] }> = {}
-  
+  // ── Group by employee ─────────────────────────────────────────────────────
+  const employeeGroups: Record<
+    string,
+    {
+      employeeId: number
+      employeeName: string
+      employeeSn: string | null
+      role: string | null
+      department: string | null
+      records: TrainingRow[]
+    }
+  > = {}
+
   for (const row of trainingRecords) {
-    const key = `${row.employeeId}-${row.trainingName.toLowerCase().trim()}`
-    if (!groups[key]) {
-      groups[key] = { latest: row, history: [] }
-    } else {
-      const currentLatest = groups[key].latest
-      const rowYear = Number(row.completedYear)
-      const latestYear = Number(currentLatest.completedYear)
-      
-      if (rowYear > latestYear) {
-        groups[key].history.push(currentLatest)
-        groups[key].latest = row
-      } else {
-        groups[key].history.push(row)
+    const key = `${row.employeeId}`
+    if (!employeeGroups[key]) {
+      employeeGroups[key] = {
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        employeeSn: row.employeeSn,
+        role: row.role,
+        department: row.department,
+        records: [],
       }
     }
+    employeeGroups[key].records.push(row)
   }
 
-  // Sort history for each group descending by completedYear
-  for (const key in groups) {
-    groups[key].history.sort((a, b) => Number(b.completedYear) - Number(a.completedYear))
+  // Sort records within each employee: newest year first
+  for (const key in employeeGroups) {
+    employeeGroups[key].records.sort((a, b) => Number(b.completedYear) - Number(a.completedYear))
   }
 
-  const groupedRows = Object.values(groups).sort((a, b) => {
-    const nameComp = a.latest.employeeName.localeCompare(b.latest.employeeName)
-    if (nameComp !== 0) return nameComp
-    return a.latest.trainingName.localeCompare(b.latest.trainingName)
-  })
+  // Sort employees alphabetically by name
+  const sortedGroups = Object.values(employeeGroups).sort((a, b) =>
+    a.employeeName.localeCompare(b.employeeName)
+  )
 
-  const toggleGroup = (key: string) => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }))
+  const toggleEmployee = (empId: string) => {
+    setExpandedEmployees((prev) => ({ ...prev, [empId]: !prev[empId] }))
+  }
+
+  // Helper: status summary for an employee
+  function getStatusSummary(records: TrainingRow[]) {
+    let valid = 0
+    let expiringSoon = 0
+    let expired = 0
+    for (const r of records) {
+      if (!r.expiresAt) { valid++; continue }
+      const days = daysUntilExpiry(r.expiresAt, referenceDate)
+      if (days == null) { valid++; continue }
+      if (days < 0) expired++
+      else if (days <= 30) expiringSoon++
+      else valid++
+    }
+    return { valid, expiringSoon, expired }
   }
 
   return (
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          <TableHead className="min-w-[240px]">Employee</TableHead>
-          <TableHead className="min-w-[170px]">Department</TableHead>
-          <TableHead className="min-w-[220px]">Training</TableHead>
-          <TableHead className="min-w-[160px]">Provider</TableHead>
-          <TableHead className="min-w-[110px]">Year</TableHead>
-          <TableHead className="min-w-[160px]">Expiry</TableHead>
-          <TableHead className="min-w-[120px]">Status</TableHead>
-          <TableHead className="min-w-[240px]">Aksi</TableHead>
+          <TableHead className="min-w-[280px]">Karyawan</TableHead>
+          <TableHead className="min-w-[160px]">Departemen</TableHead>
+          <TableHead className="min-w-[100px] text-center">Total</TableHead>
+          <TableHead className="min-w-[280px]">Ringkasan Status</TableHead>
+          <TableHead className="min-w-[60px]" />
         </TableRow>
       </TableHeader>
       <TableBody>
-        {groupedRows.length > 0 ? (
-          groupedRows.map((group) => {
-            const key = `${group.latest.employeeId}-${group.latest.trainingName.toLowerCase().trim()}`
-            const isExpanded = expandedGroups[key]
-            const hasHistory = group.history.length > 0
-            const expiryDays = daysUntilExpiry(group.latest.expiresAt, referenceDate)
+        {sortedGroups.length > 0 ? (
+          sortedGroups.map((group) => {
+            const key = `${group.employeeId}`
+            const isExpanded = expandedEmployees[key]
+            const { valid, expiringSoon, expired } = getStatusSummary(group.records)
 
             return (
-              <Fragment key={`group-${key}`}>
-                {/* Parent Row (Latest Training Record) */}
-                <TableRow className="hover:bg-surface-container-low/70">
-                  <TableCell className="align-top">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">{group.latest.employeeName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {group.latest.employeeSn || "SN belum ada"} • {group.latest.role || "-"}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="align-top text-sm text-foreground">{group.latest.department}</TableCell>
-                  <TableCell className="align-top">
-                    <div className="flex items-start gap-1.5">
-                      {hasHistory && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6 rounded-md p-0 hover:bg-surface-container-high/60 shrink-0 mt-0.5"
-                          onClick={() => toggleGroup(key)}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="size-3.5 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="size-3.5 text-muted-foreground" />
-                          )}
-                        </Button>
-                      )}
-                      <div className="space-y-1 min-w-0">
-                        <p className="font-semibold text-foreground leading-tight">{group.latest.trainingName}</p>
-                        {hasHistory && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded-full">
-                            <History className="size-3" />
-                            {group.history.length} Tahun Lalu
-                          </span>
-                        )}
+              <Fragment key={`emp-${key}`}>
+                {/* ── Employee Summary Row ──────────────────────────────── */}
+                <TableRow
+                  className="cursor-pointer hover:bg-surface-container-low/70 transition-colors"
+                  onClick={() => toggleEmployee(key)}
+                >
+                  <TableCell className="align-middle py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                        <User className="size-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-foreground leading-tight">
+                          {group.employeeName}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {group.employeeSn || "SN –"} • {group.role || "-"}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="align-top text-sm text-foreground">{group.latest.provider}</TableCell>
-                  <TableCell className="align-top">
-                    <div className="space-y-1">
-                      <p className="font-semibold text-foreground">{group.latest.completedYear}</p>
-                      <p className="text-xs text-muted-foreground">Tahun terakhir</p>
+                  <TableCell className="align-middle text-sm text-foreground">
+                    {group.department || "–"}
+                  </TableCell>
+                  <TableCell className="align-middle text-center">
+                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-foreground">
+                      <BookOpen className="size-4 text-primary" />
+                      {group.records.length}
+                    </span>
+                  </TableCell>
+                  <TableCell className="align-middle">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {valid > 0 && (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 border-0 hover:bg-emerald-500/10 text-[10px] font-bold px-2 py-0.5 gap-1">
+                          <BadgeCheck className="size-3" />
+                          {valid} Valid
+                        </Badge>
+                      )}
+                      {expiringSoon > 0 && (
+                        <Badge className="bg-amber-500/10 text-amber-600 border-0 hover:bg-amber-500/10 text-[10px] font-bold px-2 py-0.5 gap-1">
+                          <CalendarClock className="size-3" />
+                          {expiringSoon} Segera Exp
+                        </Badge>
+                      )}
+                      {expired > 0 && (
+                        <Badge className="bg-rose-500/10 text-rose-600 border-0 hover:bg-rose-500/10 text-[10px] font-bold px-2 py-0.5 gap-1">
+                          <AlertTriangle className="size-3" />
+                          {expired} Expired
+                        </Badge>
+                      )}
                     </div>
                   </TableCell>
-                  <TableCell className="align-top">
-                    <div className="space-y-1">
-                      <p className="text-sm text-foreground">{formatOptionalDate(group.latest.expiresAt)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {expiryDays == null
-                          ? "Tidak ada expiry"
-                          : expiryDays >= 0
-                            ? `${expiryDays} hari lagi`
-                            : `${Math.abs(expiryDays)} hari lewat`}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <AdminStatusBadge value={group.latest.status} />
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <TrainingRowActions
-                      row={group.latest}
-                      employees={employees}
-                      categoryOptions={categoryOptions}
-                    />
+                  <TableCell className="align-middle text-right pr-4">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 rounded-lg hover:bg-surface-container-high/60"
+                      onClick={(e) => { e.stopPropagation(); toggleEmployee(key) }}
+                    >
+                      {isExpanded
+                        ? <ChevronDown className="size-4 text-muted-foreground" />
+                        : <ChevronRight className="size-4 text-muted-foreground" />}
+                    </Button>
                   </TableCell>
                 </TableRow>
 
-                {/* Historical Nested Rows */}
-                {isExpanded &&
-                  group.history.map((histRow, idx) => {
-                    const histExpiryDays = daysUntilExpiry(histRow.expiresAt, referenceDate)
-                    return (
-                      <TableRow
-                        key={`history-${key}-${histRow.id}-${idx}`}
-                        className="bg-transparent hover:bg-surface-container-lowest/50 border-l-2 border-primary/20"
+                {/* ── Detail Rows (per training) ────────────────────────── */}
+                {isExpanded && (
+                  <>
+                    {/* Sub-header */}
+                    <TableRow className="bg-surface-container-low/30 hover:bg-surface-container-low/30">
+                      <TableCell
+                        colSpan={5}
+                        className="py-1.5 pl-16 pr-4"
                       >
-                        <TableCell className="align-top pl-10 text-muted-foreground text-xs font-medium">
-                          <span className="flex items-center gap-1.5">
-                            <History className="size-3 text-muted-foreground/60" />
-                            Riwayat Sebelumnya
-                          </span>
-                        </TableCell>
-                        <TableCell className="align-top text-xs text-muted-foreground">{histRow.department}</TableCell>
-                        <TableCell className="align-top text-xs font-semibold text-muted-foreground pl-6">
-                          {histRow.trainingName}
-                        </TableCell>
-                        <TableCell className="align-top text-xs text-muted-foreground">{histRow.provider}</TableCell>
-                        <TableCell className="align-top">
-                          <p className="text-xs font-semibold text-muted-foreground">{histRow.completedYear}</p>
-                        </TableCell>
-                        <TableCell className="align-top">
-                          <div className="space-y-0.5">
-                            <p className="text-xs text-muted-foreground">{formatOptionalDate(histRow.expiresAt)}</p>
-                            <p className="text-[10px] text-muted-foreground/80">
-                              {histExpiryDays == null
-                                ? ""
-                                : histExpiryDays >= 0
-                                  ? `${histExpiryDays} hari lagi`
-                                  : `${Math.abs(histExpiryDays)} hari lewat`}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="align-top">
-                          <AdminStatusBadge value={histRow.status} />
-                        </TableCell>
-                        <TableCell className="align-top">
-                          <TrainingRowActions
-                            row={histRow}
-                            employees={employees}
-                            categoryOptions={categoryOptions}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
+                        <div className="grid grid-cols-[1fr_160px_90px_160px_120px_160px_auto] gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                          <span>Nama Pelatihan</span>
+                          <span>Provider</span>
+                          <span>Tahun</span>
+                          <span>Expiry</span>
+                          <span>Status</span>
+                          <span>Sisa Hari</span>
+                          <span />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {group.records.map((rec, idx) => {
+                      const days = daysUntilExpiry(rec.expiresAt, referenceDate)
+                      const isLastRow = idx === group.records.length - 1
+                      return (
+                        <TableRow
+                          key={`rec-${rec.id}-${idx}`}
+                          className={`bg-surface-container-lowest/50 hover:bg-surface-container-low/40 transition-colors ${
+                            !isLastRow ? "border-b border-dashed border-border/40" : "border-b border-border/70"
+                          }`}
+                        >
+                          <TableCell colSpan={5} className="py-2.5 pl-16 pr-4">
+                            <div className="grid grid-cols-[1fr_160px_90px_160px_120px_160px_auto] gap-2 items-center">
+                              {/* Training Name */}
+                              <div className="flex items-start gap-2 min-w-0">
+                                <History className="size-3.5 mt-0.5 text-muted-foreground/50 shrink-0" />
+                                <span className="text-sm font-semibold text-foreground leading-tight break-words whitespace-normal">
+                                  {rec.trainingName}
+                                </span>
+                              </div>
+
+                              {/* Provider */}
+                              <span className="text-xs text-muted-foreground truncate">
+                                {rec.provider}
+                              </span>
+
+                              {/* Year */}
+                              <span className="text-sm font-bold text-foreground">
+                                {rec.completedYear}
+                              </span>
+
+                              {/* Expiry Date */}
+                              <span className="text-xs text-muted-foreground">
+                                {formatOptionalDate(rec.expiresAt)}
+                              </span>
+
+                              {/* Status */}
+                              <div>
+                                <AdminStatusBadge value={rec.status} />
+                              </div>
+
+                              {/* Days remaining */}
+                              <span
+                                className={`text-xs font-semibold ${
+                                  days == null
+                                    ? "text-muted-foreground"
+                                    : days < 0
+                                    ? "text-rose-600"
+                                    : days <= 30
+                                    ? "text-amber-600"
+                                    : "text-emerald-600"
+                                }`}
+                              >
+                                {days == null
+                                  ? "Tidak ada"
+                                  : days < 0
+                                  ? `${Math.abs(days)} hr lewat`
+                                  : `${days} hr lagi`}
+                              </span>
+
+                              {/* Actions */}
+                              <div>
+                                <TrainingRowActions
+                                  row={rec}
+                                  employees={employees}
+                                  categoryOptions={categoryOptions}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </>
+                )}
               </Fragment>
             )
           })
         ) : (
           <TableRow>
-            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
               Tidak ada training record sesuai kombinasi filter saat ini.
             </TableCell>
           </TableRow>

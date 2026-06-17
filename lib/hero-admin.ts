@@ -932,12 +932,24 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'Safety Induction',
+    url: '/dashboard/safety-induction',
+    iconName: 'checklist',
+    resource: 'safety_induction',
+    sortOrder: 11,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
     groupLabel: 'Incident Management',
     title: 'Incident Report',
     url: '/dashboard/hse/incident-report',
     iconName: 'alert-triangle',
     resource: 'hse_incident_report',
-    sortOrder: 11,
+    sortOrder: 12,
     isVisible: true,
     openInNewTab: false,
   },
@@ -3105,6 +3117,7 @@ export async function getTrainingRecordPageData() {
         employeeSn: employees.employeeSn,
         role: employees.jobTitle,
         department: employees.department,
+        section: employees.section,
         trainingName: trainingRecords.trainingName,
         provider: trainingRecords.provider,
         completedYear: trainingRecords.completedYear,
@@ -3124,6 +3137,7 @@ export async function getTrainingRecordPageData() {
         name: employees.name,
         employeeSn: employees.employeeSn,
         department: employees.department,
+        section: employees.section,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
@@ -3136,11 +3150,15 @@ export async function getTrainingRecordPageData() {
   const departmentOptions = Array.from(
     new Set(employeeOptions.map((employee) => employee.department).filter(Boolean))
   ).sort((left, right) => left.localeCompare(right, 'id-ID'))
+  const sectionOptions = Array.from(
+    new Set(employeeOptions.map((employee) => employee.section).filter(Boolean))
+  ).sort((left, right) => left.localeCompare(right, 'id-ID'))
 
   return {
     rows,
     employeeOptions,
     departmentOptions,
+    sectionOptions,
     yearOptions,
   }
 }

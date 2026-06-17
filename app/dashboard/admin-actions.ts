@@ -8,6 +8,7 @@ import {
 } from '@/lib/user-notifications'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
+import Fuse from 'fuse.js'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -4711,7 +4712,16 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
 }
 
 function normalizeTrainingRecordKey(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+  let s = value.trim().toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ")
+  const words = s.split(" ")
+  if (words.length > 0) {
+    const first = words[0]
+    if (first === "m" || first === "muhammad" || first === "mohammad" || first === "muhamad" || first === "mochamad") {
+      words[0] = "m"
+    }
+    s = words.join(" ")
+  }
+  return s
 }
 
 function inferTrainingStatus(expiresAt: Date | null) {
@@ -4792,6 +4802,18 @@ export async function importTrainingRecordsAction(
         .filter((employee) => employee.email.trim())
         .map((employee) => [normalizeTrainingRecordKey(employee.email), employee])
     )
+    const fuse = new Fuse(
+      employeeRows.map(emp => ({
+        ...emp,
+        normalizedName: normalizeTrainingRecordKey(emp.name)
+      })),
+      {
+        keys: ['normalizedName'],
+        threshold: 0.35,
+        includeScore: true,
+      }
+    )
+
     const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>(
       (map, employee) => {
         const key = normalizeTrainingRecordKey(employee.name)
@@ -4849,21 +4871,21 @@ export async function importTrainingRecordsAction(
         (email ? employeeByEmail.get(normalizeTrainingRecordKey(email)) : undefined) ??
         (employeeCandidatesFromName.length === 1
           ? employeeCandidatesFromName[0]
-          : department
-            ? employeeCandidatesFromName.find(
-                (candidate) => normalizeTrainingRecordKey(candidate.department) === department
-              )
-            : undefined)
+          : undefined)
+
+      if (!employee && employeeName) {
+        const results = fuse.search(normalizeTrainingRecordKey(employeeName))
+        if (results.length > 0 && (results[0].score ?? 1) <= 0.35) {
+          employee = results[0].item
+        }
+      }
 
       if (!employee) {
         skippedCount += 1
         continue
       }
 
-      if (department && normalizeTrainingRecordKey(employee.department) !== department) {
-        skippedCount += 1
-        continue
-      }
+
 
       const compositeKey = `${employee.id}:${normalizeTrainingRecordKey(trainingName)}:${completedYear}`
       const existing = existingByCompositeKey.get(compositeKey)

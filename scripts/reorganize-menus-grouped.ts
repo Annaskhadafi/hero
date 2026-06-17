@@ -78,7 +78,8 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Inventaris", url: "/dashboard/hse/inventaris", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "checklist", resource: "hse_inventaris", sortOrder: 8 },
     { title: "Izin Kerja PTW", url: "/dashboard/hse/izin-kerja-ptw", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "checklist", resource: "hse_izin_kerja_ptw", sortOrder: 9 },
     { title: "JSA", url: "/dashboard/hse/jsa", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "checklist", resource: "hse_jsa", sortOrder: 10 },
-    { title: "Incident Report", url: "/dashboard/hse/incident-report", section: "HSE", groupLabel: "Incident Management", iconName: "alert-triangle", resource: "hse_incident_report", sortOrder: 11 },
+    { title: "Safety Induction", url: "/dashboard/safety-induction", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "checklist", resource: "safety_induction", sortOrder: 11 },
+    { title: "Incident Report", url: "/dashboard/hse/incident-report", section: "HSE", groupLabel: "Incident Management", iconName: "alert-triangle", resource: "hse_incident_report", sortOrder: 12 },
   ],
   "Central Service": [
     { title: "WIP Repair", url: "/dashboard/repair-retread/wip-repair", section: "Central Service", groupLabel: "Repair & Retread", iconName: "settings", resource: "wip_repair", sortOrder: 1 },

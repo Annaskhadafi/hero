@@ -107,15 +107,17 @@ export default async function TrainingRecordsPage({
     getOperationalCrudOptions(),
   ]);
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
+  const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
   const selectedYear = getSearchParamValue(resolvedSearchParams, "year");
   const referenceDate = startOfDayInAppTimeZone(new Date());
 
   const filteredRows = data.rows.filter((row) => {
     const matchesEmployee = !selectedEmployeeId || `${row.employeeId}` === selectedEmployeeId;
     const matchesDepartment = !selectedDepartment || row.department === selectedDepartment;
+    const matchesSection = !selectedSection || row.section === selectedSection;
     const matchesYear = !selectedYear || `${row.completedYear}` === selectedYear;
 
-    return matchesEmployee && matchesDepartment && matchesYear;
+    return matchesEmployee && matchesDepartment && matchesSection && matchesYear;
   });
 
   const employeeCoverage = new Set(filteredRows.map((row) => row.employeeId)).size;
@@ -203,6 +205,7 @@ export default async function TrainingRecordsPage({
         <TrainingRecordFilters
           employees={data.employeeOptions}
           departments={data.departmentOptions}
+          sections={data.sectionOptions}
           years={data.yearOptions}
         />
       </div>

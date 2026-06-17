@@ -86,15 +86,42 @@ export function TrainingRecordImportExport() {
             <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">File CSV</p>
+                  <p className="text-sm font-medium">File CSV / Excel</p>
                   <Input
                     name="file"
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".csv,text/csv,.xlsx,.xls"
                     onChange={async (event) => {
                       const file = event.target.files?.[0];
                       if (!file) return;
-                      setRawCsv(await file.text());
+                      const lowerName = file.name.toLowerCase();
+                      if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+                        const buffer = await file.arrayBuffer();
+                        const XLSX = await import('xlsx');
+                        const workbook = XLSX.read(buffer, { type: 'array' });
+                        const firstSheet = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheet];
+                        const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(worksheet, { header: 1, raw: false, defval: '', blankrows: false });
+                        
+                        const knownHeaders = ["nama", "employee", "training", "sertifikasi", "tahun", "completed year", "provider", "status"];
+                        let headerIndex = 0;
+                        for (let i = 0; i < Math.min(rows.length, 10); i++) {
+                          const row = rows[i];
+                          if (row && row.some(cell => {
+                            const val = String(cell || "").toLowerCase();
+                            return knownHeaders.some(kh => val.includes(kh));
+                          })) {
+                            headerIndex = i;
+                            break;
+                          }
+                        }
+
+                        const normalized = rows.slice(headerIndex).map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim())).filter((r: string[]) => r.some((c: string) => c.length > 0));
+                        const csv = normalized.map((r: string[]) => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+                        setRawCsv(csv);
+                      } else {
+                        setRawCsv(await file.text());
+                      }
                     }}
                   />
                 </div>

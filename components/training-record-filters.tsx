@@ -11,15 +11,18 @@ type EmployeeOption = {
   name: string;
   employeeSn: string;
   department: string;
+  section: string;
 };
 
 export function TrainingRecordFilters({
   employees,
   departments,
+  sections,
   years,
 }: {
   employees: EmployeeOption[];
   departments: string[];
+  sections: string[];
   years: number[];
 }) {
   const router = useRouter();
@@ -27,9 +30,10 @@ export function TrainingRecordFilters({
   const searchParams = useSearchParams();
   const selectedEmployeeId = searchParams.get("employeeId") ?? "";
   const selectedDepartment = searchParams.get("department") ?? "";
+  const selectedSection = searchParams.get("section") ?? "";
   const selectedYear = searchParams.get("year") ?? "";
 
-  function updateFilter(key: "employeeId" | "department" | "year", value: string) {
+  function updateFilter(key: "employeeId" | "department" | "section" | "year", value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
       params.set(key, value);
@@ -57,14 +61,17 @@ export function TrainingRecordFilters({
     const params = new URLSearchParams(searchParams.toString());
     params.delete("employeeId");
     params.delete("department");
+    params.delete("section");
     params.delete("year");
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
   }
 
-  const visibleEmployees = selectedDepartment
-    ? employees.filter((employee) => employee.department === selectedDepartment)
-    : employees;
+  const visibleEmployees = employees.filter((employee) => {
+    if (selectedDepartment && employee.department !== selectedDepartment) return false
+    if (selectedSection && employee.section !== selectedSection) return false
+    return true
+  })
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -90,6 +97,15 @@ export function TrainingRecordFilters({
       />
 
       <SearchableSelect
+        label="section"
+        value={selectedSection}
+        onValueChange={(value) => updateFilter("section", value)}
+        placeholder="All sections"
+        options={sections.map((section) => ({ value: section, label: section }))}
+        widthClassName="min-w-[200px]"
+      />
+
+      <SearchableSelect
         label="tahun"
         value={selectedYear}
         onValueChange={(value) => updateFilter("year", value)}
@@ -100,7 +116,7 @@ export function TrainingRecordFilters({
 
       <Button type="button" variant="outline" onClick={() => applyPreset("current-year")} className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]">Tahun berjalan</Button>
       <Button type="button" variant="outline" onClick={() => updateFilter("department", "Operations")} className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]">Fokus operasi</Button>
-      {selectedEmployeeId || selectedDepartment || selectedYear ? (
+      {selectedEmployeeId || selectedDepartment || selectedSection || selectedYear ? (
         <Button
           type="button"
           variant="ghost"

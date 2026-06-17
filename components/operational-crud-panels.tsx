@@ -347,17 +347,20 @@ export function RowStatusDeleteActions({
   statusOptions,
   currentStatus,
   deleteLabel = "Hapus",
+  children,
 }: {
   id: number;
   action: CrudAction;
   statusOptions: string[];
   currentStatus: string;
   deleteLabel?: string;
+  children?: React.ReactNode;
 }) {
   const formAction = action as unknown as NativeFormAction;
 
   return (
-    <div className="flex min-w-[220px] flex-wrap gap-2">
+    <div className="flex min-w-[220px] flex-wrap items-center gap-2">
+      {children}
       <form action={formAction} className="flex gap-2">
         <input type="hidden" name="intent" value="update-status" />
         <input type="hidden" name="id" value={id} />
@@ -470,8 +473,8 @@ export function HseObservationRowActions({
         action={manageHseObservationAction}
         statusOptions={getCategoryOptions(categoryOptions, "hse_observation_status", hseObservationStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageHseObservationAction}>
+      >
+        <RowEditShell id={row.id} action={manageHseObservationAction}>
         <div className="grid gap-3 sm:grid-cols-2">
           <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
             <SiteOptions sites={sites} />
@@ -526,6 +529,7 @@ export function HseObservationRowActions({
         </div>
         <Textarea name="notes" defaultValue={row.notes} rows={3} />
       </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -546,8 +550,8 @@ export function HseIncidentRowActions({
         action={manageHseIncidentAction}
         statusOptions={getCategoryOptions(categoryOptions, "hse_incident_status", hseIncidentStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageHseIncidentAction}>
+      >
+        <RowEditShell id={row.id} action={manageHseIncidentAction}>
         <div className="grid gap-3 sm:grid-cols-2">
           <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
             <SiteOptions sites={sites} />
@@ -581,6 +585,7 @@ export function HseIncidentRowActions({
         </div>
         <Textarea name="impact" defaultValue={row.impact} rows={3} />
       </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -603,44 +608,45 @@ export function AttendanceRowActions({
         action={manageAttendanceRecordAction}
         statusOptions={getCategoryOptions(categoryOptions, "attendance_status", attendanceStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageAttendanceRecordAction}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
-            <EmployeeOptions employees={employees} />
-          </SelectField>
-          <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
-            <SiteOptions sites={sites} />
-          </SelectField>
-          <CategorySelectField
-            name="eventType"
-            label="Event"
-            type="attendance_event_type"
-            defaultValue={row.eventType}
-            categoryOptions={categoryOptions}
-            fallback={[
-              { code: "checked-in", label: "Clock In" },
-              { code: "checked-out", label: "Clock Out" },
-            ]}
-          />
-          <SelectField name="status" label="Status" defaultValue={row.status}>
-            {getCategoryOptions(
-              categoryOptions,
-              "attendance_status",
-              attendanceStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
-            ).map((status) => (
-              <option key={status.code} value={status.code}>
-                {status.label}
-              </option>
-            ))}
-          </SelectField>
-          <TextField name="eventTime" label="Waktu" type="datetime-local" defaultValue={formatDateTimeInput(row.eventTime)} />
-          <TextField name="locationNote" label="Lokasi / Catatan" defaultValue={row.locationNote} />
-          <TextField name="latitude" label="Latitude" defaultValue={row.latitude ?? ""} />
-          <TextField name="longitude" label="Longitude" defaultValue={row.longitude ?? ""} />
-          <TextField name="photoUrl" label="URL foto" defaultValue={row.photoUrl ?? ""} />
-        </div>
-      </RowEditShell>
+      >
+        <RowEditShell id={row.id} action={manageAttendanceRecordAction}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
+              <EmployeeOptions employees={employees} />
+            </SelectField>
+            <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
+              <SiteOptions sites={sites} />
+            </SelectField>
+            <CategorySelectField
+              name="eventType"
+              label="Event"
+              type="attendance_event_type"
+              defaultValue={row.eventType}
+              categoryOptions={categoryOptions}
+              fallback={[
+                { code: "checked-in", label: "Clock In" },
+                { code: "checked-out", label: "Clock Out" },
+              ]}
+            />
+            <SelectField name="status" label="Status" defaultValue={row.status}>
+              {getCategoryOptions(
+                categoryOptions,
+                "attendance_status",
+                attendanceStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+              ).map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </SelectField>
+            <TextField name="eventTime" label="Waktu" type="datetime-local" defaultValue={formatDateTimeInput(row.eventTime)} />
+            <TextField name="locationNote" label="Lokasi / Catatan" defaultValue={row.locationNote} />
+            <TextField name="latitude" label="Latitude" defaultValue={row.latitude ?? ""} />
+            <TextField name="longitude" label="Longitude" defaultValue={row.longitude ?? ""} />
+            <TextField name="photoUrl" label="URL foto" defaultValue={row.photoUrl ?? ""} />
+          </div>
+        </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -661,27 +667,28 @@ export function TrainingRowActions({
         action={manageTrainingRecordAction}
         statusOptions={getCategoryOptions(categoryOptions, "training_status", trainingStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageTrainingRecordAction}>
-        <SearchableEmployeeSelect employees={employees} defaultValue={`${row.employeeId}`} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <TextField name="trainingName" label="Training" defaultValue={row.trainingName} />
-          <TextField name="provider" label="Provider" defaultValue={row.provider} />
-          <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={row.completedYear} />
-          <TextField name="expiresAt" label="Tanggal expiry" type="date" defaultValue={formatDateInput(row.expiresAt)} />
-          <SelectField name="status" label="Status" defaultValue={row.status}>
-            {getCategoryOptions(
-              categoryOptions,
-              "training_status",
-              trainingStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
-            ).map((status) => (
-              <option key={status.code} value={status.code}>
-                {status.label}
-              </option>
-            ))}
-          </SelectField>
-        </div>
-      </RowEditShell>
+      >
+        <RowEditShell id={row.id} action={manageTrainingRecordAction}>
+          <SearchableEmployeeSelect employees={employees} defaultValue={`${row.employeeId}`} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField name="trainingName" label="Training" defaultValue={row.trainingName} />
+            <TextField name="provider" label="Provider" defaultValue={row.provider} />
+            <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={row.completedYear} />
+            <TextField name="expiresAt" label="Tanggal expiry" type="date" defaultValue={formatDateInput(row.expiresAt)} />
+            <SelectField name="status" label="Status" defaultValue={row.status}>
+              {getCategoryOptions(
+                categoryOptions,
+                "training_status",
+                trainingStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+              ).map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </SelectField>
+          </div>
+        </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -702,40 +709,41 @@ export function WellnessRowActions({
         action={manageWellnessRecordAction}
         statusOptions={getCategoryOptions(categoryOptions, "wellness_status", wellnessStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageWellnessRecordAction}>
-        <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
-          <EmployeeOptions employees={employees} />
-        </SelectField>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <CategorySelectField
-            name="metricType"
-            label="Metrik"
-            type="wellness_metric_type"
-            defaultValue={row.metricType}
-            categoryOptions={categoryOptions}
-            fallback={[
-              { code: "Fit for Work", label: "Fit for Work" },
-              { code: "MCU", label: "MCU" },
-              { code: "BMI", label: "BMI" },
-            ]}
-          />
-          <TextField name="metricValue" label="Nilai" defaultValue={row.metricValue} />
-          <TextField name="recordedAt" label="Waktu catat" type="datetime-local" defaultValue={formatDateTimeInput(row.recordedAt)} />
-          <SelectField name="status" label="Status" defaultValue={row.status}>
-            {getCategoryOptions(
-              categoryOptions,
-              "wellness_status",
-              wellnessStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
-            ).map((status) => (
-              <option key={status.code} value={status.code}>
-                {status.label}
-              </option>
-            ))}
+      >
+        <RowEditShell id={row.id} action={manageWellnessRecordAction}>
+          <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
+            <EmployeeOptions employees={employees} />
           </SelectField>
-        </div>
-        <Textarea name="notes" defaultValue={row.notes} rows={3} />
-      </RowEditShell>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CategorySelectField
+              name="metricType"
+              label="Metrik"
+              type="wellness_metric_type"
+              defaultValue={row.metricType}
+              categoryOptions={categoryOptions}
+              fallback={[
+                { code: "Fit for Work", label: "Fit for Work" },
+                { code: "MCU", label: "MCU" },
+                { code: "BMI", label: "BMI" },
+              ]}
+            />
+            <TextField name="metricValue" label="Nilai" defaultValue={row.metricValue} />
+            <TextField name="recordedAt" label="Waktu catat" type="datetime-local" defaultValue={formatDateTimeInput(row.recordedAt)} />
+            <SelectField name="status" label="Status" defaultValue={row.status}>
+              {getCategoryOptions(
+                categoryOptions,
+                "wellness_status",
+                wellnessStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+              ).map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </SelectField>
+          </div>
+          <Textarea name="notes" defaultValue={row.notes} rows={3} />
+        </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -758,32 +766,33 @@ export function TimesheetRowActions({
         action={manageTimesheetEntryAction}
         statusOptions={getCategoryOptions(categoryOptions, "timesheet_status", timesheetStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageTimesheetEntryAction}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
-            <EmployeeOptions employees={employees} />
-          </SelectField>
-          <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
-            <SiteOptions sites={sites} />
-          </SelectField>
-          <TextField name="periodLabel" label="Periode" defaultValue={row.periodLabel} />
-          <SelectField name="status" label="Status" defaultValue={row.status}>
-            {getCategoryOptions(
-              categoryOptions,
-              "timesheet_status",
-              timesheetStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
-            ).map((status) => (
-              <option key={status.code} value={status.code}>
-                {status.label}
-              </option>
-            ))}
-          </SelectField>
-          <TextField name="regularMinutes" label="Menit reguler" type="number" defaultValue={row.regularMinutes} />
-          <TextField name="overtimeMinutes" label="Menit lembur" type="number" defaultValue={row.overtimeMinutes} />
-          <TextField name="overtimeAmount" label="Nilai lembur" type="number" defaultValue={row.overtimeAmount} />
-        </div>
-      </RowEditShell>
+      >
+        <RowEditShell id={row.id} action={manageTimesheetEntryAction}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
+              <EmployeeOptions employees={employees} />
+            </SelectField>
+            <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
+              <SiteOptions sites={sites} />
+            </SelectField>
+            <TextField name="periodLabel" label="Periode" defaultValue={row.periodLabel} />
+            <SelectField name="status" label="Status" defaultValue={row.status}>
+              {getCategoryOptions(
+                categoryOptions,
+                "timesheet_status",
+                timesheetStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+              ).map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </SelectField>
+            <TextField name="regularMinutes" label="Menit reguler" type="number" defaultValue={row.regularMinutes} />
+            <TextField name="overtimeMinutes" label="Menit lembur" type="number" defaultValue={row.overtimeMinutes} />
+            <TextField name="overtimeAmount" label="Nilai lembur" type="number" defaultValue={row.overtimeAmount} />
+          </div>
+        </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -804,32 +813,33 @@ export function DailyReportRowActions({
         action={manageDailyReportAction}
         statusOptions={getCategoryOptions(categoryOptions, "daily_report_status", dailyReportStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
-      />
-      <RowEditShell id={row.id} action={manageDailyReportAction}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
-            <SiteOptions sites={sites} />
-          </SelectField>
-          <TextField name="reportDate" label="Tanggal report" type="date" defaultValue={formatDateInput(row.reportDate)} />
-          <TextField name="customerName" label="Customer" defaultValue={row.customerName} />
-          <SelectField name="status" label="Status" defaultValue={row.status}>
-            {getCategoryOptions(
-              categoryOptions,
-              "daily_report_status",
-              dailyReportStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
-            ).map((status) => (
-              <option key={status.code} value={status.code}>
-                {status.label}
-              </option>
-            ))}
-          </SelectField>
-          <TextField name="totalSections" label="Total section" type="number" defaultValue={row.totalSections} />
-          <TextField name="readySections" label="Section siap" type="number" defaultValue={row.readySections} />
-          <TextField name="jobsCompleted" label="Job selesai" type="number" defaultValue={row.jobsCompleted} />
-          <TextField name="manpowerPresent" label="Manpower hadir" type="number" defaultValue={row.manpowerPresent} />
-        </div>
-        <Textarea name="hseSummary" defaultValue={row.hseSummary} rows={3} />
-      </RowEditShell>
+      >
+        <RowEditShell id={row.id} action={manageDailyReportAction}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SelectField name="siteId" label="Site" defaultValue={`${row.siteId}`}>
+              <SiteOptions sites={sites} />
+            </SelectField>
+            <TextField name="reportDate" label="Tanggal report" type="date" defaultValue={formatDateInput(row.reportDate)} />
+            <TextField name="customerName" label="Customer" defaultValue={row.customerName} />
+            <SelectField name="status" label="Status" defaultValue={row.status}>
+              {getCategoryOptions(
+                categoryOptions,
+                "daily_report_status",
+                dailyReportStatusOptions.map((status) => ({ code: status, label: status.replaceAll("_", " ") })),
+              ).map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </SelectField>
+            <TextField name="totalSections" label="Total section" type="number" defaultValue={row.totalSections} />
+            <TextField name="readySections" label="Section siap" type="number" defaultValue={row.readySections} />
+            <TextField name="jobsCompleted" label="Job selesai" type="number" defaultValue={row.jobsCompleted} />
+            <TextField name="manpowerPresent" label="Manpower hadir" type="number" defaultValue={row.manpowerPresent} />
+          </div>
+          <Textarea name="hseSummary" defaultValue={row.hseSummary} rows={3} />
+        </RowEditShell>
+      </RowStatusDeleteActions>
     </div>
   );
 }
@@ -844,10 +854,7 @@ export function PointEventRowActions({
   categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
-    <div className="grid min-w-[300px] gap-2">
-      <div className="flex flex-wrap gap-2">
-        <PointDeleteAction id={row.id} />
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
       <RowEditShell id={row.id} action={managePointEventAction}>
         <div className="grid gap-3 sm:grid-cols-2">
           <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
@@ -869,6 +876,7 @@ export function PointEventRowActions({
           <TextField name="points" label="Poin" type="number" defaultValue={row.points} />
         </div>
       </RowEditShell>
+      <PointDeleteAction id={row.id} />
     </div>
   );
 }

@@ -957,6 +957,7 @@ sites={sites}
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-10" />
                       <TableHead className="w-12">
                         <Checkbox
                           checked={
@@ -967,7 +968,6 @@ sites={sites}
                           }}
                         />
                       </TableHead>
-                      <TableHead className="w-10" />
                       {COLUMNS.map((col) =>
                         columnVisibility[col.key] ? (
                           <TableHead
@@ -995,47 +995,48 @@ sites={sites}
                         const isExpanded = expandedRowIds.includes(user.id);
                         return (
                           <Fragment key={user.id}>
-                            <TableRow className="hover:bg-white/55">
-                              <TableCell className="py-3.5">
-                                <Checkbox
-                                  checked={selectedIds.includes(user.id)}
-                                  onCheckedChange={(checked) => {
-                                    setSelectedIds(
-                                      checked
-                                        ? [...selectedIds, user.id]
-                                        : selectedIds.filter((id: number) => id !== user.id)
-                                    )
-                                  }}
-                                />
-                              </TableCell>
-                              <TableCell className="py-3.5">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  aria-expanded={isExpanded}
-                                  aria-label={`${isExpanded ? 'Tutup' : 'Buka'} detail ${user.name}`}
-                                  className={cn(
-                                    "size-7 rounded-lg",
-                                    isExpanded
-                                      ? "bg-primary/10 text-primary hover:bg-primary/20"
-                                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                                  )}
-                                  onClick={() => {
-                                    setExpandedRowIds((currentIds) =>
-                                      currentIds.includes(user.id)
-                                        ? currentIds.filter((id) => id !== user.id)
-                                        : [...currentIds, user.id]
-                                    )
-                                  }}
-                                >
-                                  {isExpanded ? (
-                                    <ChevronDown className="size-4" />
-                                  ) : (
-                                    <ChevronRight className="size-4" />
-                                  )}
-                                </Button>
-                              </TableCell>
+                        <TableRow className="hover:bg-white/55">
+                          <TableCell className="py-3.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-expanded={isExpanded}
+                              aria-label={`${isExpanded ? 'Tutup' : 'Buka'} detail ${user.name}`}
+                              className={cn(
+                                "size-7 rounded-lg",
+                                isExpanded
+                                  ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                              )}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setExpandedRowIds((currentIds) =>
+                                  currentIds.includes(user.id)
+                                    ? currentIds.filter((id) => id !== user.id)
+                                    : [...currentIds, user.id]
+                                )
+                              }}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="size-4" />
+                              ) : (
+                                <ChevronRight className="size-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="py-3.5">
+                            <Checkbox
+                              checked={selectedIds.includes(user.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedIds(
+                                  checked
+                                    ? [...selectedIds, user.id]
+                                    : selectedIds.filter((id: number) => id !== user.id)
+                                )
+                              }}
+                            />
+                          </TableCell>
                           {columnVisibility.name ? (
                             <TableCell className="py-3.5">
                               <div className="flex items-center gap-3">

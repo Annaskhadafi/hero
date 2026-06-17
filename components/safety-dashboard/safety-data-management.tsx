@@ -1,4 +1,4 @@
-import Link from "next/link"
+import { ImageIcon } from "lucide-react"
 
 import { AdminStatusBadge } from "@/components/admin-status-badge"
 import { AdminTableCard } from "@/components/admin-table-card"
@@ -12,6 +12,7 @@ import {
   CreatePerformanceButton,
   CreateWeeklyActivityButton,
   CreateYearlySummaryButton,
+  EvidencePreviewDialog,
   IncidentReportRowActions,
   ManHoursRowActions,
   MonthlyManHoursRowActions,
@@ -217,7 +218,7 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           access={data.access}
           actions={<CreateWeeklyActivityButton access={data.access} options={data.filterOptions} />}
           filters={<TableMultiFilter key="category" label="category" filterKey="category" options={categoryOptions} />}
-          rows={data.weeklyActivities.map((row) => [row.activity, formatDate(row.activityDate), row.pic, row.category, row.evidenceUrl ? <Link key={`${row.id}-link`} href={row.evidenceUrl} className="text-primary underline" target="_blank">Buka bukti</Link> : "-", <WeeklyActivityRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
+          rows={data.weeklyActivities.map((row) => [row.activity, formatDate(row.activityDate), row.pic, row.category, <EvidencePreviewDialog key={`${row.id}-evidence`} imageUrl={row.imageUrl} evidenceUrl={row.evidenceUrl} trigger={<div className="flex items-center gap-1.5 text-primary underline cursor-pointer hover:text-primary/80">{row.imageUrl || row.evidenceUrl ? <ImageIcon className="size-4" /> : null}{row.imageUrl || row.evidenceUrl ? "Lihat" : "-"}</div>} />, <WeeklyActivityRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.weeklyActivities.map((row) => ({ "data-date-value": row.activityDate ? `${row.activityDate}` : "", "data-filter-category": row.category }))}
         />
       </TabsContent>
