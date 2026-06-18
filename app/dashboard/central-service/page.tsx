@@ -27,6 +27,7 @@ import {
 
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
+import { getManpowerComposition, updateManpowerTarget, type ManpowerSiteComposition } from '@/app/actions/central-service-manpower'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -302,6 +303,69 @@ export default function CentralServicePage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [pageSize, setPageSize] = useState(50)
+
+  const [activeTab, setActiveTab] = useState<'employees' | 'composition'>('employees')
+  const [compositionData, setCompositionData] = useState<ManpowerSiteComposition[]>([])
+  const [loadingComposition, setLoadingComposition] = useState(false)
+  const [expandedCompositionSites, setExpandedCompositionSites] = useState<Set<string>>(new Set())
+
+  const fetchComposition = async () => {
+    setLoadingComposition(true)
+    try {
+      const data = await getManpowerComposition()
+      setCompositionData(data)
+    } catch (err) {
+      toast.error('Gagal mengambil data komposisi manpower')
+    } finally {
+      setLoadingComposition(false)
+    }
+  }
+
+  const handleTargetChange = async (siteName: string, position: string, count: number) => {
+    try {
+      const res = await updateManpowerTarget(siteName, position, count)
+      if (res.success) {
+        setCompositionData((prev) =>
+          prev.map((site) => {
+            if (site.siteName === siteName) {
+              const updated = { ...site }
+              if (position === 'TECHNICAL ENGINEER') {
+                updated.technicalEngineer = { ...updated.technicalEngineer, requested: count }
+              } else if (position === 'SERVICEMAN') {
+                updated.serviceman = { ...updated.serviceman, requested: count }
+              } else if (position === 'REPAIRMAN') {
+                updated.repairman = { ...updated.repairman, requested: count }
+              }
+              
+              const remarksParts: string[] = []
+              const teShortfall = updated.technicalEngineer.requested - updated.technicalEngineer.fulfillment
+              const svcShortfall = updated.serviceman.requested - updated.serviceman.fulfillment
+              const repShortfall = updated.repairman.requested - updated.repairman.fulfillment
+              
+              if (teShortfall > 0) remarksParts.push(`(-) ${teShortfall} Manpower Technical Engineer`)
+              if (svcShortfall > 0) remarksParts.push(`(-) ${svcShortfall} Manpower Service`)
+              if (repShortfall > 0) remarksParts.push(`(-) ${repShortfall} Manpower Repairman`)
+              
+              updated.statusRemarks = remarksParts.length > 0 ? remarksParts.join(' + ') : 'Completed'
+              return updated
+            }
+            return site
+          })
+        )
+        toast.success(`Berhasil memperbarui target ${position} di ${siteName}`)
+      } else {
+        toast.error('Gagal memperbarui target')
+      }
+    } catch {
+      toast.error('Gagal memperbarui target')
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'composition') {
+      fetchComposition()
+    }
+  }, [activeTab])
 
   useEffect(() => {
     fetchEmployees()
@@ -616,7 +680,293 @@ export default function CentralServicePage() {
         ]}
       />
 
-      {hasActiveFilters ? (
+      <div className="my-5 flex gap-2 border-b border-slate-100 pb-3">
+        <Button
+          variant={activeTab === 'employees' ? 'default' : 'ghost'}
+          onClick={() => setActiveTab('employees')}
+          className={cn(
+            "h-10 rounded-xl px-4 text-sm font-semibold transition-all",
+            activeTab === 'employees' 
+              ? "bg-primary text-primary-foreground shadow" 
+              : "text-muted-foreground hover:bg-slate-100"
+          )}
+        >
+          <Users className="mr-2 size-4" />
+          Daftar Karyawan
+        </Button>
+        <Button
+          variant={activeTab === 'composition' ? 'default' : 'ghost'}
+          onClick={() => setActiveTab('composition')}
+          className={cn(
+            "h-10 rounded-xl px-4 text-sm font-semibold transition-all",
+            activeTab === 'composition' 
+              ? "bg-primary text-primary-foreground shadow" 
+              : "text-muted-foreground hover:bg-slate-100"
+          )}
+        >
+          <MapPin className="mr-2 size-4" />
+          Man Power Composition
+        </Button>
+      </div>
+
+      {activeTab === 'composition' ? (
+        <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-foreground text-sm font-semibold">Man Power Composition</p>
+              <p className="text-muted-foreground text-xs">Informasi detail komposisi manpower per site dan per section di Central Service.</p>
+            </div>
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchComposition}
+                disabled={loadingComposition}
+                className="bg-surface-container-lowest text-muted-foreground h-9 rounded-xl border-0 px-3 text-xs font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+              >
+                <RefreshCw className={cn('mr-1.5 size-3.5', loadingComposition && 'animate-spin')} />
+                Segarkan
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-surface-container-low overflow-x-auto rounded-[1rem] p-2">
+            {loadingComposition ? (
+              <div className="text-muted-foreground py-12 text-center text-sm font-medium">
+                Memuat data komposisi...
+              </div>
+            ) : compositionData.length > 0 ? (
+              <Table className="border-collapse border border-slate-200 w-full table-fixed min-w-[1000px]">
+                <TableHeader>
+                  <TableRow className="bg-slate-100 hover:bg-slate-100">
+                    <TableHead rowSpan={2} className="text-center font-bold text-slate-800 border border-slate-200 text-xs w-12 py-3">No</TableHead>
+                    <TableHead rowSpan={2} className="font-bold text-slate-800 border border-slate-200 text-xs w-52 py-3">PROJECT</TableHead>
+                    <TableHead colSpan={3} className="text-center bg-blue-50/50 font-bold text-blue-900 border border-slate-200 text-xs py-2">TECHNICAL ENGINEER</TableHead>
+                    <TableHead colSpan={3} className="text-center bg-indigo-50/50 font-bold text-indigo-900 border border-slate-200 text-xs py-2">SERVICEMAN</TableHead>
+                    <TableHead colSpan={3} className="text-center bg-cyan-50/50 font-bold text-cyan-900 border border-slate-200 text-xs py-2">REPAIRMAN</TableHead>
+                    <TableHead rowSpan={2} className="text-center font-bold text-slate-800 border border-slate-200 text-xs w-28 py-3">TOTAL MANPOWER</TableHead>
+                    <TableHead rowSpan={2} className="text-center font-bold text-slate-800 border border-slate-200 text-xs w-72 py-3">Status/Remarks</TableHead>
+                  </TableRow>
+                  <TableRow className="bg-slate-50 hover:bg-slate-50">
+                    <TableHead className="text-center bg-blue-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-blue-800 w-16">Requested</TableHead>
+                    <TableHead className="text-center bg-blue-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-blue-800 w-16">Fulfillment</TableHead>
+                    <TableHead className="text-center bg-blue-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-blue-800 w-16">Back up</TableHead>
+                    <TableHead className="text-center bg-indigo-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-indigo-800 w-16">Requested</TableHead>
+                    <TableHead className="text-center bg-indigo-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-indigo-800 w-16">Fulfillment</TableHead>
+                    <TableHead className="text-center bg-indigo-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-indigo-800 w-16">Back up</TableHead>
+                    <TableHead className="text-center bg-cyan-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-cyan-800 w-16">Requested</TableHead>
+                    <TableHead className="text-center bg-cyan-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-cyan-800 w-16">Fulfillment</TableHead>
+                    <TableHead className="text-center bg-cyan-50/20 border border-slate-200 text-[10px] py-1.5 font-semibold text-cyan-800 w-16">Back up</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {compositionData.map((site: ManpowerSiteComposition, index: number) => {
+                    const isExpanded = expandedCompositionSites.has(site.siteName)
+                    const isCompleted = site.statusRemarks === 'Completed'
+                    
+                    return (
+                      <Fragment key={site.siteName}>
+                        <TableRow className="hover:bg-slate-50/80 transition-colors">
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 font-medium text-slate-500">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell className="font-semibold text-xs py-3 border border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedCompositionSites((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(site.siteName)) next.delete(site.siteName)
+                                  else next.add(site.siteName)
+                                  return next
+                                })
+                              }}
+                              className="flex items-center gap-1 hover:underline text-left"
+                            >
+                              {isExpanded ? <ChevronDown className="size-3.5 text-slate-500" /> : <ChevronRight className="size-3.5 text-slate-500" />}
+                              <span className="text-slate-800 font-bold">{site.siteName}</span>
+                            </button>
+                          </TableCell>
+                          
+                          <TableCell className="p-1 border border-slate-200 bg-blue-50/5 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={site.technicalEngineer.requested}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value) || 0
+                                if (val !== site.technicalEngineer.requested) {
+                                  handleTargetChange(site.siteName, 'TECHNICAL ENGINEER', val)
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const val = parseInt((e.target as HTMLInputElement).value) || 0
+                                  handleTargetChange(site.siteName, 'TECHNICAL ENGINEER', val)
+                                  ;(e.target as HTMLInputElement).blur()
+                                }
+                              }}
+                              className="w-12 text-center text-xs bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                            />
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 bg-blue-50/5 font-semibold text-slate-800">
+                            {site.technicalEngineer.fulfillment || '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 bg-slate-100/70 text-slate-600 font-medium">
+                            {site.technicalEngineer.backupLeave || '-'}
+                          </TableCell>
+
+                          <TableCell className="p-1 border border-slate-200 bg-indigo-50/5 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={site.serviceman.requested}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value) || 0
+                                if (val !== site.serviceman.requested) {
+                                  handleTargetChange(site.siteName, 'SERVICEMAN', val)
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const val = parseInt((e.target as HTMLInputElement).value) || 0
+                                  handleTargetChange(site.siteName, 'SERVICEMAN', val)
+                                  ;(e.target as HTMLInputElement).blur()
+                                }
+                              }}
+                              className="w-12 text-center text-xs bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                            />
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 bg-indigo-50/5 font-semibold text-slate-800">
+                            {site.serviceman.fulfillment || '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 bg-slate-100/70 text-slate-600 font-medium">
+                            {site.serviceman.backupLeave || '-'}
+                          </TableCell>
+
+                          <TableCell className="p-1 border border-slate-200 bg-cyan-50/5 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={site.repairman.requested}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value) || 0
+                                if (val !== site.repairman.requested) {
+                                  handleTargetChange(site.siteName, 'REPAIRMAN', val)
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const val = parseInt((e.target as HTMLInputElement).value) || 0
+                                  handleTargetChange(site.siteName, 'REPAIRMAN', val)
+                                  ;(e.target as HTMLInputElement).blur()
+                                }
+                              }}
+                              className="w-12 text-center text-xs bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                            />
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 bg-cyan-50/5 font-semibold text-slate-800">
+                            {site.repairman.fulfillment || '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs py-3 border border-slate-200 bg-slate-100/70 text-slate-600 font-medium">
+                            {site.repairman.backupLeave || '-'}
+                          </TableCell>
+
+                          <TableCell className="text-center font-bold text-xs py-3 border border-slate-200 bg-slate-50 text-slate-900">
+                            {site.totalManpower}
+                          </TableCell>
+
+                          <TableCell className="p-1 border border-slate-200 text-xs">
+                            <div className={cn(
+                              "px-2 py-1.5 rounded-lg text-center font-bold text-[11px]",
+                              isCompleted 
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            )}>
+                              {site.statusRemarks}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+
+                        {isExpanded && (
+                          <TableRow className="bg-slate-50/25">
+                            <TableCell colSpan={13} className="p-4 border border-slate-200">
+                              <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)]">
+                                <p className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                                  <Users className="size-3.5 text-primary" />
+                                  KARYAWAN CENTRAL SERVICE DI SITE {site.siteName}
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="bg-blue-50/5 p-3 rounded-xl border border-blue-50/30">
+                                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-blue-800 mb-2 border-b border-blue-100/50 pb-1">
+                                      Technical Engineer ({site.employees.filter((e: any) => e.position.toLowerCase() === 'technical engineer').length})
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                      {site.employees.filter((e: any) => e.position.toLowerCase() === 'technical engineer').map((emp: any) => (
+                                        <li key={emp.employeeSn} className="flex justify-between items-center text-xs p-2 bg-slate-50 hover:bg-slate-100/80 rounded-lg transition-colors">
+                                          <span className="font-medium text-slate-800">{emp.fullName}</span>
+                                          <span className="text-[10px] text-muted-foreground font-mono bg-white px-1 py-0.5 rounded border border-slate-100">{emp.employeeSn}</span>
+                                        </li>
+                                      ))}
+                                      {site.employees.filter((e: any) => e.position.toLowerCase() === 'technical engineer').length === 0 && (
+                                        <li className="text-xs text-muted-foreground italic py-1">Tidak ada</li>
+                                      )}
+                                    </ul>
+                                  </div>
+
+                                  <div className="bg-indigo-50/5 p-3 rounded-xl border border-indigo-50/30">
+                                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-800 mb-2 border-b border-indigo-100/50 pb-1">
+                                      Serviceman ({site.employees.filter((e: any) => e.position.toLowerCase() === 'serviceman').length})
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                      {site.employees.filter((e: any) => e.position.toLowerCase() === 'serviceman').map((emp: any) => (
+                                        <li key={emp.employeeSn} className="flex justify-between items-center text-xs p-2 bg-slate-50 hover:bg-slate-100/80 rounded-lg transition-colors">
+                                          <span className="font-medium text-slate-800">{emp.fullName}</span>
+                                          <span className="text-[10px] text-muted-foreground font-mono bg-white px-1 py-0.5 rounded border border-slate-100">{emp.employeeSn}</span>
+                                        </li>
+                                      ))}
+                                      {site.employees.filter((e: any) => e.position.toLowerCase() === 'serviceman').length === 0 && (
+                                        <li className="text-xs text-muted-foreground italic py-1">Tidak ada</li>
+                                      )}
+                                    </ul>
+                                  </div>
+
+                                  <div className="bg-cyan-50/5 p-3 rounded-xl border border-cyan-50/30">
+                                    <p className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-800 mb-2 border-b border-cyan-100/50 pb-1">
+                                      Repairman ({site.employees.filter((e: any) => e.position.toLowerCase() === 'repairman').length})
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                      {site.employees.filter((e: any) => e.position.toLowerCase() === 'repairman').map((emp: any) => (
+                                        <li key={emp.employeeSn} className="flex justify-between items-center text-xs p-2 bg-slate-50 hover:bg-slate-100/80 rounded-lg transition-colors">
+                                          <span className="font-medium text-slate-800">{emp.fullName}</span>
+                                          <span className="text-[10px] text-muted-foreground font-mono bg-white px-1 py-0.5 rounded border border-slate-100">{emp.employeeSn}</span>
+                                        </li>
+                                      ))}
+                                      {site.employees.filter((e: any) => e.position.toLowerCase() === 'repairman').length === 0 && (
+                                        <li className="text-xs text-muted-foreground italic py-1">Tidak ada</li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-muted-foreground py-12 text-center text-sm font-medium">
+                Tidak ada data komposisi manpower.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {hasActiveFilters ? (
         <div className="surface-muted-card rounded-[1rem] p-3">
           <div className="flex flex-wrap items-center gap-2">
             {search.trim() ? (
@@ -963,6 +1313,7 @@ export default function CentralServicePage() {
           </div>
         </div>
       </div>
+      </>)}
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="surface-muted-card rounded-[1rem] p-4">

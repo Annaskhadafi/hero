@@ -89,3 +89,20 @@ export const centralServiceEmployeeImports = pgTable("hero_central_service_emplo
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
   processedAt: timestamp("processed_at"),
 });
+
+// Central Service Manpower Requested Targets
+export const centralServiceManpowerTargets = pgTable(
+  "hero_central_service_manpower_targets",
+  {
+    id: serial("id").primaryKey(),
+    siteName: text("site_name").notNull(),
+    position: text("position").notNull(), // 'Technical Engineer', 'Serviceman', 'Repairman'
+    requestedCount: integer("requested_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sitePositionIdx: uniqueIndex("cs_mp_target_site_pos_idx").on(table.siteName, table.position),
+  })
+);
+
