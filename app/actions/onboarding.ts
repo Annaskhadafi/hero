@@ -5,13 +5,54 @@ import { hcCandidates, hcRecruitments } from "@/db/schema/hero"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
+import { buildWorkflowEmailContent, getAppUrl, sendWorkflowEmail } from "@/lib/workflow-email"
 
 export async function generateOnboardingToken(candidateId: number) {
   try {
     const token = crypto.randomBytes(32).toString("hex")
+    const [candidate] = await db
+      .select({
+        id: hcCandidates.id,
+        name: hcCandidates.fullName,
+        email: hcCandidates.email,
+      })
+      .from(hcCandidates)
+      .where(eq(hcCandidates.id, candidateId))
+      .limit(1)
+
+    if (!candidate) {
+      return { success: false, error: "Candidate not found" }
+    }
+
     await db.update(hcCandidates)
       .set({ onboardingToken: token })
       .where(eq(hcCandidates.id, candidateId))
+
+    if (candidate.email?.trim()) {
+      try {
+        const onboardingUrl = getAppUrl(`/onboarding/${token}`)
+        const emailContent = buildWorkflowEmailContent({
+          title: "Link onboarding sudah siap",
+          greeting: `Halo ${candidate.name || "Candidate"},`,
+          intro: "Silakan lengkapi data onboarding Anda melalui tautan berikut.",
+          details: [
+            "Pastikan dokumen identitas dan data rekening sudah siap.",
+            "Link ini bersifat personal dan hanya untuk kandidat yang menerima email ini.",
+          ],
+          ctaLabel: "Buka Form Onboarding",
+          ctaUrl: onboardingUrl,
+        })
+
+        await sendWorkflowEmail({
+          to: candidate.email,
+          fallbackSubject: "Link onboarding HERO",
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+        })
+      } catch (emailError) {
+        console.error("Failed to send onboarding email:", emailError)
+      }
+    }
     
     revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`)
     return { success: true, token }

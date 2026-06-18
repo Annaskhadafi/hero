@@ -10,6 +10,14 @@ import {
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import {
+  buildWorkflowEmailContent,
+  getAppUrl,
+  getHrEmployeeContactById,
+  getHumanCapitalRecipientEmails,
+  sendWorkflowEmail,
+  sendWorkflowEmailToMany,
+} from "@/lib/workflow-email";
 
 // ─── Default Clearance Checklist Items ────────────────────────────────────────
 
@@ -231,6 +239,43 @@ export async function getOffboardingById(id: number) {
 
 // ─── Create Offboarding Request ──────────────────────────────────────────────
 
+async function notifyOffboardingUpdate(input: {
+  employeeId: number;
+  title: string;
+  intro: string;
+  details: Array<string | null | undefined>;
+  status: string;
+}) {
+  const employeeContact = await getHrEmployeeContactById(input.employeeId);
+  const hcRecipients = await getHumanCapitalRecipientEmails();
+  const emailContent = buildWorkflowEmailContent({
+    title: input.title,
+    greeting: `Halo ${employeeContact.name},`,
+    intro: input.intro,
+    details: input.details,
+    ctaLabel: "Buka Offboarding",
+    ctaUrl: getAppUrl("/dashboard/hc/offboarding"),
+  });
+
+  if (employeeContact.email) {
+    await sendWorkflowEmail({
+      to: employeeContact.email,
+      fallbackSubject: input.title,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    });
+  }
+
+  if (hcRecipients.length > 0) {
+    await sendWorkflowEmailToMany({
+      recipients: hcRecipients,
+      fallbackSubject: `${input.title} [${input.status}]`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    });
+  }
+}
+
 export async function createOffboardingRequest(data: {
   employeeId: string;
   requestType: string;
@@ -266,6 +311,23 @@ export async function createOffboardingRequest(data: {
   await db.insert(hcClearanceItems).values(clearanceToInsert);
 
   revalidatePath("/dashboard/hc/offboarding");
+
+  try {
+    await notifyOffboardingUpdate({
+      employeeId: empId,
+      title: "Request offboarding baru",
+      intro: "Request offboarding telah dibuat dan menunggu review tim HC.",
+      details: [
+        `Tipe: ${data.requestType}`,
+        `Last working day: ${data.requestedLastWorkingDay}`,
+        data.reason ? `Alasan: ${data.reason}` : null,
+      ],
+      status: "pending",
+    });
+  } catch (emailError) {
+    console.error("Offboarding create email error:", emailError);
+  }
+
   return record;
 }
 
@@ -292,6 +354,23 @@ export async function updateOffboardingRequest(
     .returning();
 
   revalidatePath("/dashboard/hc/offboarding");
+
+  if (updated) {
+    try {
+      await notifyOffboardingUpdate({
+        employeeId: updated.employeeId,
+        title: "Offboarding masuk tahap clearance",
+        intro: "Request offboarding Anda sudah disetujui dan sekarang masuk proses clearance.",
+        details: [
+          approvedBy ? `Approved by: ${approvedBy}` : null,
+        ],
+        status: "in_clearance",
+      });
+    } catch (emailError) {
+      console.error("Offboarding approve email error:", emailError);
+    }
+  }
+
   return updated;
 }
 
@@ -381,6 +460,21 @@ export async function completeOffboarding(id: number) {
 
   revalidatePath("/dashboard/hc/offboarding");
   revalidatePath("/dashboard/hc/employee");
+
+  try {
+    await notifyOffboardingUpdate({
+      employeeId: record.employeeId,
+      title: "Offboarding selesai",
+      intro: "Proses offboarding telah diselesaikan dan status karyawan sudah dinonaktifkan.",
+      details: [
+        `Tanggal efektif: ${new Date().toISOString().split("T")[0]}`,
+      ],
+      status: "completed",
+    });
+  } catch (emailError) {
+    console.error("Offboarding completion email error:", emailError);
+  }
+
   return updated;
 }
 

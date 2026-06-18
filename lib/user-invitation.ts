@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { getPublicAppUrl } from "@/lib/auth-config";
+import { buildWorkflowEmailContent, sendWorkflowEmail } from "@/lib/workflow-email";
 
 export function generateInvitationToken() {
   return randomBytes(32).toString("hex");
@@ -145,4 +146,32 @@ export function getInvitationUrl(token: string, baseUrl?: string) {
 export function getVerificationUrl(token: string, baseUrl?: string) {
   const base = baseUrl ?? getPublicAppUrl();
   return `${base}/auth/verify-email?token=${token}`;
+}
+
+export async function sendUserInvitationEmail(params: {
+  email: string;
+  name: string;
+  invitationToken: string;
+  verificationToken?: string | null;
+}) {
+  const invitationUrl = getInvitationUrl(params.invitationToken);
+  const verificationUrl = params.verificationToken ? getVerificationUrl(params.verificationToken) : null;
+  const content = buildWorkflowEmailContent({
+    title: "Undangan akun HERO",
+    greeting: `Halo ${params.name},`,
+    intro: "Akun HERO Anda sudah dibuat. Silakan terima undangan untuk melanjutkan aktivasi akun.",
+    details: [
+      verificationUrl ? `Verifikasi email: ${verificationUrl}` : null,
+      "Jika ini akun pertama Anda, gunakan menu Forgot Password setelah menerima undangan untuk membuat password login.",
+    ],
+    ctaLabel: "Terima Undangan",
+    ctaUrl: invitationUrl,
+  });
+
+  await sendWorkflowEmail({
+    to: params.email,
+    fallbackSubject: "Undangan akun HERO",
+    fallbackHtml: content.html,
+    fallbackText: content.text,
+  });
 }

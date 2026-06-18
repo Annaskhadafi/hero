@@ -11,6 +11,14 @@ import {
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count, gte, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import {
+  buildWorkflowEmailContent,
+  getAppUrl,
+  getHrEmployeeContactById,
+  getHumanCapitalRecipientEmails,
+  sendWorkflowEmail,
+  sendWorkflowEmailToMany,
+} from "@/lib/workflow-email";
 
 // ─── Leave Types ────────────────────────────────────────────────────────
 
@@ -163,6 +171,74 @@ export async function getLeaveStats() {
 
 // ─── Create Leave Request ───────────────────────────────────────────────
 
+async function notifyLeaveRequestSubmitted(input: {
+  employeeName: string;
+  employeeEmail: string;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason?: string;
+}) {
+  const recipients = await getHumanCapitalRecipientEmails();
+  if (recipients.length === 0) return;
+
+  const emailContent = buildWorkflowEmailContent({
+    title: `Pengajuan cuti ${input.leaveTypeName} baru`,
+    intro: `${input.employeeName} mengirim pengajuan cuti dan menunggu review tim HC.`,
+    details: [
+      `Jenis cuti: ${input.leaveTypeName}`,
+      `Tanggal: ${input.startDate} s/d ${input.endDate}`,
+      `Total hari: ${input.totalDays}`,
+      input.reason ? `Alasan: ${input.reason}` : null,
+    ],
+    ctaLabel: "Buka Dashboard Leave",
+    ctaUrl: getAppUrl("/dashboard/hc/leave"),
+  });
+
+  await sendWorkflowEmailToMany({
+    recipients,
+    actorEmail: input.employeeEmail,
+    fallbackSubject: `Pengajuan cuti ${input.leaveTypeName} baru`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  });
+}
+
+async function notifyLeaveRequestDecision(input: {
+  employeeName: string;
+  employeeEmail: string;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  status: "approved" | "rejected";
+  approverName?: string;
+  rejectionReason?: string;
+}) {
+  if (!input.employeeEmail) return;
+
+  const statusLabel = input.status === "approved" ? "disetujui" : "ditolak";
+  const emailContent = buildWorkflowEmailContent({
+    title: `Pengajuan cuti ${statusLabel}`,
+    greeting: `Halo ${input.employeeName},`,
+    intro: `Pengajuan cuti ${input.leaveTypeName} Anda telah ${statusLabel}.`,
+    details: [
+      `Tanggal: ${input.startDate} s/d ${input.endDate}`,
+      input.approverName ? `Diproses oleh: ${input.approverName}` : null,
+      input.rejectionReason ? `Catatan: ${input.rejectionReason}` : null,
+    ],
+    ctaLabel: "Buka Dashboard Leave",
+    ctaUrl: getAppUrl("/dashboard/hc/leave"),
+  });
+
+  await sendWorkflowEmail({
+    to: input.employeeEmail,
+    fallbackSubject: `Pengajuan cuti ${statusLabel}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  });
+}
+
 export async function createLeaveRequest(data: {
   employeeId: number;
   leaveTypeId: number;
@@ -172,6 +248,24 @@ export async function createLeaveRequest(data: {
   reason?: string;
   attachmentUrl?: string;
 }) {
+  const [[employee], [leaveType]] = await Promise.all([
+    db
+      .select({
+        name: hrEmployees.fullName,
+        email: hrEmployees.email,
+      })
+      .from(hrEmployees)
+      .where(eq(hrEmployees.id, data.employeeId))
+      .limit(1),
+    db
+      .select({
+        name: hcLeaveTypes.name,
+      })
+      .from(hcLeaveTypes)
+      .where(eq(hcLeaveTypes.id, data.leaveTypeId))
+      .limit(1),
+  ]);
+
   const [created] = await db
     .insert(hcLeaveRequests)
     .values({
@@ -187,6 +281,21 @@ export async function createLeaveRequest(data: {
     .returning();
 
   revalidatePath("/dashboard/hc/leave");
+
+  try {
+    await notifyLeaveRequestSubmitted({
+      employeeName: employee?.name || `Employee #${data.employeeId}`,
+      employeeEmail: employee?.email || "",
+      leaveTypeName: leaveType?.name || "Leave",
+      startDate: data.startDate,
+      endDate: data.endDate,
+      totalDays: data.totalDays,
+      reason: data.reason,
+    });
+  } catch (emailError) {
+    console.error("Leave submit email error:", emailError);
+  }
+
   return created;
 }
 
@@ -236,6 +345,31 @@ export async function updateLeaveRequestStatus(
   }
 
   revalidatePath("/dashboard/hc/leave");
+
+  if (updated) {
+    const employeeContact = await getHrEmployeeContactById(updated.employeeId);
+    const [leaveType] = await db
+      .select({ name: hcLeaveTypes.name })
+      .from(hcLeaveTypes)
+      .where(eq(hcLeaveTypes.id, updated.leaveTypeId))
+      .limit(1);
+
+    try {
+      await notifyLeaveRequestDecision({
+        employeeName: employeeContact.name,
+        employeeEmail: employeeContact.email,
+        leaveTypeName: leaveType?.name || "Leave",
+        startDate: updated.startDate,
+        endDate: updated.endDate,
+        status,
+        approverName: approvedBy,
+        rejectionReason,
+      });
+    } catch (emailError) {
+      console.error("Leave decision email error:", emailError);
+    }
+  }
+
   return updated;
 }
 

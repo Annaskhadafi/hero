@@ -8,6 +8,15 @@ import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import {
+  buildWorkflowEmailContent,
+  getEmployeeContactById,
+  getAppUrl,
+  getHumanCapitalRecipientEmails,
+  getOperationalApprovalRecipientEmails,
+  sendWorkflowEmail,
+  sendWorkflowEmailToMany,
+} from '@/lib/workflow-email'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
@@ -289,6 +298,106 @@ function dateRangeDays(startDate: string, endDate: string) {
   return days
 }
 
+function formatAttendancePermissionType(permissionType: string) {
+  return permissionType === 'late' ? 'Izin Terlambat' : 'Izin Sakit'
+}
+
+function formatAttendancePermissionRange(startDate: string, endDate: string) {
+  if (startDate === endDate) {
+    return new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })
+  }
+
+  return `${new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })} s/d ${new Date(`${endDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })}`
+}
+
+async function notifyAttendancePermissionSubmitted(input: {
+  employeeName: string
+  employeeEmail: string
+  siteId: number
+  permissionType: string
+  startDate: string
+  endDate: string
+  reason: string
+  actorEmail?: string
+}) {
+  const recipientEmails = Array.from(
+    new Set([
+      ...(await getHumanCapitalRecipientEmails()),
+      ...(await getOperationalApprovalRecipientEmails(input.siteId)),
+    ])
+  )
+
+  if (recipientEmails.length === 0) {
+    return
+  }
+
+  const permissionLabel = formatAttendancePermissionType(input.permissionType)
+  const requestDate = formatAttendancePermissionRange(input.startDate, input.endDate)
+  const emailContent = buildWorkflowEmailContent({
+    title: `Pengajuan ${permissionLabel} baru`,
+    intro: `${input.employeeName} mengirim pengajuan ${permissionLabel.toLowerCase()} dan menunggu approval.`,
+    details: [
+      `Karyawan: ${input.employeeName}`,
+      `Tanggal: ${requestDate}`,
+      input.reason ? `Catatan: ${input.reason}` : null,
+    ],
+    ctaLabel: 'Buka Dashboard Izin',
+    ctaUrl: getAppUrl('/dashboard/hc/permission'),
+  })
+
+  await sendWorkflowEmailToMany({
+    recipients: recipientEmails,
+    actorEmail: input.actorEmail,
+    templateCode: 'attendance_permission_reminder',
+    templateName: 'Attendance Permission Reminder',
+    variables: {
+      employeeName: input.employeeName,
+      permissionType: permissionLabel,
+      requestDate,
+    },
+    fallbackSubject: `Pengajuan ${permissionLabel} baru`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  })
+}
+
+async function notifyAttendancePermissionDecision(input: {
+  employeeName: string
+  employeeEmail: string
+  permissionType: string
+  startDate: string
+  endDate: string
+  approved: boolean
+  approverNote: string
+}) {
+  if (!input.employeeEmail) {
+    return
+  }
+
+  const permissionLabel = formatAttendancePermissionType(input.permissionType)
+  const decisionLabel = input.approved ? 'disetujui' : 'ditolak'
+  const requestDate = formatAttendancePermissionRange(input.startDate, input.endDate)
+  const emailContent = buildWorkflowEmailContent({
+    title: `${permissionLabel} ${decisionLabel}`,
+    greeting: `Halo ${input.employeeName},`,
+    intro: `Pengajuan ${permissionLabel.toLowerCase()} Anda telah ${decisionLabel}.`,
+    details: [
+      `Tanggal: ${requestDate}`,
+      input.approverNote ? `Catatan approver: ${input.approverNote}` : null,
+    ],
+    ctaLabel: 'Buka Riwayat Izin',
+    ctaUrl: getAppUrl('/mobile/attendance/permission'),
+  })
+
+  await sendWorkflowEmail({
+    to: input.employeeEmail,
+    templateName: 'Attendance Permission Decision',
+    fallbackSubject: `${permissionLabel} ${decisionLabel}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  })
+}
+
 async function getMobileAttendanceShiftOptions() {
   const shifts = await db
     .select({
@@ -547,6 +656,22 @@ export async function submitAttendancePermission(formData: FormData) {
     revalidatePath('/dashboard/scheduling-timesheet/attendance')
     revalidatePath('/dashboard/scheduling-timesheet/permission')
     revalidatePath('/dashboard/hc/permission')
+
+    try {
+      await notifyAttendancePermissionSubmitted({
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        siteId: employee.siteId,
+        permissionType,
+        startDate: requestDate,
+        endDate: permissionType === 'sick' ? endDate : requestDate,
+        reason,
+        actorEmail: employee.email,
+      })
+    } catch (emailError) {
+      console.error('Attendance permission submit email error:', emailError)
+    }
+
     return { success: true, message: 'Izin terkirim. Menunggu approval HR.' }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Izin gagal disimpan.' }
@@ -578,6 +703,22 @@ async function applyApprovedPermissionRequest(requestId: number, approverNote: s
       .where(eq(attendancePermissionRequests.id, requestId))
     revalidatePath('/dashboard/hc/permission')
     revalidatePath('/mobile/attendance/permission')
+
+    const employeeContact = await getEmployeeContactById(request.employeeId)
+    try {
+      await notifyAttendancePermissionDecision({
+        employeeName: employeeContact.name,
+        employeeEmail: employeeContact.email,
+        permissionType: request.permissionType,
+        startDate: String(request.startDate),
+        endDate: String(request.endDate),
+        approved: false,
+        approverNote,
+      })
+    } catch (emailError) {
+      console.error('Attendance permission reject email error:', emailError)
+    }
+
     return { success: true, message: 'Izin ditolak.' }
   }
 
@@ -641,6 +782,22 @@ async function applyApprovedPermissionRequest(requestId: number, approverNote: s
   revalidatePath('/mobile/attendance/permission')
   revalidatePath('/dashboard/scheduling-timesheet/attendance')
   revalidatePath('/dashboard/hc/permission')
+
+  const employeeContact = await getEmployeeContactById(request.employeeId)
+  try {
+    await notifyAttendancePermissionDecision({
+      employeeName: employeeContact.name,
+      employeeEmail: employeeContact.email,
+      permissionType: request.permissionType,
+      startDate: String(request.startDate),
+      endDate: String(request.endDate),
+      approved: true,
+      approverNote,
+    })
+  } catch (emailError) {
+    console.error('Attendance permission approval email error:', emailError)
+  }
+
   return { success: true, message: 'Izin disetujui dan masuk ke attendance.' }
 }
 

@@ -49,6 +49,13 @@ import {
 import { auth } from "@/lib/auth";
 import { createNotificationEventForEmployee, sendPushNotification } from "@/lib/push-notifications";
 import { uploadAnyFileToS3 } from "@/lib/s3-storage";
+import {
+  buildWorkflowEmailContent,
+  getAppUrl,
+  getEmployeeContactById,
+  sendWorkflowEmail,
+  sendWorkflowEmailToMany,
+} from "@/lib/workflow-email";
 
 const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024;
 const MAX_SIGNATURE_FILE_SIZE = 2 * 1024 * 1024;
@@ -840,6 +847,7 @@ async function resolveApprover(employeeId: number, assignmentId?: number) {
       .select({
         id: employees.id,
         name: employees.name,
+        email: employees.email,
       })
       .from(employees)
       .where(eq(employees.id, employee.directManagerId))
@@ -864,6 +872,7 @@ async function resolveApprover(employeeId: number, assignmentId?: number) {
         .select({
           id: employees.id,
           name: employees.name,
+          email: employees.email,
         })
         .from(employees)
         .where(eq(employees.id, assignment.assignedByEmployeeId))
@@ -879,6 +888,7 @@ async function resolveApprover(employeeId: number, assignmentId?: number) {
     .select({
       id: employees.id,
       name: employees.name,
+      email: employees.email,
     })
     .from(employees)
     .where(
@@ -1667,6 +1677,40 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
         }
       }),
     );
+
+    try {
+      const employeeContacts = await Promise.all(selectedEmployeeIds.map((employeeId) => getEmployeeContactById(employeeId)));
+      const recipientEmails = employeeContacts.map((contact) => contact.email).filter(Boolean);
+
+      if (recipientEmails.length > 0) {
+        const emailContent = buildWorkflowEmailContent({
+          title: `${splNumber ?? "SPL"} siap dikerjakan`,
+          intro: `${payload.title} dijadwalkan untuk ${workDateLabel} dan sudah tersedia di mobile activity input.`,
+          details: [
+            `Nomor SPL: ${splNumber ?? "-"}`,
+            `Judul: ${payload.title}`,
+            plannedStartAt
+              ? `Jam mulai: ${plannedStartAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`
+              : null,
+            plannedEndAt
+              ? `Jam selesai: ${plannedEndAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`
+              : null,
+          ],
+          ctaLabel: "Buka Mobile Activity",
+          ctaUrl: getAppUrl("/mobile/activity/input"),
+        });
+
+        await sendWorkflowEmailToMany({
+          recipients: recipientEmails,
+          actorEmail: currentEmployee.email,
+          fallbackSubject: `${splNumber ?? "SPL"} siap dikerjakan`,
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+        });
+      }
+    } catch (emailError) {
+      console.error("Failed to send SPL email notification", emailError);
+    }
   }
 
   revalidateDailyActivitySurfaces();
@@ -2000,6 +2044,13 @@ export async function submitDailyActivityAction(formData: FormData) {
   });
 
   let createdActivityId: number | null = null;
+  let pendingApprover:
+    | {
+        id: number;
+        name: string;
+        email: string | null;
+      }
+    | null = null;
   const activityTitle =
     library?.activityName ||
     selectedAssignment?.customJobName.trim() ||
@@ -2119,6 +2170,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       const approver = await resolveApprover(employeeId, payload.assignmentId);
 
       if (approver) {
+        pendingApprover = approver;
         await tx.insert(approvals).values({
           activityId: createdActivity.id,
           level: 1,
@@ -2139,6 +2191,37 @@ export async function submitDailyActivityAction(formData: FormData) {
 
   await updateStreakForEmployee(employeeId, endTime);
   revalidateDailyActivitySurfaces();
+
+  if (pendingApprover?.email) {
+    try {
+      const emailContent = buildWorkflowEmailContent({
+        title: "Daily Activity menunggu approval",
+        greeting: `Halo ${pendingApprover.name},`,
+        intro: `${employee.name} mengirim daily activity baru dan membutuhkan review Anda.`,
+        details: [
+          `Aktivitas: ${activityTitle}`,
+          `Kategori: ${activityType}`,
+          `Waktu: ${submissionTime.toLocaleString("id-ID", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}`,
+          payload.notes ? `Catatan: ${payload.notes}` : null,
+        ],
+        ctaLabel: "Buka Approval",
+        ctaUrl: getAppUrl("/dashboard/approval"),
+      });
+
+      await sendWorkflowEmail({
+        to: pendingApprover.email,
+        actorEmail: employee.email,
+        fallbackSubject: "Daily Activity menunggu approval",
+        fallbackHtml: emailContent.html,
+        fallbackText: emailContent.text,
+      });
+    } catch (emailError) {
+      console.error("Failed to send daily activity approval email", emailError);
+    }
+  }
 
   if (createdActivityId == null) {
     throw new Error("Activity failed to create.");

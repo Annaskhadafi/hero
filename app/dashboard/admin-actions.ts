@@ -9,6 +9,18 @@ import {
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import Fuse from 'fuse.js'
+import { randomUUID } from 'crypto'
+import {
+  buildWorkflowEmailContent,
+  getAppUrl,
+  getOperationalApprovalRecipientEmails,
+  sendWorkflowEmailToMany,
+} from '@/lib/workflow-email'
+import {
+  createEmailVerification,
+  createUserInvitation,
+  sendUserInvitationEmail,
+} from '@/lib/user-invitation'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -19,7 +31,56 @@ async function getCurrentActorEmail(): Promise<string | undefined> {
   }
 }
 
-import { randomUUID } from 'crypto'
+async function notifyDailyReportDelivery(input: {
+  siteId: number
+  reportDate: string | Date
+  customerName: string
+  jobsCompleted: number
+  manpowerPresent: number
+  status: string
+  actorEmail?: string
+}) {
+  const recipients = await getOperationalApprovalRecipientEmails(input.siteId)
+  if (recipients.length === 0) {
+    return
+  }
+  const reportDate =
+    input.reportDate instanceof Date
+      ? input.reportDate.toISOString().split('T')[0]
+      : input.reportDate
+
+  const emailContent = buildWorkflowEmailContent({
+    title: 'Daily report tersedia',
+    intro: `Daily report ${input.customerName} untuk ${reportDate} telah diperbarui dengan status ${input.status}.`,
+    details: [
+      `Customer: ${input.customerName}`,
+      `Tanggal report: ${reportDate}`,
+      `Jobs completed: ${input.jobsCompleted}`,
+      `Manpower present: ${input.manpowerPresent}`,
+      `Status: ${input.status}`,
+    ],
+    ctaLabel: 'Buka Daily Report',
+    ctaUrl: getAppUrl('/dashboard/reports'),
+  })
+
+  await sendWorkflowEmailToMany({
+    recipients,
+    actorEmail: input.actorEmail,
+    templateCode: 'daily_report_delivery',
+    templateName: 'Daily Report Delivery',
+    variables: {
+      reportDate,
+      customerName: input.customerName,
+      jobsCompleted: input.jobsCompleted,
+      manpowerPresent: input.manpowerPresent,
+      status: input.status,
+    },
+    fallbackSubject: `Daily report ${reportDate} tersedia`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  })
+}
+
 import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -3714,8 +3775,10 @@ export async function manageSecurityUserAction(
         updatedAt: now,
       })
 
+      let createdLegacyEmployeeId: number | null = null
+
       if (currentDefaultLegacySite) {
-        await db.insert(employees).values({
+        const [legacyEmployee] = await db.insert(employees).values({
           authUserId,
           siteId: currentDefaultLegacySite.id,
           name: fullName,
@@ -3741,7 +3804,25 @@ export async function manageSecurityUserAction(
           totalPoints: 0,
           fitStatus: 'fit',
           isActive: normalizedStatus.isActive,
-        })
+        }).returning({ id: employees.id })
+
+        createdLegacyEmployeeId = legacyEmployee?.id ?? null
+      }
+
+      if (createdLegacyEmployeeId) {
+        try {
+          const invitation = await createUserInvitation({ employeeId: createdLegacyEmployeeId })
+          const verification = await createEmailVerification({ employeeId: createdLegacyEmployeeId })
+
+          await sendUserInvitationEmail({
+            email,
+            name: fullName,
+            invitationToken: invitation.token,
+            verificationToken: verification.token,
+          })
+        } catch (emailError) {
+          console.error('User invitation email error:', emailError)
+        }
       }
 
       revalidateAdminSurfaces()
@@ -5152,6 +5233,7 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
   try {
     const payload = manageDailyReportSchema.parse(Object.fromEntries(formData))
     await ensureHeroSeedData()
+    const actorEmail = await getCurrentActorEmail()
 
     if (payload.intent === 'create') {
       if (!payload.siteId || !payload.reportDate || !payload.customerName || !payload.hseSummary) {
@@ -5170,6 +5252,20 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
         status: payload.status,
       })
 
+      try {
+        await notifyDailyReportDelivery({
+          siteId: payload.siteId,
+          reportDate: payload.reportDate,
+          customerName: payload.customerName,
+          jobsCompleted: payload.jobsCompleted,
+          manpowerPresent: payload.manpowerPresent,
+          status: payload.status,
+          actorEmail,
+        })
+      } catch (emailError) {
+        console.error('Daily report create email error:', emailError)
+      }
+
       revalidateOperationalPages('/dashboard/reports')
       return { status: 'success', message: 'Daily report berhasil ditambahkan.' }
     }
@@ -5177,7 +5273,27 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
     const id = getRequiredId(payload.id, 'Daily report')
 
     if (payload.intent === 'update-status') {
+      const [existingReport] = await db.select().from(dailyReports).where(eq(dailyReports.id, id)).limit(1)
+      if (!existingReport) {
+        return { status: 'error', message: 'Daily report tidak ditemukan.' }
+      }
+
       await db.update(dailyReports).set({ status: payload.status }).where(eq(dailyReports.id, id))
+
+      try {
+        await notifyDailyReportDelivery({
+          siteId: existingReport.siteId,
+          reportDate: existingReport.reportDate,
+          customerName: existingReport.customerName,
+          jobsCompleted: existingReport.jobsCompleted,
+          manpowerPresent: existingReport.manpowerPresent,
+          status: payload.status,
+          actorEmail,
+        })
+      } catch (emailError) {
+        console.error('Daily report status email error:', emailError)
+      }
+
       revalidateOperationalPages('/dashboard/reports')
       return { status: 'success', message: 'Status daily report diperbarui.' }
     }
@@ -5201,6 +5317,20 @@ export async function manageDailyReportAction(formData: FormData): Promise<Admin
           status: payload.status,
         })
         .where(eq(dailyReports.id, id))
+
+      try {
+        await notifyDailyReportDelivery({
+          siteId: payload.siteId,
+          reportDate: payload.reportDate,
+          customerName: payload.customerName,
+          jobsCompleted: payload.jobsCompleted,
+          manpowerPresent: payload.manpowerPresent,
+          status: payload.status,
+          actorEmail,
+        })
+      } catch (emailError) {
+        console.error('Daily report update email error:', emailError)
+      }
 
       revalidateOperationalPages('/dashboard/reports')
       return { status: 'success', message: 'Detail daily report diperbarui.' }

@@ -23,6 +23,7 @@ export type EmailAttachment = {
 
 export type EmailDeliveryPayload = {
   to: string;
+  cc?: string | string[];
   subject: string;
   html?: string;
   text: string;
@@ -86,6 +87,7 @@ async function logEmailDelivery(
     employeeId: await resolveActorEmployeeId(payload.actorEmail),
     deliveryChannel: "email",
     toEmail: payload.to,
+    ccEmail: Array.isArray(payload.cc) ? payload.cc.join(", ") : payload.cc ?? null,
     fromEmail: settings.fromEmail,
     templateName: payload.templateName ?? "Email Test SMTP",
     templateCode: payload.templateCode ?? "smtp_test_email",
@@ -136,6 +138,7 @@ export async function sendEmailViaSmtp(
     const result = await transporter.sendMail({
       from: formatFromAddress(settings),
       to: payload.to,
+      cc: Array.isArray(payload.cc) ? payload.cc.join(", ") : payload.cc,
       replyTo: settings.replyToEmail.trim() || undefined,
       subject: payload.subject,
       ...(isPlainText
@@ -170,4 +173,3 @@ export async function sendEmailViaSmtp(
     throw error;
   }
 }
-
