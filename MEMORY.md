@@ -23,5 +23,6 @@
 - 2026-06-18: Stage 5 adds HSE Safety recipient settings and email coverage for observation, incident, incident report, inspection, induction, and inventory reminder flows
 - 2026-06-18: Human Capital email settings and notifications added for employee master, disciplinary, and performance review workflows with preset templates
 - 2026-06-18: Existing HC email flows for recruitment, MCU, and contract review now inherit global Human Capital recipient policy via CC routing
+- 2026-06-18: Legacy HC recruitment, MCU, and contract review flows now support central Email Settings template overrides and are seeded into the main preset registry
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard

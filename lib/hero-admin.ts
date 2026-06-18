@@ -1937,6 +1937,102 @@ const EMAIL_TEMPLATE_SEEDS = [
       'Performance review telah diacknowledge. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}. Rating: {{overallRating}}.',
     isActive: true,
   },
+  {
+    name: 'HC Recruitment Hired Email',
+    templateCode: 'hired_email',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: 'Selamat! Anda diterima di PT Chitra Paratama',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Anda diterima untuk posisi <strong>{{jobTitle}}</strong>.</p><p>Tanggal mulai kerja: {{startDate}}</p><p>Silakan lengkapi onboarding melalui link berikut:</p><p><a href="{{onboardingUrl}}">{{onboardingUrl}}</a></p>',
+    textContent:
+      'Halo {{candidateName}}, Anda diterima untuk posisi {{jobTitle}}. Tanggal mulai kerja: {{startDate}}. Lengkapi onboarding melalui {{onboardingUrl}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Recruitment Start Date Email',
+    templateCode: 'start_date_email',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: 'Informasi mulai kerja {{candidateName}}',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Selamat datang di PT Chitra Paratama.</p><p>Posisi: {{jobTitle}}</p><p>Tanggal mulai kerja: {{startDate}}</p><p>Lengkapi administrasi onboarding: <a href="{{onboardingUrl}}">{{onboardingUrl}}</a></p>',
+    textContent:
+      'Halo {{candidateName}}, selamat datang di PT Chitra Paratama. Posisi: {{jobTitle}}. Tanggal mulai kerja: {{startDate}}. Lengkapi administrasi onboarding: {{onboardingUrl}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Recruitment Custom Bulk Email',
+    templateCode: 'custom_bulk',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: 'Pesan dari Tim Human Capital',
+    htmlContent: '<p>Halo {{candidateName}},</p><p>{{messageBodyHtml}}</p>',
+    textContent: 'Halo {{candidateName}},\n\n{{messageBody}}',
+    isActive: true,
+  },
+  {
+    name: 'HC MCU Referral To Clinic',
+    templateCode: 'mcu_pengantar',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'clinic,hc',
+    ccEmail: '',
+    subject: '[HERO] Surat Pengantar Medical Check Up - {{candidateName}}',
+    htmlContent:
+      '<p>Kepada Yth. Admin {{clinicName}},</p><p>Mohon bantuannya untuk melakukan MCU calon karyawan berikut:</p><p>Nama: {{candidateName}}</p><p>Tanggal MCU: {{date}}</p><p>Paket: {{paket}}</p><p>Biaya ditagihkan ke PT Chitra Paratama.</p>',
+    textContent:
+      'Kepada Yth. Admin {{clinicName}}, mohon bantuannya untuk melakukan MCU calon karyawan berikut: Nama {{candidateName}}, Tanggal MCU {{date}}, Paket {{paket}}. Biaya ditagihkan ke PT Chitra Paratama.',
+    isActive: true,
+  },
+  {
+    name: 'HC MCU Invitation',
+    templateCode: 'mcu_invitation',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: '[HERO] Undangan Medical Check Up - {{jobTitle}}',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Anda diundang mengikuti MCU untuk posisi <strong>{{jobTitle}}</strong>.</p><p>Klinik: {{clinicName}}</p><p>Tanggal: {{date}}</p><p>Paket: {{paket}}</p>',
+    textContent:
+      'Halo {{candidateName}}, Anda diundang mengikuti MCU untuk posisi {{jobTitle}}. Klinik: {{clinicName}}. Tanggal: {{date}}. Paket: {{paket}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Contract Review Approval Notification',
+    templateCode: 'contract_review_approval_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'approver,hc',
+    ccEmail: '',
+    subject: '[Contract Review] Menunggu Persetujuan Anda - {{employeeName}} ({{employeeSn}})',
+    htmlContent:
+      '<p>Yth. {{approverName}},</p><p>Contract Review berikut membutuhkan persetujuan Anda.</p><p>Nama: {{employeeName}}</p><p>SN: {{employeeSn}}</p><p>Section: {{employeeSection}}</p><p>Site: {{employeeSite}}</p><p>Tahap: {{approvalStep}}</p><p><a href="{{approvalLink}}">Buka approval</a></p>',
+    textContent:
+      'Yth. {{approverName}}, Contract Review berikut membutuhkan persetujuan Anda. Nama: {{employeeName}}. SN: {{employeeSn}}. Section: {{employeeSection}}. Site: {{employeeSite}}. Tahap: {{approvalStep}}. Approval: {{approvalLink}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Contract Review Test Notification',
+    templateCode: 'contract_review_test_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'approver,hc',
+    ccEmail: '',
+    subject: '[TEST] Contract Review - {{employeeName}}',
+    htmlContent:
+      '<p>Contract Review test untuk {{employeeName}} ({{employeeSn}}) telah dibuat.</p><p>Silakan buka form review: <a href="{{reviewLink}}">{{reviewLink}}</a></p>',
+    textContent:
+      'Contract Review test untuk {{employeeName}} ({{employeeSn}}) telah dibuat. Buka form review: {{reviewLink}}.',
+    isActive: true,
+  },
 ]
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [

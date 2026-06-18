@@ -54,16 +54,37 @@ test("existing HC email flows now inherit global HC recipient policy", () => {
 
   assert.match(helperSource, /getHumanCapitalPolicyCcRecipients/);
   assert.match(recruitmentSource, /getHumanCapitalPolicyCcRecipients/);
-  assert.match(recruitmentSource, /cc: hcPolicyCc/);
+  assert.match(recruitmentSource, /cc: resolvedTemplate\.ccList/);
   assert.match(mcuSource, /getHumanCapitalPolicyCcRecipients/);
-  assert.match(mcuSource, /cc: hcPolicyCc/);
+  assert.match(mcuSource, /cc: resolvedClinicTemplate\.ccList/);
+  assert.match(mcuSource, /cc: resolvedCandidateTemplate\.ccList/);
   assert.match(contractReviewSource, /getHumanCapitalPolicyCcRecipients/);
-  assert.match(contractReviewSource, /cc: hcPolicyCc/);
+  assert.match(contractReviewSource, /cc: resolvedTemplate\.ccList/);
+});
+
+test("legacy HC flows now support central workflow template overrides", () => {
+  const recruitmentSource = read("app/actions/recruitment.ts");
+  const mcuSource = read("app/actions/mcu.ts");
+  const contractReviewSource = read("app/actions/contract-review.ts");
+  const workflowSource = read("lib/workflow-email.ts");
+
+  assert.match(workflowSource, /export async function resolveWorkflowTemplateContent/);
+  assert.match(recruitmentSource, /resolveWorkflowTemplateContent/);
+  assert.match(recruitmentSource, /templateCode: "hired_email"/);
+  assert.match(recruitmentSource, /templateCode: "start_date_email"/);
+  assert.match(recruitmentSource, /templateCode: "custom_bulk"/);
+  assert.match(mcuSource, /resolveWorkflowTemplateContent/);
+  assert.match(mcuSource, /templateCode: "mcu_pengantar"/);
+  assert.match(mcuSource, /templateCode: "mcu_invitation"/);
+  assert.match(contractReviewSource, /resolveWorkflowTemplateContent/);
+  assert.match(contractReviewSource, /templateCode: 'contract_review_approval_notification'/);
+  assert.match(contractReviewSource, /templateCode: 'contract_review_test_notification'/);
 });
 
 test("human capital templates are included in seed and preset registries", () => {
   const seedSource = read("lib/hero-admin.ts");
   const presetSource = read("lib/email-template-presets.ts");
+  const hcUtilsSource = read("lib/hc-email-utils.ts");
 
   for (const code of [
     "hc_employee_created",
@@ -73,8 +94,20 @@ test("human capital templates are included in seed and preset registries", () =>
     "hc_performance_review_created",
     "hc_performance_review_submitted",
     "hc_performance_review_acknowledged",
+    "hired_email",
+    "start_date_email",
+    "custom_bulk",
+    "mcu_pengantar",
+    "mcu_invitation",
+    "contract_review_approval_notification",
+    "contract_review_test_notification",
   ]) {
     assert.match(seedSource, new RegExp(`templateCode: '${code}'`));
     assert.match(presetSource, new RegExp(`templateCode: '${code}'`));
   }
+
+  assert.match(hcUtilsSource, /"hired_email"/);
+  assert.match(hcUtilsSource, /"start_date_email"/);
+  assert.match(hcUtilsSource, /"custom_bulk"/);
+  assert.match(hcUtilsSource, /"contract_review_approval_notification"/);
 });

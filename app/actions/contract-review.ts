@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
+import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -63,6 +64,7 @@ async function sendContractReviewEmail(params: {
   body: string
   reviewId: number
   templateCode: string
+  variables?: Record<string, string>
 }) {
   const smtpSettings = await getSmtpSettings()
   if (!smtpSettings) {
@@ -71,12 +73,20 @@ async function sendContractReviewEmail(params: {
   }
   try {
     const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+    const resolvedTemplate = await resolveWorkflowTemplateContent({
+      templateCode: params.templateCode,
+      cc: hcPolicyCc,
+      variables: params.variables,
+      fallbackSubject: params.subject,
+      fallbackHtml: params.body.replace(/\n/g, '<br/>'),
+      fallbackText: params.body,
+    })
     await sendEmailViaSmtp(smtpSettings, {
       to: params.to,
-      cc: hcPolicyCc,
-      subject: params.subject,
-      text: params.body,
-      html: params.body.replace(/\n/g, '<br/>'),
+      cc: resolvedTemplate.ccList,
+      subject: resolvedTemplate.subject,
+      text: resolvedTemplate.text,
+      html: resolvedTemplate.html,
       templateCode: params.templateCode,
       templateName: `Contract Review #${params.reviewId}`,
     })
@@ -443,6 +453,15 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
               body,
               reviewId,
               templateCode: 'contract_review_approval_notification',
+              variables: {
+                approverName: nextStep.approverName,
+                employeeName: rev?.employeeNameStr || saved?.employeeNameStr || 'Employee',
+                employeeSn,
+                employeeSection,
+                employeeSite,
+                approvalStep: `Step ${nextStep.stepOrder}`,
+                approvalLink: `${baseUrl}/review/${nextStep.approvalToken}`,
+              },
             })
           } else {
             await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: new Date() }).where(eq(hcEmployeeContractReviews.id, data.id))
@@ -607,6 +626,15 @@ export async function approveContractReviewStep(
         body,
         reviewId: approval.reviewId,
         templateCode: 'contract_review_approval_notification',
+        variables: {
+          approverName: nextApproval.approverName,
+          employeeName: review?.employeeNameStr || 'Employee',
+          employeeSn,
+          employeeSection,
+          employeeSite,
+          approvalStep: `Step ${nextApproval.stepOrder}`,
+          approvalLink: `${baseUrl}/review/${nextApproval.approvalToken}`,
+        },
       })
     } else {
       // Final step completed — update contract dates based on recommendation
@@ -707,6 +735,11 @@ export async function generateTestContractReview() {
       body: `Halo Test PJO/TE,\n\nContract Review untuk ${emp.full_name} (${emp.employee_sn}) telah dibuat.\n\nSilakan lengkapi form review:\n${baseUrl}/dashboard/hc/contract-review/form/${review.id}\n\nSetelah itu, karyawan akan mendapat link untuk TTD digital.\n\nHormat kami,\nHR Department - PT Chitra Paratama`,
       reviewId: review.id,
       templateCode: 'contract_review_test_notification',
+      variables: {
+        employeeName: emp.full_name,
+        employeeSn: emp.employee_sn,
+        reviewLink: `${baseUrl}/dashboard/hc/contract-review/form/${review.id}`,
+      },
     })
 
     const links = approvalSteps.map((s, i) => ({

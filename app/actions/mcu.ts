@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
+import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 import { generateMcuReferralPdf } from "@/lib/mcu-referral-pdf";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
 
@@ -208,13 +209,30 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         clinicText = `SURAT PENGANTAR MCU\n\nKepada Yth. Pimpinan/Admin ${data.klinikName}\n\nNama: ${candidate.fullName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nBiaya ditagihkan ke perusahaan.\n\nHC PT Chitra Paratama`;
       }
       const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+      const resolvedClinicTemplate = await resolveWorkflowTemplateContent({
+        templateCode: "mcu_pengantar",
+        cc: hcPolicyCc,
+        variables: {
+          candidateName: candidate.fullName,
+          jobTitle: vacancyTitle,
+          companyName: "PT Chitra Paratama",
+          date: scheduledDateStr,
+          clinicName: data.klinikName,
+          clinicAddress,
+          clinicCity,
+          paket: data.paketMcu,
+        },
+        fallbackSubject: clinicSubject,
+        fallbackHtml: clinicHtml,
+        fallbackText: clinicText,
+      });
       await sendEmailViaSmtp(smtpSettings, {
         to: data.klinikEmail,
-        cc: hcPolicyCc,
-        subject: clinicSubject,
-        html: clinicHtml,
-        text: clinicText,
-        format: clinicEmailFormat,
+        cc: resolvedClinicTemplate.ccList,
+        subject: resolvedClinicTemplate.subject,
+        html: resolvedClinicTemplate.html,
+        text: resolvedClinicTemplate.text,
+        format: resolvedClinicTemplate.template ? null : clinicEmailFormat,
         templateName: "Surat Pengantar MCU",
         templateCode: "mcu_pengantar",
         attachments: pdfAttachment ? [pdfAttachment] : undefined,
@@ -234,13 +252,30 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         candHtml = MCU_CANDIDATE_FALLBACK_HTML(templateVars);
         candText = `Dear ${candidate.fullName},\n\nMCU untuk ${vacancyTitle}\nKlinik: ${data.klinikName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nPuasa 10-12 jam. Bawa KTP.\n\nHC Team`;
       }
+      const resolvedCandidateTemplate = await resolveWorkflowTemplateContent({
+        templateCode: "mcu_invitation",
+        cc: hcPolicyCc,
+        variables: {
+          candidateName: candidate.fullName,
+          jobTitle: vacancyTitle,
+          companyName: "PT Chitra Paratama",
+          date: scheduledDateStr,
+          clinicName: data.klinikName,
+          clinicAddress,
+          clinicCity,
+          paket: data.paketMcu,
+        },
+        fallbackSubject: candSubject,
+        fallbackHtml: candHtml,
+        fallbackText: candText,
+      });
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
-        cc: hcPolicyCc,
-        subject: candSubject,
-        html: candHtml,
-        text: candText,
-        format: candEmailFormat,
+        cc: resolvedCandidateTemplate.ccList,
+        subject: resolvedCandidateTemplate.subject,
+        html: resolvedCandidateTemplate.html,
+        text: resolvedCandidateTemplate.text,
+        format: resolvedCandidateTemplate.template ? null : candEmailFormat,
         templateName: "MCU Invitation",
         templateCode: "mcu_invitation",
         attachments: pdfAttachment ? [pdfAttachment] : undefined,

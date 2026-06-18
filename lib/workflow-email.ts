@@ -24,6 +24,11 @@ type WorkflowBulkEmailRequest = Omit<WorkflowEmailRequest, 'to'> & {
   recipients: string[]
 }
 
+type WorkflowTemplateContentRequest = Pick<
+  WorkflowEmailRequest,
+  'templateCode' | 'variables' | 'fallbackSubject' | 'fallbackHtml' | 'fallbackText' | 'cc'
+>
+
 function normalizeEmail(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? ''
 }
@@ -144,6 +149,23 @@ export function buildWorkflowEmailContent(input: {
   return { html, text }
 }
 
+export async function resolveWorkflowTemplateContent(request: WorkflowTemplateContentRequest) {
+  const template = await getActiveTemplate(request.templateCode)
+  const variables = request.variables ?? {}
+  const ccList = uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
+  const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
+  const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables)
+  const text = renderTemplate(template?.textContent || request.fallbackText, variables)
+
+  return {
+    template,
+    ccList,
+    subject,
+    html: html || undefined,
+    text,
+  }
+}
+
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
   const recipients = splitEmails(request.to)
   if (recipients.length === 0) {
@@ -155,12 +177,7 @@ export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
     return { status: 'skipped' as const, reason: 'SMTP aktif belum dikonfigurasi.' }
   }
 
-  const template = await getActiveTemplate(request.templateCode)
-  const variables = request.variables ?? {}
-  const ccList = uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
-  const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
-  const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables)
-  const text = renderTemplate(template?.textContent || request.fallbackText, variables)
+  const { template, ccList, subject, html, text } = await resolveWorkflowTemplateContent(request)
 
   await Promise.all(
     recipients.map((to) =>
