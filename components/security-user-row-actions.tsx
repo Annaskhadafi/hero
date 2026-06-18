@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Eye, Pencil, ShieldBan, Trash2, Save, UserCog, Key, Ban, TrendingUp } from 'lucide-react'
+import { Eye, Pencil, ShieldBan, Trash2, Save, UserCog, Key, Ban, TrendingUp, Mail } from 'lucide-react'
 import { manageSecurityUserAction, type AdminMutationState } from '@/app/dashboard/admin-actions'
 import { getBirthDateInputValue, normalizeBirthDateValue } from '@/lib/birth-date'
 import type { SecurityUserRecord } from '@/lib/hero-admin'
@@ -613,9 +613,41 @@ export function SecurityUserRowActions({
           </TabsContent>
           <TabsContent
             value="security"
-            className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] p-4 text-sm"
+            className="mt-0 space-y-4"
           >
-            Reset password tersedia di bagian profil pengguna.
+            {state.status !== 'idle' ? (
+              <Alert
+                className={
+                  state.status === 'error'
+                    ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                }
+              >
+                <AlertDescription>{state.message}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <form action={formAction} className="bg-surface-container-low space-y-4 rounded-[1.2rem] p-4">
+              <input type="hidden" name="intent" value="resend-invitation" />
+              <input type="hidden" name="employeeId" value={user.id} />
+              <div className="flex items-center gap-2">
+                <Mail className="text-muted-foreground size-4" />
+                <p className="font-medium">Kirim Ulang Invitation</p>
+              </div>
+              <p className="text-muted-foreground text-sm">
+                Kirim ulang email aktivasi akun untuk pengguna ini ke <span className="font-medium">{user.email}</span>.
+              </p>
+              <div className="flex justify-end">
+                <SubmitButton variant="outline">
+                  <Mail className="mr-2 size-4" />
+                  Kirim Ulang Invitation
+                </SubmitButton>
+              </div>
+            </form>
+
+            <div className="bg-surface-container-low text-muted-foreground rounded-[1.2rem] p-4 text-sm">
+              Reset password tersedia di bagian profil pengguna.
+            </div>
           </TabsContent>
           <TabsContent
             value="danger"

@@ -45,6 +45,12 @@ export async function generateOnboardingToken(candidateId: number) {
 
         await sendWorkflowEmail({
           to: candidate.email,
+          templateCode: "onboarding_link",
+          templateName: "Onboarding Link",
+          variables: {
+            candidateName: candidate.name || "Candidate",
+            onboardingLink: onboardingUrl,
+          },
           fallbackSubject: "Link onboarding HERO",
           fallbackHtml: emailContent.html,
           fallbackText: emailContent.text,

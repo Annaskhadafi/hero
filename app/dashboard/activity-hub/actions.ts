@@ -1703,6 +1703,19 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
         await sendWorkflowEmailToMany({
           recipients: recipientEmails,
           actorEmail: currentEmployee.email,
+          templateCode: "overtime_assignment",
+          templateName: "Overtime Assignment",
+          variables: {
+            splNumber: splNumber ?? "SPL",
+            title: payload.title,
+            workDate: workDateLabel,
+            plannedStart: plannedStartAt
+              ? plannedStartAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+              : "-",
+            plannedEnd: plannedEndAt
+              ? plannedEndAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+              : "-",
+          },
           fallbackSubject: `${splNumber ?? "SPL"} siap dikerjakan`,
           fallbackHtml: emailContent.html,
           fallbackText: emailContent.text,
@@ -2214,6 +2227,18 @@ export async function submitDailyActivityAction(formData: FormData) {
       await sendWorkflowEmail({
         to: pendingApprover.email,
         actorEmail: employee.email,
+        templateCode: "daily_activity_pending_approval",
+        templateName: "Daily Activity Pending Approval",
+        variables: {
+          employeeName: employee.name,
+          activityTitle,
+          activityType,
+          submissionTime: submissionTime.toLocaleString("id-ID", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          }),
+          notes: payload.notes ? `Catatan: ${payload.notes}` : "",
+        },
         fallbackSubject: "Daily Activity menunggu approval",
         fallbackHtml: emailContent.html,
         fallbackText: emailContent.text,

@@ -16,11 +16,7 @@ import {
   getOperationalApprovalRecipientEmails,
   sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
-import {
-  createEmailVerification,
-  createUserInvitation,
-  sendUserInvitationEmail,
-} from '@/lib/user-invitation'
+import { issueUserInvitation } from '@/lib/user-invitation'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -1610,6 +1606,7 @@ const navbarThemeSchema = z.object({
 const manageSecurityUserSchema = z.object({
   intent: z.enum([
     'create-user',
+    'resend-invitation',
     'update-profile',
     'ban-user',
     'delete-user',
@@ -3811,14 +3808,10 @@ export async function manageSecurityUserAction(
 
       if (createdLegacyEmployeeId) {
         try {
-          const invitation = await createUserInvitation({ employeeId: createdLegacyEmployeeId })
-          const verification = await createEmailVerification({ employeeId: createdLegacyEmployeeId })
-
-          await sendUserInvitationEmail({
+          await issueUserInvitation({
+            employeeId: createdLegacyEmployeeId,
             email,
             name: fullName,
-            invitationToken: invitation.token,
-            verificationToken: verification.token,
           })
         } catch (emailError) {
           console.error('User invitation email error:', emailError)
@@ -3856,6 +3849,48 @@ export async function manageSecurityUserAction(
 
     if (!employee) {
       return { status: 'error', message: 'User not found.' }
+    }
+
+    if (payload.intent === 'resend-invitation') {
+      if (!employee.legacyEmployeeId) {
+        return {
+          status: 'error',
+          message: 'Legacy employee record tidak ditemukan untuk kirim invitation.',
+        }
+      }
+
+      if (!employee.email) {
+        return {
+          status: 'error',
+          message: 'Email pengguna belum tersedia.',
+        }
+      }
+
+      try {
+        await issueUserInvitation({
+          employeeId: employee.legacyEmployeeId,
+          email: normalizeEmail(employee.email),
+          name: employee.name,
+        })
+      } catch (emailError) {
+        console.error('Resend invitation email error:', emailError)
+        return {
+          status: 'error',
+          message: 'Gagal mengirim ulang invitation email.',
+        }
+      }
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.invitation_resent',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Resent invitation email for ${employee.name} (${employee.email}).`,
+      })
+
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'Invitation email berhasil dikirim ulang.' }
     }
 
     if (payload.intent === 'update-profile') {

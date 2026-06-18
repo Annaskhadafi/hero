@@ -1585,6 +1585,118 @@ const EMAIL_TEMPLATE_SEEDS = [
     textContent: 'Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.',
     isActive: true,
   },
+  {
+    name: 'User Invitation',
+    templateCode: 'user_invitation',
+    templateType: 'Invitation',
+    deliveryChannel: 'email',
+    recipientScope: 'employee',
+    ccEmail: '',
+    subject: 'Undangan akun HERO untuk {{userName}}',
+    htmlContent:
+      '<p>Halo {{userName}},</p><p>Akun HERO Anda sudah dibuat.</p><p>Terima undangan: <a href="{{invitationLink}}">{{invitationLink}}</a></p><p>Verifikasi email: <a href="{{verificationLink}}">{{verificationLink}}</a></p>',
+    textContent:
+      'Halo {{userName}}, akun HERO Anda sudah dibuat. Terima undangan: {{invitationLink}}. Verifikasi email: {{verificationLink}}',
+    isActive: true,
+  },
+  {
+    name: 'Onboarding Link',
+    templateCode: 'onboarding_link',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate',
+    ccEmail: '',
+    subject: 'Link onboarding HERO untuk {{candidateName}}',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Silakan lengkapi onboarding Anda melalui link berikut:</p><p><a href="{{onboardingLink}}">{{onboardingLink}}</a></p>',
+    textContent:
+      'Halo {{candidateName}}, silakan lengkapi onboarding Anda melalui link berikut: {{onboardingLink}}',
+    isActive: true,
+  },
+  {
+    name: 'Leave Request Submitted',
+    templateCode: 'leave_request_submitted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc',
+    ccEmail: '',
+    subject: 'Pengajuan cuti {{leaveTypeName}} dari {{employeeName}}',
+    htmlContent:
+      '<p>{{employeeName}} mengirim pengajuan cuti {{leaveTypeName}} untuk {{startDate}} sampai {{endDate}} ({{totalDays}} hari).</p><p>{{reason}}</p>',
+    textContent:
+      '{{employeeName}} mengirim pengajuan cuti {{leaveTypeName}} untuk {{startDate}} sampai {{endDate}} ({{totalDays}} hari). {{reason}}',
+    isActive: true,
+  },
+  {
+    name: 'Leave Request Decision',
+    templateCode: 'leave_request_decision',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'employee',
+    ccEmail: '',
+    subject: 'Pengajuan cuti Anda {{decisionLabel}}',
+    htmlContent:
+      '<p>Halo {{employeeName}},</p><p>Pengajuan cuti {{leaveTypeName}} Anda telah {{decisionLabel}}.</p><p>{{startDate}} sampai {{endDate}}</p><p>{{approverName}}</p><p>{{rejectionReason}}</p>',
+    textContent:
+      'Halo {{employeeName}}, pengajuan cuti {{leaveTypeName}} Anda telah {{decisionLabel}}. {{startDate}} sampai {{endDate}}. {{approverName}} {{rejectionReason}}',
+    isActive: true,
+  },
+  {
+    name: 'Attendance Permission Decision',
+    templateCode: 'attendance_permission_decision',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'employee',
+    ccEmail: '',
+    subject: 'Pengajuan {{permissionType}} Anda {{decisionLabel}}',
+    htmlContent:
+      '<p>Halo {{employeeName}},</p><p>Pengajuan {{permissionType}} Anda telah {{decisionLabel}}.</p><p>Tanggal: {{requestDate}}</p><p>{{approverNote}}</p>',
+    textContent:
+      'Halo {{employeeName}}, pengajuan {{permissionType}} Anda telah {{decisionLabel}}. Tanggal: {{requestDate}}. {{approverNote}}',
+    isActive: true,
+  },
+  {
+    name: 'Overtime Assignment',
+    templateCode: 'overtime_assignment',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'employee',
+    ccEmail: '',
+    subject: '{{splNumber}} siap dikerjakan',
+    htmlContent:
+      '<p>{{title}} dijadwalkan untuk {{workDate}}.</p><p>Nomor SPL: {{splNumber}}</p><p>Jam mulai: {{plannedStart}}</p><p>Jam selesai: {{plannedEnd}}</p>',
+    textContent:
+      '{{title}} dijadwalkan untuk {{workDate}}. Nomor SPL: {{splNumber}}. Jam mulai: {{plannedStart}}. Jam selesai: {{plannedEnd}}.',
+    isActive: true,
+  },
+  {
+    name: 'Daily Activity Pending Approval',
+    templateCode: 'daily_activity_pending_approval',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: 'Daily Activity menunggu approval',
+    htmlContent:
+      '<p>{{employeeName}} mengirim daily activity baru.</p><p>Aktivitas: {{activityTitle}}</p><p>Kategori: {{activityType}}</p><p>Waktu: {{submissionTime}}</p><p>{{notes}}</p>',
+    textContent:
+      '{{employeeName}} mengirim daily activity baru. Aktivitas: {{activityTitle}}. Kategori: {{activityType}}. Waktu: {{submissionTime}}. {{notes}}',
+    isActive: true,
+  },
+  {
+    name: 'Offboarding Update',
+    templateCode: 'offboarding_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'employee,hc',
+    ccEmail: '',
+    subject: '{{title}}',
+    htmlContent:
+      '<p>Halo {{employeeName}},</p><p>{{intro}}</p><p>Status: {{status}}</p><p>{{detailsSummary}}</p>',
+    textContent:
+      'Halo {{employeeName}}, {{intro}} Status: {{status}}. {{detailsSummary}}',
+    isActive: true,
+  },
 ]
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
@@ -2359,7 +2471,6 @@ export async function ensureHeroGovernanceSeedData() {
       themeCount,
       attendanceShiftCount,
       emailSmtpSettingCount,
-      emailTemplateCount,
       notificationChannelSettingCount,
       notificationPreferenceCount,
       notificationSubscriptionCount,
@@ -2369,7 +2480,6 @@ export async function ensureHeroGovernanceSeedData() {
       db.select({ count: sql<number>`count(*)::int` }).from(navbarThemes),
       db.select({ count: sql<number>`count(*)::int` }).from(masterAttendanceShifts),
       db.select({ count: sql<number>`count(*)::int` }).from(emailSmtpSettings),
-      db.select({ count: sql<number>`count(*)::int` }).from(emailTemplates),
       db.select({ count: sql<number>`count(*)::int` }).from(notificationChannelSettings),
       db.select({ count: sql<number>`count(*)::int` }).from(notificationUserPreferences),
       db.select({ count: sql<number>`count(*)::int` }).from(notificationPushSubscriptions),
@@ -2667,8 +2777,18 @@ export async function ensureHeroGovernanceSeedData() {
       await db.insert(emailSmtpSettings).values(EMAIL_SMTP_SETTING_SEED)
     }
 
-    if ((emailTemplateCount[0]?.count ?? 0) === 0) {
-      await db.insert(emailTemplates).values(EMAIL_TEMPLATE_SEEDS)
+    const existingEmailTemplates = await db
+      .select({ templateCode: emailTemplates.templateCode })
+      .from(emailTemplates)
+    const existingEmailTemplateCodes = new Set(
+      existingEmailTemplates.map((template) => template.templateCode)
+    )
+    const missingEmailTemplates = EMAIL_TEMPLATE_SEEDS.filter(
+      (template) => !existingEmailTemplateCodes.has(template.templateCode)
+    )
+
+    if (missingEmailTemplates.length > 0) {
+      await db.insert(emailTemplates).values(missingEmailTemplates)
     }
 
     if ((notificationChannelSettingCount[0]?.count ?? 0) === 0) {

@@ -170,8 +170,34 @@ export async function sendUserInvitationEmail(params: {
 
   await sendWorkflowEmail({
     to: params.email,
+    templateCode: "user_invitation",
+    templateName: "User Invitation",
+    variables: {
+      userName: params.name,
+      invitationLink: invitationUrl,
+      verificationLink: verificationUrl ?? "",
+    },
     fallbackSubject: "Undangan akun HERO",
     fallbackHtml: content.html,
     fallbackText: content.text,
   });
+}
+
+export async function issueUserInvitation(params: { employeeId: number; email: string; name: string }) {
+  const invitation = await createUserInvitation({ employeeId: params.employeeId });
+  const verification = await createEmailVerification({ employeeId: params.employeeId });
+
+  await sendUserInvitationEmail({
+    email: params.email,
+    name: params.name,
+    invitationToken: invitation.token,
+    verificationToken: verification.token,
+  });
+
+  return {
+    invitationToken: invitation.token,
+    verificationToken: verification.token,
+    invitationExpiresAt: invitation.expiresAt,
+    verificationExpiresAt: verification.expiresAt,
+  };
 }

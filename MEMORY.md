@@ -1,6 +1,6 @@
 # Project Memory
 
-## Last Updated: 2026-06-14
+## Last Updated: 2026-06-18
 
 ## Key Decisions
 - Using Next.js with App Router
@@ -17,5 +17,6 @@
 
 ## History
 - 2026-06-14: Initial memory system setup
+- 2026-06-18: Stage 2 email workflow completed for resend invitation, workflow template seeds, and source-inspection coverage
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard

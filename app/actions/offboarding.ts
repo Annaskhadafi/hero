@@ -260,6 +260,15 @@ async function notifyOffboardingUpdate(input: {
   if (employeeContact.email) {
     await sendWorkflowEmail({
       to: employeeContact.email,
+      templateCode: "offboarding_update",
+      templateName: "Offboarding Update",
+      variables: {
+        employeeName: employeeContact.name,
+        title: input.title,
+        intro: input.intro,
+        status: input.status,
+        detailsSummary: input.details.filter(Boolean).join(" | "),
+      },
       fallbackSubject: input.title,
       fallbackHtml: emailContent.html,
       fallbackText: emailContent.text,
@@ -269,6 +278,15 @@ async function notifyOffboardingUpdate(input: {
   if (hcRecipients.length > 0) {
     await sendWorkflowEmailToMany({
       recipients: hcRecipients,
+      templateCode: "offboarding_update",
+      templateName: "Offboarding Update",
+      variables: {
+        employeeName: employeeContact.name,
+        title: input.title,
+        intro: input.intro,
+        status: input.status,
+        detailsSummary: input.details.filter(Boolean).join(" | "),
+      },
       fallbackSubject: `${input.title} [${input.status}]`,
       fallbackHtml: emailContent.html,
       fallbackText: emailContent.text,

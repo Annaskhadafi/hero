@@ -391,7 +391,15 @@ async function notifyAttendancePermissionDecision(input: {
 
   await sendWorkflowEmail({
     to: input.employeeEmail,
+    templateCode: 'attendance_permission_decision',
     templateName: 'Attendance Permission Decision',
+    variables: {
+      employeeName: input.employeeName,
+      permissionType: permissionLabel,
+      decisionLabel,
+      requestDate,
+      approverNote: input.approverNote ? `Catatan approver: ${input.approverNote}` : '',
+    },
     fallbackSubject: `${permissionLabel} ${decisionLabel}`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,

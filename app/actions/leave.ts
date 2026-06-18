@@ -199,6 +199,16 @@ async function notifyLeaveRequestSubmitted(input: {
   await sendWorkflowEmailToMany({
     recipients,
     actorEmail: input.employeeEmail,
+    templateCode: "leave_request_submitted",
+    templateName: "Leave Request Submitted",
+    variables: {
+      employeeName: input.employeeName,
+      leaveTypeName: input.leaveTypeName,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      totalDays: input.totalDays,
+      reason: input.reason ? `Alasan: ${input.reason}` : "",
+    },
     fallbackSubject: `Pengajuan cuti ${input.leaveTypeName} baru`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,
@@ -233,6 +243,17 @@ async function notifyLeaveRequestDecision(input: {
 
   await sendWorkflowEmail({
     to: input.employeeEmail,
+    templateCode: "leave_request_decision",
+    templateName: "Leave Request Decision",
+    variables: {
+      employeeName: input.employeeName,
+      leaveTypeName: input.leaveTypeName,
+      decisionLabel: statusLabel,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      approverName: input.approverName ? `Diproses oleh: ${input.approverName}` : "",
+      rejectionReason: input.rejectionReason ? `Catatan: ${input.rejectionReason}` : "",
+    },
     fallbackSubject: `Pengajuan cuti ${statusLabel}`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,
