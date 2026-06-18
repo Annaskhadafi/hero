@@ -41,6 +41,17 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [done, setDone] = useState(approval.status === 'approved')
   const [isPending, startTransition] = useTransition()
 
+  const [recommendation, setRecommendation] = useState<string>(review.recommendation || '')
+  const [contractExtendedMonths, setContractExtendedMonths] = useState<number | undefined>(review.contractExtendedMonths || undefined)
+  const [letterIssuance, setLetterIssuance] = useState<string>(review.letterIssuance || '')
+
+  const isSectionHead = approval.approverRole === 'section_head_confirmation' || approval.approverRole === 'section_head_initial'
+  const isDeptHead = approval.approverRole === 'central_service_manager'
+  const isHr = approval.approverRole === 'hr'
+
+  const canEditRecommendation = !done && (isSectionHead || isDeptHead || isHr)
+  const canEditLetterIssuance = !done && isHr
+
   function handleSubmit() {
     setError('')
     const canvas = signatureRef.current
@@ -50,7 +61,13 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     }
     const signatureDataUrl = canvas.getTrimmedCanvas().toDataURL('image/png')
     startTransition(async () => {
-      const result = await approveContractReviewStep(token, { signatureDataUrl, remarks })
+      const result = await approveContractReviewStep(token, {
+        signatureDataUrl,
+        remarks,
+        recommendation: canEditRecommendation ? recommendation : undefined,
+        contractExtendedMonths: canEditRecommendation ? contractExtendedMonths : undefined,
+        letterIssuance: canEditLetterIssuance ? letterIssuance : undefined,
+      })
       if (result.success) setDone(true)
       else setError(result.error || 'Gagal menyimpan approval.')
     })
@@ -186,10 +203,69 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
       <div className="font-bold ml-4 mb-1">Recommendation</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 text-[7pt]">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'confirm_permanent'} readOnly /> Confirm to Permanent</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'terminate_probation'} readOnly /> Unsuccessful Probationary (termination)</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'contract_extended'} readOnly /> Contract Extended {review.contractExtendedMonths ? `${review.contractExtendedMonths} months` : ''}</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={review.recommendation === 'contract_ended'} readOnly /> Contract ended</label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={recommendation === 'confirm_permanent'}
+            onChange={() => {
+              if (canEditRecommendation) {
+                setRecommendation(recommendation === 'confirm_permanent' ? '' : 'confirm_permanent')
+              }
+            }}
+            disabled={!canEditRecommendation}
+          />{' '}
+          Confirm to Permanent
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={recommendation === 'terminate_probation'}
+            onChange={() => {
+              if (canEditRecommendation) {
+                setRecommendation(recommendation === 'terminate_probation' ? '' : 'terminate_probation')
+              }
+            }}
+            disabled={!canEditRecommendation}
+          />{' '}
+          Unsuccessful Probationary (termination)
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={recommendation === 'contract_extended'}
+            onChange={() => {
+              if (canEditRecommendation) {
+                setRecommendation(recommendation === 'contract_extended' ? '' : 'contract_extended')
+              }
+            }}
+            disabled={!canEditRecommendation}
+          />{' '}
+          Contract Extended{' '}
+          {canEditRecommendation && recommendation === 'contract_extended' ? (
+            <input
+              type="number"
+              value={contractExtendedMonths ?? ''}
+              onChange={(e) => setContractExtendedMonths(e.target.value ? Number(e.target.value) : undefined)}
+              className="w-12 border-b border-black text-center focus:outline-none"
+              placeholder="months"
+            />
+          ) : (
+            contractExtendedMonths ? `${contractExtendedMonths} months` : ''
+          )}
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={recommendation === 'contract_ended'}
+            onChange={() => {
+              if (canEditRecommendation) {
+                setRecommendation(recommendation === 'contract_ended' ? '' : 'contract_ended')
+              }
+            }}
+            disabled={!canEditRecommendation}
+          />{' '}
+          Contract ended
+        </label>
       </div>
 
       <div className="font-bold mb-4">Signatories</div>
@@ -245,10 +321,58 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         <div>
           <div className="font-bold mb-2">Letter Issuance by HR</div>
           <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'permanent_confirmation'} readOnly /> <span>Permanent Confirmation</span></label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'contract_extension'} readOnly /> <span>Contract extension</span></label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'unsuccessful_probation'} readOnly /> <span>Unsuccessful probation notification</span></label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><input type="checkbox" checked={review.letterIssuance === 'end_of_contract'} readOnly /> <span>End of contract notification</span></label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="checkbox"
+                checked={letterIssuance === 'permanent_confirmation'}
+                onChange={() => {
+                  if (canEditLetterIssuance) {
+                    setLetterIssuance(letterIssuance === 'permanent_confirmation' ? '' : 'permanent_confirmation')
+                  }
+                }}
+                disabled={!canEditLetterIssuance}
+              />{' '}
+              <span>Permanent Confirmation</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="checkbox"
+                checked={letterIssuance === 'contract_extension'}
+                onChange={() => {
+                  if (canEditLetterIssuance) {
+                    setLetterIssuance(letterIssuance === 'contract_extension' ? '' : 'contract_extension')
+                  }
+                }}
+                disabled={!canEditLetterIssuance}
+              />{' '}
+              <span>Contract extension</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="checkbox"
+                checked={letterIssuance === 'unsuccessful_probation'}
+                onChange={() => {
+                  if (canEditLetterIssuance) {
+                    setLetterIssuance(letterIssuance === 'unsuccessful_probation' ? '' : 'unsuccessful_probation')
+                  }
+                }}
+                disabled={!canEditLetterIssuance}
+              />{' '}
+              <span>Unsuccessful probation notification</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="checkbox"
+                checked={letterIssuance === 'end_of_contract'}
+                onChange={() => {
+                  if (canEditLetterIssuance) {
+                    setLetterIssuance(letterIssuance === 'end_of_contract' ? '' : 'end_of_contract')
+                  }
+                }}
+                disabled={!canEditLetterIssuance}
+              />{' '}
+              <span>End of contract notification</span>
+            </label>
           </div>
         </div>
       </div>
@@ -310,6 +434,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 <p className="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-700">Approval sudah ditandatangani.</p>
                 {allApprovals.every((s: any) => s.status === 'approved') && (
                   <Button type="button" size="sm" className="w-full" onClick={() => {
+                    // Sync values to attributes for print
+                    document.querySelectorAll('#pdf-page-2 input[type="checkbox"]').forEach((el: any) => {
+                      if (el.checked) el.setAttribute('checked', 'checked')
+                      else el.removeAttribute('checked')
+                    })
+                    document.querySelectorAll('#pdf-page-2 input[type="number"]').forEach((el: any) => {
+                      el.setAttribute('value', el.value)
+                    })
                     const page1 = document.querySelector('#pdf-page-1')?.innerHTML || ''
                     const page2 = document.querySelector('#pdf-page-2')?.innerHTML || ''
                     const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()

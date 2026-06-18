@@ -15,6 +15,25 @@ import { and, asc, desc, eq, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { headers } from 'next/headers'
+
+async function getBaseUrl(): Promise<string> {
+  let baseUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!baseUrl) {
+    try {
+      const headersList = await headers()
+      const host = headersList.get('host')
+      const protocol = headersList.get('x-forwarded-proto') || 'http'
+      if (host) {
+        baseUrl = `${protocol}://${host}`
+      }
+    } catch (e) {
+      // headers() might throw if run outside request context
+    }
+  }
+  return baseUrl || 'http://localhost:3000'
+}
+
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
   const [settings] = await db
@@ -406,6 +425,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
             }
             const settings = await getContractReviewSettings()
             const template = settings.emailTemplates.approverSignature
+            const baseUrl = await getBaseUrl()
             const body = template.body
               .replace(/{{approverName}}/g, nextStep.approverName)
               .replace(/{{employeeName}}/g, rev?.employeeNameStr || saved?.employeeNameStr || 'Employee')
@@ -413,7 +433,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
               .replace(/{{employeeSection}}/g, employeeSection)
               .replace(/{{employeeSite}}/g, employeeSite)
               .replace(/{{approvalStep}}/g, `Step ${nextStep.stepOrder}`)
-              .replace(/{{approvalLink}}/g, `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/review/${nextStep.approvalToken}`)
+              .replace(/{{approvalLink}}/g, `${baseUrl}/review/${nextStep.approvalToken}`)
             await sendContractReviewEmail({
               to: nextStep.approverEmail,
               subject: template.subject.replace(/{{employeeName}}/g, rev?.employeeNameStr || 'Employee').replace(/{{employeeSn}}/g, employeeSn),
@@ -493,7 +513,16 @@ export async function getContractReviewApprovalByToken(token: string) {
   }
 }
 
-export async function approveContractReviewStep(token: string, data: { signatureDataUrl: string; remarks?: string }) {
+export async function approveContractReviewStep(
+  token: string,
+  data: {
+    signatureDataUrl: string
+    remarks?: string
+    recommendation?: string
+    contractExtendedMonths?: number
+    letterIssuance?: string
+  }
+) {
   try {
     await ensureContractReviewWorkflowTables()
     const [approval] = await db
@@ -503,6 +532,24 @@ export async function approveContractReviewStep(token: string, data: { signature
       .limit(1)
     if (!approval) return { success: false, error: 'Approval not found' }
     if (approval.status === 'approved') return { success: true }
+
+    // If recommendation/letterIssuance are changed, update the master review record
+    const updateFields: Record<string, any> = {}
+    if (data.recommendation !== undefined) {
+      updateFields.recommendation = data.recommendation
+    }
+    if (data.contractExtendedMonths !== undefined) {
+      updateFields.contractExtendedMonths = data.contractExtendedMonths
+    }
+    if (data.letterIssuance !== undefined) {
+      updateFields.letterIssuance = data.letterIssuance
+    }
+    if (Object.keys(updateFields).length > 0) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set(updateFields)
+        .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+    }
 
     await db
       .update(hcContractReviewApprovals)
@@ -540,6 +587,7 @@ export async function approveContractReviewStep(token: string, data: { signature
 
       const settings = await getContractReviewSettings()
       const template = settings.emailTemplates.approverSignature
+      const baseUrl = await getBaseUrl()
       const body = template.body
         .replace(/{{approverName}}/g, nextApproval.approverName)
         .replace(/{{employeeName}}/g, review?.employeeNameStr || 'Employee')
@@ -547,7 +595,7 @@ export async function approveContractReviewStep(token: string, data: { signature
         .replace(/{{employeeSection}}/g, employeeSection)
         .replace(/{{employeeSite}}/g, employeeSite)
         .replace(/{{approvalStep}}/g, `Step ${nextApproval.stepOrder}`)
-        .replace(/{{approvalLink}}/g, `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/review/${nextApproval.approvalToken}`)
+        .replace(/{{approvalLink}}/g, `${baseUrl}/review/${nextApproval.approvalToken}`)
       await sendContractReviewEmail({
         to: nextApproval.approverEmail,
         subject: template.subject
@@ -649,7 +697,7 @@ export async function generateTestContractReview() {
     await db.update(hcEmployeeContractReviews).set({ status: 'in_progress' }).where(eq(hcEmployeeContractReviews.id, review.id))
 
     // Send test notification email to first approver (PJO/TE) with form link
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = await getBaseUrl()
     await sendContractReviewEmail({
       to: TEST_EMAIL,
       subject: `[TEST] Contract Review - ${emp.full_name}`,

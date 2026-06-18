@@ -70,3 +70,10 @@ Rules:
 - After modifying code files, run `build_or_update_graph_tool` incrementally so future answers use current graph data.
 - Prefer graph summaries and targeted snippets over opening many raw files; only fall back to `rg`/manual reads when graph output is missing, stale, or ambiguous.
 - If graph stats look suspicious, verify with `list_graph_stats_tool` before relying on results.
+
+### Approval, Reminder & Notification Standards
+
+- **Integrasi Approval**: Semua fitur, transaksi, dan form baru (Daily Activity, Overtime, Leave/Permission, Daily Report, dll.) wajib terintegrasi dengan system Approval Engine secara terpusat, menggunakan dynamic routing resolver (`resolveApprovalRouteForActivity`), dan tampil di halaman Inbox Approval (`/dashboard/approval`).
+- **Reminder & Email Delivery**: Sistem pengiriman reminder (`reminderJobs`) wajib terintegrasi dengan log pencatatan status pengiriman di halaman Email Delivery (`notificationEvents` & `notificationDeliveries`).
+- **Notification Bell**: Semua fitur transaksi dan update status approval wajib terhubung secara dinamis dengan header notification bell, membaca event notifikasi aktif secara real-time dari database untuk user yang sedang login.
+
