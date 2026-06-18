@@ -2305,6 +2305,14 @@ export const hseSafetyNotificationConfig = pgTable('hero_hse_safety_notification
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hcNotificationConfig = pgTable('hero_hc_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
   id: serial('id').primaryKey(),
   title: text('title').notNull(),

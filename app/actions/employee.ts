@@ -7,6 +7,7 @@ import {
 } from "@/db/schema/hero";
 import { eq, desc, and, inArray, sql, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
 
 export async function getEmployeesForContract(filters?: {
   departmentId?: number;
@@ -130,6 +131,31 @@ export async function createEmployee(data: {
     isActive: true,
   }).returning();
 
+  const emailContent = buildHumanCapitalEmail({
+    title: "Data employee HC baru",
+    intro: "Master employee baru telah dibuat di modul Human Capital.",
+    details: [
+      `Nama: ${created.fullName}`,
+      `Employee ID: ${created.employeeId}`,
+      `Email: ${created.email || "-"}`,
+      `Account status: ${created.accountStatus || "-"}`,
+    ],
+  });
+
+  await sendHumanCapitalEmail({
+    templateCode: "hc_employee_created",
+    templateName: "HC Employee Created",
+    variables: {
+      employeeName: created.fullName,
+      employeeId: created.employeeId,
+      employeeEmail: created.email || "-",
+      accountStatus: created.accountStatus || "-",
+    },
+    fallbackSubject: `Data employee baru: ${created.fullName}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  });
+
   revalidatePath("/dashboard/hc/employee");
   return created;
 }
@@ -150,6 +176,12 @@ export async function updateEmployee(id: number, data: {
   genderCode?: string | null;
   accountStatus?: string;
 }) {
+  const [before] = await db
+    .select()
+    .from(hrEmployees)
+    .where(eq(hrEmployees.id, id))
+    .limit(1);
+
   const [updated] = await db
     .update(hrEmployees)
     .set({
@@ -158,6 +190,31 @@ export async function updateEmployee(id: number, data: {
     })
     .where(eq(hrEmployees.id, id))
     .returning();
+
+  const emailContent = buildHumanCapitalEmail({
+    title: "Update data employee HC",
+    intro: "Data employee di modul Human Capital telah diperbarui.",
+    details: [
+      `Nama: ${updated.fullName || before?.fullName || "-"}`,
+      `Employee ID: ${updated.employeeId || before?.employeeId || "-"}`,
+      `Email: ${updated.email || before?.email || "-"}`,
+      `Account status: ${updated.accountStatus || before?.accountStatus || "-"}`,
+    ],
+  });
+
+  await sendHumanCapitalEmail({
+    templateCode: "hc_employee_updated",
+    templateName: "HC Employee Updated",
+    variables: {
+      employeeName: updated.fullName || before?.fullName || "-",
+      employeeId: updated.employeeId || before?.employeeId || "-",
+      employeeEmail: updated.email || before?.email || "-",
+      accountStatus: updated.accountStatus || before?.accountStatus || "-",
+    },
+    fallbackSubject: `Update employee: ${updated.fullName || before?.fullName || "Employee"}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  });
 
   revalidatePath("/dashboard/hc/employee");
   return updated;

@@ -21,5 +21,6 @@
 - 2026-06-18: Stage 3 email settings UI adds workflow preset registry, placeholder metadata, and live preview for template editing
 - 2026-06-18: Stage 4 email settings adds restore-default and sync-all preset actions from admin UI
 - 2026-06-18: Stage 5 adds HSE Safety recipient settings and email coverage for observation, incident, incident report, inspection, induction, and inventory reminder flows
+- 2026-06-18: Human Capital email settings and notifications added for employee master, disciplinary, and performance review workflows with preset templates
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard

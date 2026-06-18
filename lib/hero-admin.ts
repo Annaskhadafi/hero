@@ -36,6 +36,7 @@ import {
   hrSections,
   hrSites,
   hrWorkLocations,
+  hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelRules,
   notificationChannelSettings,
@@ -1838,6 +1839,104 @@ const EMAIL_TEMPLATE_SEEDS = [
       'Aset HSE mendekati kedaluwarsa. Nama: {{itemName}}. Kategori: {{category}}. Lokasi: {{location}}. Tanggal beli: {{purchaseDate}}. Masa berlaku: {{validityMonths}}. Tanggal expired: {{expirationDate}}. PIC: {{picName}}.',
     isActive: true,
   },
+  {
+    name: 'HC Employee Created',
+    templateCode: 'hc_employee_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc',
+    ccEmail: '',
+    subject: 'Data employee baru: {{employeeName}}',
+    htmlContent:
+      '<p>Master employee baru telah dibuat.</p><p>Nama: {{employeeName}}</p><p>Employee ID: {{employeeId}}</p><p>Email: {{employeeEmail}}</p><p>Account status: {{accountStatus}}</p>',
+    textContent:
+      'Master employee baru telah dibuat. Nama: {{employeeName}}. Employee ID: {{employeeId}}. Email: {{employeeEmail}}. Account status: {{accountStatus}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Employee Updated',
+    templateCode: 'hc_employee_updated',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc',
+    ccEmail: '',
+    subject: 'Update employee: {{employeeName}}',
+    htmlContent:
+      '<p>Data employee telah diperbarui.</p><p>Nama: {{employeeName}}</p><p>Employee ID: {{employeeId}}</p><p>Email: {{employeeEmail}}</p><p>Account status: {{accountStatus}}</p>',
+    textContent:
+      'Data employee telah diperbarui. Nama: {{employeeName}}. Employee ID: {{employeeId}}. Email: {{employeeEmail}}. Account status: {{accountStatus}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Disciplinary Created',
+    templateCode: 'hc_disciplinary_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee',
+    ccEmail: '',
+    subject: 'Tindakan disipliner baru: {{employeeName}}',
+    htmlContent:
+      '<p>Tindakan disipliner baru telah dibuat.</p><p>Karyawan: {{employeeName}}</p><p>Kategori: {{categoryName}}</p><p>Severity: {{severity}}</p><p>SP Level: {{spLevel}}</p><p>Status: {{status}}</p><p>No surat: {{letterNumber}}</p>',
+    textContent:
+      'Tindakan disipliner baru telah dibuat. Karyawan: {{employeeName}}. Kategori: {{categoryName}}. Severity: {{severity}}. SP Level: {{spLevel}}. Status: {{status}}. No surat: {{letterNumber}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Disciplinary Status Update',
+    templateCode: 'hc_disciplinary_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee',
+    ccEmail: '',
+    subject: 'Update disipliner: {{employeeName}}',
+    htmlContent:
+      '<p>Status tindakan disipliner berubah.</p><p>Karyawan: {{employeeName}}</p><p>Kategori: {{categoryName}}</p><p>SP Level: {{spLevel}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Status tindakan disipliner berubah. Karyawan: {{employeeName}}. Kategori: {{categoryName}}. SP Level: {{spLevel}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Performance Review Created',
+    templateCode: 'hc_performance_review_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Performance review baru: {{employeeName}}',
+    htmlContent:
+      '<p>Performance review baru telah dibuat.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Performance review baru telah dibuat. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Performance Review Submitted',
+    templateCode: 'hc_performance_review_submitted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Performance review disubmit: {{employeeName}}',
+    htmlContent:
+      '<p>Performance review telah disubmit.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Performance review telah disubmit. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Performance Review Acknowledged',
+    templateCode: 'hc_performance_review_acknowledged',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Performance review diacknowledge: {{employeeName}}',
+    htmlContent:
+      '<p>Performance review telah diacknowledge.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p><p>Rating: {{overallRating}}</p>',
+    textContent:
+      'Performance review telah diacknowledge. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}. Rating: {{overallRating}}.',
+    isActive: true,
+  },
 ]
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
@@ -2055,6 +2154,16 @@ async function ensureHeroGovernanceTables() {
       text_content text,
       sent_at timestamp,
       created_at timestamp not null default now()
+    );
+  `)
+
+  await db.execute(sql`
+    create table if not exists hero_hc_notification_config (
+      id serial primary key,
+      recipient_emails text not null default '',
+      cc_emails text not null default '',
+      is_active boolean not null default true,
+      updated_at timestamp not null default now()
     );
   `)
 
@@ -4214,6 +4323,26 @@ export async function getHseSafetyNotificationConfigData() {
     .select()
     .from(hseSafetyNotificationConfig)
     .orderBy(desc(hseSafetyNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: '',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
+}
+
+export async function getHumanCapitalNotificationConfigData() {
+  await ensureHeroGovernanceSeedData()
+
+  const [config] = await db
+    .select()
+    .from(hcNotificationConfig)
+    .orderBy(desc(hcNotificationConfig.updatedAt))
     .limit(1)
 
   return (

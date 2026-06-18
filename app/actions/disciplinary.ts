@@ -11,6 +11,8 @@ import {
   hrEmployees,
   hrPositions,
 } from "@/db/schema/hero";
+import { getHrEmployeeContactById } from "@/lib/workflow-email";
+import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
 
 const DISCIPLINARY_PATH = "/dashboard/hc/disciplinary";
 
@@ -193,6 +195,43 @@ export async function getDisciplinaryById(id: IdInput) {
 
 export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
   const [created] = await db.insert(hcDisciplinaryActions).values(disciplinaryValues(data)).returning();
+  const employee = await getHrEmployeeContactById(created.employeeId);
+  const [category] = await db
+    .select({ name: hcViolationCategories.name, severity: hcViolationCategories.severity })
+    .from(hcViolationCategories)
+    .where(eq(hcViolationCategories.id, created.violationCategoryId))
+    .limit(1);
+
+  const emailContent = buildHumanCapitalEmail({
+    title: "Tindakan disipliner baru",
+    intro: "Tindakan disipliner baru telah dibuat di modul Human Capital.",
+    details: [
+      `Karyawan: ${employee.name}`,
+      `Kategori: ${category?.name || "-"}`,
+      `Severity: ${category?.severity || "-"}`,
+      `SP Level: SP${created.spLevel}`,
+      `Status: ${created.status}`,
+      created.letterNumber ? `No surat: ${created.letterNumber}` : null,
+    ],
+  });
+
+  await sendHumanCapitalEmail({
+    templateCode: "hc_disciplinary_created",
+    templateName: "HC Disciplinary Created",
+    variables: {
+      employeeName: employee.name,
+      categoryName: category?.name || "-",
+      severity: category?.severity || "-",
+      spLevel: `SP${created.spLevel}`,
+      status: created.status,
+      letterNumber: created.letterNumber || "-",
+    },
+    extraTo: employee.email ? [employee.email] : [],
+    fallbackSubject: `Tindakan disipliner baru: ${employee.name}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  });
+
   revalidatePath(DISCIPLINARY_PATH);
   return normalizeAction(created);
 }
@@ -213,6 +252,40 @@ export async function updateDisciplinaryStatus(id: IdInput, status: string) {
     .set({ status: normalizeText(status) || "active", updatedAt: new Date() })
     .where(eq(hcDisciplinaryActions.id, toId(id)))
     .returning();
+
+  const employee = await getHrEmployeeContactById(updated.employeeId);
+  const [category] = await db
+    .select({ name: hcViolationCategories.name })
+    .from(hcViolationCategories)
+    .where(eq(hcViolationCategories.id, updated.violationCategoryId))
+    .limit(1);
+
+  const emailContent = buildHumanCapitalEmail({
+    title: "Update status tindakan disipliner",
+    intro: "Status tindakan disipliner karyawan telah berubah.",
+    details: [
+      `Karyawan: ${employee.name}`,
+      `Kategori: ${category?.name || "-"}`,
+      `SP Level: SP${updated.spLevel}`,
+      `Status baru: ${updated.status}`,
+    ],
+  });
+
+  await sendHumanCapitalEmail({
+    templateCode: "hc_disciplinary_status_update",
+    templateName: "HC Disciplinary Status Update",
+    variables: {
+      employeeName: employee.name,
+      categoryName: category?.name || "-",
+      spLevel: `SP${updated.spLevel}`,
+      status: updated.status,
+    },
+    extraTo: employee.email ? [employee.email] : [],
+    fallbackSubject: `Update disipliner: ${employee.name}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  });
+
   revalidatePath(DISCIPLINARY_PATH);
   return normalizeAction(updated);
 }

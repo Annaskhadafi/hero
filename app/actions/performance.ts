@@ -10,6 +10,7 @@ import {
 import { aliasedTable } from "drizzle-orm/alias";
 import { and, avg, count, desc, eq, gte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
 
 const PERFORMANCE_PATH = "/dashboard/hc/performance";
 
@@ -69,6 +70,31 @@ function toDecimal(value?: number | string | null): string | null | undefined {
 
 function revalidatePerformance(): void {
   revalidatePath(PERFORMANCE_PATH);
+}
+
+async function getReviewNotificationContext(reviewId: number) {
+  const reviewer = aliasedTable(hrEmployees, "reviewer");
+  const [row] = await db
+    .select({
+      reviewId: hcPerformanceReviews.id,
+      employeeId: hcPerformanceReviews.employeeId,
+      reviewerId: hcPerformanceReviews.reviewerId,
+      employeeName: hrEmployees.fullName,
+      employeeEmail: hrEmployees.email,
+      reviewerName: reviewer.fullName,
+      reviewerEmail: reviewer.email,
+      cycleName: hcPerformanceCycles.name,
+      status: hcPerformanceReviews.status,
+      overallRating: hcPerformanceReviews.overallRating,
+    })
+    .from(hcPerformanceReviews)
+    .leftJoin(hrEmployees, eq(hcPerformanceReviews.employeeId, hrEmployees.id))
+    .leftJoin(reviewer, eq(hcPerformanceReviews.reviewerId, reviewer.id))
+    .leftJoin(hcPerformanceCycles, eq(hcPerformanceReviews.cycleId, hcPerformanceCycles.id))
+    .where(eq(hcPerformanceReviews.id, reviewId))
+    .limit(1);
+
+  return row ?? null;
 }
 
 function reviewConditions(filters?: PerformanceReviewFilter) {
@@ -191,6 +217,36 @@ export async function createPerformanceReview(data: PerformanceReviewData) {
     status: data.status ?? "draft",
   }).returning();
   if (data.kpis?.length) await addInitialKpis(created.id, data.kpis);
+
+  const context = await getReviewNotificationContext(created.id);
+  if (context) {
+    const emailContent = buildHumanCapitalEmail({
+      title: "Performance review baru",
+      intro: "Performance review baru telah dibuat di modul Human Capital.",
+      details: [
+        `Employee: ${context.employeeName || "-"}`,
+        `Reviewer: ${context.reviewerName || "-"}`,
+        `Cycle: ${context.cycleName || "-"}`,
+        `Status: ${context.status || "-"}`,
+      ],
+    });
+
+    await sendHumanCapitalEmail({
+      templateCode: "hc_performance_review_created",
+      templateName: "HC Performance Review Created",
+      variables: {
+        employeeName: context.employeeName || "-",
+        reviewerName: context.reviewerName || "-",
+        cycleName: context.cycleName || "-",
+        status: context.status || "-",
+      },
+      extraTo: [context.employeeEmail, context.reviewerEmail].filter(Boolean),
+      fallbackSubject: `Performance review baru: ${context.employeeName || "Employee"}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    });
+  }
+
   revalidatePerformance();
   return created;
 }
@@ -245,12 +301,74 @@ export async function deletePerformanceKpi(id: number) {
 
 export async function submitPerformanceReview(id: number) {
   const [updated] = await db.update(hcPerformanceReviews).set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() }).where(eq(hcPerformanceReviews.id, id)).returning();
+
+  const context = await getReviewNotificationContext(id);
+  if (context) {
+    const emailContent = buildHumanCapitalEmail({
+      title: "Performance review disubmit",
+      intro: "Performance review telah disubmit dan menunggu tindak lanjut reviewer atau HC.",
+      details: [
+        `Employee: ${context.employeeName || "-"}`,
+        `Reviewer: ${context.reviewerName || "-"}`,
+        `Cycle: ${context.cycleName || "-"}`,
+        `Status: submitted`,
+      ],
+    });
+
+    await sendHumanCapitalEmail({
+      templateCode: "hc_performance_review_submitted",
+      templateName: "HC Performance Review Submitted",
+      variables: {
+        employeeName: context.employeeName || "-",
+        reviewerName: context.reviewerName || "-",
+        cycleName: context.cycleName || "-",
+        status: "submitted",
+      },
+      extraTo: [context.employeeEmail, context.reviewerEmail].filter(Boolean),
+      fallbackSubject: `Performance review disubmit: ${context.employeeName || "Employee"}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    });
+  }
+
   revalidatePerformance();
   return updated;
 }
 
 export async function acknowledgePerformanceReview(id: number) {
   const [updated] = await db.update(hcPerformanceReviews).set({ status: "acknowledged", acknowledgedAt: new Date(), updatedAt: new Date() }).where(eq(hcPerformanceReviews.id, id)).returning();
+
+  const context = await getReviewNotificationContext(id);
+  if (context) {
+    const emailContent = buildHumanCapitalEmail({
+      title: "Performance review diacknowledge",
+      intro: "Performance review telah diacknowledge oleh employee.",
+      details: [
+        `Employee: ${context.employeeName || "-"}`,
+        `Reviewer: ${context.reviewerName || "-"}`,
+        `Cycle: ${context.cycleName || "-"}`,
+        `Status: acknowledged`,
+        context.overallRating ? `Rating: ${context.overallRating}` : null,
+      ],
+    });
+
+    await sendHumanCapitalEmail({
+      templateCode: "hc_performance_review_acknowledged",
+      templateName: "HC Performance Review Acknowledged",
+      variables: {
+        employeeName: context.employeeName || "-",
+        reviewerName: context.reviewerName || "-",
+        cycleName: context.cycleName || "-",
+        status: "acknowledged",
+        overallRating: context.overallRating || "-",
+      },
+      extraTo: [context.employeeEmail, context.reviewerEmail].filter(Boolean),
+      fallbackSubject: `Performance review diacknowledge: ${context.employeeName || "Employee"}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    });
+  }
+
   revalidatePerformance();
   return updated;
 }

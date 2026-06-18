@@ -7,6 +7,7 @@ import { db } from "@/db";
 import {
   emailSmtpSettings,
   emailTemplates,
+  hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelSettings,
 } from "@/db/schema/hero";
@@ -103,6 +104,12 @@ const emailTemplatePresetSchema = z.object({
 });
 
 const hseSafetyNotificationSchema = z.object({
+  recipientEmails: z.string().trim().default(""),
+  ccEmails: z.string().trim().default(""),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+const humanCapitalNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
@@ -702,6 +709,54 @@ export async function saveHseSafetyNotificationConfigAction(
       status: "error",
       message:
         error instanceof Error ? error.message : "Gagal menyimpan penerima HSE Safety.",
+    };
+  }
+}
+
+export async function saveHumanCapitalNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = humanCapitalNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima Human Capital belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: hcNotificationConfig.id })
+      .from(hcNotificationConfig)
+      .limit(1);
+
+    const values = {
+      recipientEmails: parsed.data.recipientEmails,
+      ccEmails: parsed.data.ccEmails,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db.update(hcNotificationConfig).set(values).where(eq(hcNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(hcNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Penerima Human Capital berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal menyimpan penerima Human Capital.",
     };
   }
 }

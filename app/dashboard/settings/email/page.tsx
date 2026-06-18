@@ -7,10 +7,12 @@ import {
   Server,
   ShieldAlert,
   Smartphone,
+  Users,
   XCircle,
 } from "lucide-react";
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
+import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
 import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
 import { EmailTemplateSettingsPanel } from "@/components/email-template-settings-panel";
 import { PwaPushSettingsPanel } from "@/components/pwa-push-settings-panel";
@@ -35,6 +37,7 @@ import {
   getEmailSmtpSettingsData,
   getEmailTemplatesData,
   getHseSafetyNotificationConfigData,
+  getHumanCapitalNotificationConfigData,
   getPwaPushSettingsData,
 } from "@/lib/hero-admin";
 
@@ -102,13 +105,14 @@ function CompactMetric({
 }
 
 export default async function EmailSettingsPage() {
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
     getEmailTemplatesData(),
     getPwaPushSettingsData(),
     getHseSafetyNotificationConfigData(),
+    getHumanCapitalNotificationConfigData(),
     getServerSession(),
   ]);
 
@@ -162,6 +166,10 @@ export default async function EmailSettingsPage() {
             <ShieldAlert className="size-4" />
             HSE Safety
           </TabsTrigger>
+          <TabsTrigger value="hc">
+            <Users className="size-4" />
+            Human Capital
+          </TabsTrigger>
           <TabsTrigger value="bell">
             <Bell className="size-4" />
             Bell
@@ -189,6 +197,10 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="hse">
           <HseSafetyNotificationSettingsPanel config={hseSafetyConfig} />
+        </TabsContent>
+
+        <TabsContent value="hc">
+          <HumanCapitalNotificationSettingsPanel config={humanCapitalConfig} />
         </TabsContent>
 
         <TabsContent value="bell">

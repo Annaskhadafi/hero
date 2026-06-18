@@ -492,6 +492,156 @@ export const EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
       picName: 'HSE Warehouse',
     },
   },
+  {
+    name: 'HC Employee Created',
+    templateCode: 'hc_employee_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc',
+    ccEmail: '',
+    subject: 'Data employee baru: {{employeeName}}',
+    htmlContent:
+      '<p>Master employee baru telah dibuat.</p><p>Nama: {{employeeName}}</p><p>Employee ID: {{employeeId}}</p><p>Email: {{employeeEmail}}</p><p>Account status: {{accountStatus}}</p>',
+    textContent:
+      'Master employee baru telah dibuat. Nama: {{employeeName}}. Employee ID: {{employeeId}}. Email: {{employeeEmail}}. Account status: {{accountStatus}}.',
+    description: 'Notifikasi data employee baru.',
+    variables: ['employeeName', 'employeeId', 'employeeEmail', 'accountStatus'],
+    sampleValues: {
+      employeeName: 'Ayu Wulandari',
+      employeeId: 'EMP-00921',
+      employeeEmail: 'ayu.wulandari@company.com',
+      accountStatus: 'active',
+    },
+  },
+  {
+    name: 'HC Employee Updated',
+    templateCode: 'hc_employee_updated',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc',
+    ccEmail: '',
+    subject: 'Update employee: {{employeeName}}',
+    htmlContent:
+      '<p>Data employee telah diperbarui.</p><p>Nama: {{employeeName}}</p><p>Employee ID: {{employeeId}}</p><p>Email: {{employeeEmail}}</p><p>Account status: {{accountStatus}}</p>',
+    textContent:
+      'Data employee telah diperbarui. Nama: {{employeeName}}. Employee ID: {{employeeId}}. Email: {{employeeEmail}}. Account status: {{accountStatus}}.',
+    description: 'Notifikasi update employee.',
+    variables: ['employeeName', 'employeeId', 'employeeEmail', 'accountStatus'],
+    sampleValues: {
+      employeeName: 'Ayu Wulandari',
+      employeeId: 'EMP-00921',
+      employeeEmail: 'ayu.wulandari@company.com',
+      accountStatus: 'inactive',
+    },
+  },
+  {
+    name: 'HC Disciplinary Created',
+    templateCode: 'hc_disciplinary_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee',
+    ccEmail: '',
+    subject: 'Tindakan disipliner baru: {{employeeName}}',
+    htmlContent:
+      '<p>Tindakan disipliner baru telah dibuat.</p><p>Karyawan: {{employeeName}}</p><p>Kategori: {{categoryName}}</p><p>Severity: {{severity}}</p><p>SP Level: {{spLevel}}</p><p>Status: {{status}}</p><p>No surat: {{letterNumber}}</p>',
+    textContent:
+      'Tindakan disipliner baru telah dibuat. Karyawan: {{employeeName}}. Kategori: {{categoryName}}. Severity: {{severity}}. SP Level: {{spLevel}}. Status: {{status}}. No surat: {{letterNumber}}.',
+    description: 'Notifikasi tindakan disipliner baru.',
+    variables: ['employeeName', 'categoryName', 'severity', 'spLevel', 'status', 'letterNumber'],
+    sampleValues: {
+      employeeName: 'Rudi Setiawan',
+      categoryName: 'Pelanggaran APD',
+      severity: 'High',
+      spLevel: 'SP1',
+      status: 'active',
+      letterNumber: 'SP/HC/2026/019',
+    },
+  },
+  {
+    name: 'HC Disciplinary Status Update',
+    templateCode: 'hc_disciplinary_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee',
+    ccEmail: '',
+    subject: 'Update disipliner: {{employeeName}}',
+    htmlContent:
+      '<p>Status tindakan disipliner berubah.</p><p>Karyawan: {{employeeName}}</p><p>Kategori: {{categoryName}}</p><p>SP Level: {{spLevel}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Status tindakan disipliner berubah. Karyawan: {{employeeName}}. Kategori: {{categoryName}}. SP Level: {{spLevel}}. Status: {{status}}.',
+    description: 'Update status tindakan disipliner.',
+    variables: ['employeeName', 'categoryName', 'spLevel', 'status'],
+    sampleValues: {
+      employeeName: 'Rudi Setiawan',
+      categoryName: 'Pelanggaran APD',
+      spLevel: 'SP1',
+      status: 'expired',
+    },
+  },
+  {
+    name: 'HC Performance Review Created',
+    templateCode: 'hc_performance_review_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Performance review baru: {{employeeName}}',
+    htmlContent:
+      '<p>Performance review baru telah dibuat.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Performance review baru telah dibuat. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}.',
+    description: 'Notifikasi review kinerja baru.',
+    variables: ['employeeName', 'reviewerName', 'cycleName', 'status'],
+    sampleValues: {
+      employeeName: 'Maya Sari',
+      reviewerName: 'Supervisor Plant',
+      cycleName: 'Annual Review 2026',
+      status: 'draft',
+    },
+  },
+  {
+    name: 'HC Performance Review Submitted',
+    templateCode: 'hc_performance_review_submitted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Performance review disubmit: {{employeeName}}',
+    htmlContent:
+      '<p>Performance review telah disubmit.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Performance review telah disubmit. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}.',
+    description: 'Notifikasi submit review kinerja.',
+    variables: ['employeeName', 'reviewerName', 'cycleName', 'status'],
+    sampleValues: {
+      employeeName: 'Maya Sari',
+      reviewerName: 'Supervisor Plant',
+      cycleName: 'Annual Review 2026',
+      status: 'submitted',
+    },
+  },
+  {
+    name: 'HC Performance Review Acknowledged',
+    templateCode: 'hc_performance_review_acknowledged',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Performance review diacknowledge: {{employeeName}}',
+    htmlContent:
+      '<p>Performance review telah diacknowledge.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p><p>Rating: {{overallRating}}</p>',
+    textContent:
+      'Performance review telah diacknowledge. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}. Rating: {{overallRating}}.',
+    description: 'Notifikasi acknowledgement review kinerja.',
+    variables: ['employeeName', 'reviewerName', 'cycleName', 'status', 'overallRating'],
+    sampleValues: {
+      employeeName: 'Maya Sari',
+      reviewerName: 'Supervisor Plant',
+      cycleName: 'Annual Review 2026',
+      status: 'acknowledged',
+      overallRating: 'A',
+    },
+  },
 ]
 
 export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
