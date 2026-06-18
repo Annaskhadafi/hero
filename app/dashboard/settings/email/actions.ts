@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { emailSmtpSettings, emailTemplates, notificationChannelSettings } from "@/db/schema/hero";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
+import { EMAIL_TEMPLATE_PRESET_MAP, EMAIL_TEMPLATE_PRESETS } from "@/lib/email-template-presets";
 import { getServerSession } from "@/lib/auth-session";
 import {
   ensureHeroGovernanceSeedData,
@@ -88,10 +89,70 @@ const emailTemplateToggleSchema = z.object({
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
 
+const emailTemplatePresetSchema = z.object({
+  templateCode: z
+    .string()
+    .trim()
+    .min(1, "Kode template preset wajib diisi.")
+    .regex(/^[a-z0-9_]+$/, "Kode template preset tidak valid."),
+});
+
 const INITIAL_STATE: EmailSettingsActionState = {
   status: "idle",
   message: "",
 };
+
+async function upsertEmailTemplateFromPreset(
+  templateCode: string,
+  options?: {
+    keepExistingActive?: boolean;
+  },
+) {
+  const preset = EMAIL_TEMPLATE_PRESET_MAP[templateCode];
+
+  if (!preset) {
+    throw new Error(`Preset template ${templateCode} tidak ditemukan.`);
+  }
+
+  const [existing] = await db
+    .select({
+      id: emailTemplates.id,
+      isActive: emailTemplates.isActive,
+    })
+    .from(emailTemplates)
+    .where(eq(emailTemplates.templateCode, templateCode))
+    .limit(1);
+
+  const nextValues = {
+    name: preset.name,
+    templateCode: preset.templateCode,
+    templateType: preset.templateType,
+    deliveryChannel: preset.deliveryChannel,
+    recipientScope: preset.recipientScope,
+    ccEmail: preset.ccEmail,
+    subject: preset.subject,
+    htmlContent: preset.htmlContent,
+    textContent: preset.textContent,
+    isActive:
+      existing && options?.keepExistingActive !== false ? existing.isActive : true,
+    updatedAt: new Date(),
+  };
+
+  if (existing) {
+    await db.update(emailTemplates).set(nextValues).where(eq(emailTemplates.id, existing.id));
+    return { mode: "updated" as const, id: existing.id };
+  }
+
+  const [created] = await db
+    .insert(emailTemplates)
+    .values({
+      ...nextValues,
+      createdAt: new Date(),
+    })
+    .returning({ id: emailTemplates.id });
+
+  return { mode: "created" as const, id: created.id };
+}
 
 async function getExistingSmtpSettings() {
   await ensureHeroGovernanceSeedData();
@@ -514,6 +575,70 @@ export async function toggleEmailTemplateActiveAction(
     return {
       status: "error",
       message,
+    };
+  }
+}
+
+export async function restoreEmailTemplatePresetAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = emailTemplatePresetSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Preset template belum valid.",
+    };
+  }
+
+  try {
+    await upsertEmailTemplateFromPreset(parsed.data.templateCode);
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: `Default preset ${parsed.data.templateCode} berhasil dipulihkan.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal memulihkan default preset template.",
+    };
+  }
+}
+
+export async function syncEmailTemplatePresetsAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  try {
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const preset of EMAIL_TEMPLATE_PRESETS) {
+      const result = await upsertEmailTemplateFromPreset(preset.templateCode);
+      if (result.mode === "created") {
+        createdCount += 1;
+      } else {
+        updatedCount += 1;
+      }
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: `Sync preset selesai. ${createdCount} dibuat, ${updatedCount} diperbarui.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal sync preset template email.",
     };
   }
 }

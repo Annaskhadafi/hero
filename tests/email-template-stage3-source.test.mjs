@@ -29,11 +29,25 @@ test("email template settings panel exposes workflow registry and live preview",
   assert.match(source, /Workflow Template Registry/);
   assert.match(source, /EMAIL_TEMPLATE_PRESETS\.map/);
   assert.match(source, /handleOpenFromRegistry/);
+  assert.match(source, /handleRestorePreset/);
+  assert.match(source, /handleSyncAllPresets/);
   assert.match(source, /Reset ke Default/);
+  assert.match(source, /Restore Default/);
+  assert.match(source, /Sync Semua Preset/);
   assert.match(source, /Live Preview/);
   assert.match(source, /renderTemplatePreview/);
   assert.match(source, /data-filter-origin/);
   assert.match(source, /TableMultiFilter/);
+});
+
+test("email settings actions expose restore and sync preset operations", () => {
+  const source = read("app/dashboard/settings/email/actions.ts");
+
+  assert.match(source, /upsertEmailTemplateFromPreset/);
+  assert.match(source, /restoreEmailTemplatePresetAction/);
+  assert.match(source, /syncEmailTemplatePresetsAction/);
+  assert.match(source, /Default preset .* berhasil dipulihkan/);
+  assert.match(source, /Sync preset selesai/);
 });
 
 test("email settings page still mounts the template panel", () => {

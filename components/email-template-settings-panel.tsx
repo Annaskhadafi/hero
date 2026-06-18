@@ -2,10 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, FileText, Pencil, Plus, RotateCcw, WandSparkles } from "lucide-react";
+import {
+  Eye,
+  FileText,
+  Pencil,
+  Plus,
+  RefreshCcw,
+  RotateCcw,
+  WandSparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
+  restoreEmailTemplatePresetAction,
   saveEmailTemplateAction,
+  syncEmailTemplatePresetsAction,
   toggleEmailTemplateActiveAction,
   type EmailSettingsActionState,
 } from "@/app/dashboard/settings/email/actions";
@@ -112,6 +122,8 @@ export function EmailTemplateSettingsPanel({
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [restoringCode, setRestoringCode] = useState<string | null>(null);
+  const [isSyncingPresets, setIsSyncingPresets] = useState(false);
 
   const templatesByCode = useMemo(
     () => new Map(templates.map((template) => [template.templateCode, template])),
@@ -232,6 +244,39 @@ export function EmailTemplateSettingsPanel({
     setTogglingId(null);
   };
 
+  const handleRestorePreset = async (templateCode: string) => {
+    setRestoringCode(templateCode);
+
+    const form = new FormData();
+    form.append("templateCode", templateCode);
+
+    const result = await restoreEmailTemplatePresetAction(INITIAL_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+
+    setRestoringCode(null);
+  };
+
+  const handleSyncAllPresets = async () => {
+    setIsSyncingPresets(true);
+
+    const result = await syncEmailTemplatePresetsAction(INITIAL_STATE);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+
+    setIsSyncingPresets(false);
+  };
+
   return (
     <Card className="rounded-lg p-4 shadow-sm">
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -243,9 +288,21 @@ export function EmailTemplateSettingsPanel({
                 Preset ini memetakan template email sistem ke kode workflow yang dipakai modul.
               </p>
             </div>
-            <Badge className="rounded-full border-0 bg-primary/10 text-primary">
-              {EMAIL_TEMPLATE_PRESETS.length} preset
-            </Badge>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Badge className="rounded-full border-0 bg-primary/10 text-primary">
+                {EMAIL_TEMPLATE_PRESETS.length} preset
+              </Badge>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-lg"
+                onClick={handleSyncAllPresets}
+                disabled={isSyncingPresets}
+              >
+                <RefreshCcw className="size-4" />
+                {isSyncingPresets ? "Sync..." : "Sync Semua Preset"}
+              </Button>
+            </div>
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -280,7 +337,7 @@ export function EmailTemplateSettingsPanel({
                       {preset.variables.length} variabel
                     </Badge>
                   </div>
-                  <div className="mt-3">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant="outline"
@@ -290,6 +347,18 @@ export function EmailTemplateSettingsPanel({
                       <WandSparkles className="size-4" />
                       {existingTemplate ? "Edit Default" : "Buat dari Preset"}
                     </Button>
+                    {existingTemplate ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() => handleRestorePreset(preset.templateCode)}
+                        disabled={restoringCode === preset.templateCode}
+                      >
+                        <RotateCcw className="size-4" />
+                        {restoringCode === preset.templateCode ? "Restore..." : "Restore Default"}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               );
