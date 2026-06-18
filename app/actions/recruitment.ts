@@ -1196,6 +1196,79 @@ export type PanelEvaluationData = {
   notes?: string;
 };
 
+async function sendCandidateApplicationReceivedEmail(input: {
+  candidateName: string;
+  candidateEmail?: string | null;
+  recruitmentId?: number | null;
+  source?: string | null;
+}) {
+  if (!input.candidateEmail?.trim()) {
+    return;
+  }
+
+  const smtpSettings = await getEmailSmtpSettingsData();
+  if (!smtpSettings?.host || !smtpSettings.fromEmail) {
+    return;
+  }
+
+  let jobTitle = "Lowongan HERO";
+  if (input.recruitmentId) {
+    const [recruitment] = await db
+      .select({ jobTitle: hcRecruitments.jobTitle })
+      .from(hcRecruitments)
+      .where(eq(hcRecruitments.id, input.recruitmentId))
+      .limit(1);
+    if (recruitment?.jobTitle) {
+      jobTitle = recruitment.jobTitle;
+    }
+  }
+
+  const submittedAt = new Date().toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const sourceLabel = input.source?.trim() || "Recruitment";
+  const fallbackHtml = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <h2 style="color:#0f172a;">Aplikasi Diterima</h2>
+      <p>Halo <strong>${input.candidateName}</strong>,</p>
+      <p>Terima kasih. Lamaran Anda untuk posisi <strong>${jobTitle}</strong> sudah kami terima.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f8fafc;border-radius:8px;">
+        <tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">Posisi</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${jobTitle}</td></tr>
+        <tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">Sumber</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${sourceLabel}</td></tr>
+        <tr><td style="padding:8px 12px;font-weight:600;">Waktu submit</td><td style="padding:8px 12px;">${submittedAt}</td></tr>
+      </table>
+      <p>Tim Human Capital akan meninjau data Anda dan menghubungi Anda jika lanjut ke tahap berikutnya.</p>
+      <p>Salam,<br/>Human Capital PT Chitra Paratama</p>
+    </div>
+  `.trim();
+  const fallbackText = `Halo ${input.candidateName},\n\nTerima kasih. Lamaran Anda untuk posisi ${jobTitle} sudah kami terima.\n\nSumber: ${sourceLabel}\nWaktu submit: ${submittedAt}\n\nTim Human Capital akan meninjau data Anda dan menghubungi Anda jika lanjut ke tahap berikutnya.\n\nSalam,\nHuman Capital PT Chitra Paratama`;
+  const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+  const resolvedTemplate = await resolveWorkflowTemplateContent({
+    templateCode: "application_received",
+    cc: hcPolicyCc,
+    variables: {
+      candidateName: input.candidateName,
+      jobTitle,
+      source: sourceLabel,
+      submittedAt,
+    },
+    fallbackSubject: `Lamaran diterima untuk ${jobTitle}`,
+    fallbackHtml,
+    fallbackText,
+  });
+
+  await sendEmailViaSmtp(smtpSettings, {
+    to: input.candidateEmail.trim(),
+    cc: resolvedTemplate.ccList,
+    subject: resolvedTemplate.subject,
+    html: resolvedTemplate.html,
+    text: resolvedTemplate.text,
+    templateName: "Application Received",
+    templateCode: "application_received",
+  });
+}
+
 function clampPanelScore(value: number) {
   return Math.max(1, Math.min(5, Math.round(Number(value) || 0)));
 }
@@ -1370,6 +1443,16 @@ export async function createCandidate(data: CandidateData) {
   });
 
   try { revalidatePath("/dashboard/hc/recruitment") } catch {}
+  try {
+    await sendCandidateApplicationReceivedEmail({
+      candidateName: created.fullName,
+      candidateEmail: created.email,
+      recruitmentId: created.recruitmentId,
+      source: created.source,
+    });
+  } catch (error) {
+    console.error("Failed to send application received email:", error);
+  }
   return created;
 }
 

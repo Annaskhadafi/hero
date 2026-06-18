@@ -113,6 +113,41 @@ export async function ensureDefaultTemplates() {
 
   const defaults: Array<{ type: string; name: string; subject: string; body: string; format: string }> = [
     {
+      type: "application_received",
+      name: "Konfirmasi Lamaran Diterima",
+      subject: `[HERO] Lamaran Diterima — {jobTitle}`,
+      format: "html",
+      body: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
+<tr><td align="center">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+    <tr><td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 40px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">PT Chitra Paratama</h1>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Sistem Rekrutmen & Assessment Online</p>
+    </td></tr>
+    <tr><td style="padding:32px 40px;">
+      <h2 style="margin:0;color:#0f172a;font-size:18px;">Halo, {candidateName}</h2>
+      <p style="margin:12px 0;color:#475569;font-size:14px;line-height:1.7;">
+        Terima kasih. Lamaran Anda untuk posisi <strong>{jobTitle}</strong> sudah kami terima.
+      </p>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0;">
+        <p style="margin:4px 0;color:#475569;font-size:13px;"><strong>Sumber:</strong> {source}</p>
+        <p style="margin:4px 0;color:#475569;font-size:13px;"><strong>Waktu Submit:</strong> {submittedAt}</p>
+      </div>
+      <p style="margin:16px 0 0;color:#475569;font-size:14px;line-height:1.7;">
+        Tim Human Capital akan meninjau data Anda dan menghubungi Anda jika lanjut ke tahap berikutnya.
+      </p>
+    </td></tr>
+    <tr><td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:11px;">PT Chitra Paratama · Human Capital Division</p>
+      <p style="margin:4px 0 0;color:#cbd5e1;font-size:11px;">Email ini dikirim otomatis. Mohon tidak membalas email ini.</p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`,
+    },
+    {
       type: "test_assigned",
       name: "Undangan Tes Online",
       subject: `[HERO] Undangan Tes Online — {jobTitle}`,

@@ -1700,6 +1700,48 @@ const EMAIL_TEMPLATE_SEEDS = [
     isActive: true,
   },
   {
+    name: 'HC Application Received',
+    templateCode: 'application_received',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: 'Lamaran diterima untuk {{jobTitle}}',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Terima kasih. Lamaran Anda untuk posisi <strong>{{jobTitle}}</strong> sudah kami terima.</p><p>Sumber: {{source}}</p><p>Waktu submit: {{submittedAt}}</p>',
+    textContent:
+      'Halo {{candidateName}}, terima kasih. Lamaran Anda untuk posisi {{jobTitle}} sudah kami terima. Sumber: {{source}}. Waktu submit: {{submittedAt}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Interview Invitation',
+    templateCode: 'interview_invitation',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: '[HERO] Undangan Interview - {{jobTitle}}',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Anda diundang interview untuk posisi <strong>{{jobTitle}}</strong>.</p><p>Jadwal: {{date}} {{time}}</p><p>Tipe: {{interviewType}}</p><p>Lokasi/Link: {{location}}</p><p>Pewawancara: {{interviewer}}</p><p>Durasi: {{duration}} menit</p>',
+    textContent:
+      'Halo {{candidateName}}, Anda diundang interview untuk posisi {{jobTitle}}. Jadwal: {{date}} {{time}}. Tipe: {{interviewType}}. Lokasi/Link: {{location}}. Pewawancara: {{interviewer}}. Durasi: {{duration}} menit.',
+    isActive: true,
+  },
+  {
+    name: 'HC Test Assigned',
+    templateCode: 'test_assigned',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: '[HERO] Undangan Tes Online - {{jobTitle}}',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Anda diundang mengikuti tes untuk <strong>{{jobTitle}}</strong>.</p><p>Jadwal: {{date}} {{time}}</p><p>Akses: <a href="{{testLink}}">{{testLink}}</a></p><p>Keterangan: {{location}}</p><p>Masa aktif: {{duration}} hari</p>',
+    textContent:
+      'Halo {{candidateName}}, Anda diundang mengikuti tes untuk {{jobTitle}}. Jadwal: {{date}} {{time}}. Akses: {{testLink}}. Keterangan: {{location}}. Masa aktif: {{duration}} hari.',
+    isActive: true,
+  },
+  {
     name: 'HSE Observation Alert',
     templateCode: 'hse_observation_alert',
     templateType: 'Notification',

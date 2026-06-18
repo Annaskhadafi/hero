@@ -36,6 +36,10 @@ test("human capital workflows are wired to email notifications", () => {
   const employeeSource = read("app/actions/employee.ts");
   const disciplinarySource = read("app/actions/disciplinary.ts");
   const performanceSource = read("app/actions/performance.ts");
+  const interviewsSource = read("app/actions/interviews.ts");
+  const testGroupSource = read("app/actions/test-group.ts");
+  const recruitmentTestsSource = read("app/actions/recruitment-tests.ts");
+  const recruitmentSource = read("app/actions/recruitment.ts");
 
   assert.match(employeeSource, /templateCode: "hc_employee_created"/);
   assert.match(employeeSource, /templateCode: "hc_employee_updated"/);
@@ -44,6 +48,10 @@ test("human capital workflows are wired to email notifications", () => {
   assert.match(performanceSource, /templateCode: "hc_performance_review_created"/);
   assert.match(performanceSource, /templateCode: "hc_performance_review_submitted"/);
   assert.match(performanceSource, /templateCode: "hc_performance_review_acknowledged"/);
+  assert.match(interviewsSource, /templateCode: "interview_invitation"/);
+  assert.match(testGroupSource, /templateCode: "test_assigned"/);
+  assert.match(recruitmentTestsSource, /templateCode: "test_assigned"/);
+  assert.match(recruitmentSource, /templateCode: "application_received"/);
 });
 
 test("existing HC email flows now inherit global HC recipient policy", () => {
@@ -51,13 +59,22 @@ test("existing HC email flows now inherit global HC recipient policy", () => {
   const recruitmentSource = read("app/actions/recruitment.ts");
   const mcuSource = read("app/actions/mcu.ts");
   const contractReviewSource = read("app/actions/contract-review.ts");
+  const interviewsSource = read("app/actions/interviews.ts");
+  const testGroupSource = read("app/actions/test-group.ts");
+  const recruitmentTestsSource = read("app/actions/recruitment-tests.ts");
 
   assert.match(helperSource, /getHumanCapitalPolicyCcRecipients/);
   assert.match(recruitmentSource, /getHumanCapitalPolicyCcRecipients/);
   assert.match(recruitmentSource, /cc: resolvedTemplate\.ccList/);
+  assert.match(interviewsSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(interviewsSource, /cc: resolvedTemplate\.ccList/);
   assert.match(mcuSource, /getHumanCapitalPolicyCcRecipients/);
   assert.match(mcuSource, /cc: resolvedClinicTemplate\.ccList/);
   assert.match(mcuSource, /cc: resolvedCandidateTemplate\.ccList/);
+  assert.match(testGroupSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(testGroupSource, /cc: resolvedTemplate\.ccList/);
+  assert.match(recruitmentTestsSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(recruitmentTestsSource, /cc: resolvedTemplate\.ccList/);
   assert.match(contractReviewSource, /getHumanCapitalPolicyCcRecipients/);
   assert.match(contractReviewSource, /cc: resolvedTemplate\.ccList/);
 });
@@ -66,16 +83,26 @@ test("legacy HC flows now support central workflow template overrides", () => {
   const recruitmentSource = read("app/actions/recruitment.ts");
   const mcuSource = read("app/actions/mcu.ts");
   const contractReviewSource = read("app/actions/contract-review.ts");
+  const interviewsSource = read("app/actions/interviews.ts");
+  const testGroupSource = read("app/actions/test-group.ts");
+  const recruitmentTestsSource = read("app/actions/recruitment-tests.ts");
   const workflowSource = read("lib/workflow-email.ts");
 
   assert.match(workflowSource, /export async function resolveWorkflowTemplateContent/);
   assert.match(recruitmentSource, /resolveWorkflowTemplateContent/);
+  assert.match(recruitmentSource, /templateCode: "application_received"/);
   assert.match(recruitmentSource, /templateCode: "hired_email"/);
   assert.match(recruitmentSource, /templateCode: "start_date_email"/);
   assert.match(recruitmentSource, /templateCode: "custom_bulk"/);
+  assert.match(interviewsSource, /resolveWorkflowTemplateContent/);
+  assert.match(interviewsSource, /templateCode: "interview_invitation"/);
   assert.match(mcuSource, /resolveWorkflowTemplateContent/);
   assert.match(mcuSource, /templateCode: "mcu_pengantar"/);
   assert.match(mcuSource, /templateCode: "mcu_invitation"/);
+  assert.match(testGroupSource, /resolveWorkflowTemplateContent/);
+  assert.match(testGroupSource, /templateCode: "test_assigned"/);
+  assert.match(recruitmentTestsSource, /resolveWorkflowTemplateContent/);
+  assert.match(recruitmentTestsSource, /templateCode: "test_assigned"/);
   assert.match(contractReviewSource, /resolveWorkflowTemplateContent/);
   assert.match(contractReviewSource, /templateCode: 'contract_review_approval_notification'/);
   assert.match(contractReviewSource, /templateCode: 'contract_review_test_notification'/);
@@ -94,6 +121,9 @@ test("human capital templates are included in seed and preset registries", () =>
     "hc_performance_review_created",
     "hc_performance_review_submitted",
     "hc_performance_review_acknowledged",
+    "application_received",
+    "interview_invitation",
+    "test_assigned",
     "hired_email",
     "start_date_email",
     "custom_bulk",
@@ -110,4 +140,15 @@ test("human capital templates are included in seed and preset registries", () =>
   assert.match(hcUtilsSource, /"start_date_email"/);
   assert.match(hcUtilsSource, /"custom_bulk"/);
   assert.match(hcUtilsSource, /"contract_review_approval_notification"/);
+  assert.match(hcUtilsSource, /"application_received"/);
+  assert.match(hcUtilsSource, /"interview_invitation"/);
+  assert.match(hcUtilsSource, /"test_assigned"/);
+});
+
+test("db push script prefers non-truncate flow and aborts unknown destructive prompts", () => {
+  const dbPushSource = read("scripts/db-push.ts");
+
+  assert.match(dbPushSource, /No, add the constraint without truncating the table/);
+  assert.match(dbPushSource, /Dihentikan demi keamanan/);
+  assert.match(dbPushSource, /p\.kill\("SIGTERM"\)/);
 });

@@ -24,5 +24,6 @@
 - 2026-06-18: Human Capital email settings and notifications added for employee master, disciplinary, and performance review workflows with preset templates
 - 2026-06-18: Existing HC email flows for recruitment, MCU, and contract review now inherit global Human Capital recipient policy via CC routing
 - 2026-06-18: Legacy HC recruitment, MCU, and contract review flows now support central Email Settings template overrides and are seeded into the main preset registry
+- 2026-06-18: Remaining HC recruitment flows now use central template overrides and HC policy CC for application received, interview invitation, and online test assignment; db-push wrapper now aborts unknown destructive prompts
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard

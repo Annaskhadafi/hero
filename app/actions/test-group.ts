@@ -8,6 +8,8 @@ import { revalidatePath } from "next/cache";
 import { formatInTimeZone } from "date-fns-tz";
 const WITA_TZ = "Asia/Makassar";
 import { getPublicAppUrl } from "@/lib/auth-config";
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
+import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 import {
   type CandidateApplicationIdentity,
   extractCandidateIdentityFromAnswer,
@@ -559,13 +561,23 @@ export async function bulkAssignTestGroupToCandidates(groupId: number, candidate
 </body></html>`;
           text = buildStructuredTestInvitationText(candidate.fullName, groupUrl);
         }
+        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+        const resolvedTemplate = await resolveWorkflowTemplateContent({
+          templateCode: "test_assigned",
+          cc: hcPolicyCc,
+          variables: templateVars,
+          fallbackSubject: subject,
+          fallbackHtml: html,
+          fallbackText: text,
+        });
 
         await sendEmailViaSmtp(smtpSettings, {
           to: candidate.email,
-          subject,
-          html,
-          text,
-          format: emailFormat,
+          cc: resolvedTemplate.ccList,
+          subject: resolvedTemplate.subject,
+          html: resolvedTemplate.html,
+          text: resolvedTemplate.text,
+          format: resolvedTemplate.template ? null : emailFormat,
           templateName: "Test Group Assigned",
           templateCode: "test_assigned",
         });

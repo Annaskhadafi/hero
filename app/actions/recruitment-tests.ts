@@ -12,6 +12,8 @@ import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 import { getPublicAppUrl } from "@/lib/auth-config";
 import { formatInTimeZone } from "date-fns-tz";
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
+import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 const WITA_TZ = "Asia/Makassar";
 import {
   type CandidateApplicationIdentity,
@@ -154,13 +156,23 @@ export async function assignTestToCandidate(testId: number, candidateId: number,
 </body></html>`;
           text = `Halo ${candidate.fullName},\n\nSelamat! Anda lolos ke tahap selanjutnya dan diundang untuk mengikuti tes ${test.title} untuk posisi ${candidate.jobTitle || "yang dilamar"}.\n\nMulai tes: ${testLink}\n\nLink berlaku ${expiresInDays} hari.\n\nTerima kasih,\nTim Human Capital\nPT Chitra Paratama`;
         }
+        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+        const resolvedTemplate = await resolveWorkflowTemplateContent({
+          templateCode: "test_assigned",
+          cc: hcPolicyCc,
+          variables: templateVars,
+          fallbackSubject: subject,
+          fallbackHtml: html,
+          fallbackText: text,
+        });
 
         await sendEmailViaSmtp(smtpSettings, {
           to: candidate.email,
-          subject,
-          html,
-          text,
-          format: emailFormat,
+          cc: resolvedTemplate.ccList,
+          subject: resolvedTemplate.subject,
+          html: resolvedTemplate.html,
+          text: resolvedTemplate.text,
+          format: resolvedTemplate.template ? null : emailFormat,
           templateName: "Online Test Assigned",
           templateCode: "test_assigned",
         });
@@ -286,13 +298,23 @@ export async function bulkAssignTestToCandidates(testId: number, candidateIds: n
 </body></html>`;
           text = `Halo ${candidate.fullName},\n\nSelamat! Anda lolos ke tahap selanjutnya dan diundang untuk mengikuti tes ${test.title} untuk posisi ${candidate.jobTitle || "yang dilamar"}.\n\nMulai tes: ${testLink}\n\nLink berlaku ${expiresInDays} hari.\n\nTerima kasih,\nTim Human Capital\nPT Chitra Paratama`;
         }
+        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+        const resolvedTemplate = await resolveWorkflowTemplateContent({
+          templateCode: "test_assigned",
+          cc: hcPolicyCc,
+          variables: templateVars,
+          fallbackSubject: subject,
+          fallbackHtml: html,
+          fallbackText: text,
+        });
 
         await sendEmailViaSmtp(smtpSettings, {
           to: candidate.email,
-          subject,
-          html,
-          text,
-          format: emailFormat,
+          cc: resolvedTemplate.ccList,
+          subject: resolvedTemplate.subject,
+          html: resolvedTemplate.html,
+          text: resolvedTemplate.text,
+          format: resolvedTemplate.template ? null : emailFormat,
           templateName: "Online Test Assigned",
           templateCode: "test_assigned",
         });
@@ -538,6 +560,5 @@ export async function deleteOnlineTest(id: number) {
   await db.delete(hcOnlineTests).where(eq(hcOnlineTests.id, id));
   revalidatePath("/dashboard/hc/recruitment/tests");
 }
-
 
 

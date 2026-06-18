@@ -9,6 +9,8 @@ import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
+import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 
 const FALLBACK_HTML = (vars: Record<string, string>) => `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 0;">
@@ -140,13 +142,23 @@ export async function scheduleCandidateInterview(candidateId: number, data: {
         html = FALLBACK_HTML(templateVars);
         text = FALLBACK_TEXT(templateVars);
       }
+      const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+      const resolvedTemplate = await resolveWorkflowTemplateContent({
+        templateCode: "interview_invitation",
+        cc: hcPolicyCc,
+        variables: templateVars,
+        fallbackSubject: subject,
+        fallbackHtml: html,
+        fallbackText: text,
+      });
 
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
-        subject,
-        html,
-        text,
-        format: emailFormat,
+        cc: resolvedTemplate.ccList,
+        subject: resolvedTemplate.subject,
+        html: resolvedTemplate.html,
+        text: resolvedTemplate.text,
+        format: resolvedTemplate.template ? null : emailFormat,
         templateName: "Interview Invitation",
         templateCode: "interview_invitation",
       });
@@ -277,10 +289,23 @@ export async function bulkScheduleInterviews(candidateIds: number[], data: {
           html = FALLBACK_HTML(templateVars);
           text = FALLBACK_TEXT(templateVars);
         }
+        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+        const resolvedTemplate = await resolveWorkflowTemplateContent({
+          templateCode: "interview_invitation",
+          cc: hcPolicyCc,
+          variables: templateVars,
+          fallbackSubject: subject,
+          fallbackHtml: html,
+          fallbackText: text,
+        });
 
         await sendEmailViaSmtp(smtpSettings, {
-          to: candidate.email, subject, html, text,
-          format: emailFormat,
+          to: candidate.email,
+          cc: resolvedTemplate.ccList,
+          subject: resolvedTemplate.subject,
+          html: resolvedTemplate.html,
+          text: resolvedTemplate.text,
+          format: resolvedTemplate.template ? null : emailFormat,
           templateName: "Interview Invitation", templateCode: "interview_invitation",
         });
       }
