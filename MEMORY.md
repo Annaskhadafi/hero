@@ -18,5 +18,6 @@
 ## History
 - 2026-06-14: Initial memory system setup
 - 2026-06-18: Stage 2 email workflow completed for resend invitation, workflow template seeds, and source-inspection coverage
+- 2026-06-18: Stage 3 email settings UI adds workflow preset registry, placeholder metadata, and live preview for template editing
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard
