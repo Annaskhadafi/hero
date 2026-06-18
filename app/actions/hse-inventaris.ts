@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/db"
 import { hseInventories, hrEmployees } from "@/db/schema/hero"
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin"
-import { sendEmailViaSmtp } from "@/lib/email-delivery"
+import { sendHseSafetyEmail } from "@/lib/hse-safety-email"
 
 // Helper untuk hitung tanggal expired otomatis
 function calculateExpirationDate(purchaseDateStr: string | Date | null | undefined, validityMonths: number | null | undefined) {
@@ -273,20 +273,26 @@ export async function runHseInventoryReminderCheck() {
           PIC Terkait: ${item.picName}
         `
 
-        for (const recipient of recipients) {
-          try {
-            await sendEmailViaSmtp(smtpSettings, {
-              to: recipient,
-              subject,
-              html,
-              text,
-              templateName: "HSE Inventory Expiration Reminder",
-              templateCode: "hse_inventory_reminder",
-            })
-            sentCount++
-          } catch (err) {
-            console.error(`Failed to send reminder email to ${recipient}:`, err)
-          }
+        const result = await sendHseSafetyEmail({
+          templateCode: "hse_inventory_reminder",
+          templateName: "HSE Inventory Expiration Reminder",
+          variables: {
+            itemName: item.name,
+            category: item.category,
+            location: item.location,
+            purchaseDate: formattedPurchaseDate,
+            validityMonths: item.validityMonths ?? "-",
+            expirationDate: formattedExpDate,
+            picName: item.picName,
+          },
+          extraTo: recipients,
+          fallbackSubject: subject,
+          fallbackHtml: html,
+          fallbackText: text,
+        })
+
+        if (result.status === "sent") {
+          sentCount += result.sentCount
         }
 
         // Tandai sudah dikirim

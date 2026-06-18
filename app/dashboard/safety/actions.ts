@@ -16,6 +16,7 @@ import {
   safetyWeeklyActivities,
 } from "@/db/schema/hero"
 import { heroSafetyInductions } from "@/db/schema/safety-induction"
+import { buildHseSafetyEmail, sendHseSafetyEmail } from "@/lib/hse-safety-email"
 
 type MutationState = { ok: boolean; message: string }
 
@@ -343,11 +344,70 @@ export async function manageSafetyInspectionAction(formData: FormData): Promise<
     }
 
     if (intent === "update") {
-      await db.update(safetyInspections).set(values).where(eq(safetyInspections.id, readId(formData)))
+      const id = readId(formData)
+      const [previous] = await db.select().from(safetyInspections).where(eq(safetyInspections.id, id)).limit(1)
+      const [updated] = await db
+        .update(safetyInspections)
+        .set(values)
+        .where(eq(safetyInspections.id, id))
+        .returning()
+
+      if (previous && previous.status !== updated.status) {
+        const emailContent = buildHseSafetyEmail({
+          title: "Update status safety inspection",
+          intro: "Status safety inspection berubah dari workspace safety data.",
+          details: [
+            `Judul: ${updated.title}`,
+            `Lokasi: ${updated.location || "-"}`,
+            `Status lama: ${previous.status || "-"}`,
+            `Status baru: ${updated.status || "-"}`,
+          ],
+        })
+
+        await sendHseSafetyEmail({
+          templateCode: "hse_safety_inspection_status_update",
+          templateName: "HSE Safety Inspection Status Update",
+          variables: {
+            title: updated.title,
+            location: updated.location,
+            previousStatus: previous.status,
+            status: updated.status,
+          },
+          fallbackSubject: `Update inspection: ${updated.title}`,
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+        })
+      }
+
       return success("Inspeksi diperbarui.")
     }
 
-    await db.insert(safetyInspections).values(values)
+    const [created] = await db.insert(safetyInspections).values(values).returning()
+    const emailContent = buildHseSafetyEmail({
+      title: "Safety inspection baru",
+      intro: "Safety inspection baru dibuat dari workspace safety data.",
+      details: [
+        `Judul: ${created.title}`,
+        `Tanggal: ${created.date.toLocaleDateString("id-ID")}`,
+        `Lokasi: ${created.location || "-"}`,
+        `Status: ${created.status || "-"}`,
+      ],
+    })
+
+    await sendHseSafetyEmail({
+      templateCode: "hse_safety_inspection_created",
+      templateName: "HSE Safety Inspection Created",
+      variables: {
+        title: created.title,
+        inspectionDate: created.date,
+        location: created.location,
+        status: created.status,
+      },
+      fallbackSubject: `Safety inspection baru: ${created.title}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    })
+
     return success("Inspeksi ditambahkan.")
   } catch (error) {
     return failure(error)
@@ -379,7 +439,32 @@ export async function manageSafetyInductionAction(formData: FormData): Promise<M
       return success("Induksi diperbarui.")
     }
 
-    await db.insert(heroSafetyInductions).values(values)
+    const [created] = await db.insert(heroSafetyInductions).values(values).returning()
+    const emailContent = buildHseSafetyEmail({
+      title: "Safety induction baru",
+      intro: "Form safety induction baru dibuat dari workspace safety data.",
+      details: [
+        `Nama: ${created.fullName}`,
+        `Instansi: ${created.companyOrigin || "-"}`,
+        `Telepon: ${created.phoneNumber || "-"}`,
+        `Tujuan: ${created.purpose || "-"}`,
+      ],
+    })
+
+    await sendHseSafetyEmail({
+      templateCode: "hse_safety_induction_submitted",
+      templateName: "HSE Safety Induction Submitted",
+      variables: {
+        fullName: created.fullName,
+        companyOrigin: created.companyOrigin,
+        phoneNumber: created.phoneNumber,
+        purpose: created.purpose,
+      },
+      fallbackSubject: `Safety induction baru: ${created.fullName}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    })
+
     return success("Induksi ditambahkan.")
   } catch (error) {
     return failure(error)

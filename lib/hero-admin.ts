@@ -36,6 +36,7 @@ import {
   hrSections,
   hrSites,
   hrWorkLocations,
+  hseSafetyNotificationConfig,
   notificationChannelRules,
   notificationChannelSettings,
   notificationDeliveries,
@@ -1697,6 +1698,146 @@ const EMAIL_TEMPLATE_SEEDS = [
       'Halo {{employeeName}}, {{intro}} Status: {{status}}. {{detailsSummary}}',
     isActive: true,
   },
+  {
+    name: 'HSE Observation Alert',
+    templateCode: 'hse_observation_alert',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Observasi HSE baru: {{title}}',
+    htmlContent:
+      '<p>Observasi HSE baru telah dibuat.</p><p>Site: {{siteName}}</p><p>Pelapor: {{reporterName}}</p><p>Kategori: {{category}}</p><p>Severity: {{severity}}</p><p>Lokasi: {{location}}</p><p>{{notes}}</p>',
+    textContent:
+      'Observasi HSE baru telah dibuat. Site: {{siteName}}. Pelapor: {{reporterName}}. Kategori: {{category}}. Severity: {{severity}}. Lokasi: {{location}}. {{notes}}',
+    isActive: true,
+  },
+  {
+    name: 'HSE Observation Status Update',
+    templateCode: 'hse_observation_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update observasi HSE: {{title}}',
+    htmlContent:
+      '<p>Status observasi HSE berubah.</p><p>Judul: {{title}}</p><p>Lokasi: {{location}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Status observasi HSE berubah. Judul: {{title}}. Lokasi: {{location}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Incident Alert',
+    templateCode: 'hse_incident_alert',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Incident HSE baru: {{title}}',
+    htmlContent:
+      '<p>Incident HSE baru telah dibuat.</p><p>Tipe: {{type}}</p><p>Impact: {{impact}}</p><p>Unit: {{unitNumber}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Incident HSE baru telah dibuat. Tipe: {{type}}. Impact: {{impact}}. Unit: {{unitNumber}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Incident Status Update',
+    templateCode: 'hse_incident_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update incident HSE: {{title}}',
+    htmlContent:
+      '<p>Status incident HSE berubah.</p><p>Judul: {{title}}</p><p>Unit: {{unitNumber}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Status incident HSE berubah. Judul: {{title}}. Unit: {{unitNumber}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Incident Record Created',
+    templateCode: 'hse_incident_record_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Incident report baru: {{title}}',
+    htmlContent:
+      '<p>Incident report HSE baru dicatat.</p><p>Kategori: {{category}}</p><p>Severity: {{severity}}</p><p>PIC: {{picName}}</p><p>Status: {{investigationStatus}}</p>',
+    textContent:
+      'Incident report HSE baru dicatat. Kategori: {{category}}. Severity: {{severity}}. PIC: {{picName}}. Status: {{investigationStatus}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Incident Record Status Update',
+    templateCode: 'hse_incident_record_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update incident report: {{title}}',
+    htmlContent:
+      '<p>Status incident report berubah.</p><p>Judul: {{title}}</p><p>Severity: {{severity}}</p><p>Status lama: {{previousStatus}}</p><p>Status baru: {{investigationStatus}}</p><p>PIC: {{picName}}</p>',
+    textContent:
+      'Status incident report berubah. Judul: {{title}}. Severity: {{severity}}. Status lama: {{previousStatus}}. Status baru: {{investigationStatus}}. PIC: {{picName}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Safety Inspection Created',
+    templateCode: 'hse_safety_inspection_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Safety inspection baru: {{title}}',
+    htmlContent:
+      '<p>Safety inspection baru dibuat.</p><p>Tanggal: {{inspectionDate}}</p><p>Lokasi: {{location}}</p><p>Kategori: {{category}}</p><p>Status: {{status}}</p><p>PIC: {{picName}}</p>',
+    textContent:
+      'Safety inspection baru dibuat. Tanggal: {{inspectionDate}}. Lokasi: {{location}}. Kategori: {{category}}. Status: {{status}}. PIC: {{picName}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Safety Inspection Status Update',
+    templateCode: 'hse_safety_inspection_status_update',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update safety inspection: {{title}}',
+    htmlContent:
+      '<p>Status safety inspection berubah.</p><p>Judul: {{title}}</p><p>Lokasi: {{location}}</p><p>Status lama: {{previousStatus}}</p><p>Status baru: {{status}}</p><p>PIC: {{picName}}</p>',
+    textContent:
+      'Status safety inspection berubah. Judul: {{title}}. Lokasi: {{location}}. Status lama: {{previousStatus}}. Status baru: {{status}}. PIC: {{picName}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Safety Induction Submitted',
+    templateCode: 'hse_safety_induction_submitted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Safety induction baru: {{fullName}}',
+    htmlContent:
+      '<p>Form safety induction baru disubmit.</p><p>Nama: {{fullName}}</p><p>Instansi: {{companyOrigin}}</p><p>Telepon: {{phoneNumber}}</p><p>Tujuan: {{purpose}}</p>',
+    textContent:
+      'Form safety induction baru disubmit. Nama: {{fullName}}. Instansi: {{companyOrigin}}. Telepon: {{phoneNumber}}. Tujuan: {{purpose}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE Inventory Reminder',
+    templateCode: 'hse_inventory_reminder',
+    templateType: 'Reminder',
+    deliveryChannel: 'email',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: '[HERO HSE] Pengingat Kedaluwarsa Aset: {{itemName}}',
+    htmlContent:
+      '<p>Aset HSE mendekati kedaluwarsa.</p><p>Nama: {{itemName}}</p><p>Kategori: {{category}}</p><p>Lokasi: {{location}}</p><p>Tanggal beli: {{purchaseDate}}</p><p>Masa berlaku: {{validityMonths}}</p><p>Tanggal expired: {{expirationDate}}</p><p>PIC: {{picName}}</p>',
+    textContent:
+      'Aset HSE mendekati kedaluwarsa. Nama: {{itemName}}. Kategori: {{category}}. Lokasi: {{location}}. Tanggal beli: {{purchaseDate}}. Masa berlaku: {{validityMonths}}. Tanggal expired: {{expirationDate}}. PIC: {{picName}}.',
+    isActive: true,
+  },
 ]
 
 const NOTIFICATION_CHANNEL_SETTING_SEEDS = [
@@ -1914,6 +2055,16 @@ async function ensureHeroGovernanceTables() {
       text_content text,
       sent_at timestamp,
       created_at timestamp not null default now()
+    );
+  `)
+
+  await db.execute(sql`
+    create table if not exists hero_hse_safety_notification_config (
+      id serial primary key,
+      recipient_emails text not null default '',
+      cc_emails text not null default '',
+      is_active boolean not null default true,
+      updated_at timestamp not null default now()
     );
   `)
 
@@ -4054,6 +4205,26 @@ export async function getEmailTemplatesData() {
     .select()
     .from(emailTemplates)
     .orderBy(desc(emailTemplates.isActive), asc(emailTemplates.name), asc(emailTemplates.id))
+}
+
+export async function getHseSafetyNotificationConfigData() {
+  await ensureHeroGovernanceSeedData()
+
+  const [config] = await db
+    .select()
+    .from(hseSafetyNotificationConfig)
+    .orderBy(desc(hseSafetyNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: '',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
 }
 
 export async function getEmailSmtpSettingsData() {

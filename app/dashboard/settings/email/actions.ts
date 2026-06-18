@@ -4,7 +4,12 @@ import { desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { emailSmtpSettings, emailTemplates, notificationChannelSettings } from "@/db/schema/hero";
+import {
+  emailSmtpSettings,
+  emailTemplates,
+  hseSafetyNotificationConfig,
+  notificationChannelSettings,
+} from "@/db/schema/hero";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
 import { EMAIL_TEMPLATE_PRESET_MAP, EMAIL_TEMPLATE_PRESETS } from "@/lib/email-template-presets";
 import { getServerSession } from "@/lib/auth-session";
@@ -95,6 +100,12 @@ const emailTemplatePresetSchema = z.object({
     .trim()
     .min(1, "Kode template preset wajib diisi.")
     .regex(/^[a-z0-9_]+$/, "Kode template preset tidak valid."),
+});
+
+const hseSafetyNotificationSchema = z.object({
+  recipientEmails: z.string().trim().default(""),
+  ccEmails: z.string().trim().default(""),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
 
 const INITIAL_STATE: EmailSettingsActionState = {
@@ -639,6 +650,58 @@ export async function syncEmailTemplatePresetsAction(
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Gagal sync preset template email.",
+    };
+  }
+}
+
+export async function saveHseSafetyNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = hseSafetyNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima HSE Safety belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: hseSafetyNotificationConfig.id })
+      .from(hseSafetyNotificationConfig)
+      .limit(1);
+
+    const values = {
+      recipientEmails: parsed.data.recipientEmails,
+      ccEmails: parsed.data.ccEmails,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(hseSafetyNotificationConfig)
+        .set(values)
+        .where(eq(hseSafetyNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(hseSafetyNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Penerima HSE Safety berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal menyimpan penerima HSE Safety.",
     };
   }
 }

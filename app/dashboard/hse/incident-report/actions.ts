@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { hseIncidentRecords } from '@/db/schema/hero'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 
 async function requireIncidentPermission(action: 'view' | 'edit' | 'delete') {
   const permission = await getCurrentMenuPermission('hse_incident_report')
@@ -91,6 +92,33 @@ export async function createIncidentRecord(payload: {
       })
       .returning()
 
+    const emailContent = buildHseSafetyEmail({
+      title: 'Incident report baru',
+      intro: 'Incident report HSE baru telah dicatat di HERO.',
+      details: [
+        `Judul: ${inserted.title}`,
+        `Kategori: ${inserted.category}`,
+        `Severity: ${inserted.severity}`,
+        `PIC: ${inserted.picName}`,
+        `Status investigasi: ${inserted.investigationStatus}`,
+      ],
+    })
+
+    await sendHseSafetyEmail({
+      templateCode: 'hse_incident_record_created',
+      templateName: 'HSE Incident Record Created',
+      variables: {
+        title: inserted.title,
+        category: inserted.category,
+        severity: inserted.severity,
+        picName: inserted.picName,
+        investigationStatus: inserted.investigationStatus,
+      },
+      fallbackSubject: `Incident report baru: ${inserted.title}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    })
+
     revalidatePath('/dashboard/hse/incident-report')
     revalidatePath('/mobile/hse/observasi-emergency')
     return { success: true, data: inserted }
@@ -119,6 +147,11 @@ export async function updateIncidentRecord(
 ) {
   try {
     await requireIncidentPermission('edit')
+    const [previous] = await db
+      .select()
+      .from(hseIncidentRecords)
+      .where(eq(hseIncidentRecords.id, id))
+      .limit(1)
     const [updated] = await db
       .update(hseIncidentRecords)
       .set({
@@ -127,6 +160,40 @@ export async function updateIncidentRecord(
       })
       .where(eq(hseIncidentRecords.id, id))
       .returning()
+
+    if (
+      previous &&
+      updated &&
+      payload.investigationStatus &&
+      payload.investigationStatus !== previous.investigationStatus
+    ) {
+      const emailContent = buildHseSafetyEmail({
+        title: 'Update incident report',
+        intro: 'Status incident report HSE berubah dan perlu diketahui tim safety.',
+        details: [
+          `Judul: ${updated.title}`,
+          `Severity: ${updated.severity}`,
+          `Status lama: ${previous.investigationStatus}`,
+          `Status baru: ${updated.investigationStatus}`,
+          `PIC: ${updated.picName}`,
+        ],
+      })
+
+      await sendHseSafetyEmail({
+        templateCode: 'hse_incident_record_status_update',
+        templateName: 'HSE Incident Record Status Update',
+        variables: {
+          title: updated.title,
+          severity: updated.severity,
+          previousStatus: previous.investigationStatus,
+          investigationStatus: updated.investigationStatus,
+          picName: updated.picName,
+        },
+        fallbackSubject: `Update incident report: ${updated.title}`,
+        fallbackHtml: emailContent.html,
+        fallbackText: emailContent.text,
+      })
+    }
 
     revalidatePath('/dashboard/hse/incident-report')
     revalidatePath('/mobile/hse/observasi-emergency')

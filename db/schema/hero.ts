@@ -2297,6 +2297,14 @@ export const hseInventories = pgTable('hero_hse_inventories', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hseSafetyNotificationConfig = pgTable('hero_hse_safety_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const hseIncidentRecords = pgTable('hero_hse_incident_records', {
   id: serial('id').primaryKey(),
   title: text('title').notNull(),
@@ -3029,4 +3037,3 @@ export const sioReminderConfig = pgTable('hero_sio_reminder_config', {
   isActive: boolean('is_active').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
-

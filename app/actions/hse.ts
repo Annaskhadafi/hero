@@ -16,6 +16,11 @@ import {
 import { auth } from "@/lib/auth";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { ensureHeroGovernanceSeedData, getEmailSmtpSettingsData } from "@/lib/hero-admin";
+import {
+  buildHseSafetyEmail,
+  getHseSafetyConfiguredRecipients,
+  sendHseSafetyEmail,
+} from "@/lib/hse-safety-email";
 import type {
   EmergencyIncidentSyncPayload,
   HseObservationSyncPayload,
@@ -145,8 +150,17 @@ async function resolveEmergencyRecipients(employee: {
     );
 
   const seen = new Set<string>();
+  const configured = await getHseSafetyConfiguredRecipients();
+  const allRecipients = [
+    ...recipients,
+    ...configured.to.map((email) => ({
+      id: 0,
+      name: "HSE Safety",
+      email,
+    })),
+  ];
 
-  return recipients.filter((recipient) => {
+  return allRecipients.filter((recipient) => {
     const key = recipient.email.trim().toLowerCase();
     if (!key || seen.has(key)) {
       return false;
@@ -182,6 +196,7 @@ async function sendEmergencyAlerts(input: {
   });
 
   const smtpSettings = await getEmailSmtpSettingsData();
+  const configured = await getHseSafetyConfiguredRecipients();
   const canSendEmail = smtpSettings.host.trim().length > 0 && smtpSettings.fromEmail.trim().length > 0;
   let sentCount = 0;
 
@@ -233,11 +248,12 @@ async function sendEmergencyAlerts(input: {
     try {
       await sendEmailViaSmtp(smtpSettings, {
         to: recipient.email,
+        cc: configured.cc,
         subject,
         html,
         text,
         templateName: "Emergency Incident Alert",
-        templateCode: "emergency_incident_alert",
+        templateCode: "hse_incident_alert",
         actorEmail: input.reporterEmail,
       });
 
@@ -295,6 +311,38 @@ export async function submitHseObservationFromPayload(payload: HseObservationSyn
       observedAt: new Date(),
     })
     .returning({ id: hseObservations.id });
+
+  const emailContent = buildHseSafetyEmail({
+    title: "Observasi HSE baru",
+    intro: "Observasi HSE baru dikirim dari mobile dan menunggu tindak lanjut tim safety.",
+    details: [
+      `Pelapor: ${employee.name}`,
+      `Site: ${employee.siteName}`,
+      `Judul: ${title}`,
+      `Kategori: ${category}`,
+      `Severity: ${severity}`,
+      `Lokasi: ${location}`,
+      notes ? `Catatan: ${notes}` : null,
+    ],
+  })
+
+  await sendHseSafetyEmail({
+    templateCode: "hse_observation_alert",
+    templateName: "HSE Observation Alert",
+    variables: {
+      reporterName: employee.name,
+      siteName: employee.siteName,
+      title,
+      category,
+      severity,
+      location,
+      notes,
+    },
+    actorEmail: employee.email,
+    fallbackSubject: `Observasi HSE baru: ${title}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  })
 
   revalidatePath("/mobile/hse");
   revalidatePath("/dashboard/hse");

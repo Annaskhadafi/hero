@@ -16,6 +16,7 @@ import {
   getOperationalApprovalRecipientEmails,
   sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
+import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
@@ -4593,6 +4594,35 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
         observedAt: parseOperationalDate(payload.observedAt),
       })
 
+      const actorEmail = await getCurrentActorEmail()
+      const emailContent = buildHseSafetyEmail({
+        title: 'Observasi HSE baru',
+        intro: 'Observasi HSE baru dibuat dari dashboard operasional.',
+        details: [
+          `Judul: ${payload.title}`,
+          `Kategori: ${payload.category}`,
+          `Severity: ${payload.severity}`,
+          `Lokasi: ${payload.location}`,
+          `Catatan: ${payload.notes}`,
+        ],
+      })
+
+      await sendHseSafetyEmail({
+        templateCode: 'hse_observation_alert',
+        templateName: 'HSE Observation Alert',
+        actorEmail,
+        variables: {
+          title: payload.title,
+          category: payload.category,
+          severity: payload.severity,
+          location: payload.location,
+          notes: payload.notes,
+        },
+        fallbackSubject: `Observasi HSE baru: ${payload.title}`,
+        fallbackHtml: emailContent.html,
+        fallbackText: emailContent.text,
+      })
+
       await notifyEmployeesForHseAlert({
         siteId: payload.siteId,
         title: `HSE alert: ${payload.title}`,
@@ -4623,6 +4653,31 @@ export async function manageHseObservationAction(formData: FormData): Promise<Ad
         .limit(1)
 
       if (currentObservation) {
+        const actorEmail = await getCurrentActorEmail()
+        const emailContent = buildHseSafetyEmail({
+          title: 'Update status observasi HSE',
+          intro: 'Status observasi HSE berubah dan perlu diketahui tim safety.',
+          details: [
+            `Judul: ${currentObservation.title}`,
+            `Lokasi: ${currentObservation.location}`,
+            `Status baru: ${payload.status.replaceAll('_', ' ')}`,
+          ],
+        })
+
+        await sendHseSafetyEmail({
+          templateCode: 'hse_observation_status_update',
+          templateName: 'HSE Observation Status Update',
+          actorEmail,
+          variables: {
+            title: currentObservation.title,
+            location: currentObservation.location,
+            status: payload.status.replaceAll('_', ' '),
+          },
+          fallbackSubject: `Update observasi HSE: ${currentObservation.title}`,
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+        })
+
         await notifyEmployeesForHseAlert({
           siteId: currentObservation.siteId,
           title: `HSE update: ${currentObservation.title}`,
@@ -4690,6 +4745,35 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
         reportedAt: parseOperationalDate(payload.reportedAt),
       })
 
+      const actorEmail = await getCurrentActorEmail()
+      const emailContent = buildHseSafetyEmail({
+        title: 'Incident HSE baru',
+        intro: 'Incident HSE baru dibuat dari dashboard operasional.',
+        details: [
+          `Judul: ${payload.title}`,
+          `Tipe: ${payload.type}`,
+          `Impact: ${payload.impact}`,
+          `Unit: ${payload.unitNumber || '-'}`,
+          `Status: ${payload.status}`,
+        ],
+      })
+
+      await sendHseSafetyEmail({
+        templateCode: 'hse_incident_alert',
+        templateName: 'HSE Incident Alert',
+        actorEmail,
+        variables: {
+          title: payload.title,
+          type: payload.type,
+          impact: payload.impact,
+          unitNumber: payload.unitNumber || '-',
+          status: payload.status,
+        },
+        fallbackSubject: `Incident HSE baru: ${payload.title}`,
+        fallbackHtml: emailContent.html,
+        fallbackText: emailContent.text,
+      })
+
       await notifyEmployeesForHseAlert({
         siteId: payload.siteId,
         title: `Incident HSE: ${payload.title}`,
@@ -4717,6 +4801,31 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
         .limit(1)
 
       if (currentIncident) {
+        const actorEmail = await getCurrentActorEmail()
+        const emailContent = buildHseSafetyEmail({
+          title: 'Update status incident HSE',
+          intro: 'Status incident HSE berubah dan perlu diketahui tim safety.',
+          details: [
+            `Judul: ${currentIncident.title}`,
+            `Unit: ${currentIncident.unitNumber || '-'}`,
+            `Status baru: ${payload.status.replaceAll('_', ' ')}`,
+          ],
+        })
+
+        await sendHseSafetyEmail({
+          templateCode: 'hse_incident_status_update',
+          templateName: 'HSE Incident Status Update',
+          actorEmail,
+          variables: {
+            title: currentIncident.title,
+            unitNumber: currentIncident.unitNumber || '-',
+            status: payload.status.replaceAll('_', ' '),
+          },
+          fallbackSubject: `Update incident HSE: ${currentIncident.title}`,
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+        })
+
         await notifyEmployeesForHseAlert({
           siteId: currentIncident.siteId,
           title: `Incident update: ${currentIncident.title}`,
