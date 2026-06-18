@@ -4,7 +4,12 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Bug, Plus, Settings } from "lucide-react"
 
-import { deleteContractReview, generateTestContractReview, saveContractReviewSettings } from "@/app/actions/contract-review"
+import {
+  deleteContractReview,
+  generateTestContractReview,
+  saveContractReviewSettings,
+  sendDueContractReviewReminders,
+} from "@/app/actions/contract-review"
 import { AdminPageShell } from "@/components/admin-page-shell"
 import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner"
 import { Button } from "@/components/ui/button"
@@ -25,6 +30,7 @@ export function ContractReviewClientPage({ reviews, employees, settings }: { rev
   const [settingsForm, setSettingsForm] = useState(settings)
   const [testLinks, setTestLinks] = useState<Array<{ step: number; role: string; name: string; url: string }> | null>(null)
   const [isTestRunning, setIsTestRunning] = useState(false)
+  const [isReminderRunning, setIsReminderRunning] = useState(false)
   const access = { canView: true, canEdit: true, canDelete: true }
 
   const employeeOptions = employees.map((emp: any) => ({
@@ -90,6 +96,19 @@ export function ContractReviewClientPage({ reviews, employees, settings }: { rev
     }
   }
 
+  const handleSendReminders = async () => {
+    setIsReminderRunning(true)
+    const result = await sendDueContractReviewReminders()
+    setIsReminderRunning(false)
+
+    if (result.success) {
+      toast.success(`Reminder contract review terkirim: ${result.sent}, dilewati: ${result.skipped}`)
+      router.refresh()
+    } else {
+      toast.error(result.error || 'Gagal mengirim reminder contract review')
+    }
+  }
+
   return (
     <AdminPageShell eyebrow="HC • Contract & Probation" title="Employee Review" description="Kelola evaluasi probation dan contract extension karyawan.">
       <HcWorkspaceBanner
@@ -114,6 +133,9 @@ export function ContractReviewClientPage({ reviews, employees, settings }: { rev
             </Button>
             <Button variant="secondary" onClick={handleTestApproval} disabled={isTestRunning}>
               <Bug className="size-4" /> {isTestRunning ? 'Generating...' : 'Test Approval'}
+            </Button>
+            <Button variant="outline" onClick={handleSendReminders} disabled={isReminderRunning}>
+              {isReminderRunning ? 'Sending reminders...' : 'Send Reminders'}
             </Button>
             <Button onClick={() => router.push('/dashboard/hc/contract-review/form')} className={hcPrimaryActionClassName}>
               <Plus className="size-4" />Tambah Review

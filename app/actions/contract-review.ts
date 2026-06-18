@@ -6,6 +6,7 @@ import {
   emailSmtpSettings,
   employees,
   hcContractReviewApprovals,
+  hcContractReviewReminders,
   hcContractReviewSettings,
   hcEmployeeContractReviews,
   hrEmployees,
@@ -18,6 +19,7 @@ import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-deliv
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -280,6 +282,33 @@ function isPjoOrTechnical(position: string) {
   return normalized.includes('pjo') || normalized.includes('technical') || /\bte\b/i.test(position)
 }
 
+function parseIsoDate(value: string | null | undefined) {
+  if (!value?.trim()) {
+    return null
+  }
+
+  const parsed = new Date(`${value}T00:00:00`)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function formatDisplayDate(value: Date) {
+  return value.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function differenceInCalendarDays(target: Date, reference: Date) {
+  const targetUtc = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
+  const referenceUtc = Date.UTC(reference.getFullYear(), reference.getMonth(), reference.getDate())
+  return Math.round((targetUtc - referenceUtc) / (24 * 60 * 60 * 1000))
+}
+
+function normalizeReminderType(daysUntilEnd: number) {
+  return `H-${daysUntilEnd}`
+}
+
 async function getUserByName(name: string, fallbackEmail?: string) {
   const [row] = await db
     .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
@@ -362,6 +391,204 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
     approverRole: step.role,
     status: index === 0 ? 'pending' : 'waiting',
   }))
+}
+
+async function getContractReviewReminderContext(review: typeof hcEmployeeContractReviews.$inferSelect) {
+  const [approvals, hrEmployee] = await Promise.all([
+    db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, review.id))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder)),
+    review.employeeId
+      ? db
+          .select({ employeeId: hrEmployees.employeeId })
+          .from(hrEmployees)
+          .where(eq(hrEmployees.id, review.employeeId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
+  ])
+
+  const pendingApproval =
+    approvals.find((item) => item.status === 'pending') ??
+    approvals.find((item) => item.status === 'waiting') ??
+    null
+
+  let employeeSection = ''
+  let employeeSite = ''
+  let employeeSn = ''
+
+  if (hrEmployee?.employeeId) {
+    const sn = normalizeSn(hrEmployee.employeeId)
+    employeeSn = sn
+    const [csEmp] = await db
+      .select({
+        section: centralServiceEmployees.section,
+        siteName: centralServiceEmployees.siteName,
+      })
+      .from(centralServiceEmployees)
+      .where(
+        or(
+          eq(centralServiceEmployees.employeeSn, sn),
+          eq(centralServiceEmployees.employeeSn, `EMP-${sn}`),
+        ),
+      )
+      .limit(1)
+
+    if (csEmp) {
+      employeeSection = csEmp.section || ''
+      employeeSite = csEmp.siteName || ''
+    }
+  }
+
+  return {
+    pendingApproval,
+    employeeSection,
+    employeeSite,
+    employeeSn,
+  }
+}
+
+export async function sendDueContractReviewReminders() {
+  await ensureContractReviewWorkflowTables()
+
+  const smtpSettings = await getSmtpSettings()
+  if (!smtpSettings?.host || !smtpSettings.fromEmail) {
+    return { success: false as const, error: 'SMTP belum dikonfigurasi.', sent: 0, skipped: 0 }
+  }
+
+  const reminderOffsets = new Set([60, 30, 14, 7, 1])
+  const today = new Date()
+  const baseUrl = await getBaseUrl()
+  const settings = await getContractReviewSettings()
+
+  const reviews = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(or(eq(hcEmployeeContractReviews.status, 'draft'), eq(hcEmployeeContractReviews.status, 'in_progress')))
+    .orderBy(desc(hcEmployeeContractReviews.updatedAt))
+
+  let sent = 0
+  let skipped = 0
+
+  for (const review of reviews) {
+    const contractEndDate = parseIsoDate(review.contractEndDate)
+    if (!contractEndDate) {
+      skipped += 1
+      continue
+    }
+
+    const daysUntilEnd = differenceInCalendarDays(contractEndDate, today)
+    if (!reminderOffsets.has(daysUntilEnd)) {
+      skipped += 1
+      continue
+    }
+
+    const reminderType = normalizeReminderType(daysUntilEnd)
+    const { pendingApproval, employeeSection, employeeSite, employeeSn } =
+      await getContractReviewReminderContext(review)
+
+    if (!pendingApproval?.approverEmail?.trim()) {
+      skipped += 1
+      continue
+    }
+
+    const [existingReminder] = await db
+      .select({ id: hcContractReviewReminders.id })
+      .from(hcContractReviewReminders)
+      .where(
+        and(
+          eq(hcContractReviewReminders.reviewId, review.id),
+          eq(hcContractReviewReminders.reminderType, reminderType),
+          eq(hcContractReviewReminders.recipientEmail, pendingApproval.approverEmail),
+        ),
+      )
+      .limit(1)
+
+    if (existingReminder) {
+      skipped += 1
+      continue
+    }
+
+    const reviewLink = `${baseUrl}/dashboard/hc/contract-review/form/${review.id}`
+    const approvalLink = `${baseUrl}/review/${pendingApproval.approvalToken}`
+    const template = settings.emailTemplates.reminder
+
+    const body = template.body
+      .replace(/{{recipientName}}/g, pendingApproval.approverName)
+      .replace(/{{reviewerName}}/g, pendingApproval.approverName)
+      .replace(/{{employeeName}}/g, review.employeeNameStr || 'Employee')
+      .replace(/{{employeeSn}}/g, employeeSn)
+      .replace(/{{employeeSection}}/g, employeeSection)
+      .replace(/{{employeeSite}}/g, employeeSite)
+      .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+      .replace(/{{reviewLink}}/g, reviewLink)
+      .replace(/{{approverName}}/g, pendingApproval.approverName)
+      .replace(/{{approvalStep}}/g, `Step ${pendingApproval.stepOrder}`)
+      .replace(/{{approvalLink}}/g, approvalLink)
+
+    const subject = template.subject
+      .replace(/{{recipientName}}/g, pendingApproval.approverName)
+      .replace(/{{employeeName}}/g, review.employeeNameStr || 'Employee')
+      .replace(/{{employeeSn}}/g, employeeSn)
+      .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+
+    await sendContractReviewEmail({
+      to: pendingApproval.approverEmail,
+      subject,
+      body,
+      reviewId: review.id,
+      templateCode: 'contract_review_reminder',
+      variables: {
+        recipientName: pendingApproval.approverName,
+        reviewerName: pendingApproval.approverName,
+        employeeName: review.employeeNameStr || 'Employee',
+        employeeSn,
+        employeeSection,
+        employeeSite,
+        contractEndDate: formatDisplayDate(contractEndDate),
+        reviewLink,
+        approverName: pendingApproval.approverName,
+        approvalStep: `Step ${pendingApproval.stepOrder}`,
+        approvalLink,
+      },
+    })
+
+    await db.insert(hcContractReviewReminders).values({
+      employeeId: review.employeeId,
+      employeeSn,
+      employeeName: review.employeeNameStr || 'Employee',
+      section: employeeSection,
+      siteName: employeeSite,
+      contractEndDate: contractEndDate.toISOString().slice(0, 10),
+      reminderType,
+      recipientEmail: pendingApproval.approverEmail,
+      recipientName: pendingApproval.approverName,
+      recipientRole: pendingApproval.approverRole,
+      reviewId: review.id,
+      sentAt: new Date(),
+    })
+
+    await notifyWorkflowBellRecipients({
+      recipientEmails: [pendingApproval.approverEmail],
+      eventType: 'contract_review_reminder',
+      category: 'approval_requests',
+      title: `Reminder contract review ${review.employeeNameStr || 'Employee'}`,
+      body: `${reminderType}: kontrak berakhir ${formatDisplayDate(contractEndDate)} dan masih perlu ditindaklanjuti.`,
+      url: `/dashboard/hc/contract-review/form/${review.id}`,
+      tagPrefix: 'contract-review-reminder',
+      metadata: {
+        reviewId: review.id,
+        reminderType,
+      },
+    })
+
+    sent += 1
+  }
+
+  revalidatePath('/dashboard/hc/contract-review')
+  return { success: true as const, sent, skipped }
 }
 
 export async function getContractReviews() {

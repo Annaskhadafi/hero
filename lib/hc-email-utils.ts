@@ -65,5 +65,5 @@ export const HC_TEMPLATE_CODES = [
   "interview_invitation", "test_assigned", "application_received",
   "mcu_pengantar", "mcu_invitation",
   "hired_email", "start_date_email", "custom_bulk",
-  "contract_review_approval_notification", "contract_review_test_notification",
+  "contract_review_approval_notification", "contract_review_test_notification", "contract_review_reminder",
 ];

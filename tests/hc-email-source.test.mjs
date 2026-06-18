@@ -81,6 +81,7 @@ test("existing HC email flows now inherit global HC recipient policy", () => {
   assert.match(recruitmentTestsSource, /cc: resolvedTemplate\.ccList/);
   assert.match(contractReviewSource, /getHumanCapitalPolicyCcRecipients/);
   assert.match(contractReviewSource, /cc: resolvedTemplate\.ccList/);
+  assert.match(contractReviewSource, /templateCode: 'contract_review_reminder'/);
 });
 
 test("legacy HC flows now support central workflow template overrides", () => {
@@ -114,6 +115,7 @@ test("legacy HC flows now support central workflow template overrides", () => {
   assert.match(offeringSource, /resolveWorkflowTemplateContent/);
   assert.match(offeringSource, /templateCode: "offering_letter"/);
   assert.match(contractReviewSource, /resolveWorkflowTemplateContent/);
+  assert.match(contractReviewSource, /templateCode: 'contract_review_reminder'/);
   assert.match(contractReviewSource, /templateCode: 'contract_review_approval_notification'/);
   assert.match(contractReviewSource, /templateCode: 'contract_review_test_notification'/);
 });
@@ -142,6 +144,7 @@ test("human capital templates are included in seed and preset registries", () =>
     "custom_bulk",
     "mcu_pengantar",
     "mcu_invitation",
+    "contract_review_reminder",
     "contract_review_approval_notification",
     "contract_review_test_notification",
   ]) {
@@ -152,6 +155,7 @@ test("human capital templates are included in seed and preset registries", () =>
   assert.match(hcUtilsSource, /"hired_email"/);
   assert.match(hcUtilsSource, /"start_date_email"/);
   assert.match(hcUtilsSource, /"custom_bulk"/);
+  assert.match(hcUtilsSource, /"contract_review_reminder"/);
   assert.match(hcUtilsSource, /"contract_review_approval_notification"/);
   assert.match(hcUtilsSource, /"application_received"/);
   assert.match(hcUtilsSource, /"interview_invitation"/);
@@ -173,6 +177,18 @@ test("legacy HC workflow pages now emit bell notifications for old approval-styl
   assert.match(offboardingSource, /offboarding_request_submitted/);
   assert.match(offboardingSource, /offboarding_status_updated/);
   assert.match(offboardingSource, /offboarding_completed/);
+});
+
+test("contract review now supports manual due reminder dispatch", () => {
+  const contractReviewSource = read("app/actions/contract-review.ts");
+  const contractReviewPageSource = read("app/dashboard/hc/contract-review/client-page.tsx");
+
+  assert.match(contractReviewSource, /sendDueContractReviewReminders/);
+  assert.match(contractReviewSource, /hcContractReviewReminders/);
+  assert.match(contractReviewSource, /contract_review_reminder/);
+  assert.match(contractReviewSource, /notifyWorkflowBellRecipients/);
+  assert.match(contractReviewPageSource, /sendDueContractReviewReminders/);
+  assert.match(contractReviewPageSource, /Send Reminders/);
 });
 
 test("db push script prefers non-truncate flow and aborts unknown destructive prompts", () => {

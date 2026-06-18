@@ -2160,6 +2160,20 @@ const EMAIL_TEMPLATE_SEEDS = [
     isActive: true,
   },
   {
+    name: 'HC Contract Review Reminder',
+    templateCode: 'contract_review_reminder',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'approver,hc',
+    ccEmail: '',
+    subject: '[Contract Review] Reminder: {{employeeName}} ({{employeeSn}}) berakhir {{contractEndDate}}',
+    htmlContent:
+      '<p>Yth. {{recipientName}},</p><p>Contract review untuk karyawan berikut masih perlu ditindaklanjuti.</p><p>Nama: {{employeeName}}</p><p>SN: {{employeeSn}}</p><p>Section: {{employeeSection}}</p><p>Site: {{employeeSite}}</p><p>Berakhir: {{contractEndDate}}</p><p><a href="{{reviewLink}}">Buka review</a></p>',
+    textContent:
+      'Yth. {{recipientName}}, contract review untuk {{employeeName}} ({{employeeSn}}) masih perlu ditindaklanjuti. Section: {{employeeSection}}. Site: {{employeeSite}}. Berakhir: {{contractEndDate}}. Review: {{reviewLink}}.',
+    isActive: true,
+  },
+  {
     name: 'HC Contract Review Approval Notification',
     templateCode: 'contract_review_approval_notification',
     templateType: 'Notification',

@@ -981,6 +981,30 @@ export const EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
     },
   },
   {
+    name: 'HC Contract Review Reminder',
+    templateCode: 'contract_review_reminder',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'approver,hc',
+    ccEmail: '',
+    subject: '[Contract Review] Reminder: {{employeeName}} ({{employeeSn}}) berakhir {{contractEndDate}}',
+    htmlContent:
+      '<p>Yth. {{recipientName}},</p><p>Contract review untuk karyawan berikut masih perlu ditindaklanjuti.</p><p>Nama: {{employeeName}}</p><p>SN: {{employeeSn}}</p><p>Section: {{employeeSection}}</p><p>Site: {{employeeSite}}</p><p>Berakhir: {{contractEndDate}}</p><p><a href="{{reviewLink}}">Buka review</a></p>',
+    textContent:
+      'Yth. {{recipientName}}, contract review untuk {{employeeName}} ({{employeeSn}}) masih perlu ditindaklanjuti. Section: {{employeeSection}}. Site: {{employeeSite}}. Berakhir: {{contractEndDate}}. Review: {{reviewLink}}.',
+    description: 'Pengingat H-60/H-30/H-14/H-7/H-1 untuk workflow contract review.',
+    variables: ['recipientName', 'employeeName', 'employeeSn', 'employeeSection', 'employeeSite', 'contractEndDate', 'reviewLink'],
+    sampleValues: {
+      recipientName: 'Ary Maulana',
+      employeeName: 'Budi Santoso',
+      employeeSn: 'EMP-00128',
+      employeeSection: 'Service',
+      employeeSite: 'Balikpapan',
+      contractEndDate: '31 Juli 2026',
+      reviewLink: 'https://hero.example.com/dashboard/hc/contract-review/form/15',
+    },
+  },
+  {
     name: 'HC Contract Review Approval Notification',
     templateCode: 'contract_review_approval_notification',
     templateType: 'Notification',
