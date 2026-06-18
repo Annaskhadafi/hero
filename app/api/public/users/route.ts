@@ -12,7 +12,7 @@ export async function GET() {
       .select({
         sn: employees.employeeSn,
         nama: employees.name,
-        lokasiSite: sites.name,
+        lokasi: sites.name,
         section: employees.section,
       })
       .from(employees)
@@ -33,7 +33,7 @@ export async function GET() {
       .select({
         sn: hrEmployees.employeeId,
         nama: hrEmployees.fullName,
-        lokasiSite: hrSites.name,
+        lokasi: hrSites.name,
         section: hrSections.name,
       })
       .from(hrEmployees)
@@ -51,14 +51,14 @@ export async function GET() {
       )
 
     // Merge by SN to avoid duplicates, prefer hrEmployees
-    const merged = new Map<string, { sn: string; nama: string; lokasiSite: string; section: string }>()
+    const merged = new Map<string, { sn: string; nama: string; lokasi: string; section: string }>()
 
     for (const row of legacyRows) {
       if (row.sn) {
         merged.set(row.sn.trim().toUpperCase(), {
           sn: row.sn,
           nama: row.nama,
-          lokasiSite: row.lokasiSite || '',
+          lokasi: row.lokasi || '',
           section: row.section,
         })
       }
@@ -69,7 +69,7 @@ export async function GET() {
         merged.set(row.sn.trim().toUpperCase(), {
           sn: row.sn,
           nama: row.nama,
-          lokasiSite: row.lokasiSite || '',
+          lokasi: row.lokasi || '',
           section: row.section || '',
         })
       }
