@@ -9,6 +9,7 @@ import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
 import { generateMcuReferralPdf } from "@/lib/mcu-referral-pdf";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
 
@@ -206,8 +207,10 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
         clinicHtml = MCU_CLINIC_FALLBACK_HTML(templateVars);
         clinicText = `SURAT PENGANTAR MCU\n\nKepada Yth. Pimpinan/Admin ${data.klinikName}\n\nNama: ${candidate.fullName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nBiaya ditagihkan ke perusahaan.\n\nHC PT Chitra Paratama`;
       }
+      const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
       await sendEmailViaSmtp(smtpSettings, {
         to: data.klinikEmail,
+        cc: hcPolicyCc,
         subject: clinicSubject,
         html: clinicHtml,
         text: clinicText,
@@ -233,6 +236,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
       }
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
+        cc: hcPolicyCc,
         subject: candSubject,
         html: candHtml,
         text: candText,
@@ -444,8 +448,10 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
           clinicHtml = MCU_CLINIC_FALLBACK_HTML(templateVars);
           clinicText = `SURAT PENGANTAR MCU\n\nKepada Yth. Pimpinan/Admin ${data.klinikName}\n\nNama: ${candidate.fullName}\nTanggal: ${scheduledDateStr}\nPaket: ${data.paketMcu}\n\nBiaya ditagihkan ke perusahaan.\n\nHC PT Chitra Paratama`;
         }
+        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
         await sendEmailViaSmtp(smtpSettings, {
           to: data.klinikEmail,
+          cc: hcPolicyCc,
           subject: clinicSubject,
           html: clinicHtml,
           text: clinicText,
@@ -470,7 +476,7 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
           }
 
           await sendEmailViaSmtp(smtpSettings, {
-            to: candidate.email, subject, html, text,
+            to: candidate.email, cc: hcPolicyCc, subject, html, text,
             format: emailFormat,
             templateName: "MCU Invitation", templateCode: "mcu_invitation",
           });
@@ -564,9 +570,11 @@ export async function recordMcuResult(
   <p>Demikian pemberitahuan kami. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.</p>
   <div style="margin-top:40px;"><p>Hormat kami,</p><p style="margin-top:60px;"><strong>Human Capital Department</strong><br/>PT Chitra Paratama</p></div>
 </div>`;
+            const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
 
             await sendEmailViaSmtp(smtpSettings, {
               to: candidate[0].email,
+              cc: hcPolicyCc,
               subject: `[HERO] Selamat! Anda Resmi Menjadi Karyawan PT Chitra Paratama`,
               html: CONGRATS_HTML,
               text: `Selamat ${candidate[0].fullName}! Anda telah resmi diterima sebagai karyawan PT Chitra Paratama untuk posisi ${recruitment?.jobTitle || "yang dilamar"}. Silakan lengkapi data onboarding.`,

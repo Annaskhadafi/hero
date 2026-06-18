@@ -46,6 +46,21 @@ test("human capital workflows are wired to email notifications", () => {
   assert.match(performanceSource, /templateCode: "hc_performance_review_acknowledged"/);
 });
 
+test("existing HC email flows now inherit global HC recipient policy", () => {
+  const helperSource = read("lib/human-capital-email.ts");
+  const recruitmentSource = read("app/actions/recruitment.ts");
+  const mcuSource = read("app/actions/mcu.ts");
+  const contractReviewSource = read("app/actions/contract-review.ts");
+
+  assert.match(helperSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(recruitmentSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(recruitmentSource, /cc: hcPolicyCc/);
+  assert.match(mcuSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(mcuSource, /cc: hcPolicyCc/);
+  assert.match(contractReviewSource, /getHumanCapitalPolicyCcRecipients/);
+  assert.match(contractReviewSource, /cc: hcPolicyCc/);
+});
+
 test("human capital templates are included in seed and preset registries", () => {
   const seedSource = read("lib/hero-admin.ts");
   const presetSource = read("lib/email-template-presets.ts");

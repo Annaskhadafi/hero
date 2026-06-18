@@ -70,6 +70,13 @@ export async function resolveHumanCapitalRecipients(input?: {
   }
 }
 
+export async function getHumanCapitalPolicyCcRecipients(input?: {
+  extraCc?: string | string[] | null
+}) {
+  const configured = await getHumanCapitalConfiguredRecipients()
+  return uniqueEmails([...configured.to, ...configured.cc, ...parseEmailList(input?.extraCc)])
+}
+
 export async function sendHumanCapitalEmail(input: {
   templateCode: string
   templateName: string

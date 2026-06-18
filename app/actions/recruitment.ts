@@ -28,6 +28,7 @@ import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
 import crypto from "crypto";
 import { format } from "date-fns";
 
@@ -1042,9 +1043,11 @@ export async function hireAndCreateEmployee(candidateId: number, startDate?: str
       `;
 
       const text = `Selamat! Anda Diterima\n\nHalo ${candidate.fullName},\n\nKami dengan senang hati menginformasikan bahwa Anda telah diterima untuk bergabung dengan PT Chitra Paratama.\n\nPosisi: ${jobTitle}\nTanggal Mulai Kerja: ${startDateLabel}\n\nSebelum mulai kerja, mohon lengkapi dokumen administrasi melalui link berikut:\n${onboardingUrl}\n\nDokumen yang perlu diupload:\n- Kartu Keluarga (KK)\n- Kartu Tanda Penduduk (KTP)\n- Scan Buku Tabungan\n\nPastikan data diisi sebelum tanggal mulai kerja.\n\nSalam,\nHR Team PT Chitra Paratama`;
+      const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
 
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
+        cc: hcPolicyCc,
         subject: "Selamat! Anda Diterima — PT Chitra Paratama",
         html,
         text,
@@ -2125,9 +2128,11 @@ export async function sendStartDateEmails(candidateIds: number[], startDate: str
         startDate: startDateLabel,
         onboardingUrl,
       });
+      const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
 
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
+        cc: hcPolicyCc,
         subject: preview.subject,
         html: preview.html,
         text: preview.text,
@@ -2194,8 +2199,10 @@ export async function sendBulkCustomEmail(candidateIds: number[], subject: strin
         continue;
       }
       const personalMsg = message.replace(/{name}/g, c.fullName);
+      const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
       await sendEmailViaSmtp(smtpSettings, {
         to: c.email,
+        cc: hcPolicyCc,
         subject,
         html: personalMsg.replace(/\n/g, "<br/>"),
         text: personalMsg,

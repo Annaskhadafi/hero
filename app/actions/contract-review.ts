@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { headers } from 'next/headers'
+import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -69,8 +70,10 @@ async function sendContractReviewEmail(params: {
     return
   }
   try {
+    const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
     await sendEmailViaSmtp(smtpSettings, {
       to: params.to,
+      cc: hcPolicyCc,
       subject: params.subject,
       text: params.body,
       html: params.body.replace(/\n/g, '<br/>'),
