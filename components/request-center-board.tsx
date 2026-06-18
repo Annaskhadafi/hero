@@ -50,7 +50,7 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
         <CardHeader className="bg-surface-container-low px-7 py-6">
           <CardTitle>Daftar Pengajuan</CardTitle>
           <CardDescription>
-            Saat ini daftar paling banyak berisi Daily Activity. Jenis pengajuan lain akan ikut muncul saat alurnya aktif di operasi harian.
+            Semua pengajuan yang sudah masuk Request Center tampil di sini, baik yang berasal dari Daily Activity maupun workflow lain.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
@@ -146,7 +146,6 @@ export function RequestCenterBoard({ data }: { data: RequestCenterData }) {
     </AdminPageShell>
   );
 }
-
 
 
 

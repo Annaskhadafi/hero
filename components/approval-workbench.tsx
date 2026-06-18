@@ -71,7 +71,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
       <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
           <CardTitle>Inbox approval</CardTitle>
-          <CardDescription>Belum ada aktivitas yang menunggu keputusan Anda.</CardDescription>
+          <CardDescription>Belum ada pengajuan yang menunggu keputusan Anda.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -90,7 +90,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
           description="Approval Inbox hanya berisi tugas approval yang menunggu keputusan Anda. Request yang Anda buat ada di Request Center."
           label="approval items"
           fileName="approval-inbox"
-          searchPlaceholder="Cari requester, site, aktivitas, unit, atau step approval..."
+          searchPlaceholder="Cari requester, site, pengajuan, unit/area, atau step approval..."
           dateFilter
           filters={<ApprovalFilterBar sites={sites} priorities={priorities} statusOptions={["on_track", "due_soon", "overdue"]} />}
           presets={<TableFilterPresets presets={[{ label: "Terlambat", filters: { status: "overdue" } }, { label: "Segera jatuh tempo", filters: { status: "due_soon" } }]} />}
@@ -100,7 +100,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
               <TableRow>
                 <TableHead>Requester</TableHead>
                 <TableHead>Site</TableHead>
-                <TableHead>Activity</TableHead>
+                <TableHead>Pengajuan</TableHead>
                 <TableHead>Step</TableHead>
                 <TableHead>SLA</TableHead>
                 <TableHead>Aksi</TableHead>
@@ -122,7 +122,7 @@ function InboxTab({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
                         <p className="text-xs text-muted-foreground">
                           {group.requesterJobTitle || "-"} • {group.workDateLabel}
                         </p>
-                        <p className="text-xs text-muted-foreground">{group.activityCount} aktivitas hari itu</p>
+                        <p className="text-xs text-muted-foreground">{group.activityCount} item dalam grup ini</p>
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
@@ -223,7 +223,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData["historyGroups"] })
       <Card className="rounded-[1.6rem] bg-surface-container-lowest shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
         <CardHeader>
           <CardTitle>Riwayat approval</CardTitle>
-          <CardDescription>Belum ada aktivitas yang Anda kirim ke workflow approval.</CardDescription>
+          <CardDescription>Belum ada pengajuan Anda yang masuk ke workflow approval.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -241,7 +241,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData["historyGroups"] })
           description="Lacak keputusan yang sudah lewat dari antrian approval Anda. Status pengajuan milik Anda tetap dibuka dari Request Center."
           label="request history"
           fileName="approval-history"
-          searchPlaceholder="Cari aktivitas, site, approver, workflow, atau hasil keputusan..."
+          searchPlaceholder="Cari pengajuan, site, approver, workflow, atau hasil keputusan..."
           dateFilter
           filters={<ApprovalFilterBar sites={sites} priorities={priorities} statusOptions={statuses} />}
           presets={<TableFilterPresets presets={[{ label: "Disetujui", filters: { status: "approved" } }, { label: "Perlu revisi", filters: { status: "needs_revision" } }]} />}
@@ -249,7 +249,7 @@ function HistoryTab({ groups }: { groups: ApprovalCenterData["historyGroups"] })
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Activity</TableHead>
+                <TableHead>Pengajuan</TableHead>
                 <TableHead>Site</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Menunggu</TableHead>
@@ -374,7 +374,7 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
           {
             label: "Item pending",
             value: `${data.inboxMetrics.pendingActivities}`,
-            meta: "Aktivitas yang bisa diputuskan sekarang",
+            meta: "Pengajuan yang bisa diputuskan sekarang",
           },
           {
             label: "Segera jatuh tempo",
@@ -416,4 +416,3 @@ export function ApprovalWorkbench({ data }: { data: ApprovalCenterData }) {
     </AdminPageShell>
   );
 }
-

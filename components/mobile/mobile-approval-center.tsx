@@ -11,7 +11,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
   if (groups.length === 0) {
     return (
       <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
-        Tidak ada activity yang menunggu approval Anda.
+        Tidak ada pengajuan yang menunggu approval Anda.
       </div>
     );
   }
@@ -30,7 +30,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
               {group.requesterJobTitle || "-"} • {group.workDateLabel}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <AdminStatusBadge value={`${group.activityCount} activity`} />
+              <AdminStatusBadge value={`${group.activityCount} item`} />
               {group.dueSoonCount > 0 ? <AdminStatusBadge value="due_soon" /> : null}
               {group.overdueCount > 0 ? <AdminStatusBadge value="overdue" /> : null}
             </div>
@@ -40,7 +40,7 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
             <div className="rounded-[1.05rem] bg-white px-4 py-4">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-[#486275]">Approve Group</p>
               <p className="mt-2 text-sm text-[#082033]">
-                {group.activityCount} activity • overtime {group.totalOvertimeLabel}
+                {group.activityCount} item • overtime {group.totalOvertimeLabel}
               </p>
               <form action={approveApprovalGroupAction} className="mt-3">
                 {group.items.map((item) => (
@@ -140,7 +140,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
   if (groups.length === 0) {
     return (
       <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
-        Belum ada history approval dari activity Anda.
+        Belum ada riwayat approval dari pengajuan Anda.
       </div>
     );
   }
@@ -155,7 +155,7 @@ function MobileHistory({ groups }: { groups: ApprovalCenterData["historyGroups"]
         >
           <summary className="list-none cursor-pointer px-4 py-4">
             <p className="text-base font-black tracking-tight text-[#082033]">{group.workDateLabel}</p>
-            <p className="mt-1 text-xs font-semibold text-[#486275]">{group.activityCount} activity diajukan</p>
+            <p className="mt-1 text-xs font-semibold text-[#486275]">{group.activityCount} pengajuan diajukan</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {group.pendingCount > 0 ? <AdminStatusBadge value="in_review" /> : null}
               {group.approvedCount > 0 ? <AdminStatusBadge value="approved" /> : null}
@@ -220,7 +220,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Approval Inbox</p>
         <h1 className="text-2xl font-black tracking-tight text-[#003461]">Approval</h1>
         <p className="text-sm font-semibold text-[#486275]">
-          Inbox grouped per user dan history hasil approval activity Anda.
+          Inbox per requester dan riwayat hasil approval pengajuan Anda.
         </p>
       </section>
 
@@ -241,7 +241,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
             Inbox
           </TabsTrigger>
           <TabsTrigger value="history" className="rounded-[0.8rem]">
-            History
+            Riwayat
           </TabsTrigger>
         </TabsList>
 
