@@ -28,6 +28,7 @@ import { AdminPageShell } from '@/components/admin-page-shell'
 import { SecurityUserCreateDialog } from '@/components/security-user-create-dialog'
 import { SecurityUserRowActions } from '@/components/security-user-row-actions'
 import { SecurityUserDashboard } from '@/components/security-user-dashboard'
+import { SecurityServicemanDashboard } from '@/components/security-serviceman-dashboard'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -284,7 +285,7 @@ export function SecurityUserManagement({
 }) {
   const router = useRouter()
   const [isRefreshing, startRefreshTransition] = useTransition()
-  const [activeTab, setActiveTab] = useState<'directory' | 'dashboard'>('directory')
+  const [activeTab, setActiveTab] = useState<'directory' | 'dashboard' | 'serviceman-dashboard'>('directory')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
@@ -747,7 +748,7 @@ export function SecurityUserManagement({
             sections={sections}
             departments={departments}
             positions={positions}
-sites={sites}
+            sites={sites}
           />
         </>
       }
@@ -777,9 +778,23 @@ sites={sites}
         >
           Dashboard Demografis
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('serviceman-dashboard')}
+          className={cn(
+            "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer",
+            activeTab === 'serviceman-dashboard'
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Dashboard Karyawan
+        </button>
       </div>
 
-      {activeTab === 'dashboard' ? (
+      {activeTab === 'serviceman-dashboard' ? (
+        <SecurityServicemanDashboard users={users} />
+      ) : activeTab === 'dashboard' ? (
         <SecurityUserDashboard users={filteredUsers} />
       ) : (
         <>
