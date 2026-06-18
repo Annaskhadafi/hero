@@ -40,6 +40,8 @@ test("human capital workflows are wired to email notifications", () => {
   const testGroupSource = read("app/actions/test-group.ts");
   const recruitmentTestsSource = read("app/actions/recruitment-tests.ts");
   const recruitmentSource = read("app/actions/recruitment.ts");
+  const onboardingSource = read("app/actions/onboarding.ts");
+  const offeringSource = read("app/actions/offering.ts");
 
   assert.match(employeeSource, /templateCode: "hc_employee_created"/);
   assert.match(employeeSource, /templateCode: "hc_employee_updated"/);
@@ -52,6 +54,8 @@ test("human capital workflows are wired to email notifications", () => {
   assert.match(testGroupSource, /templateCode: "test_assigned"/);
   assert.match(recruitmentTestsSource, /templateCode: "test_assigned"/);
   assert.match(recruitmentSource, /templateCode: "application_received"/);
+  assert.match(onboardingSource, /templateCode: "onboarding_link"/);
+  assert.match(offeringSource, /templateCode: "offering_letter"/);
 });
 
 test("existing HC email flows now inherit global HC recipient policy", () => {
@@ -86,6 +90,8 @@ test("legacy HC flows now support central workflow template overrides", () => {
   const interviewsSource = read("app/actions/interviews.ts");
   const testGroupSource = read("app/actions/test-group.ts");
   const recruitmentTestsSource = read("app/actions/recruitment-tests.ts");
+  const onboardingSource = read("app/actions/onboarding.ts");
+  const offeringSource = read("app/actions/offering.ts");
   const workflowSource = read("lib/workflow-email.ts");
 
   assert.match(workflowSource, /export async function resolveWorkflowTemplateContent/);
@@ -103,6 +109,10 @@ test("legacy HC flows now support central workflow template overrides", () => {
   assert.match(testGroupSource, /templateCode: "test_assigned"/);
   assert.match(recruitmentTestsSource, /resolveWorkflowTemplateContent/);
   assert.match(recruitmentTestsSource, /templateCode: "test_assigned"/);
+  assert.match(onboardingSource, /resolveWorkflowTemplateContent/);
+  assert.match(onboardingSource, /templateCode: "onboarding_link"/);
+  assert.match(offeringSource, /resolveWorkflowTemplateContent/);
+  assert.match(offeringSource, /templateCode: "offering_letter"/);
   assert.match(contractReviewSource, /resolveWorkflowTemplateContent/);
   assert.match(contractReviewSource, /templateCode: 'contract_review_approval_notification'/);
   assert.match(contractReviewSource, /templateCode: 'contract_review_test_notification'/);
@@ -112,6 +122,7 @@ test("human capital templates are included in seed and preset registries", () =>
   const seedSource = read("lib/hero-admin.ts");
   const presetSource = read("lib/email-template-presets.ts");
   const hcUtilsSource = read("lib/hc-email-utils.ts");
+  const legacySettingsPage = read("app/dashboard/hc/settings/email-templates/page.tsx");
 
   for (const code of [
     "hc_employee_created",
@@ -124,6 +135,8 @@ test("human capital templates are included in seed and preset registries", () =>
     "application_received",
     "interview_invitation",
     "test_assigned",
+    "onboarding_link",
+    "offering_letter",
     "hired_email",
     "start_date_email",
     "custom_bulk",
@@ -143,6 +156,23 @@ test("human capital templates are included in seed and preset registries", () =>
   assert.match(hcUtilsSource, /"application_received"/);
   assert.match(hcUtilsSource, /"interview_invitation"/);
   assert.match(hcUtilsSource, /"test_assigned"/);
+  assert.match(legacySettingsPage, /redirect\("\/dashboard\/settings\/email"\)/);
+});
+
+test("legacy HC workflow pages now emit bell notifications for old approval-style flows", () => {
+  const helperSource = read("lib/workflow-notification-center.ts");
+  const attendanceSource = read("app/actions/attendance.ts");
+  const leaveSource = read("app/actions/leave.ts");
+  const offboardingSource = read("app/actions/offboarding.ts");
+
+  assert.match(helperSource, /notifyWorkflowBellRecipients/);
+  assert.match(attendanceSource, /attendance_permission_submitted/);
+  assert.match(attendanceSource, /attendance_permission_decision/);
+  assert.match(leaveSource, /leave_request_submitted/);
+  assert.match(leaveSource, /leave_request_decision/);
+  assert.match(offboardingSource, /offboarding_request_submitted/);
+  assert.match(offboardingSource, /offboarding_status_updated/);
+  assert.match(offboardingSource, /offboarding_completed/);
 });
 
 test("db push script prefers non-truncate flow and aborts unknown destructive prompts", () => {

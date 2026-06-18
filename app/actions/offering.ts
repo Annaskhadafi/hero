@@ -7,11 +7,11 @@ import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
-import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
-import { renderHcTemplate } from "@/lib/hc-email-utils";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
 import { generateOfferingLetterPdf } from "@/lib/offering-letter-pdf";
 import { getNextLetterNumber } from "@/app/actions/surat";
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
+import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 
 export type OfferingData = {
   position: string;
@@ -165,21 +165,15 @@ export async function sendOfferingEmail(candidateId: number) {
         testLink: "",
         duration: "",
       };
-
-      const template = await getHcEmailTemplateByType("offering_letter");
-      let subject: string, html: string | undefined, text: string;
-      const emailFormat = template?.format || null;
-
-      if (template) {
-        const rendered = renderHcTemplate(template, templateVars);
-        subject = rendered.subject;
-        html = rendered.html;
-        text = rendered.text;
-      } else {
-        subject = `[HERO] Surat Penawaran Kerja — ${vacancyTitle}`;
-        html = OFFERING_FALLBACK_HTML(templateVars);
-        text = OFFERING_FALLBACK_TEXT(templateVars);
-      }
+      const hcPolicyCc = await getHumanCapitalPolicyCcRecipients();
+      const resolvedTemplate = await resolveWorkflowTemplateContent({
+        templateCode: "offering_letter",
+        cc: hcPolicyCc,
+        variables: templateVars,
+        fallbackSubject: `[HERO] Surat Penawaran Kerja — ${vacancyTitle}`,
+        fallbackHtml: OFFERING_FALLBACK_HTML(templateVars),
+        fallbackText: OFFERING_FALLBACK_TEXT(templateVars),
+      });
 
       const pdfAttachment = pdfBuffer
         ? { filename: `Surat-Penawaran-Kerja-${candidate.fullName}.pdf`, content: pdfBuffer, contentType: "application/pdf" }
@@ -187,11 +181,12 @@ export async function sendOfferingEmail(candidateId: number) {
 
       await sendEmailViaSmtp(smtpSettings, {
         to: candidate.email,
-        subject,
-        html,
-        text,
+        cc: resolvedTemplate.ccList,
+        subject: resolvedTemplate.subject,
+        html: resolvedTemplate.html,
+        text: resolvedTemplate.text,
         attachments: pdfAttachment ? [pdfAttachment] : undefined,
-        format: emailFormat,
+        format: resolvedTemplate.template ? null : null,
         templateName: "Offering Letter",
         templateCode: "offering_letter",
       });

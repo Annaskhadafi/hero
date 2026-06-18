@@ -40,6 +40,9 @@ test("stage 5 wires HSE workflows to email notifications", () => {
   const inventorySource = read("app/actions/hse-inventaris.ts");
   const adminOpsSource = read("app/dashboard/admin-actions.ts");
   const incidentReportSource = read("app/dashboard/hse/incident-report/actions.ts");
+  const jsaSource = read("app/dashboard/hse/jsa/actions.ts");
+  const hiradcSource = read("app/dashboard/hse/hiradc/actions.ts");
+  const ptwSource = read("app/mobile/hse/ptw/actions.ts");
 
   assert.match(observationSource, /templateCode: "hse_observation_alert"/);
   assert.match(observationSource, /templateCode: "hse_incident_alert"/);
@@ -52,6 +55,14 @@ test("stage 5 wires HSE workflows to email notifications", () => {
   assert.match(adminOpsSource, /templateCode: 'hse_incident_status_update'/);
   assert.match(incidentReportSource, /templateCode: 'hse_incident_record_created'/);
   assert.match(incidentReportSource, /templateCode: 'hse_incident_record_status_update'/);
+  assert.match(jsaSource, /templateCode: notificationPayload\.mode === 'create' \? 'hse_jsa_created' : 'hse_jsa_updated'/);
+  assert.match(hiradcSource, /templateCode: "hse_hiradc_register_created"/);
+  assert.match(hiradcSource, /templateCode: "hse_hiradc_register_updated"/);
+  assert.match(ptwSource, /templateCode: 'hse_ptw_created'/);
+  assert.match(ptwSource, /templateCode: 'hse_ptw_updated'/);
+  assert.match(jsaSource, /notifyWorkflowBellRecipients/);
+  assert.match(hiradcSource, /notifyWorkflowBellRecipients/);
+  assert.match(ptwSource, /notifyWorkflowBellRecipients/);
 });
 
 test("hse templates are included in seed and preset registries", () => {
@@ -69,6 +80,12 @@ test("hse templates are included in seed and preset registries", () => {
     "hse_safety_inspection_status_update",
     "hse_safety_induction_submitted",
     "hse_inventory_reminder",
+    "hse_jsa_created",
+    "hse_jsa_updated",
+    "hse_hiradc_register_created",
+    "hse_hiradc_register_updated",
+    "hse_ptw_created",
+    "hse_ptw_updated",
   ]) {
     assert.match(seedSource, new RegExp(`templateCode: '${code}'`));
     assert.match(presetSource, new RegExp(`templateCode: '${code}'`));

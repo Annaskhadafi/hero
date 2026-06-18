@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/db"
 import { hiradcEntries, hiradcRegisters } from "@/db/schema/hero"
 import { getServerSession } from "@/lib/auth-session"
+import { buildHseSafetyEmail, resolveHseSafetyRecipients, sendHseSafetyEmail } from "@/lib/hse-safety-email"
 import { importHiradcWorkbook } from "@/lib/hiradc/importer"
 import {
   computeRiskScore,
@@ -13,6 +14,8 @@ import {
   convertSeverityToSystem,
   resolveRiskLevel,
 } from "@/lib/hiradc/risk"
+import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center"
+import { getAppUrl } from "@/lib/workflow-email"
 
 export type HiradcActionState = { ok: boolean; message: string }
 
@@ -44,6 +47,67 @@ function failure(error: unknown): HiradcActionState {
 function success(message: string): HiradcActionState {
   revalidateHiradc()
   return { ok: true, message }
+}
+
+async function notifyHiradcRecipients(input: {
+  templateCode: "hse_hiradc_register_created" | "hse_hiradc_register_updated"
+  title: string
+  department: string
+  location: string
+  status: string
+  body: string
+}) {
+  const emailContent = buildHseSafetyEmail({
+    title: input.title,
+    intro: input.body,
+    details: [
+      input.department ? `Departemen: ${input.department}` : null,
+      input.location ? `Lokasi: ${input.location}` : null,
+      input.status ? `Status: ${input.status}` : null,
+    ],
+    ctaLabel: "Buka HIRADC",
+    ctaUrl: getAppUrl("/dashboard/hse/hiradc"),
+  })
+
+  await sendHseSafetyEmail({
+    templateCode: input.templateCode,
+    templateName:
+      input.templateCode === "hse_hiradc_register_created"
+        ? "HSE HIRADC Register Created"
+        : "HSE HIRADC Register Updated",
+    variables: {
+      title: input.title,
+      department: input.department,
+      location: input.location,
+      status: input.status,
+    },
+    fallbackSubject:
+      input.templateCode === "hse_hiradc_register_created"
+        ? `HIRADC register baru: ${input.title}`
+        : `Update HIRADC register: ${input.title}`,
+    fallbackHtml: emailContent.html,
+    fallbackText: emailContent.text,
+  })
+
+  const recipients = await resolveHseSafetyRecipients()
+  await notifyWorkflowBellRecipients({
+    recipientEmails: recipients.to,
+    eventType: input.templateCode,
+    category: "hse_alerts",
+    title:
+      input.templateCode === "hse_hiradc_register_created"
+        ? `HIRADC baru: ${input.title}`
+        : `Update HIRADC: ${input.title}`,
+    body: input.body,
+    url: "/dashboard/hse/hiradc",
+    tagPrefix: "hse-hiradc",
+    metadata: {
+      title: input.title,
+      department: input.department,
+      location: input.location,
+      status: input.status,
+    },
+  })
 }
 
 /**
@@ -86,6 +150,18 @@ export async function saveHiradcRegisterAction(
 
     if (Number.isInteger(idValue) && idValue > 0) {
       await db.update(hiradcRegisters).set(payload).where(eq(hiradcRegisters.id, idValue))
+      try {
+        await notifyHiradcRecipients({
+          templateCode: "hse_hiradc_register_updated",
+          title: payload.title,
+          department: payload.department,
+          location: payload.location,
+          status: payload.status,
+          body: `${payload.title} diperbarui di register HIRADC.`,
+        })
+      } catch (notificationError) {
+        console.error("HIRADC register update notification error:", notificationError)
+      }
       return success("Register HIRADC diperbarui.")
     }
 
@@ -93,6 +169,18 @@ export async function saveHiradcRegisterAction(
       ...payload,
       createdByUserId: session?.user?.id ?? null,
     })
+    try {
+      await notifyHiradcRecipients({
+        templateCode: "hse_hiradc_register_created",
+        title: payload.title,
+        department: payload.department,
+        location: payload.location,
+        status: payload.status,
+        body: `${payload.title} ditambahkan ke register HIRADC.`,
+      })
+    } catch (notificationError) {
+      console.error("HIRADC register create notification error:", notificationError)
+    }
     return success("Register HIRADC dibuat.")
   } catch (error) {
     return failure(error)
@@ -154,11 +242,35 @@ export async function saveHiradcEntryAction(
 
     if (Number.isInteger(idValue) && idValue > 0) {
       await db.update(hiradcEntries).set(payload).where(eq(hiradcEntries.id, idValue))
+      try {
+        await notifyHiradcRecipients({
+          templateCode: "hse_hiradc_register_updated",
+          title: payload.activityName,
+          department: payload.department,
+          location: payload.location,
+          status: payload.riskLevelAfter,
+          body: `${payload.activityName} diperbarui pada entri HIRADC.`,
+        })
+      } catch (notificationError) {
+        console.error("HIRADC entry update notification error:", notificationError)
+      }
       return success("Baris HIRADC diperbarui.")
     }
 
     const orderIndex = Number(formData.get("orderIndex")) || Date.now() % 100000
     await db.insert(hiradcEntries).values({ ...payload, orderIndex })
+    try {
+      await notifyHiradcRecipients({
+        templateCode: "hse_hiradc_register_created",
+        title: payload.activityName,
+        department: payload.department,
+        location: payload.location,
+        status: payload.riskLevelAfter,
+        body: `${payload.activityName} ditambahkan ke entri HIRADC.`,
+      })
+    } catch (notificationError) {
+      console.error("HIRADC entry create notification error:", notificationError)
+    }
     return success("Baris HIRADC ditambahkan.")
   } catch (error) {
     return failure(error)

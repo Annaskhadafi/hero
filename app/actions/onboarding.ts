@@ -5,7 +5,13 @@ import { hcCandidates, hcRecruitments } from "@/db/schema/hero"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
-import { buildWorkflowEmailContent, getAppUrl, sendWorkflowEmail } from "@/lib/workflow-email"
+import {
+  buildWorkflowEmailContent,
+  getAppUrl,
+  resolveWorkflowTemplateContent,
+  sendWorkflowEmail,
+} from "@/lib/workflow-email"
+import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email"
 
 export async function generateOnboardingToken(candidateId: number) {
   try {
@@ -42,11 +48,10 @@ export async function generateOnboardingToken(candidateId: number) {
           ctaLabel: "Buka Form Onboarding",
           ctaUrl: onboardingUrl,
         })
-
-        await sendWorkflowEmail({
-          to: candidate.email,
+        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+        const resolvedTemplate = await resolveWorkflowTemplateContent({
           templateCode: "onboarding_link",
-          templateName: "Onboarding Link",
+          cc: hcPolicyCc,
           variables: {
             candidateName: candidate.name || "Candidate",
             onboardingLink: onboardingUrl,
@@ -54,6 +59,20 @@ export async function generateOnboardingToken(candidateId: number) {
           fallbackSubject: "Link onboarding HERO",
           fallbackHtml: emailContent.html,
           fallbackText: emailContent.text,
+        })
+
+        await sendWorkflowEmail({
+          to: candidate.email,
+          cc: resolvedTemplate.ccList,
+          templateCode: "onboarding_link",
+          templateName: "Onboarding Link",
+          variables: {
+            candidateName: candidate.name || "Candidate",
+            onboardingLink: onboardingUrl,
+          },
+          fallbackSubject: resolvedTemplate.subject,
+          fallbackHtml: resolvedTemplate.html,
+          fallbackText: resolvedTemplate.text,
         })
       } catch (emailError) {
         console.error("Failed to send onboarding email:", emailError)

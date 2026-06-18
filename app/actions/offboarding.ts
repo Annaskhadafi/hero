@@ -18,6 +18,7 @@ import {
   sendWorkflowEmail,
   sendWorkflowEmailToMany,
 } from "@/lib/workflow-email";
+import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
 
 // ─── Default Clearance Checklist Items ────────────────────────────────────────
 
@@ -294,6 +295,26 @@ async function notifyOffboardingUpdate(input: {
   }
 }
 
+async function notifyOffboardingBell(input: {
+  recipientEmails: string[];
+  eventType: string;
+  title: string;
+  body: string;
+  url: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await notifyWorkflowBellRecipients({
+    recipientEmails: input.recipientEmails,
+    eventType: input.eventType,
+    category: "approval_requests",
+    title: input.title,
+    body: input.body,
+    url: input.url,
+    tagPrefix: "offboarding",
+    metadata: input.metadata,
+  });
+}
+
 export async function createOffboardingRequest(data: {
   employeeId: string;
   requestType: string;
@@ -346,6 +367,22 @@ export async function createOffboardingRequest(data: {
     console.error("Offboarding create email error:", emailError);
   }
 
+  try {
+    await notifyOffboardingBell({
+      recipientEmails: await getHumanCapitalRecipientEmails(),
+      eventType: "offboarding_request_submitted",
+      title: "Request offboarding baru",
+      body: `Pengajuan offboarding baru untuk employee #${empId} menunggu review HC.`,
+      url: "/dashboard/hc/offboarding",
+      metadata: {
+        employeeId: empId,
+        requestType: data.requestType,
+      },
+    });
+  } catch (notificationError) {
+    console.error("Offboarding create bell error:", notificationError);
+  }
+
   return record;
 }
 
@@ -386,6 +423,23 @@ export async function updateOffboardingRequest(
       });
     } catch (emailError) {
       console.error("Offboarding approve email error:", emailError);
+    }
+
+    try {
+      const employeeContact = await getHrEmployeeContactById(updated.employeeId);
+      await notifyOffboardingBell({
+        recipientEmails: [employeeContact.email, ...(await getHumanCapitalRecipientEmails())],
+        eventType: "offboarding_status_updated",
+        title: "Offboarding masuk tahap clearance",
+        body: `${employeeContact.name} masuk proses clearance offboarding.`,
+        url: "/dashboard/hc/offboarding",
+        metadata: {
+          employeeId: updated.employeeId,
+          status: "in_clearance",
+        },
+      });
+    } catch (notificationError) {
+      console.error("Offboarding approve bell error:", notificationError);
     }
   }
 
@@ -491,6 +545,23 @@ export async function completeOffboarding(id: number) {
     });
   } catch (emailError) {
     console.error("Offboarding completion email error:", emailError);
+  }
+
+  try {
+    const employeeContact = await getHrEmployeeContactById(record.employeeId);
+    await notifyOffboardingBell({
+      recipientEmails: [employeeContact.email, ...(await getHumanCapitalRecipientEmails())],
+      eventType: "offboarding_completed",
+      title: "Offboarding selesai",
+      body: `Proses offboarding ${employeeContact.name} telah selesai.`,
+      url: "/dashboard/hc/offboarding",
+      metadata: {
+        employeeId: record.employeeId,
+        status: "completed",
+      },
+    });
+  } catch (notificationError) {
+    console.error("Offboarding completion bell error:", notificationError);
   }
 
   return updated;

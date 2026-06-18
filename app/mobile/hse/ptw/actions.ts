@@ -8,6 +8,9 @@ import { db } from '@/db'
 import { employees, hsePtwPermits } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { buildHseSafetyEmail, resolveHseSafetyRecipients, sendHseSafetyEmail } from '@/lib/hse-safety-email'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { getAppUrl } from '@/lib/workflow-email'
 
 async function requirePtwPermission(action: 'view' | 'edit' | 'delete') {
   const permission = await getCurrentMenuPermission('hse_izin_kerja_ptw')
@@ -107,11 +110,97 @@ export async function saveMobilePtwPermit(params: {
 
   if (params.id) {
     const [updated] = await db.update(hsePtwPermits).set(payload).where(eq(hsePtwPermits.id, params.id)).returning()
+    try {
+      const emailContent = buildHseSafetyEmail({
+        title: `PTW diperbarui: ${updated.permitNumber}`,
+        intro: `${updated.projectName} telah diperbarui di sistem Permit To Work.`,
+        details: [
+          `Tipe permit: ${updated.permitType}`,
+          `Lokasi: ${updated.location}`,
+          `Status: ${updated.status}`,
+          `Risk level: ${updated.riskLevel}`,
+        ],
+        ctaLabel: 'Buka PTW',
+        ctaUrl: getAppUrl('/dashboard/hse/izin-kerja-ptw'),
+      })
+      await sendHseSafetyEmail({
+        templateCode: 'hse_ptw_updated',
+        templateName: 'HSE PTW Updated',
+        variables: {
+          permitNumber: updated.permitNumber,
+          projectName: updated.projectName,
+          status: updated.status,
+          riskLevel: updated.riskLevel,
+        },
+        fallbackSubject: `Update PTW: ${updated.permitNumber}`,
+        fallbackHtml: emailContent.html,
+        fallbackText: emailContent.text,
+      })
+      const recipients = await resolveHseSafetyRecipients()
+      await notifyWorkflowBellRecipients({
+        recipientEmails: recipients.to,
+        eventType: 'hse_ptw_updated',
+        category: 'hse_alerts',
+        title: `Update PTW: ${updated.permitNumber}`,
+        body: `${updated.projectName} diperbarui dengan status ${updated.status}.`,
+        url: '/dashboard/hse/izin-kerja-ptw',
+        tagPrefix: 'hse-ptw',
+        metadata: {
+          permitId: updated.id,
+          permitNumber: updated.permitNumber,
+        },
+      })
+    } catch (notificationError) {
+      console.error('PTW update notification error:', notificationError)
+    }
     revalidatePath('/mobile/hse/ptw')
     return updated
   }
 
   const [created] = await db.insert(hsePtwPermits).values({ ...payload, permitNumber: generatePermitNumber(), createdByEmployeeId: actorId }).returning()
+  try {
+    const emailContent = buildHseSafetyEmail({
+      title: `PTW baru: ${created.permitNumber}`,
+      intro: `${created.projectName} telah dibuat di sistem Permit To Work.`,
+      details: [
+        `Tipe permit: ${created.permitType}`,
+        `Lokasi: ${created.location}`,
+        `Risk level: ${created.riskLevel}`,
+      ],
+      ctaLabel: 'Buka PTW',
+      ctaUrl: getAppUrl('/dashboard/hse/izin-kerja-ptw'),
+    })
+    await sendHseSafetyEmail({
+      templateCode: 'hse_ptw_created',
+      templateName: 'HSE PTW Created',
+      variables: {
+        permitNumber: created.permitNumber,
+        projectName: created.projectName,
+        permitType: created.permitType,
+        location: created.location,
+        riskLevel: created.riskLevel,
+      },
+      fallbackSubject: `PTW baru: ${created.permitNumber}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    })
+    const recipients = await resolveHseSafetyRecipients()
+    await notifyWorkflowBellRecipients({
+      recipientEmails: recipients.to,
+      eventType: 'hse_ptw_created',
+      category: 'hse_alerts',
+      title: `PTW baru: ${created.permitNumber}`,
+      body: `${created.projectName} dibuat untuk ${created.location}.`,
+      url: '/dashboard/hse/izin-kerja-ptw',
+      tagPrefix: 'hse-ptw',
+      metadata: {
+        permitId: created.id,
+        permitNumber: created.permitNumber,
+      },
+    })
+  } catch (notificationError) {
+    console.error('PTW create notification error:', notificationError)
+  }
   revalidatePath('/mobile/hse/ptw')
   return created
 }

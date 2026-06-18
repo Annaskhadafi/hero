@@ -1742,6 +1742,118 @@ const EMAIL_TEMPLATE_SEEDS = [
     isActive: true,
   },
   {
+    name: 'HC Onboarding Link',
+    templateCode: 'onboarding_link',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: 'Link onboarding HERO',
+    htmlContent:
+      '<p>Halo {{candidateName}},</p><p>Silakan lengkapi data onboarding Anda melalui link berikut:</p><p><a href="{{onboardingLink}}">{{onboardingLink}}</a></p>',
+    textContent:
+      'Halo {{candidateName}}, silakan lengkapi data onboarding Anda melalui link berikut: {{onboardingLink}}.',
+    isActive: true,
+  },
+  {
+    name: 'HC Offering Letter',
+    templateCode: 'offering_letter',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'candidate,hc',
+    ccEmail: '',
+    subject: '[HERO] Surat Penawaran Kerja - {{jobTitle}}',
+    htmlContent:
+      '<p>Kepada Yth. <strong>{{candidateName}}</strong>,</p><p>Bersama ini kami sampaikan penawaran kerja untuk posisi <strong>{{jobTitle}}</strong> di {{companyName}}.</p><p>Surat lengkap terlampir pada email ini.</p>',
+    textContent:
+      'Kepada Yth. {{candidateName}}, bersama ini kami sampaikan penawaran kerja untuk posisi {{jobTitle}} di {{companyName}}. Surat lengkap terlampir pada email ini.',
+    isActive: true,
+  },
+  {
+    name: 'HSE JSA Created',
+    templateCode: 'hse_jsa_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'JSA baru: {{jsaNumber}}',
+    htmlContent:
+      '<p>JSA baru telah dibuat.</p><p>Nomor: {{jsaNumber}}</p><p>Pekerjaan: {{jobDescription}}</p><p>Risk level: {{riskLevel}}</p><p>Tim: {{teamMembers}}</p>',
+    textContent:
+      'JSA baru telah dibuat. Nomor: {{jsaNumber}}. Pekerjaan: {{jobDescription}}. Risk level: {{riskLevel}}. Tim: {{teamMembers}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE JSA Updated',
+    templateCode: 'hse_jsa_updated',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update JSA: {{jsaNumber}}',
+    htmlContent:
+      '<p>JSA telah diperbarui.</p><p>Nomor: {{jsaNumber}}</p><p>Pekerjaan: {{jobDescription}}</p><p>Risk level: {{riskLevel}}</p>',
+    textContent:
+      'JSA telah diperbarui. Nomor: {{jsaNumber}}. Pekerjaan: {{jobDescription}}. Risk level: {{riskLevel}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE HIRADC Register Created',
+    templateCode: 'hse_hiradc_register_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'HIRADC register baru: {{title}}',
+    htmlContent:
+      '<p>Register HIRADC baru dibuat.</p><p>Judul: {{title}}</p><p>Departemen: {{department}}</p><p>Lokasi: {{location}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Register HIRADC baru dibuat. Judul: {{title}}. Departemen: {{department}}. Lokasi: {{location}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE HIRADC Register Updated',
+    templateCode: 'hse_hiradc_register_updated',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update HIRADC register: {{title}}',
+    htmlContent:
+      '<p>Register HIRADC diperbarui.</p><p>Judul: {{title}}</p><p>Departemen: {{department}}</p><p>Lokasi: {{location}}</p><p>Status: {{status}}</p>',
+    textContent:
+      'Register HIRADC diperbarui. Judul: {{title}}. Departemen: {{department}}. Lokasi: {{location}}. Status: {{status}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE PTW Created',
+    templateCode: 'hse_ptw_created',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'PTW baru: {{permitNumber}}',
+    htmlContent:
+      '<p>Permit To Work baru dibuat.</p><p>Nomor: {{permitNumber}}</p><p>Pekerjaan: {{projectName}}</p><p>Tipe: {{permitType}}</p><p>Lokasi: {{location}}</p><p>Risk level: {{riskLevel}}</p>',
+    textContent:
+      'Permit To Work baru dibuat. Nomor: {{permitNumber}}. Pekerjaan: {{projectName}}. Tipe: {{permitType}}. Lokasi: {{location}}. Risk level: {{riskLevel}}.',
+    isActive: true,
+  },
+  {
+    name: 'HSE PTW Updated',
+    templateCode: 'hse_ptw_updated',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: '',
+    subject: 'Update PTW: {{permitNumber}}',
+    htmlContent:
+      '<p>Permit To Work diperbarui.</p><p>Nomor: {{permitNumber}}</p><p>Pekerjaan: {{projectName}}</p><p>Status: {{status}}</p><p>Risk level: {{riskLevel}}</p>',
+    textContent:
+      'Permit To Work diperbarui. Nomor: {{permitNumber}}. Pekerjaan: {{projectName}}. Status: {{status}}. Risk level: {{riskLevel}}.',
+    isActive: true,
+  },
+  {
     name: 'HSE Observation Alert',
     templateCode: 'hse_observation_alert',
     templateType: 'Notification',

@@ -17,6 +17,7 @@ import {
   sendWorkflowEmail,
   sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
@@ -406,6 +407,26 @@ async function notifyAttendancePermissionDecision(input: {
   })
 }
 
+async function notifyAttendancePermissionBell(input: {
+  recipientEmails: string[]
+  eventType: string
+  title: string
+  body: string
+  url: string
+  metadata?: Record<string, unknown>
+}) {
+  await notifyWorkflowBellRecipients({
+    recipientEmails: input.recipientEmails,
+    eventType: input.eventType,
+    category: 'approval_requests',
+    title: input.title,
+    body: input.body,
+    url: input.url,
+    tagPrefix: 'attendance-permission',
+    metadata: input.metadata,
+  })
+}
+
 async function getMobileAttendanceShiftOptions() {
   const shifts = await db
     .select({
@@ -680,6 +701,34 @@ export async function submitAttendancePermission(formData: FormData) {
       console.error('Attendance permission submit email error:', emailError)
     }
 
+    try {
+      const bellRecipients = Array.from(
+        new Set([
+          ...(await getHumanCapitalRecipientEmails()),
+          ...(await getOperationalApprovalRecipientEmails(employee.siteId)),
+        ]),
+      )
+      const permissionLabel = formatAttendancePermissionType(permissionType)
+      const requestDate = formatAttendancePermissionRange(
+        requestDate,
+        permissionType === 'sick' ? endDate : requestDate,
+      )
+      await notifyAttendancePermissionBell({
+        recipientEmails: bellRecipients,
+        eventType: 'attendance_permission_submitted',
+        title: `Pengajuan ${permissionLabel} baru`,
+        body: `${employee.name} mengirim ${permissionLabel.toLowerCase()} untuk ${requestDate}.`,
+        url: '/dashboard/hc/permission',
+        metadata: {
+          permissionType,
+          requestDate,
+          employeeName: employee.name,
+        },
+      })
+    } catch (notificationError) {
+      console.error('Attendance permission submit bell error:', notificationError)
+    }
+
     return { success: true, message: 'Izin terkirim. Menunggu approval HR.' }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Izin gagal disimpan.' }
@@ -725,6 +774,23 @@ async function applyApprovedPermissionRequest(requestId: number, approverNote: s
       })
     } catch (emailError) {
       console.error('Attendance permission reject email error:', emailError)
+    }
+
+    try {
+      const permissionLabel = formatAttendancePermissionType(request.permissionType)
+      await notifyAttendancePermissionBell({
+        recipientEmails: [employeeContact.email],
+        eventType: 'attendance_permission_decision',
+        title: `${permissionLabel} ditolak`,
+        body: `Pengajuan ${permissionLabel.toLowerCase()} Anda ditolak.${approverNote ? ` Catatan: ${approverNote}` : ''}`,
+        url: '/mobile/attendance/permission',
+        metadata: {
+          permissionType: request.permissionType,
+          decision: 'rejected',
+        },
+      })
+    } catch (notificationError) {
+      console.error('Attendance permission reject bell error:', notificationError)
     }
 
     return { success: true, message: 'Izin ditolak.' }
@@ -804,6 +870,23 @@ async function applyApprovedPermissionRequest(requestId: number, approverNote: s
     })
   } catch (emailError) {
     console.error('Attendance permission approval email error:', emailError)
+  }
+
+  try {
+    const permissionLabel = formatAttendancePermissionType(request.permissionType)
+    await notifyAttendancePermissionBell({
+      recipientEmails: [employeeContact.email],
+      eventType: 'attendance_permission_decision',
+      title: `${permissionLabel} disetujui`,
+      body: `Pengajuan ${permissionLabel.toLowerCase()} Anda disetujui.${approverNote ? ` Catatan: ${approverNote}` : ''}`,
+      url: '/mobile/attendance/permission',
+      metadata: {
+        permissionType: request.permissionType,
+        decision: 'approved',
+      },
+    })
+  } catch (notificationError) {
+    console.error('Attendance permission approval bell error:', notificationError)
   }
 
   return { success: true, message: 'Izin disetujui dan masuk ke attendance.' }

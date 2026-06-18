@@ -6,6 +6,9 @@ import { db } from '@/db'
 import { heroJsas, heroJsaSettings, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { buildHseSafetyEmail, resolveHseSafetyRecipients, sendHseSafetyEmail } from '@/lib/hse-safety-email'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { getAppUrl } from '@/lib/workflow-email'
 
 async function requireJsaPermission(action: 'view' | 'edit' | 'delete') {
   const permission = await getCurrentMenuPermission('hse_jsa')
@@ -118,6 +121,15 @@ export async function saveJsa(
   const session = await getServerSession()
   if (id && !session?.user) throw new Error('Unauthorized')
 
+  const settings = await getJsaSettings()
+  let notificationPayload: null | {
+    mode: 'create' | 'update'
+    jsaNumber: string
+    jobDescription: string
+    riskLevel: string
+    teamMembers: string
+  } = null
+
   if (id) {
     const jsaId = id
 
@@ -133,6 +145,13 @@ export async function saveJsa(
           jsaId,
         }))
       )
+    }
+    notificationPayload = {
+      mode: 'update',
+      jsaNumber: data.jsaNumber || jsaId,
+      jobDescription: data.jobDescription,
+      riskLevel: data.riskLevel,
+      teamMembers: data.teamMembers,
     }
   } else {
     // Create new
@@ -153,6 +172,63 @@ export async function saveJsa(
       )
     }
     id = inserted.id
+    notificationPayload = {
+      mode: 'create',
+      jsaNumber: inserted.jsaNumber,
+      jobDescription: inserted.jobDescription,
+      riskLevel: inserted.riskLevel,
+      teamMembers: inserted.teamMembers,
+    }
+  }
+
+  if (notificationPayload) {
+    const emailContent = buildHseSafetyEmail({
+      title: notificationPayload.mode === 'create' ? `JSA baru: ${notificationPayload.jsaNumber}` : `JSA diperbarui: ${notificationPayload.jsaNumber}`,
+      intro:
+        notificationPayload.mode === 'create'
+          ? `${notificationPayload.jobDescription} telah didaftarkan ke sistem JSA.`
+          : `${notificationPayload.jobDescription} telah diperbarui di sistem JSA.`,
+      details: [
+        `Nomor JSA: ${notificationPayload.jsaNumber}`,
+        `Risk level: ${notificationPayload.riskLevel}`,
+        notificationPayload.teamMembers ? `Tim: ${notificationPayload.teamMembers}` : null,
+      ],
+      ctaLabel: 'Buka JSA',
+      ctaUrl: getAppUrl('/dashboard/hse/jsa'),
+    })
+    const extraRecipients = settings.notificationRecipients
+    await sendHseSafetyEmail({
+      templateCode: notificationPayload.mode === 'create' ? 'hse_jsa_created' : 'hse_jsa_updated',
+      templateName: notificationPayload.mode === 'create' ? 'HSE JSA Created' : 'HSE JSA Updated',
+      variables: notificationPayload,
+      extraTo: extraRecipients,
+      fallbackSubject:
+        notificationPayload.mode === 'create'
+          ? `JSA baru: ${notificationPayload.jsaNumber}`
+          : `Update JSA: ${notificationPayload.jsaNumber}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    })
+    const bellRecipients = await resolveHseSafetyRecipients({ extraTo: extraRecipients })
+    await notifyWorkflowBellRecipients({
+      recipientEmails: bellRecipients.to,
+      eventType: notificationPayload.mode === 'create' ? 'hse_jsa_created' : 'hse_jsa_updated',
+      category: 'hse_alerts',
+      title:
+        notificationPayload.mode === 'create'
+          ? `JSA baru: ${notificationPayload.jsaNumber}`
+          : `Update JSA: ${notificationPayload.jsaNumber}`,
+      body:
+        notificationPayload.mode === 'create'
+          ? `${notificationPayload.jobDescription} ditambahkan ke register JSA.`
+          : `${notificationPayload.jobDescription} diperbarui di register JSA.`,
+      url: '/dashboard/hse/jsa',
+      tagPrefix: 'hse-jsa',
+      metadata: {
+        jsaId: id,
+        jsaNumber: notificationPayload.jsaNumber,
+      },
+    })
   }
 
   revalidatePath('/dashboard/hse/jsa')

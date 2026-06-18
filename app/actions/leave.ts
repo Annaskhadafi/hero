@@ -19,6 +19,7 @@ import {
   sendWorkflowEmail,
   sendWorkflowEmailToMany,
 } from "@/lib/workflow-email";
+import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
 
 // ─── Leave Types ────────────────────────────────────────────────────────
 
@@ -260,6 +261,26 @@ async function notifyLeaveRequestDecision(input: {
   });
 }
 
+async function notifyLeaveBell(input: {
+  recipientEmails: string[];
+  eventType: string;
+  title: string;
+  body: string;
+  url: string;
+  metadata?: Record<string, unknown>;
+}) {
+  await notifyWorkflowBellRecipients({
+    recipientEmails: input.recipientEmails,
+    eventType: input.eventType,
+    category: "approval_requests",
+    title: input.title,
+    body: input.body,
+    url: input.url,
+    tagPrefix: "leave-request",
+    metadata: input.metadata,
+  });
+}
+
 export async function createLeaveRequest(data: {
   employeeId: number;
   leaveTypeId: number;
@@ -315,6 +336,23 @@ export async function createLeaveRequest(data: {
     });
   } catch (emailError) {
     console.error("Leave submit email error:", emailError);
+  }
+
+  try {
+    const recipients = await getHumanCapitalRecipientEmails();
+    await notifyLeaveBell({
+      recipientEmails: recipients,
+      eventType: "leave_request_submitted",
+      title: `Pengajuan cuti ${leaveType?.name || "Leave"} baru`,
+      body: `${employee?.name || `Employee #${data.employeeId}`} mengajukan cuti ${data.startDate} s/d ${data.endDate}.`,
+      url: "/dashboard/hc/leave",
+      metadata: {
+        employeeName: employee?.name || `Employee #${data.employeeId}`,
+        leaveTypeName: leaveType?.name || "Leave",
+      },
+    });
+  } catch (notificationError) {
+    console.error("Leave submit bell error:", notificationError);
   }
 
   return created;
@@ -388,6 +426,23 @@ export async function updateLeaveRequestStatus(
       });
     } catch (emailError) {
       console.error("Leave decision email error:", emailError);
+    }
+
+    try {
+      const statusLabel = status === "approved" ? "disetujui" : "ditolak";
+      await notifyLeaveBell({
+        recipientEmails: [employeeContact.email],
+        eventType: "leave_request_decision",
+        title: `Pengajuan cuti ${statusLabel}`,
+        body: `Pengajuan cuti ${leaveType?.name || "Leave"} Anda ${statusLabel}.${rejectionReason ? ` Catatan: ${rejectionReason}` : ""}`,
+        url: "/dashboard/hc/leave",
+        metadata: {
+          leaveTypeName: leaveType?.name || "Leave",
+          decision: status,
+        },
+      });
+    } catch (notificationError) {
+      console.error("Leave decision bell error:", notificationError);
     }
   }
 
