@@ -131,3 +131,76 @@ Rules:
   ikuti pola `lib/human-capital-email.ts` + policy CC/global recipient HC
 - Fitur domain baru:
   buat helper domain sendiri dengan pola serupa, lalu expose recipient settings di `Settings > Email`
+
+### Standar flow fitur baru
+
+- Jika menambah fitur/transaksi/form baru, jangan implement hanya CRUD utama. Evaluasi dan selesaikan satu paket flow pendukung yang relevan:
+  approval,
+  reminder,
+  notification bell,
+  email,
+  delivery log,
+  dan admin settings jika penerima/template perlu dikelola.
+- Jangan anggap fitur selesai kalau baru simpan data. Selesai artinya seluruh lifecycle operasional fitur sudah dipikirkan:
+  submit,
+  review/approval,
+  status update,
+  reminder,
+  notifikasi real-time,
+  email delivery,
+  audit/log,
+  dan visibilitas admin.
+
+#### Checklist fitur baru secara umum
+
+- Tentukan apakah fitur masuk approval flow. Jika ya, wajib integrasi ke Approval Engine terpusat dan tampil di Inbox Approval.
+- Tentukan event penting yang perlu reminder otomatis. Jika ada SLA, deadline, atau pending action, hubungkan ke `reminderJobs` + log delivery.
+- Tentukan event yang harus muncul di notification bell. Update status approval/transaksi tidak boleh diam di database saja.
+- Tentukan apakah event yang sama juga perlu email. Jika ya, ikuti seluruh standar `Email Settings Terpusat`.
+- Tentukan siapa penerima setiap channel:
+  approver,
+  requester,
+  HC,
+  HSE,
+  manager,
+  atau domain baru dengan recipient config terpusat.
+- Tentukan event log/audit minimum agar admin bisa melacak:
+  kapan event dibuat,
+  ke siapa dikirim,
+  status sukses/gagal,
+  dan template/channel yang dipakai.
+- Jangan pecah implementasi channel-channel ini tanpa alasan kuat. Untuk fitur baru, lebih aman kirim satu perubahan yang menyelesaikan seluruh flow terkait.
+
+#### Mapping implementasi multi-channel
+
+- Approval:
+  gunakan resolver/engine approval terpusat dan pastikan route inbox approval ikut membaca entitas baru
+- Reminder:
+  sambungkan event pending/SLA ke `reminderJobs` dan log ke `notificationEvents` / `notificationDeliveries` bila relevan
+- Notification bell:
+  publish event aktif yang bisa dibaca header notification bell secara real-time untuk user login
+- Email:
+  ikuti helper runtime override + recipient policy + seed/preset/settings admin
+- Admin settings:
+  jika channel/penerima/template butuh dikelola, expose di halaman settings terpusat, jangan buat config tersembunyi di action
+- Verification:
+  minimal ada source-test/smoke-test yang membuktikan entitas baru sudah terhubung ke flow approval/reminder/bell/email yang diwajibkan
+
+#### Done criteria fitur baru
+
+- Data utama tersimpan benar
+- Approval flow terhubung bila fitur butuh approval
+- Reminder flow terhubung bila fitur punya pending/SLA/deadline
+- Notification bell menerima event status yang relevan
+- Email runtime, recipient policy, template seed, preset registry, dan logging sudah aktif bila fitur butuh email
+- Admin bisa mengelola setting penting tanpa edit kode
+- Ada test minimum untuk wiring utama
+
+#### Larangan implementasi parsial
+
+- Jangan tambah fitur baru yang hanya:
+  simpan data + toast sukses
+- Jangan tambah approval baru tanpa inbox approval
+- Jangan tambah reminder tanpa log delivery
+- Jangan tambah email baru tanpa seed/preset/settings admin
+- Jangan tambah notifikasi status tanpa integrasi notification bell

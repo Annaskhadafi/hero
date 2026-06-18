@@ -27,5 +27,6 @@
 - 2026-06-18: Remaining HC recruitment flows now use central template overrides and HC policy CC for application received, interview invitation, and online test assignment; db-push wrapper now aborts unknown destructive prompts
 - 2026-06-18: AGENTS.md now explicitly requires all new features with email/notification to follow centralized Email Settings, recipient policy, runtime template override, seed/preset registry, and delivery logging patterns
 - 2026-06-18: AGENTS.md notification standards now include implementation checklist, file mapping, done-criteria, and domain pattern examples so future new features follow the same centralized email flow consistently
+- 2026-06-18: AGENTS.md now also enforces full new-feature flow coverage across approval, reminder, notification bell, email, delivery log, admin settings, and minimum verification
 - Project: HERO - Employee Reporting System
 - Main features: Employee management, timesheets, safety dashboard
