@@ -500,8 +500,10 @@ export const activities = pgTable('hero_activities', {
 export const approvals = pgTable('hero_approvals', {
   id: serial('id').primaryKey(),
   activityId: integer('activity_id')
-    .notNull()
     .references(() => activities.id, { onDelete: 'cascade' }),
+  submissionId: integer('submission_id').references(() => formSubmissions.id, {
+    onDelete: 'cascade',
+  }),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),
@@ -2446,6 +2448,9 @@ export const hcLeaveBalances = pgTable('hero_hc_leave_balances', {
 export const hcLeaveRequests = pgTable('hero_hc_leave_requests', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  approvalSubmissionId: integer('approval_submission_id').references(() => formSubmissions.id, {
+    onDelete: 'set null',
+  }),
   leaveTypeId: integer('leave_type_id').notNull().references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
   startDate: date('start_date').notNull(),
   endDate: date('end_date').notNull(),
@@ -2669,6 +2674,9 @@ export const hcCandidateOfferings = pgTable('hero_hc_candidate_offerings', {
 export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  approvalSubmissionId: integer('approval_submission_id').references(() => formSubmissions.id, {
+    onDelete: 'set null',
+  }),
   requestType: text('request_type').notNull().default('resignation'), // resignation, termination, retirement, end_of_contract
   reason: text('reason').notNull().default(''),
   requestedLastWorkingDay: date('requested_last_working_day').notNull(),

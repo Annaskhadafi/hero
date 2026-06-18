@@ -263,11 +263,25 @@ function getTemplateCatalogSeed() {
       description: 'Request lembur terpisah untuk kebutuhan payroll dan monitoring SLA approval.',
     },
     {
+      templateKey: 'attendance-permission',
+      category: 'HC',
+      name: 'Attendance Permission',
+      workflowMode: 'manual_workflow',
+      description: 'Pengajuan izin attendance dengan workflow approval lintas atasan/HC.',
+    },
+    {
       templateKey: 'leave-permission',
       category: 'HC',
       name: 'Leave / Permission',
       workflowMode: 'manual_workflow',
       description: 'Permohonan cuti, izin, dan approval lintas atasan/HC.',
+    },
+    {
+      templateKey: 'offboarding-request',
+      category: 'HC',
+      name: 'Offboarding Request',
+      workflowMode: 'manual_workflow',
+      description: 'Permintaan offboarding dan clearance dengan workflow approval lintas HC.',
     },
     {
       templateKey: 'daily-report',
@@ -1592,6 +1606,13 @@ export async function syncActivityWorkflowArtifacts(
   }
 
   await db.transaction(async (tx) => {
+    await tx
+      .update(approvals)
+      .set({
+        submissionId: submission.id,
+      })
+      .where(eq(approvals.activityId, activityId))
+
     const approvalIds = approvalRows.map((row) => row.id)
     const existingNotificationEventIds = (
       await tx

@@ -18,6 +18,10 @@ import {
   sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import {
+  cancelLegacyApprovalSubmission,
+  createLegacyApprovalRequest,
+} from '@/lib/legacy-approval-engine'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
@@ -643,11 +647,12 @@ export async function submitAttendancePermission(formData: FormData) {
 
     await ensureSchedulingTimesheetTables()
     const now = new Date()
-    await db
+    const [record] = await db
       .insert(attendancePermissionRequests)
       .values({
         siteId: employee.siteId,
         employeeId: employee.id,
+        approvalSubmissionId: null,
         permissionType,
         startDate: requestDate,
         endDate: permissionType === 'sick' ? endDate : requestDate,
@@ -679,6 +684,51 @@ export async function submitAttendancePermission(formData: FormData) {
           updatedAt: now,
         },
       })
+      .returning()
+
+    if (record.approvalSubmissionId) {
+      await cancelLegacyApprovalSubmission(
+        record.approvalSubmissionId,
+        'Attendance permission resubmitted from legacy form.',
+      )
+    }
+
+    const permissionLabel = formatAttendancePermissionType(permissionType)
+    const formattedRequestDate = formatAttendancePermissionRange(
+      requestDate,
+      permissionType === 'sick' ? endDate : requestDate,
+    )
+    const { submission } = await createLegacyApprovalRequest({
+      templateKey: 'attendance-permission',
+      requesterEmployeeId: employee.id,
+      siteId: employee.siteId,
+      activityType: 'attendance-permission',
+      transactionType: 'attendance_permission',
+      referenceId: record.id,
+      payloadSnapshot: {
+        legacyRecordId: record.id,
+        permissionType,
+        employeeId: employee.id,
+        employeeName: employee.name,
+        requestDate,
+        endDate: permissionType === 'sick' ? endDate : requestDate,
+        reason,
+      },
+      previewSnapshot: {
+        title: `Attendance Permission - ${permissionLabel}`,
+        summary: `${employee.name} mengajukan ${permissionLabel.toLowerCase()} untuk ${formattedRequestDate}.`,
+        siteName: employee.siteName,
+        workDate: requestDate,
+      },
+    })
+
+    await db
+      .update(attendancePermissionRequests)
+      .set({
+        approvalSubmissionId: submission.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(attendancePermissionRequests.id, record.id))
 
     revalidatePath('/mobile/attendance')
     revalidatePath('/mobile/attendance/permission')
@@ -707,11 +757,6 @@ export async function submitAttendancePermission(formData: FormData) {
           ...(await getHumanCapitalRecipientEmails()),
           ...(await getOperationalApprovalRecipientEmails(employee.siteId)),
         ]),
-      )
-      const permissionLabel = formatAttendancePermissionType(permissionType)
-      const formattedRequestDate = formatAttendancePermissionRange(
-        requestDate,
-        permissionType === 'sick' ? endDate : requestDate,
       )
       await notifyAttendancePermissionBell({
         recipientEmails: bellRecipients,

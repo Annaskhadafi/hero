@@ -10,7 +10,7 @@ import {
   jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sites, employees } from "@/db/schema/hero";
+import { sites, employees, formSubmissions } from "@/db/schema/hero";
 import { user } from "@/db/schema/auth";
 
 // Site-specific allowance rates configuration
@@ -356,6 +356,9 @@ export const attendancePermissionRequests = pgTable("hero_attendance_permission_
   id: serial("id").primaryKey(),
   siteId: integer("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
   employeeId: integer("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+  approvalSubmissionId: integer("approval_submission_id").references(() => formSubmissions.id, {
+    onDelete: "set null",
+  }),
   permissionType: text("permission_type").notNull(),
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),

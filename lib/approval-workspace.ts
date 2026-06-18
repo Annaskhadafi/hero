@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   activities,
@@ -19,6 +19,9 @@ import { ensureHeroSeedData } from "@/lib/hero-admin";
 type ApprovalRecordRow = {
   approvalId: number;
   activityId: number;
+  submissionId: number | null;
+  requestNumber: string | null;
+  formName: string;
   approvalStepId: number | null;
   level: number;
   status: string;
@@ -46,6 +49,45 @@ type ApprovalRecordRow = {
   requesterSection: string;
   requesterJobTitle: string;
   siteName: string;
+};
+
+type RawApprovalRecordRow = {
+  approvalId: number;
+  approvalActivityId: number | null;
+  submissionId: number | null;
+  approvalStepId: number | null;
+  level: number;
+  status: string;
+  approverName: string;
+  approverEmployeeId: number | null;
+  submittedAt: Date;
+  reviewedAt: Date | null;
+  overtimeMinutes: number;
+  resolutionSource: string;
+  routeSnapshot: string;
+  decisionNote: string;
+  activityCode: string | null;
+  activityType: string | null;
+  activityTitle: string | null;
+  unitNumber: string | null;
+  activityStatus: string | null;
+  priority: string | null;
+  remarks: string | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  createdAt: Date | null;
+  activityEmployeeId: number | null;
+  activitySiteId: number | null;
+  requesterEmployeeId: number | null;
+  submissionSiteId: number | null;
+  requestNumber: string | null;
+  submissionStatus: string | null;
+  payloadSnapshot: string | null;
+  previewSnapshot: string | null;
+  submissionCreatedAt: Date | null;
+  submissionSubmittedAt: Date | null;
+  templateName: string | null;
+  templateKey: string | null;
 };
 
 type ApprovalQueueItem = ApprovalRecordRow & {
@@ -138,6 +180,150 @@ function mapRequestStatus(activityStatus: string) {
   }
 
   return "submitted";
+}
+
+function parseJsonObject<T extends Record<string, unknown>>(
+  value: string,
+  fallback: T,
+) {
+  if (!value.trim()) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as T;
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
+  const requesterIds = Array.from(
+    new Set(
+      rawRows
+        .map((row) => row.activityEmployeeId ?? row.requesterEmployeeId)
+        .filter((value): value is number => value != null),
+    ),
+  );
+  const siteIds = Array.from(
+    new Set(
+      rawRows
+        .map((row) => row.activitySiteId ?? row.submissionSiteId)
+        .filter((value): value is number => value != null),
+    ),
+  );
+
+  const [requesters, siteRows] = await Promise.all([
+    requesterIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            email: employees.email,
+            department: employees.department,
+            section: employees.section,
+            jobTitle: employees.jobTitle,
+          })
+          .from(employees)
+          .where(inArray(employees.id, requesterIds)),
+    siteIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: sites.id,
+            name: sites.name,
+          })
+          .from(sites)
+          .where(inArray(sites.id, siteIds)),
+  ]);
+
+  const requesterMap = new Map(requesters.map((item) => [item.id, item]));
+  const siteMap = new Map(siteRows.map((item) => [item.id, item]));
+
+  return rawRows.map((row) => {
+    const payload = parseJsonObject<Record<string, unknown>>(
+      row.payloadSnapshot ?? "",
+      {},
+    );
+    const preview = parseJsonObject<Record<string, unknown>>(
+      row.previewSnapshot ?? "",
+      {},
+    );
+    const requester =
+      requesterMap.get(row.activityEmployeeId ?? row.requesterEmployeeId ?? -1) ??
+      null;
+    const site =
+      siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? -1) ?? null;
+    const effectiveStartTime =
+      row.startTime ?? row.submissionSubmittedAt ?? row.submissionCreatedAt ?? row.submittedAt;
+    const effectiveEndTime =
+      row.endTime ?? row.submissionSubmittedAt ?? row.submissionCreatedAt ?? row.submittedAt;
+    const effectiveCreatedAt =
+      row.createdAt ?? row.submissionCreatedAt ?? row.submissionSubmittedAt ?? row.submittedAt;
+    const requestId = row.approvalActivityId ?? row.submissionId ?? row.approvalId;
+    const titleFromSnapshot =
+      typeof preview.title === "string"
+        ? preview.title
+        : typeof payload.title === "string"
+          ? payload.title
+          : null;
+    const summaryFromSnapshot =
+      typeof preview.summary === "string"
+        ? preview.summary
+        : typeof payload.reason === "string"
+          ? payload.reason
+          : null;
+    const priorityFromSnapshot =
+      typeof payload.priority === "string" ? payload.priority : null;
+    const unitNumberFromSnapshot =
+      typeof payload.unitNumber === "string" ? payload.unitNumber : null;
+    const siteNameFromSnapshot =
+      typeof preview.siteName === "string"
+        ? preview.siteName
+        : typeof payload.siteName === "string"
+          ? payload.siteName
+          : null;
+
+    return {
+      approvalId: row.approvalId,
+      activityId: requestId,
+      submissionId: row.submissionId,
+      requestNumber: row.requestNumber,
+      formName: row.templateName ?? (row.approvalActivityId ? "Daily Activity" : "Workflow Request"),
+      approvalStepId: row.approvalStepId,
+      level: row.level,
+      status: row.status,
+      approverName: row.approverName,
+      approverEmployeeId: row.approverEmployeeId,
+      submittedAt: row.submittedAt,
+      reviewedAt: row.reviewedAt,
+      overtimeMinutes: row.overtimeMinutes,
+      resolutionSource: row.resolutionSource,
+      routeSnapshot: row.routeSnapshot,
+      decisionNote: row.decisionNote,
+      activityCode:
+        row.activityCode ??
+        row.requestNumber ??
+        `REQ-${String(requestId).padStart(5, "0")}`,
+      activityType: row.activityType ?? row.templateKey ?? row.templateName ?? "request",
+      activityTitle: row.activityTitle ?? titleFromSnapshot ?? row.templateName ?? "Untitled Request",
+      unitNumber: row.unitNumber ?? unitNumberFromSnapshot ?? "-",
+      activityStatus: row.activityStatus ?? row.submissionStatus ?? "submitted",
+      priority: row.priority ?? priorityFromSnapshot ?? "Normal",
+      remarks: row.remarks ?? summaryFromSnapshot ?? "",
+      startTime: effectiveStartTime,
+      endTime: effectiveEndTime,
+      createdAt: effectiveCreatedAt,
+      requesterName: requester?.name ?? "Unknown Requester",
+      requesterEmail: requester?.email ?? "",
+      requesterDepartment: requester?.department ?? "",
+      requesterSection: requester?.section ?? "",
+      requesterJobTitle: requester?.jobTitle ?? "",
+      siteName: site?.name ?? siteNameFromSnapshot ?? "-",
+    } satisfies ApprovalRecordRow;
+  });
 }
 
 function getSlaHours(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
@@ -346,10 +532,11 @@ function buildWorkflowPreview(rows: ApprovalQueueItem[]) {
 }
 
 async function fetchApprovalRows() {
-  return db
+  const rawRows = await db
     .select({
       approvalId: approvals.id,
-      activityId: activities.id,
+      approvalActivityId: approvals.activityId,
+      submissionId: approvals.submissionId,
       approvalStepId: approvals.approvalStepId,
       level: approvals.level,
       status: approvals.status,
@@ -371,18 +558,26 @@ async function fetchApprovalRows() {
       startTime: activities.startTime,
       endTime: activities.endTime,
       createdAt: activities.createdAt,
-      requesterName: employees.name,
-      requesterEmail: employees.email,
-      requesterDepartment: employees.department,
-      requesterSection: employees.section,
-      requesterJobTitle: employees.jobTitle,
-      siteName: sites.name,
+      activityEmployeeId: activities.employeeId,
+      activitySiteId: activities.siteId,
+      requesterEmployeeId: formSubmissions.requesterEmployeeId,
+      submissionSiteId: formSubmissions.siteId,
+      requestNumber: formSubmissions.requestNumber,
+      submissionStatus: formSubmissions.requestStatus,
+      payloadSnapshot: formSubmissions.payloadSnapshot,
+      previewSnapshot: formSubmissions.previewSnapshot,
+      submissionCreatedAt: formSubmissions.createdAt,
+      submissionSubmittedAt: formSubmissions.submittedAt,
+      templateName: formTemplates.name,
+      templateKey: formTemplates.templateKey,
     })
     .from(approvals)
-    .innerJoin(activities, eq(approvals.activityId, activities.id))
-    .innerJoin(employees, eq(activities.employeeId, employees.id))
-    .innerJoin(sites, eq(activities.siteId, sites.id))
+    .leftJoin(activities, eq(approvals.activityId, activities.id))
+    .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
+    .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
     .orderBy(desc(approvals.submittedAt), desc(approvals.id));
+
+  return normalizeApprovalRows(rawRows);
 }
 
 async function fetchApprovalRowsForUser(
@@ -391,55 +586,28 @@ async function fetchApprovalRowsForUser(
 ) {
   const normalizedEmail = normalizeMatchValue(email);
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name);
-  const filters = [sql`lower(${employees.email}) = ${normalizedEmail}`];
+  const rows = await fetchApprovalRows();
 
-  if (currentEmployee?.id != null) {
-    filters.push(eq(approvals.approverEmployeeId, currentEmployee.id));
-  }
+  return rows
+    .filter((row) => {
+      if (normalizeMatchValue(row.requesterEmail) === normalizedEmail) {
+        return true;
+      }
 
-  if (normalizedEmployeeName) {
-    filters.push(sql`lower(${approvals.approverName}) = ${normalizedEmployeeName}`);
-  }
+      if (currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id) {
+        return true;
+      }
 
-  return db
-    .select({
-      approvalId: approvals.id,
-      activityId: activities.id,
-      approvalStepId: approvals.approvalStepId,
-      level: approvals.level,
-      status: approvals.status,
-      approverName: approvals.approverName,
-      approverEmployeeId: approvals.approverEmployeeId,
-      submittedAt: approvals.submittedAt,
-      reviewedAt: approvals.reviewedAt,
-      overtimeMinutes: approvals.overtimeMinutes,
-      resolutionSource: approvals.resolutionSource,
-      routeSnapshot: approvals.routeSnapshot,
-      decisionNote: approvals.decisionNote,
-      activityCode: activities.activityCode,
-      activityType: activities.activityType,
-      activityTitle: activities.title,
-      unitNumber: activities.unitNumber,
-      activityStatus: activities.status,
-      priority: activities.priority,
-      remarks: activities.remarks,
-      startTime: activities.startTime,
-      endTime: activities.endTime,
-      createdAt: activities.createdAt,
-      requesterName: employees.name,
-      requesterEmail: employees.email,
-      requesterDepartment: employees.department,
-      requesterSection: employees.section,
-      requesterJobTitle: employees.jobTitle,
-      siteName: sites.name,
+      if (
+        normalizedEmployeeName &&
+        normalizeMatchValue(row.approverName) === normalizedEmployeeName
+      ) {
+        return true;
+      }
+
+      return false;
     })
-    .from(approvals)
-    .innerJoin(activities, eq(approvals.activityId, activities.id))
-    .innerJoin(employees, eq(activities.employeeId, employees.id))
-    .innerJoin(sites, eq(activities.siteId, sites.id))
-    .where(or(...filters))
-    .orderBy(desc(approvals.submittedAt), desc(approvals.id))
-    .limit(240);
+    .slice(0, 240);
 }
 
 export async function getApprovalWorkbenchData() {
@@ -490,7 +658,11 @@ export async function getApprovalWorkbenchData() {
             requestNumber: formSubmissions.requestNumber,
           })
           .from(formSubmissions)
-          .where(eq(formSubmissions.legacyActivityId, focusItem.activityId))
+          .where(
+            focusItem.submissionId != null
+              ? eq(formSubmissions.id, focusItem.submissionId)
+              : eq(formSubmissions.legacyActivityId, focusItem.activityId),
+          )
           .orderBy(desc(formSubmissions.updatedAt), desc(formSubmissions.id))
           .limit(1);
   const focusAttachments =
@@ -973,10 +1145,7 @@ export async function getRequestCenterData(email?: string) {
     .innerJoin(employees, eq(formSubmissions.requesterEmployeeId, employees.id))
     .leftJoin(sites, eq(formSubmissions.siteId, sites.id))
     .where(
-      and(
-        eq(formTemplates.templateKey, "daily-activity"),
-        isNull(formSubmissions.legacyActivityId),
-      ),
+      isNull(formSubmissions.legacyActivityId),
     )
     .orderBy(desc(formSubmissions.updatedAt), desc(formSubmissions.id));
 
@@ -986,6 +1155,27 @@ export async function getRequestCenterData(email?: string) {
 
   const draftRequests = filteredDraftRows.map((row) => {
     const payload = JSON.parse(row.payloadSnapshot || "{}") as Record<string, string>;
+    const requestStatus = row.requestStatus;
+    const pendingWithLabel =
+      requestStatus === "draft"
+        ? "Requester workspace"
+        : requestStatus === "in_review"
+          ? "Approval Inbox"
+          : requestStatus === "needs_revision"
+            ? "Requester revision"
+            : "-";
+    const stepLabel =
+      requestStatus === "draft"
+        ? "Draft belum disubmit"
+        : requestStatus === "cancelled"
+          ? "Request dibatalkan"
+          : requestStatus === "approved"
+            ? "Approval selesai"
+            : requestStatus === "rejected"
+              ? "Request ditolak"
+              : requestStatus === "needs_revision"
+                ? "Perlu revisi"
+                : "Sedang direview";
 
     return {
       activityId: row.activityId ?? row.submissionId,
@@ -999,16 +1189,23 @@ export async function getRequestCenterData(email?: string) {
       requesterJobTitle: row.requesterJobTitle,
       siteName: row.siteName ?? "-",
       priority: payload.priority ?? "Normal",
-      status: row.requestStatus,
-      activityStatus: row.requestStatus,
+      status: requestStatus,
+      activityStatus: requestStatus,
       submissionId: row.submissionId,
       submittedAt: row.submittedAt ?? row.createdAt,
       lastUpdatedAt: row.cancelledAt ?? row.updatedAt ?? row.createdAt,
-      pendingWith: row.requestStatus === "draft" ? "Requester workspace" : "-",
-      currentStepLabel: row.requestStatus === "draft" ? "Draft belum disubmit" : "Request dibatalkan",
-      progressLabel: row.requestStatus === "draft" ? "0 step" : "Cancelled before submit",
-      workflowLabel: "Daily Activity Template",
-      canCancel: row.requestStatus === "draft",
+      pendingWith: pendingWithLabel,
+      currentStepLabel: stepLabel,
+      progressLabel:
+        requestStatus === "draft"
+          ? "0 step"
+          : requestStatus === "approved"
+            ? "Completed"
+            : requestStatus === "cancelled"
+              ? "Cancelled"
+              : "In workflow",
+      workflowLabel: row.formName,
+      canCancel: requestStatus === "draft" || requestStatus === "in_review",
     };
   });
 

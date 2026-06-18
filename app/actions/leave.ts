@@ -20,6 +20,8 @@ import {
   sendWorkflowEmailToMany,
 } from "@/lib/workflow-email";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
+import { getEmployeeTargetByEmail } from "@/lib/push-notifications";
+import { createLegacyApprovalRequest } from "@/lib/legacy-approval-engine";
 
 // ─── Leave Types ────────────────────────────────────────────────────────
 
@@ -312,6 +314,7 @@ export async function createLeaveRequest(data: {
     .insert(hcLeaveRequests)
     .values({
       employeeId: data.employeeId,
+      approvalSubmissionId: null,
       leaveTypeId: data.leaveTypeId,
       startDate: data.startDate,
       endDate: data.endDate,
@@ -321,6 +324,45 @@ export async function createLeaveRequest(data: {
       status: "pending",
     })
     .returning();
+
+  const requesterEmployee = employee?.email
+    ? await getEmployeeTargetByEmail(employee.email)
+    : null;
+
+  if (requesterEmployee) {
+    const { submission } = await createLegacyApprovalRequest({
+      templateKey: "leave-permission",
+      requesterEmployeeId: requesterEmployee.id,
+      siteId: null,
+      activityType: "leave-permission",
+      transactionType: "leave_request",
+      referenceId: created.id,
+      payloadSnapshot: {
+        legacyRecordId: created.id,
+        employeeId: data.employeeId,
+        employeeName: employee?.name || `Employee #${data.employeeId}`,
+        leaveTypeId: data.leaveTypeId,
+        leaveTypeName: leaveType?.name || "Leave",
+        startDate: data.startDate,
+        endDate: data.endDate,
+        totalDays: data.totalDays,
+        reason: data.reason || "",
+      },
+      previewSnapshot: {
+        title: `Leave Request - ${leaveType?.name || "Leave"}`,
+        summary: `${employee?.name || `Employee #${data.employeeId}`} mengajukan cuti ${data.startDate} s/d ${data.endDate}.`,
+        workDate: data.startDate,
+      },
+    });
+
+    await db
+      .update(hcLeaveRequests)
+      .set({
+        approvalSubmissionId: submission.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(hcLeaveRequests.id, created.id));
+  }
 
   revalidatePath("/dashboard/hc/leave");
 

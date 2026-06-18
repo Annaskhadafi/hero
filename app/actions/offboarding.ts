@@ -19,6 +19,8 @@ import {
   sendWorkflowEmailToMany,
 } from "@/lib/workflow-email";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
+import { getEmployeeTargetByEmail } from "@/lib/push-notifications";
+import { createLegacyApprovalRequest } from "@/lib/legacy-approval-engine";
 
 // ─── Default Clearance Checklist Items ────────────────────────────────────────
 
@@ -327,12 +329,50 @@ export async function createOffboardingRequest(data: {
     .insert(hcOffboardingRequests)
     .values({
       employeeId: empId,
+      approvalSubmissionId: null,
       requestType: data.requestType,
       reason: data.reason,
       requestedLastWorkingDay: data.requestedLastWorkingDay,
       status: "pending",
     })
     .returning();
+
+  const employeeContact = await getHrEmployeeContactById(empId);
+  const requesterEmployee = employeeContact.email
+    ? await getEmployeeTargetByEmail(employeeContact.email)
+    : null;
+
+  if (requesterEmployee) {
+    const { submission } = await createLegacyApprovalRequest({
+      templateKey: "offboarding-request",
+      requesterEmployeeId: requesterEmployee.id,
+      siteId: null,
+      activityType: "offboarding-request",
+      transactionType: "offboarding_request",
+      referenceId: record.id,
+      payloadSnapshot: {
+        legacyRecordId: record.id,
+        employeeId: empId,
+        employeeName: employeeContact.name,
+        requestType: data.requestType,
+        reason: data.reason,
+        requestedLastWorkingDay: data.requestedLastWorkingDay,
+      },
+      previewSnapshot: {
+        title: `Offboarding Request - ${employeeContact.name}`,
+        summary: `${employeeContact.name} mengajukan offboarding tipe ${data.requestType}.`,
+        workDate: data.requestedLastWorkingDay,
+      },
+    });
+
+    await db
+      .update(hcOffboardingRequests)
+      .set({
+        approvalSubmissionId: submission.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(hcOffboardingRequests.id, record.id));
+  }
 
   // Auto-generate default clearance checklist
   const clearanceToInsert = DEFAULT_CLEARANCE_ITEMS.map((item, index) => ({

@@ -87,6 +87,13 @@ import { account, session, user } from '@/db/schema/auth'
 import {
   activities,
   approvals,
+  approvalComments,
+  approvalRequestActors,
+  formSubmissions,
+  formTemplates,
+  inboxItems,
+  notificationDeliveries,
+  notificationEvents,
   attendanceRecords,
   dailyReports,
   employees,
@@ -114,16 +121,22 @@ import {
   badges,
   employeeBadges,
   roleMenuPermissions,
+  reminderJobs,
+  requestStatusHistories,
   securityRolePermissions,
   securityRoles,
   sites,
+  stepDecisionHistories,
   sioCertifications,
   timesheetEntries,
   trainingRecords,
   wellnessRecords,
+  hcLeaveRequests,
+  hcOffboardingRequests,
 } from '@/db/schema/hero'
 import {
   indonesiaHolidays,
+  attendancePermissionRequests,
   timesheetAttendanceEmployeeAliases,
   timesheetAttendanceImportPreviews,
   timesheetAttendanceImportTemplates,
@@ -147,6 +160,7 @@ import {
   evaluatePointThresholdBadges,
 } from '@/lib/hero-admin'
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
+import { createNextLegacyApprovalStep } from '@/lib/legacy-approval-engine'
 import {
   getMappedValue,
   parseCsvToRecords,
@@ -1877,6 +1891,427 @@ async function createPendingApprovalsForStepGroup(params: {
   }
 }
 
+type ApprovalTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+function parseJsonRecord(value: string | null | undefined) {
+  if (!value?.trim()) {
+    return {} as Record<string, unknown>
+  }
+
+  try {
+    return JSON.parse(value) as Record<string, unknown>
+  } catch {
+    return {} as Record<string, unknown>
+  }
+}
+
+async function closeLegacyApprovalInboxItems(
+  tx: ApprovalTx,
+  approvalIds: number[],
+  status: 'approved' | 'rejected' | 'needs_correction' | 'skipped' | 'cancelled',
+  now: Date,
+  executionLog: string,
+) {
+  if (approvalIds.length === 0) {
+    return
+  }
+
+  const affectedInboxRows = await tx
+    .select({ id: inboxItems.id })
+    .from(inboxItems)
+    .where(inArray(inboxItems.approvalId, approvalIds))
+
+  const inboxIds = affectedInboxRows.map((row) => row.id)
+  if (inboxIds.length === 0) {
+    return
+  }
+
+  await tx
+    .update(inboxItems)
+    .set({
+      status,
+      updatedAt: now,
+    })
+    .where(inArray(inboxItems.id, inboxIds))
+
+  await tx
+    .update(reminderJobs)
+    .set({
+      status: status === 'approved' ? 'completed' : 'cancelled',
+      executionLog,
+      updatedAt: now,
+    })
+    .where(inArray(reminderJobs.inboxItemId, inboxIds))
+}
+
+async function updateLegacyEntityForSubmissionDecision(params: {
+  tx: ApprovalTx
+  templateKey: string
+  submissionId: number
+  payloadSnapshot: string
+  decision: 'approved' | 'rejected' | 'needs_correction'
+  note: string
+  actorName: string
+  now: Date
+}) {
+  const payload = parseJsonRecord(params.payloadSnapshot)
+  const legacyRecordId = Number(payload.legacyRecordId ?? 0)
+
+  if (!Number.isInteger(legacyRecordId) || legacyRecordId <= 0) {
+    return
+  }
+
+  if (params.templateKey === 'attendance-permission') {
+    await params.tx
+      .update(attendancePermissionRequests)
+      .set({
+        status:
+          params.decision === 'approved'
+            ? 'approved'
+            : params.decision === 'rejected'
+              ? 'rejected'
+              : 'pending',
+        approverNote: params.note,
+        approverUserId: null,
+        approvedAt: params.decision === 'approved' ? params.now : null,
+        rejectedAt: params.decision === 'rejected' ? params.now : null,
+        updatedAt: params.now,
+      })
+      .where(eq(attendancePermissionRequests.id, legacyRecordId))
+    return
+  }
+
+  if (params.templateKey === 'leave-permission') {
+    await params.tx
+      .update(hcLeaveRequests)
+      .set({
+        status:
+          params.decision === 'approved'
+            ? 'approved'
+            : params.decision === 'rejected'
+              ? 'rejected'
+              : 'pending',
+        approvedBy: params.decision === 'approved' ? params.actorName : '',
+        approvedAt: params.decision === 'approved' ? params.now : null,
+        rejectionReason:
+          params.decision === 'approved' ? '' : params.note,
+        updatedAt: params.now,
+      })
+      .where(eq(hcLeaveRequests.id, legacyRecordId))
+    return
+  }
+
+  if (params.templateKey === 'offboarding-request') {
+    await params.tx
+      .update(hcOffboardingRequests)
+      .set({
+        status:
+          params.decision === 'approved'
+            ? 'in_clearance'
+            : params.decision === 'rejected'
+              ? 'rejected'
+              : 'pending',
+        approvedBy: params.decision === 'approved' ? params.actorName : '',
+        approvedAt: params.decision === 'approved' ? params.now : null,
+        updatedAt: params.now,
+      })
+      .where(eq(hcOffboardingRequests.id, legacyRecordId))
+  }
+}
+
+async function applyLegacySubmissionDecision(params: {
+  approvalId: number
+  approval: {
+    approvalId: number
+    submissionId: number
+    level: number
+    status: string
+    approverName: string
+    approvalStepId: number | null
+    routeSnapshot: string
+    decisionNote: string
+    requestStatus: string
+    requestNumber: string
+    workflowSnapshot: string
+    payloadSnapshot: string
+    templateKey: string
+    templateName: string
+    requesterEmployeeId: number
+    requesterName: string
+  }
+  decision: 'approved' | 'rejected' | 'needs_correction'
+  note: string
+}) {
+  const trimmedNote = params.note.trim()
+  const now = new Date()
+  const approvalRoute =
+    parseApprovalRouteSnapshot(params.approval.routeSnapshot) ??
+    parseApprovalRouteSnapshot(params.approval.workflowSnapshot)
+  const currentStepIndex =
+    approvalRoute?.steps.findIndex(
+      (step) =>
+        step.stepOrder === params.approval.level &&
+        (params.approval.approvalStepId == null ||
+          step.approvalMatrixStepId === params.approval.approvalStepId),
+    ) ?? -1
+  const currentStep =
+    approvalRoute != null && currentStepIndex >= 0
+      ? (approvalRoute.steps[currentStepIndex] ?? null)
+      : null
+  const currentStepGroup =
+    approvalRoute != null && currentStep != null
+      ? getRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
+      : []
+  const nextStepGroup =
+    approvalRoute != null && currentStep != null
+      ? getNextRouteStepGroup(approvalRoute.steps, currentStep.stepOrder)
+      : []
+
+  await db.transaction(async (tx) => {
+    const defaultDecisionMessage =
+      params.decision === 'approved'
+        ? 'Approval diteruskan sesuai workflow.'
+        : params.decision === 'rejected'
+          ? 'Request ditolak pada step ini.'
+          : 'Request dikembalikan untuk revisi.'
+
+    await tx
+      .update(approvals)
+      .set({
+        status: params.decision,
+        reviewedAt: now,
+        decisionNote: appendApprovalNoteEntry(params.approval.decisionNote, {
+          kind: params.decision,
+          actor: params.approval.approverName,
+          message: trimmedNote || defaultDecisionMessage,
+          at: now.toISOString(),
+        }),
+      })
+      .where(eq(approvals.id, params.approval.approvalId))
+
+    await closeLegacyApprovalInboxItems(
+      tx,
+      [params.approval.approvalId],
+      params.decision,
+      now,
+      trimmedNote || defaultDecisionMessage,
+    )
+
+    await tx.insert(stepDecisionHistories).values({
+      submissionId: params.approval.submissionId,
+      approvalId: params.approval.approvalId,
+      actorEmployeeId: null,
+      decision: params.decision,
+      decisionNote: trimmedNote,
+      decidedAt: now,
+      createdAt: now,
+    })
+
+    if (params.decision === 'needs_correction' || params.decision === 'rejected') {
+      const siblingRows =
+        currentStepGroup.length > 1
+          ? await tx
+              .select({ id: approvals.id })
+              .from(approvals)
+              .where(
+                and(
+                  eq(approvals.submissionId, params.approval.submissionId),
+                  eq(approvals.level, params.approval.level),
+                  eq(approvals.status, 'pending'),
+                ),
+              )
+          : []
+      const siblingIds = siblingRows.map((row) => row.id)
+
+      if (siblingIds.length > 0) {
+        await tx
+          .update(approvals)
+          .set({
+            status: 'skipped',
+            reviewedAt: now,
+          })
+          .where(inArray(approvals.id, siblingIds))
+
+        await closeLegacyApprovalInboxItems(
+          tx,
+          siblingIds,
+          'skipped',
+          now,
+          'Closed because another reviewer already decided this step.',
+        )
+      }
+
+      const nextStatus =
+        params.decision === 'rejected' ? 'rejected' : 'needs_revision'
+
+      await tx
+        .update(formSubmissions)
+        .set({
+          requestStatus: nextStatus,
+          updatedAt: now,
+          completedAt: params.decision === 'rejected' ? now : null,
+        })
+        .where(eq(formSubmissions.id, params.approval.submissionId))
+
+      await tx.insert(requestStatusHistories).values({
+        submissionId: params.approval.submissionId,
+        approvalId: params.approval.approvalId,
+        actorEmployeeId: null,
+        fromStatus: params.approval.requestStatus,
+        toStatus: nextStatus,
+        note: trimmedNote,
+        createdAt: now,
+      })
+
+      await updateLegacyEntityForSubmissionDecision({
+        tx,
+        templateKey: params.approval.templateKey,
+        submissionId: params.approval.submissionId,
+        payloadSnapshot: params.approval.payloadSnapshot,
+        decision: params.decision,
+        note: trimmedNote,
+        actorName: params.approval.approverName,
+        now,
+      })
+      return
+    }
+
+    if (
+      currentStep != null &&
+      normalizeLookupValue(currentStep.approvalMode) !== 'parallel_any' &&
+      normalizeLookupValue(currentStep.approvalMode) !== 'any_one'
+    ) {
+      const sameLevelApprovals = await tx
+        .select({
+          id: approvals.id,
+          status: approvals.status,
+        })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.submissionId, params.approval.submissionId),
+            eq(approvals.level, params.approval.level),
+          ),
+        )
+
+      if (sameLevelApprovals.some((row) => row.status === 'pending')) {
+        await tx
+          .update(formSubmissions)
+          .set({
+            requestStatus: 'in_review',
+            updatedAt: now,
+          })
+          .where(eq(formSubmissions.id, params.approval.submissionId))
+        return
+      }
+    }
+
+    if (
+      currentStep != null &&
+      (normalizeLookupValue(currentStep.approvalMode) === 'parallel_any' ||
+        normalizeLookupValue(currentStep.approvalMode) === 'any_one')
+    ) {
+      const siblingRows = await tx
+        .select({ id: approvals.id })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.submissionId, params.approval.submissionId),
+            eq(approvals.level, params.approval.level),
+            eq(approvals.status, 'pending'),
+          ),
+        )
+
+      const siblingIds = siblingRows.map((row) => row.id)
+      if (siblingIds.length > 0) {
+        await tx
+          .update(approvals)
+          .set({
+            status: 'skipped',
+            reviewedAt: now,
+          })
+          .where(inArray(approvals.id, siblingIds))
+
+        await closeLegacyApprovalInboxItems(
+          tx,
+          siblingIds,
+          'skipped',
+          now,
+          'Step parallel-any diselesaikan oleh approver lain pada level yang sama.',
+        )
+      }
+    }
+
+    if (nextStepGroup.length > 0 && approvalRoute != null) {
+      await tx
+        .update(formSubmissions)
+        .set({
+          requestStatus: 'in_review',
+          updatedAt: now,
+        })
+        .where(eq(formSubmissions.id, params.approval.submissionId))
+
+      await tx.insert(requestStatusHistories).values({
+        submissionId: params.approval.submissionId,
+        approvalId: params.approval.approvalId,
+        actorEmployeeId: null,
+        fromStatus: params.approval.requestStatus,
+        toStatus: 'in_review',
+        note: trimmedNote || 'Moved to next approval step.',
+        createdAt: now,
+      })
+      return
+    }
+
+    await tx
+      .update(formSubmissions)
+      .set({
+        requestStatus: 'approved',
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(formSubmissions.id, params.approval.submissionId))
+
+    await tx.insert(requestStatusHistories).values({
+      submissionId: params.approval.submissionId,
+      approvalId: params.approval.approvalId,
+      actorEmployeeId: null,
+      fromStatus: params.approval.requestStatus,
+      toStatus: 'approved',
+      note: trimmedNote || 'Request fully approved.',
+      createdAt: now,
+    })
+
+    await updateLegacyEntityForSubmissionDecision({
+      tx,
+      templateKey: params.approval.templateKey,
+      submissionId: params.approval.submissionId,
+      payloadSnapshot: params.approval.payloadSnapshot,
+      decision: 'approved',
+      note: trimmedNote,
+      actorName: params.approval.approverName,
+      now,
+    })
+  })
+
+  if (
+    params.decision === 'approved' &&
+    nextStepGroup.length > 0 &&
+    approvalRoute != null
+  ) {
+    await createNextLegacyApprovalStep({
+      submissionId: params.approval.submissionId,
+      route: approvalRoute,
+      currentStepOrder: currentStep?.stepOrder ?? params.approval.level,
+      submittedAt: now,
+      requestTitle: params.approval.templateName,
+      requesterName: params.approval.requesterName,
+    })
+  }
+
+  return true
+}
+
 function parseApprovalRouteSnapshot(routeSnapshot: string) {
   const trimmedSnapshot = routeSnapshot.trim()
 
@@ -1905,6 +2340,7 @@ async function applyApprovalDecision(params: {
   const [approval] = await db
     .select({
       approvalId: approvals.id,
+      submissionId: approvals.submissionId,
       level: approvals.level,
       status: approvals.status,
       approverName: approvals.approverName,
@@ -1912,7 +2348,7 @@ async function applyApprovalDecision(params: {
       routeSnapshot: approvals.routeSnapshot,
       decisionNote: approvals.decisionNote,
       overtimeMinutes: approvals.overtimeMinutes,
-      activityId: activities.id,
+      activityId: approvals.activityId,
       activityTitle: activities.title,
       activityType: activities.activityType,
       priority: activities.priority,
@@ -1923,9 +2359,20 @@ async function applyApprovalDecision(params: {
       penaltyDeducted: activities.penaltyDeducted,
       employeeId: activities.employeeId,
       siteId: activities.siteId,
+      requestStatus: formSubmissions.requestStatus,
+      requestNumber: formSubmissions.requestNumber,
+      workflowSnapshot: formSubmissions.workflowSnapshot,
+      payloadSnapshot: formSubmissions.payloadSnapshot,
+      requesterEmployeeId: formSubmissions.requesterEmployeeId,
+      templateKey: formTemplates.templateKey,
+      templateName: formTemplates.name,
+      requesterName: employees.name,
     })
     .from(approvals)
-    .innerJoin(activities, eq(approvals.activityId, activities.id))
+    .leftJoin(activities, eq(approvals.activityId, activities.id))
+    .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
+    .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
+    .leftJoin(employees, eq(formSubmissions.requesterEmployeeId, employees.id))
     .where(eq(approvals.id, params.approvalId))
     .limit(1)
 
@@ -1936,6 +2383,50 @@ async function applyApprovalDecision(params: {
   if (approval.status !== 'pending') {
     return false
   }
+
+  if (approval.activityId == null && approval.submissionId != null) {
+    return applyLegacySubmissionDecision({
+      approvalId: params.approvalId,
+      approval: {
+        approvalId: approval.approvalId,
+        submissionId: approval.submissionId,
+        level: approval.level,
+        status: approval.status,
+        approverName: approval.approverName,
+        approvalStepId: approval.approvalStepId,
+        routeSnapshot: approval.routeSnapshot,
+        decisionNote: approval.decisionNote,
+        requestStatus: approval.requestStatus ?? 'submitted',
+        requestNumber: approval.requestNumber ?? '',
+        workflowSnapshot: approval.workflowSnapshot ?? '',
+        payloadSnapshot: approval.payloadSnapshot ?? '',
+        templateKey: approval.templateKey ?? 'legacy-request',
+        templateName: approval.templateName ?? 'Workflow Request',
+        requesterEmployeeId: approval.requesterEmployeeId ?? 0,
+        requesterName: approval.requesterName ?? 'Requester',
+      },
+      decision: params.decision,
+      note: params.note,
+    })
+  }
+
+  if (
+    approval.activityId == null ||
+    approval.employeeId == null ||
+    approval.siteId == null ||
+    approval.startTime == null ||
+    approval.endTime == null
+  ) {
+    throw new Error('Activity approval context is incomplete.')
+  }
+
+  const activityId = approval.activityId
+  const employeeId = approval.employeeId
+  const siteId = approval.siteId
+  const startTime = approval.startTime
+  const endTime = approval.endTime
+  const pointsAwarded = approval.pointsAwarded ?? 0
+  const penaltyDeducted = approval.penaltyDeducted ?? 0
 
   const now = new Date()
   const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
@@ -1990,7 +2481,7 @@ async function applyApprovalDecision(params: {
           })
           .where(
             and(
-              eq(approvals.activityId, approval.activityId),
+              eq(approvals.activityId, activityId),
               eq(approvals.level, approval.level),
               eq(approvals.status, 'pending')
             )
@@ -2002,7 +2493,7 @@ async function applyApprovalDecision(params: {
         .set({
           status: 'Needs Correction',
         })
-        .where(eq(activities.id, approval.activityId))
+        .where(eq(activities.id, activityId))
 
       return
     }
@@ -2017,7 +2508,7 @@ async function applyApprovalDecision(params: {
           })
           .where(
             and(
-              eq(approvals.activityId, approval.activityId),
+              eq(approvals.activityId, activityId),
               eq(approvals.level, approval.level),
               eq(approvals.status, 'pending')
             )
@@ -2029,7 +2520,7 @@ async function applyApprovalDecision(params: {
         .set({
           status: 'Rejected',
         })
-        .where(eq(activities.id, approval.activityId))
+        .where(eq(activities.id, activityId))
 
       return
     }
@@ -2046,7 +2537,7 @@ async function applyApprovalDecision(params: {
         })
         .from(approvals)
         .where(
-          and(eq(approvals.activityId, approval.activityId), eq(approvals.level, approval.level))
+          and(eq(approvals.activityId, activityId), eq(approvals.level, approval.level))
         )
 
       if (sameLevelApprovals.some((row) => row.status === 'pending')) {
@@ -2055,7 +2546,7 @@ async function applyApprovalDecision(params: {
           .set({
             status: getPendingActivityStatus(approval.level),
           })
-          .where(eq(activities.id, approval.activityId))
+          .where(eq(activities.id, activityId))
 
         return
       }
@@ -2080,7 +2571,7 @@ async function applyApprovalDecision(params: {
         })
         .where(
           and(
-            eq(approvals.activityId, approval.activityId),
+            eq(approvals.activityId, activityId),
             eq(approvals.level, approval.level),
             eq(approvals.status, 'pending')
           )
@@ -2090,7 +2581,7 @@ async function applyApprovalDecision(params: {
     if (nextStepGroup.length > 0 && approvalRoute != null) {
       await createPendingApprovalsForStepGroup({
         tx,
-        activityId: approval.activityId,
+        activityId,
         stepGroup: nextStepGroup,
         approvalRoute,
         submittedAt: now,
@@ -2102,19 +2593,19 @@ async function applyApprovalDecision(params: {
         .set({
           status: getPendingActivityStatus(nextStepGroup[0].stepOrder),
         })
-        .where(eq(activities.id, approval.activityId))
+        .where(eq(activities.id, activityId))
 
       return
     }
 
     if (approvalRoute == null || currentStepIndex < 0) {
       const fallbackRoute = await resolveApprovalRouteForActivity({
-        employeeId: approval.employeeId,
-        activityType: approval.activityType,
-        priority: approval.priority,
+        employeeId,
+        activityType: approval.activityType ?? 'activity',
+        priority: approval.priority ?? 'normal',
         overtimeMinutes: approval.overtimeMinutes,
         transactionType: 'activity',
-        at: approval.endTime,
+        at: endTime,
       })
       const fallbackNextStep = fallbackRoute.steps.find((step) => step.stepOrder > approval.level)
 
@@ -2122,7 +2613,7 @@ async function applyApprovalDecision(params: {
         const fallbackNextGroup = getRouteStepGroup(fallbackRoute.steps, fallbackNextStep.stepOrder)
         await createPendingApprovalsForStepGroup({
           tx,
-          activityId: approval.activityId,
+          activityId,
           stepGroup: fallbackNextGroup,
           approvalRoute: fallbackRoute,
           submittedAt: now,
@@ -2134,7 +2625,7 @@ async function applyApprovalDecision(params: {
           .set({
             status: getPendingActivityStatus(fallbackNextStep.stepOrder),
           })
-          .where(eq(activities.id, approval.activityId))
+          .where(eq(activities.id, activityId))
 
         return
       }
@@ -2142,11 +2633,11 @@ async function applyApprovalDecision(params: {
 
     const durationMinutes = Math.max(
       0,
-      Math.round((approval.endTime.getTime() - approval.startTime.getTime()) / 60000)
+      Math.round((endTime.getTime() - startTime.getTime()) / 60000)
     )
     const regularMinutes = Math.max(0, durationMinutes - approval.overtimeMinutes)
     const overtimeRate = 70000
-    const periodLabel = getPeriodLabel(approval.endTime)
+    const periodLabel = getPeriodLabel(endTime)
 
     const [existingTimesheet] = await tx
       .select({
@@ -2158,8 +2649,8 @@ async function applyApprovalDecision(params: {
       .from(timesheetEntries)
       .where(
         and(
-          eq(timesheetEntries.employeeId, approval.employeeId),
-          eq(timesheetEntries.siteId, approval.siteId),
+          eq(timesheetEntries.employeeId, employeeId),
+          eq(timesheetEntries.siteId, siteId),
           eq(timesheetEntries.periodLabel, periodLabel)
         )
       )
@@ -2180,8 +2671,8 @@ async function applyApprovalDecision(params: {
         .where(eq(timesheetEntries.id, existingTimesheet.id))
     } else {
       await tx.insert(timesheetEntries).values({
-        employeeId: approval.employeeId,
-        siteId: approval.siteId,
+        employeeId,
+        siteId,
         periodLabel,
         regularMinutes,
         overtimeMinutes: approval.overtimeMinutes,
@@ -2196,28 +2687,28 @@ async function applyApprovalDecision(params: {
         .select({ id: pointEvents.id })
         .from(pointEvents)
         .where(
-          and(eq(pointEvents.sourceType, 'activity'), eq(pointEvents.sourceId, approval.activityId))
+          and(eq(pointEvents.sourceType, 'activity'), eq(pointEvents.sourceId, activityId))
         )
         .limit(1)
 
       if (!existingAwardEvent) {
-        const netPoints = approval.pointsAwarded - approval.penaltyDeducted
+        const netPoints = pointsAwarded - penaltyDeducted
         const [employeePointState] = await tx
           .select({
             totalPoints: employees.totalPoints,
           })
           .from(employees)
-          .where(eq(employees.id, approval.employeeId))
+          .where(eq(employees.id, employeeId))
           .limit(1)
 
         if (employeePointState) {
           const updatedBalance = Math.max(0, employeePointState.totalPoints + netPoints)
 
           await tx.insert(pointEvents).values({
-            employeeId: approval.employeeId,
+            employeeId,
             transactionType: netPoints >= 0 ? 'reward' : 'penalty',
             sourceType: 'activity',
-            sourceId: approval.activityId,
+            sourceId: activityId,
             category: 'Daily Activity Approval',
             label: `${approval.activityTitle} â€¢ Approved`,
             points: netPoints,
@@ -2225,7 +2716,7 @@ async function applyApprovalDecision(params: {
             metadata: JSON.stringify({
               approvalId: approval.approvalId,
               approvalLevel: approval.level,
-              penaltyDeducted: approval.penaltyDeducted,
+              penaltyDeducted,
             }),
             createdAt: now,
           })
@@ -2235,9 +2726,9 @@ async function applyApprovalDecision(params: {
             .set({
               totalPoints: updatedBalance,
             })
-            .where(eq(employees.id, approval.employeeId))
+            .where(eq(employees.id, employeeId))
 
-          await evaluatePointThresholdBadges(tx, approval.employeeId, updatedBalance)
+          await evaluatePointThresholdBadges(tx, employeeId, updatedBalance)
         }
       }
     }
@@ -2247,10 +2738,10 @@ async function applyApprovalDecision(params: {
       .set({
         status: 'Approved',
       })
-      .where(eq(activities.id, approval.activityId))
+      .where(eq(activities.id, activityId))
   })
 
-  await syncActivityWorkflowArtifacts(approval.activityId)
+  await syncActivityWorkflowArtifacts(activityId)
   await runApprovalAutomationTick()
 
   return true
@@ -3248,7 +3739,7 @@ export async function addApprovalCommentAction(formData: FormData) {
     .where(eq(approvals.id, approval.id))
     .limit(1)
 
-  if (activityApproval) {
+  if (activityApproval?.activityId != null) {
     await syncActivityWorkflowArtifacts(activityApproval.activityId)
   }
 
