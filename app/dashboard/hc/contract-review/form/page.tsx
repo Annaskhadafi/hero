@@ -1,16 +1,16 @@
 import { ContractReviewClientForm } from "./client-form"
 import { db } from "@/db"
-import { hrEmployees, hrDepartments, hrPositions, hrOrgNodes, masterSections } from "@/db/schema/hero"
+import { employees as userEmployees, hrEmployees, hrDepartments, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
 import { centralServiceEmployees } from "@/db/schema/central-service"
 import { getContractReviewSettings } from "@/app/actions/contract-review"
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 
 export const metadata = {
   title: "Form Contract Review - HC",
 }
 
 export default async function ContractReviewFormPage() {
-  const [hrEmps, csEmps, orgNodes, approvalSettings] = await Promise.all([
+  const [hrEmps, csEmps, orgNodes, approvalSettings, sectionRows, departmentRows] = await Promise.all([
     db
       .select({
         id: hrEmployees.id,
@@ -44,6 +44,8 @@ export default async function ContractReviewFormPage() {
       parentNodeId: hrOrgNodes.parentNodeId,
     }).from(hrOrgNodes),
     getContractReviewSettings(),
+    db.select().from(masterSections),
+    db.select().from(masterDepartments),
   ])
 
   const csBySn = new Map<string, typeof csEmps[number]>()
@@ -63,7 +65,55 @@ export default async function ContractReviewFormPage() {
     }
   })
 
+  const headEmployeeIds = Array.from(
+    new Set(
+      [...sectionRows.map((row) => row.headEmployeeId), ...departmentRows.map((row) => row.headEmployeeId)].filter(
+        (value): value is number => value != null,
+      ),
+    ),
+  )
+
+  const headUsers =
+    headEmployeeIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: userEmployees.id,
+            name: userEmployees.name,
+            email: userEmployees.email,
+            jobTitle: userEmployees.jobTitle,
+          })
+          .from(userEmployees)
+          .where(inArray(userEmployees.id, headEmployeeIds))
+
+  const headUserMap = new Map(headUsers.map((item) => [item.id, item]))
+  const masterHeadMap = {
+    sections: Object.fromEntries(
+      sectionRows.map((row) => [
+        String(row.id),
+        {
+          headEmployeeId: row.headEmployeeId,
+          headName: row.headEmployeeId ? headUserMap.get(row.headEmployeeId)?.name ?? "" : "",
+          headEmail: row.headEmployeeId ? headUserMap.get(row.headEmployeeId)?.email ?? "" : "",
+          headTitle: row.headEmployeeId ? headUserMap.get(row.headEmployeeId)?.jobTitle ?? "Section Head" : "Section Head",
+          departmentId: row.departmentId,
+        },
+      ]),
+    ),
+    departments: Object.fromEntries(
+      departmentRows.map((row) => [
+        String(row.id),
+        {
+          headEmployeeId: row.headEmployeeId,
+          headName: row.headEmployeeId ? headUserMap.get(row.headEmployeeId)?.name ?? "" : "",
+          headEmail: row.headEmployeeId ? headUserMap.get(row.headEmployeeId)?.email ?? "" : "",
+          headTitle: row.headEmployeeId ? headUserMap.get(row.headEmployeeId)?.jobTitle ?? "Department Head" : "Department Head",
+        },
+      ]),
+    ),
+  }
+
   return (
-    <ContractReviewClientForm employees={employees} orgNodes={orgNodes} approvalSettings={approvalSettings as any} />
+    <ContractReviewClientForm employees={employees} orgNodes={orgNodes} approvalSettings={approvalSettings as any} masterHeadMap={masterHeadMap} />
   )
 }

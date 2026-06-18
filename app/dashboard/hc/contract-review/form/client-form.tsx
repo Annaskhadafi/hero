@@ -19,7 +19,12 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
-export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[] }) {
+type MasterHeadMap = {
+  sections?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string; departmentId?: number | null }>
+  departments?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string }>
+}
+
+export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, masterHeadMap }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], masterHeadMap?: MasterHeadMap }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const mode = searchParams.get("mode")
@@ -96,22 +101,29 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     // For Central Service employees, use approval matrix settings
     if (isCentralService && approvalSettings) {
       const section = (emp.section || '').toLowerCase()
-      let sectionHeadName = ''
-      let sectionHeadTitle = ''
+      const masterSectionHead =
+        emp.sectionId != null ? masterHeadMap?.sections?.[String(emp.sectionId)] : undefined
+      const masterDepartmentHead =
+        emp.departmentId != null ? masterHeadMap?.departments?.[String(emp.departmentId)] : undefined
 
-      if (section.includes('repair') || section.includes('retread')) {
-        sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.repairRetread.name
-        sectionHeadTitle = 'Leader Repair/Retread'
-      } else if (section.includes('mvc')) {
-        sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.serviceMvc.name
-        sectionHeadTitle = 'Supervisor Service MVC'
-      } else if (section.includes('other')) {
-        sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.serviceOthers.name
-        sectionHeadTitle = 'Coordinator Service Others'
+      let sectionHeadName = masterSectionHead?.headName || ''
+      let sectionHeadTitle = masterSectionHead?.headTitle || 'Section Head'
+
+      if (!sectionHeadName) {
+        if (section.includes('repair') || section.includes('retread')) {
+          sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.repairRetread.name
+          sectionHeadTitle = 'Leader Repair/Retread'
+        } else if (section.includes('mvc')) {
+          sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.serviceMvc.name
+          sectionHeadTitle = 'Supervisor Service MVC'
+        } else if (section.includes('other')) {
+          sectionHeadName = approvalSettings.approvalMatrix.sectionHeads.serviceOthers.name
+          sectionHeadTitle = 'Coordinator Service Others'
+        }
       }
 
-      const managerName = approvalSettings.approvalMatrix.managerName
-      const managerTitle = 'Manager Central Services'
+      const managerName = masterDepartmentHead?.headName || approvalSettings.approvalMatrix.managerName
+      const managerTitle = masterDepartmentHead?.headTitle || 'Department Head'
 
       // For Site: find PJO/TE at same site from employees list
       let leaderName = sectionHeadName
@@ -1040,7 +1052,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                     section_head_initial: 'Section Head',
                     employee: 'Karyawan',
                     section_head_confirmation: 'Section Head',
-                    central_service_manager: 'Manager Central Services',
+                    central_service_manager: 'Department Head',
                     hr: 'HR',
                   }
                   return (

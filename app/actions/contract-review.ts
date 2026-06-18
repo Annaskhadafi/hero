@@ -10,6 +10,8 @@ import {
   hcContractReviewSettings,
   hcEmployeeContractReviews,
   hrEmployees,
+  masterDepartments,
+  masterSections,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
 import { and, asc, desc, eq, or, sql } from 'drizzle-orm'
@@ -269,14 +271,6 @@ function isHoSite(siteName: string) {
   return site.includes('balikpapan') || site.includes('jakarta')
 }
 
-function getSectionHeadName(section: string, settings = DEFAULT_CONTRACT_REVIEW_SETTINGS) {
-  const normalized = section.toLowerCase()
-  if (normalized.includes('repair') || normalized.includes('retread')) return settings.approvalMatrix.sectionHeads.repairRetread.name
-  if (normalized.includes('mvc')) return settings.approvalMatrix.sectionHeads.serviceMvc.name
-  if (normalized.includes('other')) return settings.approvalMatrix.sectionHeads.serviceOthers.name
-  return settings.approvalMatrix.managerName
-}
-
 function isPjoOrTechnical(position: string) {
   const normalized = position.toLowerCase()
   return normalized.includes('pjo') || normalized.includes('technical') || /\bte\b/i.test(position)
@@ -309,6 +303,27 @@ function normalizeReminderType(daysUntilEnd: number) {
   return `H-${daysUntilEnd}`
 }
 
+function getLegacySectionHeadConfig(
+  section: string,
+  settings = DEFAULT_CONTRACT_REVIEW_SETTINGS,
+) {
+  const normalized = section.toLowerCase()
+  if (normalized.includes('repair') || normalized.includes('retread')) {
+    return settings.approvalMatrix.sectionHeads.repairRetread
+  }
+  if (normalized.includes('mvc')) {
+    return settings.approvalMatrix.sectionHeads.serviceMvc
+  }
+  if (normalized.includes('other')) {
+    return settings.approvalMatrix.sectionHeads.serviceOthers
+  }
+
+  return {
+    name: settings.approvalMatrix.managerName,
+    email: settings.approvalMatrix.managerEmail,
+  }
+}
+
 async function getUserByName(name: string, fallbackEmail?: string) {
   const [row] = await db
     .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
@@ -318,19 +333,127 @@ async function getUserByName(name: string, fallbackEmail?: string) {
   return row ?? { id: null, name, email: fallbackEmail || '', jobTitle: '' }
 }
 
-function getSectionHeadEmail(section: string, settings: typeof DEFAULT_CONTRACT_REVIEW_SETTINGS) {
-  const normalized = section.toLowerCase()
-  if (normalized.includes('repair') || normalized.includes('retread')) return settings.approvalMatrix.sectionHeads.repairRetread.email
-  if (normalized.includes('mvc')) return settings.approvalMatrix.sectionHeads.serviceMvc.email
-  if (normalized.includes('other')) return settings.approvalMatrix.sectionHeads.serviceOthers.email
-  return settings.approvalMatrix.managerEmail
+async function getUserById(employeeId: number | null | undefined) {
+  if (!employeeId) {
+    return null
+  }
+
+  const [row] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+    })
+    .from(employees)
+    .where(eq(employees.id, employeeId))
+    .limit(1)
+
+  return row ?? null
+}
+
+async function resolveMasterSectionAndDepartmentHeads(input: {
+  sectionId?: number | null
+  departmentId?: number | null
+  sectionName?: string | null
+  departmentName?: string | null
+}) {
+  let sectionRow:
+    | {
+        id: number
+        name: string
+        departmentId: number | null
+        headEmployeeId: number | null
+      }
+    | null = null
+
+  if (input.sectionId) {
+    const [row] = await db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+        headEmployeeId: masterSections.headEmployeeId,
+      })
+      .from(masterSections)
+      .where(eq(masterSections.id, input.sectionId))
+      .limit(1)
+    sectionRow = row ?? null
+  } else if (input.sectionName?.trim()) {
+    const [row] = await db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+        headEmployeeId: masterSections.headEmployeeId,
+      })
+      .from(masterSections)
+      .where(eq(masterSections.name, input.sectionName.trim()))
+      .limit(1)
+    sectionRow = row ?? null
+  }
+
+  const resolvedDepartmentId = input.departmentId ?? sectionRow?.departmentId ?? null
+
+  let departmentRow:
+    | {
+        id: number
+        name: string
+        headEmployeeId: number | null
+      }
+    | null = null
+
+  if (resolvedDepartmentId) {
+    const [row] = await db
+      .select({
+        id: masterDepartments.id,
+        name: masterDepartments.name,
+        headEmployeeId: masterDepartments.headEmployeeId,
+      })
+      .from(masterDepartments)
+      .where(eq(masterDepartments.id, resolvedDepartmentId))
+      .limit(1)
+    departmentRow = row ?? null
+  } else if (input.departmentName?.trim()) {
+    const [row] = await db
+      .select({
+        id: masterDepartments.id,
+        name: masterDepartments.name,
+        headEmployeeId: masterDepartments.headEmployeeId,
+      })
+      .from(masterDepartments)
+      .where(eq(masterDepartments.name, input.departmentName.trim()))
+      .limit(1)
+    departmentRow = row ?? null
+  }
+
+  const [sectionHead, departmentHead] = await Promise.all([
+    getUserById(sectionRow?.headEmployeeId ?? null),
+    getUserById(departmentRow?.headEmployeeId ?? null),
+  ])
+
+  return {
+    section: sectionRow,
+    department: departmentRow,
+    sectionHead,
+    departmentHead,
+  }
 }
 
 async function buildContractReviewApprovals(review: typeof hcEmployeeContractReviews.$inferSelect) {
   if (!review.employeeId) return []
 
   const [hrEmployee] = await db
-    .select({ id: hrEmployees.id, employeeId: hrEmployees.employeeId, fullName: hrEmployees.fullName, email: hrEmployees.email })
+    .select({
+      id: hrEmployees.id,
+      employeeId: hrEmployees.employeeId,
+      fullName: hrEmployees.fullName,
+      email: hrEmployees.email,
+      departmentId: hrEmployees.departmentId,
+      sectionId: hrEmployees.sectionId,
+    })
     .from(hrEmployees)
     .where(eq(hrEmployees.id, review.employeeId))
     .limit(1)
@@ -354,8 +477,19 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
   const section = centralEmployee?.section ?? ''
   const settings = await getContractReviewSettings()
   const isHo = isHoSite(siteName)
-  const sectionHead = await getUserByName(getSectionHeadName(section, settings), getSectionHeadEmail(section, settings))
-  const manager = await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail)
+  const legacySectionHead = getLegacySectionHeadConfig(section, settings)
+  const masterHeads = await resolveMasterSectionAndDepartmentHeads({
+    sectionId: hrEmployee.sectionId,
+    departmentId: hrEmployee.departmentId,
+    sectionName: section || null,
+    departmentName: 'Central Services',
+  })
+  const sectionHead =
+    masterHeads.sectionHead ??
+    await getUserByName(legacySectionHead.name, legacySectionHead.email)
+  const departmentHead =
+    masterHeads.departmentHead ??
+    await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail)
   const hr = await getUserByName(review.hrName || settings.approvalMatrix.hrName, settings.approvalMatrix.hrEmail)
 
   let firstApprover = sectionHead
@@ -378,7 +512,7 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
     steps.push({ approver: sectionHead, role: 'section_head_confirmation' })
   }
 
-  steps.push({ approver: manager, role: 'central_service_manager' })
+  steps.push({ approver: departmentHead, role: 'central_service_manager' })
   steps.push({ approver: hr, role: 'hr' })
 
   return steps.map((step, index) => ({
