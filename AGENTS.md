@@ -80,3 +80,54 @@ Rules:
 - **Recipient Policy Seragam**: Setiap domain fitur baru yang punya email wajib punya strategi penerima yang konsisten. Jika penerimanya lintas-role atau bisa berubah, buat recipient settings/config terpusat seperti pola HSE Safety / Human Capital; hindari hardcoded recipient di action kecuali fallback sementara yang jelas.
 - **Runtime Override Template**: Semua sender email fitur baru harus membaca template override dari registry/template settings pusat saat `templateCode` tersedia, lalu fallback ke subject/html/text bawaan hanya jika template DB belum ada. Tujuannya agar admin bisa ubah isi email tanpa ubah kode.
 - **Seed, Preset, dan UAT Minimum**: Saat menambah email fitur baru, wajib sekalian tambah `templateCode` ke seed DB, preset/registry, metadata placeholder/sample values, dan source-test/smoke-test ringan agar flow baru langsung terlihat di admin dan tidak jadi template mati.
+
+#### Checklist fitur baru yang punya email
+
+- Tentukan domain fitur: apakah ikut policy domain yang sudah ada (`HSE Safety`, `Human Capital`, dll.) atau butuh domain recipient config baru.
+- Tentukan `templateCode` yang unik, stabil, dan deskriptif sejak awal. Jangan ganti-ganti code setelah dipakai runtime kecuali ada migrasi jelas.
+- Hubungkan sender runtime ke helper/pola terpusat agar subject/body membaca override template pusat lebih dulu, baru fallback bawaan.
+- Pastikan email terkirim lewat jalur SMTP aktif + delivery logging, bukan helper ad-hoc yang bypass pencatatan.
+- Jika domain penerima bisa berubah dari admin, tambahkan settings panel/action/getter config terpusat; jangan simpan list email tetap di action utama.
+- Tambahkan seed DB untuk template baru, lalu tambah preset registry agar template langsung muncul di admin meski DB belum diubah manual.
+- Tambahkan metadata placeholder dan sample values yang realistis agar preview admin langsung berguna.
+- Tambahkan source-test atau smoke-test minimum untuk memastikan wiring sender, seed, preset, dan settings panel benar-benar terhubung.
+- Jika fitur juga punya approval/reminder/notification bell, selesaikan seluruh integrasi itu dalam satu flow implementasi, jangan setengah terpisah.
+
+#### Mapping file minimum
+
+- Runtime sender / server action:
+  update file action domain terkait di `app/actions/*` atau `app/dashboard/**/actions.ts`
+- Transport + template override:
+  ikuti helper terpusat di `lib/workflow-email.ts` dan helper domain seperti `lib/hse-safety-email.ts` / `lib/human-capital-email.ts`
+- Recipient config domain:
+  tambahkan schema/getter/seed di `db/schema/hero.ts` dan `lib/hero-admin.ts`
+- Admin settings:
+  tambahkan server action di `app/dashboard/settings/email/actions.ts`
+  tambahkan panel/tab di `app/dashboard/settings/email/page.tsx`
+  tambahkan panel UI di `components/*notification-settings-panel.tsx`
+- Template registry:
+  tambahkan preset + placeholder sample di `lib/email-template-presets.ts`
+- Seed DB:
+  tambahkan `templateCode` di `lib/hero-admin.ts`
+- Verification:
+  tambahkan source-test di `tests/*.test.mjs` atau test ringan lain yang sesuai pola repo
+
+#### Aturan implementasi cepat
+
+- Jangan berhenti di “email sudah terkirim”.
+- Selesai itu artinya:
+  runtime sender ada,
+  recipient policy jelas,
+  admin bisa lihat/edit template,
+  seed/preset tersedia,
+  delivery tercatat,
+  test minimum ada.
+
+#### Contoh pola domain
+
+- Fitur baru domain HSE:
+  ikuti pola `lib/hse-safety-email.ts` + panel recipient HSE di settings email
+- Fitur baru domain HC:
+  ikuti pola `lib/human-capital-email.ts` + policy CC/global recipient HC
+- Fitur domain baru:
+  buat helper domain sendiri dengan pola serupa, lalu expose recipient settings di `Settings > Email`
