@@ -13,9 +13,9 @@ import {
 interface EmployeeOption {
   id: number
   name: string
-  role: string
-  email: string
-  siteId: number
+  role?: string
+  email?: string
+  siteId?: number
   employeeSn?: string | null
 }
 
@@ -24,15 +24,26 @@ export function SearchableEmployeeSelect({
   defaultValue,
   name = "employeeId",
   label = "Karyawan",
+  value,
+  onValueChange,
+  placeholder = "Pilih karyawan...",
+  showLabel = true,
 }: {
   employees: EmployeeOption[]
   defaultValue?: string
   name?: string
   label?: string
+  value?: string
+  onValueChange?: (val: string) => void
+  placeholder?: string
+  showLabel?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [selectedId, setSelectedId] = useState(defaultValue || "")
   const [searchQuery, setSearchQuery] = useState("")
+
+  const isControlled = value !== undefined
+  const currentId = isControlled ? value : selectedId
 
   // De-duplicate employees list by employee name (case-insensitive, trimmed)
   const uniqueEmployees = useMemo(() => {
@@ -58,7 +69,7 @@ export function SearchableEmployeeSelect({
   }, [employees])
 
   const selectedEmployee = uniqueEmployees.find(
-    (e) => String(e.id) === selectedId
+    (e) => String(e.id) === currentId
   )
 
   const filteredEmployees = uniqueEmployees.filter((e) =>
@@ -69,8 +80,8 @@ export function SearchableEmployeeSelect({
 
   return (
     <div className="grid gap-2 text-sm font-medium">
-      <span>{label}</span>
-      <input type="hidden" name={name} value={selectedId} />
+      {showLabel && <span>{label}</span>}
+      <input type="hidden" name={name} value={currentId} />
       
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
@@ -83,7 +94,7 @@ export function SearchableEmployeeSelect({
             <span className="truncate">
               {selectedEmployee
                 ? `${selectedEmployee.name}${selectedEmployee.employeeSn ? ` (${selectedEmployee.employeeSn})` : ""} - ${selectedEmployee.role || "Karyawan"}`
-                : "Pilih karyawan..."}
+                : placeholder}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -104,13 +115,17 @@ export function SearchableEmployeeSelect({
               <p className="text-xs text-muted-foreground text-center py-4">Karyawan tidak ditemukan.</p>
             ) : (
               filteredEmployees.map((emp) => {
-                const isSelected = String(emp.id) === selectedId
+                const isSelected = String(emp.id) === currentId
                 return (
                   <button
                     key={emp.id}
                     type="button"
                     onClick={() => {
-                      setSelectedId(String(emp.id))
+                      if (isControlled) {
+                        onValueChange?.(String(emp.id))
+                      } else {
+                        setSelectedId(String(emp.id))
+                      }
                       setOpen(false)
                       setSearchQuery("")
                     }}

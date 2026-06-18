@@ -33,6 +33,7 @@ export const sites = pgTable('hero_sites', {
   geoRadiusMeters: integer('geo_radius_meters').notNull().default(500),
   customerName: text('customer_name').notNull(),
   contractNumber: text('contract_number').notNull(),
+  headEmployeeId: integer('head_employee_id'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
@@ -1144,6 +1145,7 @@ export const masterDepartments = pgTable('hero_master_departments', {
   id: serial('id').primaryKey(),
   code: text('code').notNull().unique(),
   name: text('name').notNull(),
+  headEmployeeId: integer('head_employee_id'),
   description: text('description').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -1158,6 +1160,7 @@ export const masterSections = pgTable('hero_master_sections', {
   departmentId: integer('department_id').references(() => masterDepartments.id, {
     onDelete: 'set null',
   }),
+  headEmployeeId: integer('head_employee_id'),
   description: text('description').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),

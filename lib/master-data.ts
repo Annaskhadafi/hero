@@ -27,6 +27,7 @@ import {
 const fallbackNodes = aliasedTable(orgChartNodes, "fallback_nodes");
 const fallbackStepNodes = aliasedTable(orgChartNodes, "fallback_step_nodes");
 const escalationStepNodes = aliasedTable(orgChartNodes, "escalation_step_nodes");
+const headEmployees = aliasedTable(employees, "head_employees");
 
 export type MasterSection = {
   id: number;
@@ -34,6 +35,8 @@ export type MasterSection = {
   name: string;
   departmentId: number | null;
   departmentName: string | null;
+  headEmployeeId: number | null;
+  headEmployeeName: string | null;
   description: string;
   isActive: boolean;
   employeeCount: number;
@@ -64,6 +67,8 @@ export type MasterDepartment = {
   id: number;
   code: string;
   name: string;
+  headEmployeeId: number | null;
+  headEmployeeName: string | null;
   description: string;
   isActive: boolean;
   employeeCount: number;
@@ -89,6 +94,8 @@ export type MasterSite = {
   geoRadiusMeters: number;
   customerName: string;
   contractNumber: string;
+  headEmployeeId: number | null;
+  headEmployeeName: string | null;
   isActive: boolean;
   employeeCount: number;
   createdAt: Date;
@@ -366,18 +373,21 @@ export async function getMasterSites(): Promise<MasterSite[]> {
         regencyName: sites.regencyName,
         districtId: sites.districtId,
         districtName: sites.districtName,
-      villageId: sites.villageId,
-      villageName: sites.villageName,
-      addressDetail: sites.addressDetail,
-      geoLatitude: sites.geoLatitude,
-      geoLongitude: sites.geoLongitude,
-      geoRadiusMeters: sites.geoRadiusMeters,
-      customerName: sites.customerName,
-      contractNumber: sites.contractNumber,
-      isActive: sites.isActive,
+        villageId: sites.villageId,
+        villageName: sites.villageName,
+        addressDetail: sites.addressDetail,
+        geoLatitude: sites.geoLatitude,
+        geoLongitude: sites.geoLongitude,
+        geoRadiusMeters: sites.geoRadiusMeters,
+        customerName: sites.customerName,
+        contractNumber: sites.contractNumber,
+        headEmployeeId: sites.headEmployeeId,
+        headEmployeeName: headEmployees.name,
+        isActive: sites.isActive,
         createdAt: sites.createdAt,
       })
       .from(sites)
+      .leftJoin(headEmployees, eq(sites.headEmployeeId, headEmployees.id))
       .orderBy(asc(sites.name)),
     db
       .select({
@@ -393,6 +403,7 @@ export async function getMasterSites(): Promise<MasterSite[]> {
 
   return siteRows.map((site) => ({
     ...site,
+    headEmployeeName: site.headEmployeeName ?? null,
     employeeCount: countMap.get(site.id) ?? 0,
   }));
 }
@@ -441,12 +452,15 @@ export async function getMasterDepartments(): Promise<MasterDepartment[]> {
         id: masterDepartments.id,
         code: masterDepartments.code,
         name: masterDepartments.name,
+        headEmployeeId: masterDepartments.headEmployeeId,
+        headEmployeeName: headEmployees.name,
         description: masterDepartments.description,
         isActive: masterDepartments.isActive,
         createdAt: masterDepartments.createdAt,
         updatedAt: masterDepartments.updatedAt,
       })
       .from(masterDepartments)
+      .leftJoin(headEmployees, eq(masterDepartments.headEmployeeId, headEmployees.id))
       .orderBy(asc(masterDepartments.code)),
     db
       .select({
@@ -466,6 +480,7 @@ export async function getMasterDepartments(): Promise<MasterDepartment[]> {
 
   return departmentRows.map((department) => ({
     ...department,
+    headEmployeeName: department.headEmployeeName ?? null,
     employeeCount: countMap.get(department.id) ?? 0,
   }));
 }
@@ -481,6 +496,8 @@ export async function getMasterSections(): Promise<MasterSection[]> {
         name: masterSections.name,
         departmentId: masterSections.departmentId,
         departmentName: masterDepartments.name,
+        headEmployeeId: masterSections.headEmployeeId,
+        headEmployeeName: headEmployees.name,
         description: masterSections.description,
         isActive: masterSections.isActive,
         createdAt: masterSections.createdAt,
@@ -488,6 +505,7 @@ export async function getMasterSections(): Promise<MasterSection[]> {
       })
       .from(masterSections)
       .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
+      .leftJoin(headEmployees, eq(masterSections.headEmployeeId, headEmployees.id))
       .orderBy(asc(masterSections.code)),
     db
       .select({
@@ -508,6 +526,7 @@ export async function getMasterSections(): Promise<MasterSection[]> {
   return sectionRows.map((section) => ({
     ...section,
     departmentName: section.departmentName ?? null,
+    headEmployeeName: section.headEmployeeName ?? null,
     employeeCount: countMap.get(section.id) ?? 0,
   }));
 }

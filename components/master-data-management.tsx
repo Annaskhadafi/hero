@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -111,6 +112,7 @@ type SiteFormState = {
   addressDetail: string;
   customerName: string;
   contractNumber: string;
+  headEmployeeId: string;
   isActive: boolean;
 };
 
@@ -127,6 +129,7 @@ const EMPTY_SITE_FORM: SiteFormState = {
   addressDetail: "",
   customerName: "",
   contractNumber: "",
+  headEmployeeId: "",
   isActive: true,
 };
 
@@ -269,7 +272,7 @@ export function MasterDataManagement({
         </TabsList>
 
         <TabsContent value="sections" className="space-y-4">
-          <SectionManagement sections={sections} departments={departments} />
+          <SectionManagement sections={sections} departments={departments} employees={employees} />
         </TabsContent>
 
         <TabsContent value="job-titles" className="space-y-4">
@@ -280,7 +283,7 @@ export function MasterDataManagement({
         </TabsContent>
 
         <TabsContent value="departments" className="space-y-4">
-          <DepartmentManagement departments={departments} />
+          <DepartmentManagement departments={departments} employees={employees} />
         </TabsContent>
 
         <TabsContent value="positions" className="space-y-4">
@@ -288,7 +291,7 @@ export function MasterDataManagement({
         </TabsContent>
 
         <TabsContent value="sites" className="space-y-4">
-          <SiteManagement sites={sites} />
+          <SiteManagement sites={sites} employees={employees} />
         </TabsContent>
 
         <TabsContent value="attendance-shifts" className="space-y-4">
@@ -920,7 +923,13 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
   );
 }
 
-function SiteManagement({ sites }: { sites: MasterSite[] }) {
+function SiteManagement({
+  sites,
+  employees,
+}: {
+  sites: MasterSite[];
+  employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
+}) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -941,7 +950,8 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
     (site) =>
       site.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       site.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      site.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+      site.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      site.headEmployeeName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
   const isSiteLocationComplete = Boolean(
     formData.provinceId &&
@@ -1130,6 +1140,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
         addressDetail: site.addressDetail,
         customerName: site.customerName,
         contractNumber: site.contractNumber,
+        headEmployeeId: site.headEmployeeId?.toString() ?? "",
         isActive: site.isActive,
       });
     } else {
@@ -1159,6 +1170,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
     form.append("addressDetail", formData.addressDetail);
     form.append("customerName", formData.customerName);
     form.append("contractNumber", formData.contractNumber);
+    form.append("headEmployeeId", formData.headEmployeeId);
     form.append("isActive", formData.isActive.toString());
 
     const result = await manageSiteAction(INITIAL_ACTION_STATE, form);
@@ -1232,6 +1244,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
                 <TableHead>Location</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>No. Kontrak</TableHead>
+                <TableHead>Head Area</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
@@ -1244,6 +1257,13 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
                     <TableCell className="text-[#64748b]">{site.location}</TableCell>
                     <TableCell>{site.customerName}</TableCell>
                     <TableCell>{site.contractNumber}</TableCell>
+                    <TableCell>
+                      {site.headEmployeeName ? (
+                        <span className="font-medium text-[#1e293b]">{site.headEmployeeName}</span>
+                      ) : (
+                        <span className="text-[#94a3b8]">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant={site.isActive ? "default" : "secondary"}
@@ -1266,7 +1286,7 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
                     Tidak ada data site
                   </TableCell>
                 </TableRow>
@@ -1498,6 +1518,20 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
               <Label htmlFor="site-contract">No. Kontrak</Label>
               <Input id="site-contract" value={formData.contractNumber} onChange={(e) => setFormData({ ...formData, contractNumber: e.target.value })} required />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="site-head">Head Area</Label>
+              <SearchableEmployeeSelect
+                employees={employees.map((emp) => ({
+                  id: emp.id,
+                  name: emp.name,
+                  role: emp.jobTitle || "Staff",
+                }))}
+                value={formData.headEmployeeId}
+                onValueChange={(val) => setFormData({ ...formData, headEmployeeId: val })}
+                placeholder="Pilih Head Area..."
+                showLabel={false}
+              />
+            </div>
             <div className="flex items-center space-x-2">
               <Switch id="site-isActive" checked={formData.isActive} onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })} />
               <Label htmlFor="site-isActive">Aktif</Label>
@@ -1532,9 +1566,11 @@ function SiteManagement({ sites }: { sites: MasterSite[] }) {
 function SectionManagement({
   sections,
   departments,
+  employees,
 }: {
   sections: MasterSection[];
   departments: MasterDepartment[];
+  employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -1544,6 +1580,7 @@ function SectionManagement({
     code: "",
     name: "",
     departmentId: "",
+    headEmployeeId: "",
     description: "",
     isActive: true,
   });
@@ -1553,7 +1590,8 @@ function SectionManagement({
     (section) =>
       section.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       section.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      section.departmentName?.toLowerCase().includes(searchQuery.toLowerCase())
+      section.departmentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      section.headEmployeeName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleOpenDialog = (section?: MasterSection) => {
@@ -1563,12 +1601,13 @@ function SectionManagement({
         code: section.code,
         name: section.name,
         departmentId: section.departmentId?.toString() ?? "",
+        headEmployeeId: section.headEmployeeId?.toString() ?? "",
         description: section.description,
         isActive: section.isActive,
       });
     } else {
       setEditingSection(null);
-      setFormData({ code: "", name: "", departmentId: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", headEmployeeId: "", description: "", isActive: true });
     }
     setIsDialogOpen(true);
   };
@@ -1583,6 +1622,7 @@ function SectionManagement({
     form.append("code", formData.code);
     form.append("name", formData.name);
     form.append("departmentId", formData.departmentId);
+    form.append("headEmployeeId", formData.headEmployeeId);
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
 
@@ -1592,7 +1632,7 @@ function SectionManagement({
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingSection(null);
-      setFormData({ code: "", name: "", departmentId: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", headEmployeeId: "", description: "", isActive: true });
       router.refresh();
     } else {
       toast.error(result.message);
@@ -1657,6 +1697,7 @@ function SectionManagement({
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Section</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Head Section</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
@@ -1675,6 +1716,13 @@ function SectionManagement({
                         <Badge variant="outline" className="bg-[#f1f5f9]">
                           {section.departmentName}
                         </Badge>
+                      ) : (
+                        <span className="text-[#94a3b8]">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {section.headEmployeeName ? (
+                        <span className="font-medium text-[#1e293b]">{section.headEmployeeName}</span>
                       ) : (
                         <span className="text-[#94a3b8]">-</span>
                       )}
@@ -1718,7 +1766,7 @@ function SectionManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
                     Tidak ada data section
                   </TableCell>
                 </TableRow>
@@ -1785,6 +1833,20 @@ function SectionManagement({
                     ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="section-head">Head Section</Label>
+              <SearchableEmployeeSelect
+                employees={employees.map((emp) => ({
+                  id: emp.id,
+                  name: emp.name,
+                  role: emp.jobTitle || "Staff",
+                }))}
+                value={formData.headEmployeeId}
+                onValueChange={(val) => setFormData({ ...formData, headEmployeeId: val })}
+                placeholder="Pilih Head Section..."
+                showLabel={false}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -2293,8 +2355,10 @@ function LevelStaffManagement({
 // DEPARTMENT MANAGEMENT COMPONENT
 function DepartmentManagement({
   departments,
+  employees,
 }: {
   departments: MasterDepartment[];
+  employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
 }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -2303,6 +2367,7 @@ function DepartmentManagement({
   const [formData, setFormData] = useState({
     code: "",
     name: "",
+    headEmployeeId: "",
     description: "",
     isActive: true,
   });
@@ -2311,7 +2376,8 @@ function DepartmentManagement({
   const filteredDepartments = departments.filter(
     (dept) =>
       dept.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dept.name.toLowerCase().includes(searchQuery.toLowerCase())
+      dept.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      dept.headEmployeeName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleOpenDialog = (department?: MasterDepartment) => {
@@ -2320,12 +2386,13 @@ function DepartmentManagement({
       setFormData({
         code: department.code,
         name: department.name,
+        headEmployeeId: department.headEmployeeId?.toString() ?? "",
         description: department.description,
         isActive: department.isActive,
       });
     } else {
       setEditingDepartment(null);
-      setFormData({ code: "", name: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", headEmployeeId: "", description: "", isActive: true });
     }
     setIsDialogOpen(true);
   };
@@ -2339,6 +2406,7 @@ function DepartmentManagement({
     if (editingDepartment) form.append("id", editingDepartment.id.toString());
     form.append("code", formData.code);
     form.append("name", formData.name);
+    form.append("headEmployeeId", formData.headEmployeeId);
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
 
@@ -2348,7 +2416,7 @@ function DepartmentManagement({
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingDepartment(null);
-      setFormData({ code: "", name: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", headEmployeeId: "", description: "", isActive: true });
       router.refresh();
     } else {
       toast.error(result.message);
@@ -2412,6 +2480,7 @@ function DepartmentManagement({
               <TableRow className="bg-[#F5F7F9]">
                 <TableHead className="w-[100px]">Kode</TableHead>
                 <TableHead>Nama Department</TableHead>
+                <TableHead>Head Department</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
@@ -2423,6 +2492,13 @@ function DepartmentManagement({
                   <TableRow key={dept.id}>
                     <TableCell className="font-mono text-sm font-medium">{dept.code}</TableCell>
                     <TableCell className="font-medium">{dept.name}</TableCell>
+                    <TableCell>
+                      {dept.headEmployeeName ? (
+                        <span className="font-medium text-[#1e293b]">{dept.headEmployeeName}</span>
+                      ) : (
+                        <span className="text-[#94a3b8]">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-[#64748b]">
                       {dept.description || "-"}
                     </TableCell>
@@ -2462,7 +2538,7 @@ function DepartmentManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
                     Tidak ada data department
                   </TableCell>
                 </TableRow>
@@ -2505,6 +2581,20 @@ function DepartmentManagement({
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Accounting, General Affairs"
                 required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dept-head">Head Department</Label>
+              <SearchableEmployeeSelect
+                employees={employees.map((emp) => ({
+                  id: emp.id,
+                  name: emp.name,
+                  role: emp.jobTitle || "Staff",
+                }))}
+                value={formData.headEmployeeId}
+                onValueChange={(val) => setFormData({ ...formData, headEmployeeId: val })}
+                placeholder="Pilih Head Department..."
+                showLabel={false}
               />
             </div>
             <div className="space-y-2">

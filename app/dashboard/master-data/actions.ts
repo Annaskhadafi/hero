@@ -65,6 +65,7 @@ const sectionSchema = z.object({
   code: z.string().trim().min(1).max(3),
   name: z.string().trim().min(1).max(100),
   departmentId: optionalPositiveIntField,
+  headEmployeeId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
   isActive: formBooleanField(true),
 });
@@ -94,6 +95,7 @@ const departmentSchema = z.object({
   id: optionalPositiveIntField,
   code: z.string().trim().min(1).max(3),
   name: z.string().trim().min(1).max(100),
+  headEmployeeId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
   isActive: formBooleanField(true),
 });
@@ -113,6 +115,7 @@ const siteSchema = z.object({
   addressDetail: z.string().trim().max(300).optional(),
   customerName: z.string().trim().min(1).max(150),
   contractNumber: z.string().trim().min(1).max(100),
+  headEmployeeId: optionalPositiveIntField,
   isActive: formBooleanField(true),
 });
 
@@ -410,6 +413,7 @@ export async function manageSiteAction(
     addressDetail,
     customerName,
     contractNumber,
+    headEmployeeId,
     isActive,
   } = parsed.data;
 
@@ -423,23 +427,48 @@ export async function manageSiteAction(
 
   try {
     if (intent === "create") {
-      await db.insert(sites).values({
-        name,
-        location,
-        provinceId,
-        provinceName,
-        regencyId,
-        regencyName,
-        districtId,
-        districtName,
-        villageId,
-        villageName,
-        addressDetail: addressDetail || "",
-        customerName,
-        contractNumber,
-        isActive,
-        createdAt: now(),
-      });
+      const [newSite] = await db
+        .insert(sites)
+        .values({
+          name,
+          location,
+          provinceId,
+          provinceName,
+          regencyId,
+          regencyName,
+          districtId,
+          districtName,
+          villageId,
+          villageName,
+          addressDetail: addressDetail || "",
+          customerName,
+          contractNumber,
+          headEmployeeId: headEmployeeId || null,
+          isActive,
+          createdAt: now(),
+        })
+        .returning({ id: sites.id });
+
+      const siteId = newSite?.id;
+      if (siteId && headEmployeeId) {
+        // Get all active department heads
+        const depts = await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(and(eq(masterDepartments.isActive, true), sql`${masterDepartments.headEmployeeId} IS NOT NULL`));
+        const deptHeadIds = depts.map((d) => d.headEmployeeId).filter((id): id is number => id !== null && id !== headEmployeeId);
+        if (deptHeadIds.length > 0) {
+          await db
+            .update(employees)
+            .set({ directManagerId: headEmployeeId })
+            .where(
+              and(
+                eq(employees.siteId, siteId),
+                inArray(employees.id, deptHeadIds)
+              )
+            );
+        }
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Site created successfully" };
@@ -466,9 +495,48 @@ export async function manageSiteAction(
           addressDetail: addressDetail || "",
           customerName,
           contractNumber,
+          headEmployeeId: headEmployeeId || null,
           isActive,
         })
         .where(eq(sites.id, id));
+
+      if (headEmployeeId) {
+        // Get all active department heads
+        const depts = await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(and(eq(masterDepartments.isActive, true), sql`${masterDepartments.headEmployeeId} IS NOT NULL`));
+        const deptHeadIds = depts.map((d) => d.headEmployeeId).filter((id): id is number => id !== null && id !== headEmployeeId);
+        if (deptHeadIds.length > 0) {
+          await db
+            .update(employees)
+            .set({ directManagerId: headEmployeeId })
+            .where(
+              and(
+                eq(employees.siteId, id),
+                inArray(employees.id, deptHeadIds)
+              )
+            );
+        }
+      } else {
+        // If Site Head is cleared, set directManagerId of department heads at this site to null
+        const depts = await db
+          .select({ headEmployeeId: masterDepartments.headEmployeeId })
+          .from(masterDepartments)
+          .where(and(eq(masterDepartments.isActive, true), sql`${masterDepartments.headEmployeeId} IS NOT NULL`));
+        const deptHeadIds = depts.map((d) => d.headEmployeeId).filter((id): id is number => id !== null);
+        if (deptHeadIds.length > 0) {
+          await db
+            .update(employees)
+            .set({ directManagerId: null })
+            .where(
+              and(
+                eq(employees.siteId, id),
+                inArray(employees.id, deptHeadIds)
+              )
+            );
+        }
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Site updated successfully" };
@@ -794,7 +862,7 @@ export async function manageSectionAction(
     };
   }
 
-  const { intent, id, code, name, departmentId, description, isActive } = parsed.data;
+  const { intent, id, code, name, departmentId, headEmployeeId, description, isActive } = parsed.data;
   const normalizedCode = code.trim().toUpperCase();
 
   try {
@@ -813,15 +881,70 @@ export async function manageSectionAction(
         };
       }
 
-      await db.insert(masterSections).values({
-        code: normalizedCode,
-        name,
-        departmentId: departmentId || null,
-        description: description || "",
-        isActive,
-        createdAt: now(),
-        updatedAt: now(),
-      });
+      const [newSection] = await db
+        .insert(masterSections)
+        .values({
+          code: normalizedCode,
+          name,
+          departmentId: departmentId || null,
+          headEmployeeId: headEmployeeId || null,
+          description: description || "",
+          isActive,
+          createdAt: now(),
+          updatedAt: now(),
+        })
+        .returning({ id: masterSections.id });
+
+      const sectionId = newSection?.id;
+      if (sectionId) {
+        if (headEmployeeId) {
+          // Sync active employees in this section (except the head itself)
+          await db
+            .update(employees)
+            .set({ directManagerId: headEmployeeId })
+            .where(
+              and(
+                eq(employees.sectionId, sectionId),
+                sql`${employees.id} != ${headEmployeeId}`,
+                eq(employees.isActive, true)
+              )
+            );
+
+          // Try to set the section head's manager to the department head
+          const activeDeptId = departmentId || null;
+          if (activeDeptId) {
+            const [dept] = await db
+              .select({ headEmployeeId: masterDepartments.headEmployeeId })
+              .from(masterDepartments)
+              .where(eq(masterDepartments.id, activeDeptId))
+              .limit(1);
+            if (dept?.headEmployeeId) {
+              await db
+                .update(employees)
+                .set({ directManagerId: dept.headEmployeeId })
+                .where(eq(employees.id, headEmployeeId));
+            }
+          }
+        } else {
+          // If Section Head is cleared, check if there's a department head to fall back to
+          let fallbackManagerId: number | null = null;
+          const activeDeptId = departmentId || null;
+          if (activeDeptId) {
+            const [dept] = await db
+              .select({ headEmployeeId: masterDepartments.headEmployeeId })
+              .from(masterDepartments)
+              .where(eq(masterDepartments.id, activeDeptId))
+              .limit(1);
+            if (dept?.headEmployeeId) {
+              fallbackManagerId = dept.headEmployeeId;
+            }
+          }
+          await db
+            .update(employees)
+            .set({ directManagerId: fallbackManagerId })
+            .where(and(eq(employees.sectionId, sectionId), eq(employees.isActive, true)));
+        }
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Section created successfully" };
@@ -852,11 +975,60 @@ export async function manageSectionAction(
           code: normalizedCode,
           name,
           departmentId: departmentId || null,
+          headEmployeeId: headEmployeeId || null,
           description: description || "",
           isActive,
           updatedAt: now(),
         })
         .where(eq(masterSections.id, id));
+
+      if (headEmployeeId) {
+        // Sync active employees in this section (except the head itself)
+        await db
+          .update(employees)
+          .set({ directManagerId: headEmployeeId })
+          .where(
+            and(
+              eq(employees.sectionId, id),
+              sql`${employees.id} != ${headEmployeeId}`,
+              eq(employees.isActive, true)
+            )
+          );
+
+        // Try to set the section head's manager to the department head
+        const activeDeptId = departmentId || null;
+        if (activeDeptId) {
+          const [dept] = await db
+            .select({ headEmployeeId: masterDepartments.headEmployeeId })
+            .from(masterDepartments)
+            .where(eq(masterDepartments.id, activeDeptId))
+            .limit(1);
+          if (dept?.headEmployeeId) {
+            await db
+              .update(employees)
+              .set({ directManagerId: dept.headEmployeeId })
+              .where(eq(employees.id, headEmployeeId));
+          }
+        }
+      } else {
+        // If Section Head is cleared, check if there's a department head to fall back to
+        let fallbackManagerId: number | null = null;
+        const activeDeptId = departmentId || null;
+        if (activeDeptId) {
+          const [dept] = await db
+            .select({ headEmployeeId: masterDepartments.headEmployeeId })
+            .from(masterDepartments)
+            .where(eq(masterDepartments.id, activeDeptId))
+            .limit(1);
+          if (dept?.headEmployeeId) {
+            fallbackManagerId = dept.headEmployeeId;
+          }
+        }
+        await db
+          .update(employees)
+          .set({ directManagerId: fallbackManagerId })
+          .where(and(eq(employees.sectionId, id), eq(employees.isActive, true)));
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Section updated successfully" };
@@ -1095,17 +1267,16 @@ export async function manageDepartmentAction(
     const { id } = deletePayload.data;
 
     try {
+      const relations: string[] = [];
+
       // Check if department is used by sections
       const usedBySections = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(masterSections)
         .where(eq(masterSections.departmentId, id));
-
-      if ((usedBySections[0]?.count ?? 0) > 0) {
-        return {
-          status: "error",
-          message: "Cannot delete department that has sections assigned",
-        };
+      const sectionCount = usedBySections[0]?.count ?? 0;
+      if (sectionCount > 0) {
+        relations.push(`${sectionCount} Section`);
       }
 
       // Check if department is used by positions
@@ -1113,11 +1284,35 @@ export async function manageDepartmentAction(
         .select({ count: sql<number>`count(*)::int` })
         .from(masterPositions)
         .where(eq(masterPositions.departmentId, id));
+      const positionCount = usedByPositions[0]?.count ?? 0;
+      if (positionCount > 0) {
+        relations.push(`${positionCount} Jabatan`);
+      }
 
-      if ((usedByPositions[0]?.count ?? 0) > 0) {
+      // Check if department is used by employees
+      const usedByEmployees = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(employees)
+        .where(eq(employees.departmentId, id));
+      const employeeCount = usedByEmployees[0]?.count ?? 0;
+      if (employeeCount > 0) {
+        relations.push(`${employeeCount} Karyawan`);
+      }
+
+      // Check if department is used by approval matrices
+      const usedByMatrices = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(approvalMatrices)
+        .where(eq(approvalMatrices.departmentId, id));
+      const matrixCount = usedByMatrices[0]?.count ?? 0;
+      if (matrixCount > 0) {
+        relations.push(`${matrixCount} Matriks Approval`);
+      }
+
+      if (relations.length > 0) {
         return {
           status: "error",
-          message: "Cannot delete department that has positions assigned",
+          message: `Tidak dapat menghapus departemen karena masih digunakan oleh: ${relations.join(", ")}`,
         };
       }
 
@@ -1141,7 +1336,7 @@ export async function manageDepartmentAction(
     };
   }
 
-  const { intent, id, code, name, description, isActive } = parsed.data;
+  const { intent, id, code, name, headEmployeeId, description, isActive } = parsed.data;
   const normalizedCode = code.trim().toUpperCase();
 
   try {
@@ -1159,14 +1354,50 @@ export async function manageDepartmentAction(
         };
       }
 
-      await db.insert(masterDepartments).values({
-        code: normalizedCode,
-        name,
-        description: description || "",
-        isActive,
-        createdAt: now(),
-        updatedAt: now(),
-      });
+      const [newDept] = await db
+        .insert(masterDepartments)
+        .values({
+          code: normalizedCode,
+          name,
+          headEmployeeId: headEmployeeId || null,
+          description: description || "",
+          isActive,
+          createdAt: now(),
+          updatedAt: now(),
+        })
+        .returning({ id: masterDepartments.id });
+
+      const deptId = newDept?.id;
+      if (deptId) {
+        if (headEmployeeId) {
+          // 1. Sync section heads of sections in this department
+          const subSections = await db
+            .select({ headEmployeeId: masterSections.headEmployeeId })
+            .from(masterSections)
+            .where(and(eq(masterSections.departmentId, deptId), sql`${masterSections.headEmployeeId} IS NOT NULL`));
+          
+          const sectionHeadIds = subSections.map(s => s.headEmployeeId).filter((id): id is number => id !== null && id !== headEmployeeId);
+          if (sectionHeadIds.length > 0) {
+            await db
+              .update(employees)
+              .set({ directManagerId: headEmployeeId })
+              .where(inArray(employees.id, sectionHeadIds));
+          }
+
+          // 2. Sync employees directly under this department (without section, and who are not the dept head itself)
+          await db
+            .update(employees)
+            .set({ directManagerId: headEmployeeId })
+            .where(
+              and(
+                eq(employees.departmentId, deptId),
+                sql`${employees.sectionId} IS NULL`,
+                sql`${employees.id} != ${headEmployeeId}`,
+                eq(employees.isActive, true)
+              )
+            );
+        }
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Department created successfully" };
@@ -1195,11 +1426,66 @@ export async function manageDepartmentAction(
         .set({
           code: normalizedCode,
           name,
+          headEmployeeId: headEmployeeId || null,
           description: description || "",
           isActive,
           updatedAt: now(),
         })
         .where(eq(masterDepartments.id, id));
+
+      if (headEmployeeId) {
+        // 1. Sync section heads of sections in this department
+        const subSections = await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
+          .from(masterSections)
+          .where(and(eq(masterSections.departmentId, id), sql`${masterSections.headEmployeeId} IS NOT NULL`));
+        
+        const sectionHeadIds = subSections.map(s => s.headEmployeeId).filter((id): id is number => id !== null && id !== headEmployeeId);
+        if (sectionHeadIds.length > 0) {
+          await db
+            .update(employees)
+            .set({ directManagerId: headEmployeeId })
+            .where(inArray(employees.id, sectionHeadIds));
+        }
+
+        // 2. Sync employees directly under this department (without section, and who are not the dept head itself)
+        await db
+          .update(employees)
+          .set({ directManagerId: headEmployeeId })
+          .where(
+            and(
+              eq(employees.departmentId, id),
+              sql`${employees.sectionId} IS NULL`,
+              sql`${employees.id} != ${headEmployeeId}`,
+              eq(employees.isActive, true)
+            )
+          );
+      } else {
+        // If Department Head is cleared, set directManagerId to null for all section heads and section-less employees in this department
+        const subSections = await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
+          .from(masterSections)
+          .where(and(eq(masterSections.departmentId, id), sql`${masterSections.headEmployeeId} IS NOT NULL`));
+        
+        const sectionHeadIds = subSections.map(s => s.headEmployeeId).filter((id): id is number => id !== null);
+        if (sectionHeadIds.length > 0) {
+          await db
+            .update(employees)
+            .set({ directManagerId: null })
+            .where(inArray(employees.id, sectionHeadIds));
+        }
+
+        await db
+          .update(employees)
+          .set({ directManagerId: null })
+          .where(
+            and(
+              eq(employees.departmentId, id),
+              sql`${employees.sectionId} IS NULL`,
+              eq(employees.isActive, true)
+            )
+          );
+      }
 
       revalidatePath("/dashboard/master-data");
       return { status: "success", message: "Department updated successfully" };
