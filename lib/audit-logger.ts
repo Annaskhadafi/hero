@@ -19,6 +19,7 @@ export type AuditAction =
   | 'user.bulk_banned'
   | 'user.bulk_unbanned'
   | 'user.bulk_auth_provisioned'
+  | 'user.invitation_resent'
   | 'checklist_template.created'
   | 'checklist_template.updated'
   | 'checklist_template.deleted'

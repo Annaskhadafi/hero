@@ -709,7 +709,7 @@ export async function submitAttendancePermission(formData: FormData) {
         ]),
       )
       const permissionLabel = formatAttendancePermissionType(permissionType)
-      const requestDate = formatAttendancePermissionRange(
+      const formattedRequestDate = formatAttendancePermissionRange(
         requestDate,
         permissionType === 'sick' ? endDate : requestDate,
       )
@@ -717,11 +717,11 @@ export async function submitAttendancePermission(formData: FormData) {
         recipientEmails: bellRecipients,
         eventType: 'attendance_permission_submitted',
         title: `Pengajuan ${permissionLabel} baru`,
-        body: `${employee.name} mengirim ${permissionLabel.toLowerCase()} untuk ${requestDate}.`,
+        body: `${employee.name} mengirim ${permissionLabel.toLowerCase()} untuk ${formattedRequestDate}.`,
         url: '/dashboard/hc/permission',
         metadata: {
           permissionType,
-          requestDate,
+          requestDate: formattedRequestDate,
           employeeName: employee.name,
         },
       })

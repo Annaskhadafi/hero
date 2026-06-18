@@ -417,7 +417,7 @@ export async function updateOffboardingRequest(
         title: "Offboarding masuk tahap clearance",
         intro: "Request offboarding Anda sudah disetujui dan sekarang masuk proses clearance.",
         details: [
-          approvedBy ? `Approved by: ${approvedBy}` : null,
+          updated.approvedBy ? `Approved by: ${updated.approvedBy}` : null,
         ],
         status: "in_clearance",
       });

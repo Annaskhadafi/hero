@@ -46,7 +46,7 @@ export default async function AcceptInvitationPage({ searchParams }: PageProps) 
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-6 py-16">
       <h1 className="text-2xl font-semibold">Terima Undangan HERO</h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        Akun untuk {verification.employee.name} sudah dibuat. Setelah menerima undangan, Anda bisa login atau
+        Akun untuk {verification.employee?.name || "karyawan ini"} sudah dibuat. Setelah menerima undangan, Anda bisa login atau
         menggunakan menu Forgot Password untuk membuat password pertama.
       </p>
 

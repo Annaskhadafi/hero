@@ -196,11 +196,13 @@ export async function getDisciplinaryById(id: IdInput) {
 export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
   const [created] = await db.insert(hcDisciplinaryActions).values(disciplinaryValues(data)).returning();
   const employee = await getHrEmployeeContactById(created.employeeId);
-  const [category] = await db
-    .select({ name: hcViolationCategories.name, severity: hcViolationCategories.severity })
-    .from(hcViolationCategories)
-    .where(eq(hcViolationCategories.id, created.violationCategoryId))
-    .limit(1);
+  const [category] = created.violationCategoryId
+    ? await db
+        .select({ name: hcViolationCategories.name, severity: hcViolationCategories.severity })
+        .from(hcViolationCategories)
+        .where(eq(hcViolationCategories.id, created.violationCategoryId))
+        .limit(1)
+    : [];
 
   const emailContent = buildHumanCapitalEmail({
     title: "Tindakan disipliner baru",
@@ -254,11 +256,13 @@ export async function updateDisciplinaryStatus(id: IdInput, status: string) {
     .returning();
 
   const employee = await getHrEmployeeContactById(updated.employeeId);
-  const [category] = await db
-    .select({ name: hcViolationCategories.name })
-    .from(hcViolationCategories)
-    .where(eq(hcViolationCategories.id, updated.violationCategoryId))
-    .limit(1);
+  const [category] = updated.violationCategoryId
+    ? await db
+        .select({ name: hcViolationCategories.name })
+        .from(hcViolationCategories)
+        .where(eq(hcViolationCategories.id, updated.violationCategoryId))
+        .limit(1)
+    : [];
 
   const emailContent = buildHumanCapitalEmail({
     title: "Update status tindakan disipliner",

@@ -240,7 +240,9 @@ export async function createPerformanceReview(data: PerformanceReviewData) {
         cycleName: context.cycleName || "-",
         status: context.status || "-",
       },
-      extraTo: [context.employeeEmail, context.reviewerEmail].filter(Boolean),
+      extraTo: [context.employeeEmail, context.reviewerEmail].filter(
+        (value): value is string => Boolean(value),
+      ),
       fallbackSubject: `Performance review baru: ${context.employeeName || "Employee"}`,
       fallbackHtml: emailContent.html,
       fallbackText: emailContent.text,
@@ -324,7 +326,9 @@ export async function submitPerformanceReview(id: number) {
         cycleName: context.cycleName || "-",
         status: "submitted",
       },
-      extraTo: [context.employeeEmail, context.reviewerEmail].filter(Boolean),
+      extraTo: [context.employeeEmail, context.reviewerEmail].filter(
+        (value): value is string => Boolean(value),
+      ),
       fallbackSubject: `Performance review disubmit: ${context.employeeName || "Employee"}`,
       fallbackHtml: emailContent.html,
       fallbackText: emailContent.text,
@@ -362,7 +366,9 @@ export async function acknowledgePerformanceReview(id: number) {
         status: "acknowledged",
         overallRating: context.overallRating || "-",
       },
-      extraTo: [context.employeeEmail, context.reviewerEmail].filter(Boolean),
+      extraTo: [context.employeeEmail, context.reviewerEmail].filter(
+        (value): value is string => Boolean(value),
+      ),
       fallbackSubject: `Performance review diacknowledge: ${context.employeeName || "Employee"}`,
       fallbackHtml: emailContent.html,
       fallbackText: emailContent.text,

@@ -827,7 +827,10 @@ function getPenaltyPoints(category: string, configMap: Map<string, number>) {
   }
 }
 
-async function resolveApprover(employeeId: number, assignmentId?: number) {
+async function resolveApprover(
+  employeeId: number,
+  assignmentId?: number,
+): Promise<{ id: number; name: string; email: string | null } | null> {
   const [employee] = await db
     .select({
       directManagerId: employees.directManagerId,
@@ -2057,13 +2060,8 @@ export async function submitDailyActivityAction(formData: FormData) {
   });
 
   let createdActivityId: number | null = null;
-  let pendingApprover:
-    | {
-        id: number;
-        name: string;
-        email: string | null;
-      }
-    | null = null;
+  let pendingApproverName: string | null = null;
+  let pendingApproverEmail: string | null = null;
   const activityTitle =
     library?.activityName ||
     selectedAssignment?.customJobName.trim() ||
@@ -2183,7 +2181,8 @@ export async function submitDailyActivityAction(formData: FormData) {
       const approver = await resolveApprover(employeeId, payload.assignmentId);
 
       if (approver) {
-        pendingApprover = approver;
+        pendingApproverName = approver.name;
+        pendingApproverEmail = approver.email;
         await tx.insert(approvals).values({
           activityId: createdActivity.id,
           level: 1,
@@ -2205,11 +2204,11 @@ export async function submitDailyActivityAction(formData: FormData) {
   await updateStreakForEmployee(employeeId, endTime);
   revalidateDailyActivitySurfaces();
 
-  if (pendingApprover?.email) {
+  if (pendingApproverEmail) {
     try {
       const emailContent = buildWorkflowEmailContent({
         title: "Daily Activity menunggu approval",
-        greeting: `Halo ${pendingApprover.name},`,
+        greeting: `Halo ${pendingApproverName || "Approver"},`,
         intro: `${employee.name} mengirim daily activity baru dan membutuhkan review Anda.`,
         details: [
           `Aktivitas: ${activityTitle}`,
@@ -2225,7 +2224,7 @@ export async function submitDailyActivityAction(formData: FormData) {
       });
 
       await sendWorkflowEmail({
-        to: pendingApprover.email,
+        to: pendingApproverEmail,
         actorEmail: employee.email,
         templateCode: "daily_activity_pending_approval",
         templateName: "Daily Activity Pending Approval",
