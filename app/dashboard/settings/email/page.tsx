@@ -192,7 +192,13 @@ export default async function EmailSettingsPage() {
         </TabsContent>
 
         <TabsContent value="templates">
-          <EmailTemplateSettingsPanel templates={templates} />
+          <EmailTemplateSettingsPanel
+            templates={templates}
+            hseRecipientEmails={hseSafetyConfig.recipientEmails}
+            hseCcEmails={hseSafetyConfig.ccEmails}
+            hcRecipientEmails={humanCapitalConfig.recipientEmails}
+            hcCcEmails={humanCapitalConfig.ccEmails}
+          />
         </TabsContent>
 
         <TabsContent value="hse">

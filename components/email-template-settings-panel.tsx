@@ -10,7 +10,6 @@ import {
   RefreshCcw,
   RotateCcw,
   Send,
-  WandSparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -116,8 +115,16 @@ function buildFormFromPreset(
 
 export function EmailTemplateSettingsPanel({
   templates,
+  hseRecipientEmails,
+  hseCcEmails,
+  hcRecipientEmails,
+  hcCcEmails,
 }: {
   templates: EmailTemplateRecord[];
+  hseRecipientEmails: string;
+  hseCcEmails: string;
+  hcRecipientEmails: string;
+  hcCcEmails: string;
 }) {
   const router = useRouter();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -128,6 +135,42 @@ export function EmailTemplateSettingsPanel({
   const [restoringCode, setRestoringCode] = useState<string | null>(null);
   const [testSendingId, setTestSendingId] = useState<number | null>(null);
   const [isSyncingPresets, setIsSyncingPresets] = useState(false);
+
+  const scopeList = formData.recipientScope
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const scopeDescriptions = scopeList.map((scope) => {
+    if (scope === "employee") return { label: "employee", detail: "Variabel: {{employeeName}}, {{employeeEmail}}" };
+    if (scope === "candidate") return { label: "candidate", detail: "Variabel: {{candidateName}}, {{candidateEmail}}" };
+    if (scope === "approver") return { label: "approver", detail: "Ditentukan oleh approval engine saat runtime" };
+    if (scope === "reviewer") return { label: "reviewer", detail: "Ditentukan oleh sistem review saat runtime" };
+    if (scope === "admin") return { label: "admin", detail: "Ditentukan oleh role admin sistem" };
+    if (scope === "pjo") return { label: "pjo", detail: "Ditentukan oleh assignment PJO saat runtime" };
+    if (scope === "clinic") return { label: "clinic", detail: "Ditentukan oleh pemilihan klinik saat runtime" };
+    if (scope === "hse") {
+      const emails = hseRecipientEmails.split(",").map((e) => e.trim()).filter(Boolean);
+      const ccList = hseCcEmails.split(",").map((e) => e.trim()).filter(Boolean);
+      return {
+        label: "HSE Safety",
+        detail: emails.length > 0
+          ? `Kirim ke: ${emails.join(", ")}${ccList.length > 0 ? ` | CC: ${ccList.join(", ")}` : ""}`
+          : "Belum ada email penerima di Settings > HSE Safety",
+      };
+    }
+    if (scope === "hc") {
+      const emails = hcRecipientEmails.split(",").map((e) => e.trim()).filter(Boolean);
+      const ccList = hcCcEmails.split(",").map((e) => e.trim()).filter(Boolean);
+      return {
+        label: "Human Capital",
+        detail: emails.length > 0
+          ? `Kirim ke: ${emails.join(", ")}${ccList.length > 0 ? ` | CC: ${ccList.join(", ")}` : ""}`
+          : "Belum ada email penerima di Settings > Human Capital",
+      };
+    }
+    return { label: scope, detail: "Tidak diketahui" };
+  });
 
   const presetTemplatesCount = templates.filter((template) =>
     Boolean(EMAIL_TEMPLATE_PRESET_MAP[template.templateCode]),
@@ -170,18 +213,6 @@ export function EmailTemplateSettingsPanel({
     }
 
     setIsDialogOpen(true);
-  };
-
-  const handleResetToPreset = () => {
-    if (!activePreset) {
-      return;
-    }
-
-    setFormData(
-      buildFormFromPreset(activePreset, {
-        isActive: formData.isActive,
-      }),
-    );
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -506,35 +537,6 @@ export function EmailTemplateSettingsPanel({
           <form onSubmit={handleSubmit} className="grid gap-4">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_360px]">
               <div className="space-y-4">
-                <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {EMAIL_TEMPLATE_PRESETS.map((preset) => (
-                      <Button
-                        key={preset.templateCode}
-                        type="button"
-                        variant={
-                          formData.templateCode === preset.templateCode ? "default" : "outline"
-                        }
-                        className="h-auto items-start justify-start rounded-lg px-3 py-3 text-left"
-                        onClick={() =>
-                          setFormData(
-                            buildFormFromPreset(preset, {
-                              isActive: formData.isActive,
-                            }),
-                          )
-                        }
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium">{preset.name}</p>
-                          <p className="mt-1 font-mono text-[11px] opacity-80">
-                            {preset.templateCode}
-                          </p>
-                        </div>
-                      </Button>
-                    ))}
-                  </div>
-                </Card>
-
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-2 xl:col-span-1">
                     <Label htmlFor="template-name">Nama Template</Label>
@@ -609,6 +611,16 @@ export function EmailTemplateSettingsPanel({
                       placeholder="approver"
                       required
                     />
+                    {scopeDescriptions.length > 0 ? (
+                      <div className="space-y-1">
+                        {scopeDescriptions.map((scope) => (
+                          <div key={scope.label} className="rounded-lg bg-surface-container-low px-3 py-1.5 text-xs">
+                            <span className="font-semibold">{scope.label}:</span>{" "}
+                            <span className="text-muted-foreground">{scope.detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="space-y-2 xl:col-span-1">
                     <Label htmlFor="template-cc">CC Email</Label>

@@ -32,7 +32,6 @@ test("email template settings panel exposes template table, feature column, test
   assert.match(source, /handleSendTest/);
   assert.match(source, /sendTemplateTestAction/);
   assert.match(source, /handleRestorePreset/);
-  assert.match(source, /Reset ke Default/);
   assert.match(source, /Restore Default/);
   assert.match(source, /Sync Preset/);
   assert.match(source, /Live Preview/);
@@ -55,5 +54,5 @@ test("email settings actions expose restore and sync preset operations", () => {
 test("email settings page still mounts the template panel", () => {
   const source = read("app/dashboard/settings/email/page.tsx");
 
-  assert.match(source, /<EmailTemplateSettingsPanel templates=\{templates\} \/>/);
+  assert.match(source, /EmailTemplateSettingsPanel/);
 });
