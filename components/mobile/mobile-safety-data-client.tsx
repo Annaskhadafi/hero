@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   AlertTriangle, BarChart3, Calendar, CheckCircle2, ExternalLink,
-  FileText, Filter, Plus, Search, ShieldCheck, Trash2, Users, X,
+  FileText, Plus, Search, ShieldCheck, Users, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -23,32 +23,25 @@ import {
 } from '@/app/dashboard/safety/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { getSafetyDashboardData } from '@/lib/safety-dashboard/queries'
 
 type SafetyData = Awaited<ReturnType<typeof getSafetyDashboardData>> & { access?: any }
-
 type TimestampValue = Date | string | null
-
-type FormState<T> = {
-  open: boolean
-  mode: 'create' | 'edit' | 'view' | 'delete'
-  row: T | null
-}
+type FormState<T> = { open: boolean; mode: 'create' | 'edit' | 'view' | 'delete'; row: T | null }
 
 const TABS = [
-  { key: 'incident-reports', label: 'Incident Reports', icon: AlertTriangle },
-  { key: 'yearly-summary', label: 'Yearly Summary', icon: BarChart3 },
-  { key: 'monthly-summary', label: 'Monthly Summary', icon: Calendar },
-  { key: 'certifications', label: 'Certifications', icon: ShieldCheck },
-  { key: 'performance', label: 'Performance', icon: BarChart3 },
-  { key: 'man-hours', label: 'Man Hours', icon: FileText },
-  { key: 'monthly-man-hours', label: 'Monthly MH', icon: FileText },
-  { key: 'weekly', label: 'Weekly Act.', icon: CheckCircle2 },
-  { key: 'inspections', label: 'Inspections', icon: Search },
-  { key: 'inductions', label: 'Inductions', icon: Users },
+  { key: 'incident-reports', label: 'Incidents', icon: AlertTriangle },
+  { key: 'yearly-summary', label: 'Yearly', icon: BarChart3 },
+  { key: 'monthly-summary', label: 'Monthly', icon: Calendar },
+  { key: 'certifications', label: 'Cert', icon: ShieldCheck },
+  { key: 'performance', label: 'Perf', icon: BarChart3 },
+  { key: 'man-hours', label: 'MH', icon: FileText },
+  { key: 'monthly-man-hours', label: 'MMH', icon: FileText },
+  { key: 'weekly', label: 'Weekly', icon: CheckCircle2 },
+  { key: 'inspections', label: 'Insp', icon: Search },
+  { key: 'inductions', label: 'Induct', icon: Users },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -67,36 +60,34 @@ function fmtNum(v: unknown) {
 function fmtDateInput(v: TimestampValue) {
   if (!v) return ''
   const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toISOString().slice(0, 10)
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">{label}</p>
+      <p className="mb-1 text-[11px] font-medium text-gray-500">{label}</p>
       {children}
     </div>
   )
 }
 
-function Card({ children, className, onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
+function Card({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   return (
     <button type="button" onClick={onClick}
-      className={cn('w-full rounded-[1.15rem] bg-white p-4 text-left shadow-[0_14px_32px_rgba(8,32,51,0.08)] active:scale-[0.99] transition', className)}>
+      className="w-full rounded-xl border border-gray-100 bg-white p-4 text-left active:bg-gray-50 transition">
       {children}
     </button>
   )
 }
 
-function Badge({ value, className }: { value: string | null | undefined; className?: string }) {
+function Badge({ value }: { value: string | null | undefined }) {
   if (!value) return null
   const isGood = ['open', 'aktif', 'baik', 'verified'].includes(value.toLowerCase())
   const isBad = ['expired', 'rusak', 'closed'].includes(value.toLowerCase())
   return (
-    <span className={cn('rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase',
-      isGood ? 'bg-[#eef7ed] text-[#166534]' : isBad ? 'bg-[#fff1ea] text-[#8a3d00]' : 'bg-[#fff8e8] text-[#8a5a00]',
-      className)}>
+    <span className={cn('rounded-md px-2 py-0.5 text-[10px] font-medium',
+      isGood ? 'bg-emerald-50 text-emerald-700' : isBad ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700')}>
       {value}
     </span>
   )
@@ -105,13 +96,13 @@ function Badge({ value, className }: { value: string | null | undefined; classNa
 function SheetModal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={onClose}>
       <div className="w-full max-w-[430px] mx-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="max-h-[85dvh] overflow-y-auto rounded-t-[1.5rem] bg-[#f6fbff] px-4 pb-8 pt-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-black text-[#082033]">{title}</h2>
-            <button onClick={onClose} className="flex size-9 items-center justify-center rounded-xl bg-white shadow-[0_10px_24px_rgba(8,32,51,0.08)]">
-              <X className="size-4 text-[#486275]" />
+        <div className="max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-gray-50 px-5 pb-8 pt-5">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+            <button onClick={onClose} className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white">
+              <X className="size-4 text-gray-400" />
             </button>
           </div>
           {children}
@@ -125,7 +116,7 @@ function TextF({ name, label, defaultValue, type = 'text' }: { name: string; lab
   return (
     <Field label={label}>
       <Input name={name} type={type} defaultValue={defaultValue ?? ''}
-        className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold shadow-[0_10px_24px_rgba(8,32,51,0.08)]" />
+        className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm" />
     </Field>
   )
 }
@@ -134,7 +125,7 @@ function TextAreaF({ name, label, defaultValue }: { name: string; label: string;
   return (
     <Field label={label}>
       <Textarea name={name} defaultValue={defaultValue ?? ''} rows={3}
-        className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold shadow-[0_10px_24px_rgba(8,32,51,0.08)]" />
+        className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm" />
     </Field>
   )
 }
@@ -145,7 +136,7 @@ function SelectF({ name, label, defaultValue, options }: { name: string; label: 
     <Field label={label}>
       <input type="hidden" name={name} value={val} />
       <select value={val} onChange={(e) => setVal(e.target.value)}
-        className="h-12 w-full rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033] shadow-[0_10px_24px_rgba(8,32,51,0.08)]">
+        className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900">
         <option value="">Pilih...</option>
         {options?.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -159,9 +150,9 @@ function FormIncidentRow({ row, options }: { row: any; options?: any }) {
     <>
       <TextF name="workerName" label="Nama" defaultValue={row?.workerName} />
       <SelectF name="department" label="Departemen" defaultValue={row?.department} options={opts.departments} />
-      <TextAreaF name="incidentDescription" label="Incident" defaultValue={row?.incidentDescription} />
+      <TextAreaF name="incidentDescription" label="Deskripsi Insiden" defaultValue={row?.incidentDescription} />
       <div className="grid grid-cols-2 gap-3">
-        <TextF name="propertyDamage" label="Property damage" defaultValue={row?.propertyDamage} />
+        <TextF name="propertyDamage" label="Property Damage" defaultValue={row?.propertyDamage} />
         <SelectF name="location" label="Lokasi" defaultValue={row?.location} options={opts.locations} />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -213,24 +204,24 @@ function FormCertRow({ row, options }: { row: any; options?: any }) {
   const opts = options || { departments: [], workAreas: [], equipmentClassifications: [], statuses: [], regulations: [], locations: [] }
   return (
     <>
-      <TextF name="equipmentName" label="Nama alat" defaultValue={row?.equipmentName} />
+      <TextF name="equipmentName" label="Nama Alat" defaultValue={row?.equipmentName} />
       <div className="grid grid-cols-2 gap-3">
-        <SelectF name="picDepartment" label="PIC dept" defaultValue={row?.picDepartment} options={opts.departments} />
-        <SelectF name="workArea" label="Area kerja" defaultValue={row?.workArea} options={opts.workAreas} />
+        <SelectF name="picDepartment" label="PIC Dept" defaultValue={row?.picDepartment} options={opts.departments} />
+        <SelectF name="workArea" label="Area Kerja" defaultValue={row?.workArea} options={opts.workAreas} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <SelectF name="equipmentClassification" label="Klasifikasi" defaultValue={row?.equipmentClassification} options={opts.equipmentClassifications} />
         <TextF name="certifier" label="Sertifikator" defaultValue={row?.certifier} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <TextF name="certificationDate" label="Tgl sertifikasi" type="date" defaultValue={fmtDateInput(row?.certificationDate)} />
-        <TextF name="nextCertificationDate" label="Next sert." type="date" defaultValue={fmtDateInput(row?.nextCertificationDate)} />
+        <TextF name="certificationDate" label="Tgl Sertifikasi" type="date" defaultValue={fmtDateInput(row?.certificationDate)} />
+        <TextF name="nextCertificationDate" label="Next Sert" type="date" defaultValue={fmtDateInput(row?.nextCertificationDate)} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <SelectF name="status" label="Status" defaultValue={row?.status ?? 'AKTIF'} options={opts.statuses} />
         <SelectF name="regulation" label="Regulasi" defaultValue={row?.regulation} options={opts.regulations} />
       </div>
-      <SelectF name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} options={opts.locations} />
+      <SelectF name="workLocation" label="Lokasi Kerja" defaultValue={row?.workLocation} options={opts.locations} />
       <TextAreaF name="remarks" label="Keterangan" defaultValue={row?.remarks} />
     </>
   )
@@ -240,15 +231,15 @@ function FormPerfRow({ row }: { row: any }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       <TextF name="year" label="Tahun" type="number" defaultValue={row?.year ?? new Date().getFullYear()} />
-      <TextF name="periodLabel" label="Periode/site" defaultValue={row?.periodLabel} />
+      <TextF name="periodLabel" label="Periode/Site" defaultValue={row?.periodLabel} />
       <TextF name="employeeCount" label="Karyawan" type="number" defaultValue={row?.employeeCount ?? 0} />
       <TextF name="safeManHoursUpToYear" label="Safe MH" defaultValue={row?.safeManHoursUpToYear ?? '0'} />
-      <TextF name="fatalityThreshold" label="Fatality threshold" defaultValue={row?.fatalityThreshold ?? '0'} />
-      <TextF name="fatalityActual" label="Fatality actual" defaultValue={row?.fatalityActual ?? '0'} />
-      <TextF name="ltiThreshold" label="LTI threshold" defaultValue={row?.ltiThreshold ?? '0'} />
-      <TextF name="ltiActual" label="LTI actual" defaultValue={row?.ltiActual ?? '0'} />
-      <TextF name="propertyDamageThreshold" label="PD threshold" defaultValue={row?.propertyDamageThreshold ?? '0'} />
-      <TextF name="propertyDamageActual" label="PD actual" defaultValue={row?.propertyDamageActual ?? '0'} />
+      <TextF name="fatalityThreshold" label="Fat Threshold" defaultValue={row?.fatalityThreshold ?? '0'} />
+      <TextF name="fatalityActual" label="Fat Actual" defaultValue={row?.fatalityActual ?? '0'} />
+      <TextF name="ltiThreshold" label="LTI Threshold" defaultValue={row?.ltiThreshold ?? '0'} />
+      <TextF name="ltiActual" label="LTI Actual" defaultValue={row?.ltiActual ?? '0'} />
+      <TextF name="propertyDamageThreshold" label="PD Threshold" defaultValue={row?.propertyDamageThreshold ?? '0'} />
+      <TextF name="propertyDamageActual" label="PD Actual" defaultValue={row?.propertyDamageActual ?? '0'} />
     </div>
   )
 }
@@ -257,11 +248,11 @@ function FormManHourRow({ row, options }: { row: any; options?: any }) {
   const opts = options || { locations: [] }
   return (
     <div className="grid grid-cols-2 gap-3">
-      <SelectF name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} options={opts.locations} />
+      <SelectF name="workLocation" label="Lokasi Kerja" defaultValue={row?.workLocation} options={opts.locations} />
       <TextF name="employeeCount" label="Karyawan" type="number" defaultValue={row?.employeeCount ?? 0} />
       <TextF name="safetyManHours" label="Safety MH" defaultValue={row?.safetyManHours ?? '0'} />
-      <TextF name="safeTarget" label="Target aman" defaultValue={row?.safeTarget ?? '0'} />
-      <TextF name="averageWeeklyRevenue" label="Revenue/minggu" defaultValue={row?.averageWeeklyRevenue ?? ''} />
+      <TextF name="safeTarget" label="Target Aman" defaultValue={row?.safeTarget ?? '0'} />
+      <TextF name="averageWeeklyRevenue" label="Revenue/Minggu" defaultValue={row?.averageWeeklyRevenue ?? ''} />
     </div>
   )
 }
@@ -270,7 +261,7 @@ function FormMonthlyMHRow({ row, options }: { row: any; options?: any }) {
   const opts = options || { locations: [] }
   return (
     <div className="grid grid-cols-2 gap-3">
-      <SelectF name="workLocation" label="Lokasi kerja" defaultValue={row?.workLocation} options={opts.locations} />
+      <SelectF name="workLocation" label="Lokasi Kerja" defaultValue={row?.workLocation} options={opts.locations} />
       <TextF name="employeeCount" label="Karyawan" type="number" defaultValue={row?.employeeCount ?? 0} />
       <TextF name="month" label="Bulan" type="date" defaultValue={fmtDateInput(row?.month)} />
       <TextF name="safetyManHours" label="Safety MH" defaultValue={row?.safetyManHours ?? '0'} />
@@ -288,8 +279,8 @@ function FormWeeklyRow({ row, options }: { row: any; options?: any }) {
         <SelectF name="pic" label="PIC" defaultValue={row?.pic} options={opts.pics} />
       </div>
       <SelectF name="category" label="Kategori" defaultValue={row?.category} options={opts.categories} />
-      <TextF name="imageUrl" label="Image link" defaultValue={row?.imageUrl} />
-      <TextF name="evidenceUrl" label="Evidence link" defaultValue={row?.evidenceUrl} />
+      <TextF name="imageUrl" label="Image Link" defaultValue={row?.imageUrl} />
+      <TextF name="evidenceUrl" label="Evidence Link" defaultValue={row?.evidenceUrl} />
     </>
   )
 }
@@ -322,9 +313,7 @@ function FormInductionsRow({ row }: { row: any }) {
     <>
       <TextF name="fullName" label="Nama Lengkap" defaultValue={row?.fullName} />
       <TextF name="companyOrigin" label="Perusahaan/Instansi" defaultValue={row?.companyOrigin} />
-      <div className="grid grid-cols-2 gap-3">
-        <TextF name="phoneNumber" label="No. Telepon" defaultValue={row?.phoneNumber} />
-      </div>
+      <TextF name="phoneNumber" label="No. Telepon" defaultValue={row?.phoneNumber} />
       <TextAreaF name="purpose" label="Tujuan" defaultValue={row?.purpose} />
     </>
   )
@@ -402,16 +391,16 @@ function SafetyDataFormModal({
     <SheetModal open={open} onClose={onClose} title={isDelete ? 'Konfirmasi Hapus' : title}>
       {isDelete ? (
         <div className="space-y-4">
-          <p className="text-sm font-semibold text-[#486275]">Hapus data ini?</p>
+          <p className="text-sm text-gray-600">Hapus data ini?</p>
           <div className="flex gap-2">
-            <Button onClick={onClose} className="flex-1 h-12 rounded-2xl bg-white text-[#486275] shadow-[0_10px_24px_rgba(8,32,51,0.08)]">Batal</Button>
-            <Button onClick={handleDelete} disabled={saving} className="flex-1 h-12 rounded-2xl bg-[#8a3d00] text-white">
+            <Button onClick={onClose} className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-gray-700">Batal</Button>
+            <Button onClick={handleDelete} disabled={saving} className="flex-1 h-11 rounded-xl bg-red-600 text-white">
               {saving ? 'Menghapus...' : 'Hapus'}
             </Button>
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {activeTab === 'incident-reports' ? <FormIncidentRow row={row} options={filterOptions} /> : null}
           {activeTab === 'yearly-summary' ? <FormYearlyRow row={row} /> : null}
           {activeTab === 'monthly-summary' ? <FormMonthlyRow row={row} /> : null}
@@ -423,16 +412,16 @@ function SafetyDataFormModal({
           {activeTab === 'inspections' ? <FormInspectionsRow row={row} options={filterOptions} /> : null}
           {activeTab === 'inductions' ? <FormInductionsRow row={row} /> : null}
           {!isView ? (
-            <Button type="submit" disabled={saving} className="h-14 w-full rounded-2xl bg-[#003f78] text-white">
+            <Button type="submit" disabled={saving} className="h-12 w-full rounded-xl bg-blue-600 text-white">
               {saving ? 'Menyimpan...' : 'Simpan'}
             </Button>
           ) : (
             <div className="flex gap-2">
               {access?.canEdit ? (
-                <Button type="button" onClick={() => onEdit(row)} className="flex-1 h-12 rounded-2xl bg-[#003f78] text-white">Edit</Button>
+                <Button type="button" onClick={() => onEdit(row)} className="flex-1 h-11 rounded-xl bg-blue-600 text-white">Edit</Button>
               ) : null}
               {access?.canDelete ? (
-                <Button type="button" onClick={() => onDelete(row)} className="flex-1 h-12 rounded-2xl bg-[#8a3d00] text-white">Hapus</Button>
+                <Button type="button" onClick={() => onDelete(row)} className="flex-1 h-11 rounded-xl bg-red-600 text-white">Hapus</Button>
               ) : null}
             </div>
           )}
@@ -456,18 +445,6 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
     if (!search.trim()) return items
     const q = search.toLowerCase()
     return items.filter((item) => fields.some((f) => String(item[f] ?? '').toLowerCase().includes(q)))
-  }
-
-  const filterByKey = <T extends Record<string, any>>(items: T[], key: keyof T) => {
-    if (!filterLabel) return items
-    return items.filter((item) => String(item[key] ?? '') === filterLabel)
-  }
-
-  function formatIncidentDate(v: TimestampValue) {
-    if (!v) return '-'
-    const d = new Date(v)
-    if (Number.isNaN(d.getTime())) return '-'
-    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
   }
 
   const [form, setForm] = React.useState<FormState<any>>({ open: false, mode: 'create', row: null })
@@ -512,35 +489,22 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
   const filterOpts = getFilterOptions()
   const filterKeys = Object.keys(filterOpts) as (keyof typeof filterOpts)[]
 
-  function renderStatCards(items: any[], fields: { label: string; key: string; color?: string }[]) {
-    return (
-      <div className="grid grid-cols-3 gap-2">
-        {fields.map((f) => (
-          <div key={f.label} className={cn('rounded-[1.15rem] bg-white p-3.5 text-center shadow-[0_14px_32px_rgba(8,32,51,0.08)]', f.color)}>
-            <p className="text-2xl font-black text-[#082033]">{fmtNum(items.reduce((s: number, i: any) => s + Number(i[f.key] ?? 0), 0))}</p>
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#486275]">{f.label}</p>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
   function renderFilterBar() {
     return (
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#9ab0bf]" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari..."
-            className="h-11 w-full rounded-2xl border-0 bg-white pl-9 pr-4 text-sm font-semibold shadow-[0_14px_32px_rgba(8,32,51,0.08)]" />
+            className="h-10 w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 text-sm" />
         </div>
         {filterKeys.length > 0 && filterLabel ? (
           <button onClick={() => setFilterLabel('')}
-            className="flex h-11 shrink-0 items-center gap-1 rounded-2xl bg-[#e6f6ff] px-3 text-xs font-black text-[#003f78]">
+            className="flex h-10 shrink-0 items-center gap-1 rounded-xl bg-blue-50 px-3 text-xs font-medium text-blue-700">
             <X className="size-3.5" /> Filter
           </button>
         ) : null}
         {access.canEdit ? (
-          <Button onClick={openCreate} className="h-11 shrink-0 rounded-2xl bg-[#003f78] px-4 text-white">
+          <Button onClick={openCreate} className="h-10 shrink-0 rounded-xl bg-blue-600 px-3 text-white">
             <Plus className="size-4" />
           </Button>
         ) : null}
@@ -557,14 +521,14 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
     return (
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setFilterLabel('')}
-          className={cn('h-9 shrink-0 rounded-full px-4 text-xs font-black uppercase tracking-[0.08em]',
-            !filterLabel ? 'bg-[#003f78] text-white' : 'bg-white text-[#486275] shadow-[0_10px_24px_rgba(8,32,51,0.08)]')}>
+          className={cn('h-8 rounded-lg px-3 text-xs font-medium',
+            !filterLabel ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-600')}>
           Semua
         </button>
         {values.map((v) => (
           <button key={v} onClick={() => setFilterLabel(v)}
-            className={cn('h-9 shrink-0 rounded-full px-4 text-xs font-black uppercase tracking-[0.08em]',
-              filterLabel === v ? 'bg-[#003f78] text-white' : 'bg-white text-[#486275] shadow-[0_10px_24px_rgba(8,32,51,0.08)]')}>
+            className={cn('h-8 rounded-lg px-3 text-xs font-medium',
+              filterLabel === v ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-600')}>
             {v}
           </button>
         ))}
@@ -574,14 +538,14 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
 
   return (
     <div className="space-y-4 pb-6">
-      <section className="rounded-[1.35rem] bg-gradient-to-br from-[#003f78] to-[#0f172a] p-4 text-white shadow-[0_18px_38px_rgba(0,63,120,0.22)]">
+      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#b9dff6]">HSE Mobile</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight">Safety Data</h1>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#d8efff]">Management & monitoring semua data safety</p>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">HSE Mobile</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">Safety Data</h1>
+            <p className="mt-1.5 text-sm leading-relaxed text-blue-200">Management & monitoring data keselamatan</p>
           </div>
-          <span className="flex size-11 items-center justify-center rounded-2xl bg-white/12"><ShieldCheck className="size-5" /></span>
+          <span className="flex size-10 items-center justify-center rounded-xl bg-white/10"><ShieldCheck className="size-5 text-blue-200" /></span>
         </div>
       </section>
 
@@ -602,11 +566,11 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
           else if (tab.key === 'inductions') count = data.inductions?.length ?? 0
           return (
             <button key={tab.key} onClick={() => { setActiveTab(tab.key); setSearch(''); setFilterLabel('') }}
-              className={cn('flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-xs font-black uppercase tracking-[0.08em]',
-                isActive ? 'bg-[#003f78] text-white shadow-[0_10px_24px_rgba(0,63,120,0.2)]' : 'bg-white text-[#486275] shadow-[0_10px_24px_rgba(8,32,51,0.08)]')}>
+              className={cn('flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-medium whitespace-nowrap',
+                isActive ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-600')}>
               <Icon className="size-3.5" />
               {tab.label}
-              <span className="ml-0.5 rounded-full bg-black/10 px-1.5 text-[9px]">{count}</span>
+              {count > 0 ? <span className="ml-0.5 rounded bg-black/10 px-1 text-[10px]">{count}</span> : null}
             </button>
           )
         })}
@@ -634,6 +598,23 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
     </div>
   )
 
+  function StatCard({ value, label, color }: { value: number | string; label: string; color?: string }) {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-3 text-center">
+        <p className={cn('text-xl font-bold', color || 'text-gray-900')}>{value}</p>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{label}</p>
+      </div>
+    )
+  }
+
+  function EmptyState() {
+    return (
+      <div className="rounded-xl border border-gray-100 bg-white p-8 text-center">
+        <p className="text-sm text-gray-500">Tidak ada data</p>
+      </div>
+    )
+  }
+
   function renderIncidentReports() {
     let items = data.incidentReports
     items = filteredBySearch(items, ['workerName', 'department', 'incidentDescription', 'location', 'category'])
@@ -643,7 +624,7 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
       <div className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
           <StatCard value={items.length} label="Total" />
-          <StatCard value={openCount} label="Open" color="text-[#8a3d00]" />
+          <StatCard value={openCount} label="Open" color="text-orange-600" />
           <StatCard value={items.filter((r: any) => r.propertyDamage).length} label="PD" />
         </div>
         {renderFilterBar()}
@@ -653,16 +634,16 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-[#082033]">{row.workerName || 'Tanpa nama'}</p>
-                  <p className="mt-0.5 truncate text-xs font-semibold text-[#486275]">{row.department} &middot; {row.location}</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">{row.workerName || 'Tanpa nama'}</p>
+                  <p className="mt-0.5 truncate text-xs text-gray-500">{row.department} &middot; {row.location}</p>
                 </div>
                 <Badge value={row.status} />
               </div>
-              <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{row.incidentDescription}</p>
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-600">{row.incidentDescription}</p>
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                 <span>{row.category}</span>
-                <span>{formatIncidentDate(row.incidentDate)}</span>
-                {row.propertyDamage ? <span className="text-[#8a3d00]">PD: {row.propertyDamage}</span> : null}
+                <span>{formatDate(row.incidentDate)}</span>
+                {row.propertyDamage ? <span className="text-orange-600">PD: {row.propertyDamage}</span> : null}
               </div>
             </Card>
           ))}
@@ -689,10 +670,10 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
           {items.map((row: any) => (
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-black text-[#082033]">{row.year}</p>
-                <p className="text-xs font-semibold text-[#486275]">Total: <strong>{row.totalEvents}</strong></p>
+                <p className="text-sm font-semibold text-gray-900">{row.year}</p>
+                <p className="text-xs text-gray-500">Total: <strong>{row.totalEvents}</strong></p>
               </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-[#486275]">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                 <span>FTL: {row.fatality}</span>
                 <span>LDI: {row.lostDayInjury}</span>
                 <span>RWDI: {row.restrictedWorkDayInjury}</span>
@@ -726,10 +707,10 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
           {items.map((row: any) => (
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-black text-[#082033]">{formatDate(row.month)}</p>
-                <p className="text-xs font-semibold text-[#486275]">Total: <strong>{row.totalEvents}</strong></p>
+                <p className="text-sm font-semibold text-gray-900">{formatDate(row.month)}</p>
+                <p className="text-xs text-gray-500">Total: <strong>{row.totalEvents}</strong></p>
               </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-[#486275]">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                 <span>FTL: {row.fatality}</span>
                 <span>LDI: {row.lostDayInjury}</span>
                 <span>RWDI: {row.restrictedWorkDayInjury}</span>
@@ -755,9 +736,9 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
-          <StatCard value={items.length} label="Total alat" />
-          <StatCard value={expired} label="Expired" color="text-[#8a3d00]" />
-          <StatCard value={items.filter((r: any) => r.status === 'AKTIF').length} label="Aktif" color="text-[#166534]" />
+          <StatCard value={items.length} label="Total Alat" />
+          <StatCard value={expired} label="Expired" color="text-orange-600" />
+          <StatCard value={items.filter((r: any) => r.status === 'AKTIF').length} label="Aktif" color="text-emerald-600" />
         </div>
         {renderFilterBar()}
         {renderFilterChips()}
@@ -766,12 +747,12 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-[#082033]">{row.equipmentName}</p>
-                  <p className="mt-0.5 truncate text-xs font-semibold text-[#486275]">{row.picDepartment} &middot; {row.workArea}</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">{row.equipmentName}</p>
+                  <p className="mt-0.5 truncate text-xs text-gray-500">{row.picDepartment} &middot; {row.workArea}</p>
                 </div>
                 <Badge value={row.status} />
               </div>
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                 <span>{row.equipmentClassification}</span>
                 <span>Next: {formatDate(row.nextCertificationDate)}</span>
                 <span>{row.workLocation}</span>
@@ -801,10 +782,10 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
           {items.map((row: any) => (
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-black text-[#082033]">{row.periodLabel} ({row.year})</p>
-                <p className="text-xs font-semibold text-[#486275]">{fmtNum(row.employeeCount)} karyawan</p>
+                <p className="text-sm font-semibold text-gray-900">{row.periodLabel} ({row.year})</p>
+                <p className="text-xs text-gray-500">{fmtNum(row.employeeCount)} karyawan</p>
               </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-[#486275]">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                 <span>Safe MH: {row.safeManHoursUpToYear}</span>
                 <span>Fatality: {row.fatalityActual}/{row.fatalityThreshold}</span>
                 <span>LTI: {row.ltiActual}/{row.ltiThreshold}</span>
@@ -834,13 +815,13 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
         <div className="space-y-2">
           {items.map((row: any) => (
             <Card key={row.id} onClick={() => openView(row)}>
-              <p className="text-sm font-black text-[#082033]">{row.workLocation}</p>
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+              <p className="text-sm font-semibold text-gray-900">{row.workLocation}</p>
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                 <span>Karyawan: <strong>{row.employeeCount}</strong></span>
                 <span>Safe MH: <strong>{fmtNum(row.safetyManHours)}</strong></span>
                 <span>Target: <strong>{fmtNum(row.safeTarget)}</strong></span>
               </div>
-              {row.averageWeeklyRevenue ? <p className="mt-1 text-xs font-semibold text-[#486275]">Revenue/minggu: {fmtNum(row.averageWeeklyRevenue)}</p> : null}
+              {row.averageWeeklyRevenue ? <p className="mt-1 text-xs text-gray-500">Revenue/minggu: {fmtNum(row.averageWeeklyRevenue)}</p> : null}
             </Card>
           ))}
           {items.length === 0 ? <EmptyState /> : null}
@@ -865,8 +846,8 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
         <div className="space-y-2">
           {items.map((row: any) => (
             <Card key={row.id} onClick={() => openView(row)}>
-              <p className="text-sm font-black text-[#082033]">{row.workLocation}</p>
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+              <p className="text-sm font-semibold text-gray-900">{row.workLocation}</p>
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                 <span>{formatDate(row.month)}</span>
                 <span>Karyawan: <strong>{row.employeeCount}</strong></span>
                 <span>Safe MH: <strong>{fmtNum(row.safetyManHours)}</strong></span>
@@ -895,17 +876,17 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
         <div className="space-y-2">
           {items.map((row: any) => (
             <Card key={row.id} onClick={() => openView(row)}>
-              <p className="text-sm font-black text-[#082033]">{row.activity}</p>
+              <p className="text-sm font-semibold text-gray-900">{row.activity}</p>
               <div className="mt-1 flex items-center gap-2">
                 <Badge value={row.category} />
                 {row.evidenceUrl ? (
                   <Link href={row.evidenceUrl} target="_blank" onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-1 text-xs font-black text-[#003f78]">
+                    className="flex items-center gap-1 text-xs font-medium text-blue-600">
                     <ExternalLink className="size-3" /> Bukti
                   </Link>
                 ) : null}
               </div>
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                 <span>PIC: {row.pic}</span>
                 <span>{formatDate(row.activityDate)}</span>
               </div>
@@ -926,8 +907,8 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
       <div className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
           <StatCard value={items.length} label="Total" />
-          <StatCard value={openCount} label="Open/Pending" color="text-[#8a3d00]" />
-          <StatCard value={items.filter((r: any) => r.status === 'Closed').length} label="Closed" color="text-[#166534]" />
+          <StatCard value={openCount} label="Open/Pending" color="text-orange-600" />
+          <StatCard value={items.filter((r: any) => r.status === 'Closed').length} label="Closed" color="text-emerald-600" />
         </div>
         {renderFilterBar()}
         {renderFilterChips()}
@@ -936,13 +917,13 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-[#082033]">{row.title}</p>
-                  <p className="mt-0.5 truncate text-xs font-semibold text-[#486275]">{row.location} &middot; {row.category}</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">{row.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-gray-500">{row.location} &middot; {row.category}</p>
                 </div>
                 <Badge value={row.status} />
               </div>
-              {row.findings ? <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{row.findings}</p> : null}
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
+              {row.findings ? <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-600">{row.findings}</p> : null}
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                 <span>PIC: {row.picName || '-'}</span>
                 <span>{formatDate(row.date)}</span>
                 {row.assessmentScore ? <span>Skor: {row.assessmentScore}</span> : null}
@@ -975,36 +956,17 @@ export function MobileSafetyDataClient({ data: initialData }: { data: SafetyData
             <Card key={row.id} onClick={() => openView(row)}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-[#082033]">{row.fullName}</p>
-                  <p className="mt-0.5 truncate text-xs font-semibold text-[#486275]">{row.companyOrigin}</p>
+                  <p className="truncate text-sm font-semibold text-gray-900">{row.fullName}</p>
+                  <p className="mt-0.5 truncate text-xs text-gray-500">{row.companyOrigin}</p>
                 </div>
-                <span className="text-[9px] font-semibold text-[#486275]">{formatDate(row.createdAt)}</span>
+                <span className="text-[10px] text-gray-400">{formatDate(row.createdAt)}</span>
               </div>
-              <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{row.purpose}</p>
-              <div className="mt-2 flex items-center gap-3 text-xs font-semibold text-[#486275]">
-                <span>{row.phoneNumber}</span>
-              </div>
+              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-600">{row.purpose}</p>
+              <div className="mt-2 text-xs text-gray-500">{row.phoneNumber}</div>
             </Card>
           ))}
           {items.length === 0 ? <EmptyState /> : null}
         </div>
-      </div>
-    )
-  }
-
-  function StatCard({ value, label, color }: { value: number | string; label: string; color?: string }) {
-    return (
-      <div className="rounded-[1.15rem] bg-white p-3.5 text-center shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-        <p className={cn('text-2xl font-black', color || 'text-[#082033]')}>{value}</p>
-        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#486275]">{label}</p>
-      </div>
-    )
-  }
-
-  function EmptyState() {
-    return (
-      <div className="rounded-[1.15rem] bg-white p-8 text-center shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-        <p className="text-sm font-semibold text-[#486275]">Tidak ada data</p>
       </div>
     )
   }

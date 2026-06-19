@@ -82,14 +82,14 @@ const statusColor: Record<string, string> = {
 function CardShell({ title, subtitle, icon: Icon, children }: { title: string; subtitle: string; icon: typeof ShieldCheck; children: React.ReactNode }) {
   return (
     <div className="space-y-4 pb-6">
-      <section className="rounded-[1.35rem] bg-gradient-to-br from-[#5a2200] to-[#8a3d00] p-4 text-white shadow-[0_18px_38px_rgba(90,34,0,0.24)]">
+      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-4 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#ffd7b5]">HSE Mobile</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight">{title}</h1>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#ffe6d1]">{subtitle}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-200">HSE Mobile</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">{title}</h1>
+            <p className="mt-2 text-sm font-semibold leading-6 text-blue-100">{subtitle}</p>
           </div>
-          <span className="flex size-11 items-center justify-center rounded-2xl bg-white/12"><Icon className="size-5" /></span>
+          <span className="flex size-11 items-center justify-center rounded-xl bg-white/12"><Icon className="size-5" /></span>
         </div>
       </section>
       {children}
@@ -218,29 +218,29 @@ export function MobileObservasiEmergencyClient({
     <CardShell title="Observasi & Emergency" subtitle="Catat observasi K3, laporkan insiden, lacak investigasi dan tindak lanjut dari HP." icon={Siren}>
       {/* Stats */}
       <section className="grid grid-cols-4 gap-2">
-        <div className="rounded-[1rem] bg-white p-3 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-          <p className="text-[9px] font-black uppercase text-[#486275]">Total</p>
-          <p className="mt-1 text-xl font-black text-[#082033]">{stats.total}</p>
+        <div className="rounded-[1rem] bg-white p-3 border border-gray-100">
+          <p className="text-[9px] font-semibold uppercase text-gray-500">Total</p>
+          <p className="mt-1 text-xl font-semibold text-gray-900">{stats.total}</p>
         </div>
-        <div className="rounded-[1rem] bg-white p-3 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-          <p className="text-[9px] font-black uppercase text-[#486275]">Open</p>
-          <p className="mt-1 text-xl font-black text-sky-700">{stats.open}</p>
+        <div className="rounded-[1rem] bg-white p-3 border border-gray-100">
+          <p className="text-[9px] font-semibold uppercase text-gray-500">Open</p>
+          <p className="mt-1 text-xl font-semibold text-sky-700">{stats.open}</p>
         </div>
-        <div className="rounded-[1rem] bg-white p-3 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-          <p className="text-[9px] font-black uppercase text-[#486275]">Closed</p>
-          <p className="mt-1 text-xl font-black text-emerald-700">{stats.closed}</p>
+        <div className="rounded-[1rem] bg-white p-3 border border-gray-100">
+          <p className="text-[9px] font-semibold uppercase text-gray-500">Closed</p>
+          <p className="mt-1 text-xl font-semibold text-emerald-700">{stats.closed}</p>
         </div>
-        <div className="rounded-[1rem] bg-white p-3 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-          <p className="text-[9px] font-black uppercase text-[#486275]">Kritis</p>
-          <p className="mt-1 text-xl font-black text-rose-700">{stats.critical}</p>
+        <div className="rounded-[1rem] bg-white p-3 border border-gray-100">
+          <p className="text-[9px] font-semibold uppercase text-gray-500">Kritis</p>
+          <p className="mt-1 text-xl font-semibold text-rose-700">{stats.critical}</p>
         </div>
       </section>
 
       {/* Search & filter */}
-      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+      <section className="rounded-xl bg-white p-4 border border-gray-100">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#486275]" />
-          <Input className="h-12 rounded-2xl border-0 bg-[#f6fbff] pl-11" placeholder="Cari judul/PIC/deskripsi..." value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-gray-500" />
+          <Input className="h-12 rounded-xl border border-gray-200 bg-white pl-11" placeholder="Cari judul/PIC/deskripsi..." value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
 
         <div className="mt-3 flex items-center justify-between">
@@ -253,7 +253,7 @@ export function MobileObservasiEmergencyClient({
             </FilterChip>
           </div>
           <button type="button" onClick={() => setShowFilters(!showFilters)}
-            className={cn('flex h-9 items-center gap-1.5 rounded-full px-3 text-[10px] font-black uppercase', showFilters ? 'bg-[#003f78] text-white' : 'bg-[#f6fbff] text-[#486275]')}>
+            className={cn('flex h-9 items-center gap-1.5 rounded-lg px-3 text-[10px] font-semibold uppercase', showFilters ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-500')}>
             <SlidersHorizontal className="size-3" />Filter
           </button>
         </div>
@@ -278,51 +278,51 @@ export function MobileObservasiEmergencyClient({
 
       {/* List */}
       {filtered.length === 0 ? (
-        <section className="rounded-[1.25rem] bg-white p-8 text-center shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <ShieldCheck className="mx-auto size-10 text-[#486275]/40" />
-          <p className="mt-3 text-sm font-bold text-[#486275]">Belum ada record</p>
-          <p className="mt-1 text-xs text-[#486275]/70">Buat observasi atau laporan emergency baru</p>
+        <section className="rounded-xl bg-white p-8 text-center border border-gray-100">
+          <ShieldCheck className="mx-auto size-10 text-gray-500/40" />
+          <p className="mt-3 text-sm font-bold text-gray-500">Belum ada record</p>
+          <p className="mt-1 text-xs text-gray-500/70">Buat observasi atau laporan emergency baru</p>
         </section>
       ) : (
         <section className="grid gap-3">
           {filtered.map((item) => {
             const isEmergency = ['Near Miss', 'Property Damage', 'Medical', 'Fire', 'Environmental Spill'].includes(item.category)
             return (
-              <article key={item.id} className="rounded-[1.15rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+              <article key={item.id} className="rounded-xl bg-white p-4 border border-gray-100">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-lg', isEmergency ? 'bg-[#fff1ea] text-[#8a3d00]' : 'bg-[#e6f6ff] text-[#003f78]')}>
+                      <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-lg', isEmergency ? 'bg-[#fff1ea] text-[#8a3d00]' : 'bg-blue-50 text-blue-600')}>
                         {isEmergency ? <AlertTriangle className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
                       </span>
-                      <h2 className="truncate text-sm font-black text-[#082033]">{item.title}</h2>
+                      <h2 className="truncate text-sm font-semibold text-gray-900">{item.title}</h2>
                     </div>
-                    <p className="mt-1.5 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{item.description}</p>
+                    <p className="mt-1.5 line-clamp-2 text-xs font-semibold leading-5 text-gray-500">{item.description}</p>
                   </div>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className={cn('rounded-full border px-2 py-0.5 text-[9px] font-bold', severityColor[item.severity] || 'bg-slate-50 text-slate-700')}>{item.severity}</span>
-                  <span className={cn('rounded-full border px-2 py-0.5 text-[9px] font-bold', statusColor[item.investigationStatus] || 'bg-slate-50 text-slate-700')}>{item.investigationStatus}</span>
-                  <span className="rounded-full bg-[#f6fbff] px-2 py-0.5 text-[9px] font-bold text-[#486275]">{item.category}</span>
+                  <span className={cn('rounded-md border px-2 py-0.5 text-[9px] font-bold', severityColor[item.severity] || 'bg-slate-50 text-slate-700')}>{item.severity}</span>
+                  <span className={cn('rounded-md border px-2 py-0.5 text-[9px] font-bold', statusColor[item.investigationStatus] || 'bg-slate-50 text-slate-700')}>{item.investigationStatus}</span>
+                  <span className="rounded-md bg-gray-50 px-2 py-0.5 text-[9px] font-bold text-gray-500">{item.category}</span>
                 </div>
 
-                <div className="mt-2 flex items-center gap-3 text-[10px] font-semibold text-[#486275]">
+                <div className="mt-2 flex items-center gap-3 text-[10px] font-semibold text-gray-500">
                   {item.picName && <span className="flex items-center gap-1"><User className="size-3" />{item.picName}</span>}
                   <span className="flex items-center gap-1"><Calendar className="size-3" />{formatDate(item.incidentDate)}</span>
                 </div>
 
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                  <Button variant="outline" className="h-9 rounded-2xl text-[10px] font-black" onClick={() => openDetail(item)}>
+                  <Button variant="outline" className="h-9 rounded-xl text-[10px] font-semibold" onClick={() => openDetail(item)}>
                     <Eye className="mr-1 size-3" />Detail
                   </Button>
                   {access.canEdit && (
-                    <Button variant="outline" className="h-9 rounded-2xl text-[10px] font-black" onClick={() => openEdit(item)}>
+                    <Button variant="outline" className="h-9 rounded-xl text-[10px] font-semibold" onClick={() => openEdit(item)}>
                       <Pencil className="mr-1 size-3" />Edit
                     </Button>
                   )}
                   {access.canDelete && (
-                    <Button variant="outline" className="h-9 rounded-2xl text-[10px] font-black text-[#8a3d00]" onClick={() => handleDelete(item.id)}>
+                    <Button variant="outline" className="h-9 rounded-xl text-[10px] font-semibold text-[#8a3d00]" onClick={() => handleDelete(item.id)}>
                       <Trash2 className="mr-1 size-3" />Hapus
                     </Button>
                   )}
@@ -333,30 +333,30 @@ export function MobileObservasiEmergencyClient({
         </section>
       )}
 
-      <p className="text-center text-[10px] font-black tracking-[0.14em] text-[#486275]">{filtered.length} dari {records.length} record</p>
+      <p className="text-center text-[10px] font-semibold tracking-[0.14em] text-gray-500">{filtered.length} dari {records.length} record</p>
 
       {/* ============ FORM DRAWER ============ */}
       {formOpen && (
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-4 rounded-xl bg-white p-4 border border-gray-100">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
                 {editing ? 'Edit' : activeFormTab === 'emergency' ? 'Emergency' : 'Observasi'} Baru
               </p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">{editing ? editing.title : activeFormTab === 'emergency' ? 'Laporan Emergency' : 'Observasi K3'}</h2>
+              <h2 className="mt-1 text-lg font-semibold text-gray-900">{editing ? editing.title : activeFormTab === 'emergency' ? 'Laporan Emergency' : 'Observasi K3'}</h2>
             </div>
-            <button type="button" className="text-xs font-black text-[#486275]" onClick={() => setFormOpen(false)}>Tutup</button>
+            <button type="button" className="text-xs font-semibold text-gray-500" onClick={() => setFormOpen(false)}>Tutup</button>
           </div>
 
           {/* Tab pilihan observasi/emergency (hanya saat create baru) */}
           {!editing && (
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setActiveFormTab('observasi')}
-                className={cn('flex h-11 items-center justify-center gap-2 rounded-2xl text-xs font-black uppercase tracking-wider transition', activeFormTab === 'observasi' ? 'bg-[#003f78] text-white' : 'bg-[#f6fbff] text-[#486275]')}>
+                className={cn('flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition', activeFormTab === 'observasi' ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-500')}>
                 <ShieldCheck className="size-4" />Observasi
               </button>
               <button type="button" onClick={() => setActiveFormTab('emergency')}
-                className={cn('flex h-11 items-center justify-center gap-2 rounded-2xl text-xs font-black uppercase tracking-wider transition', activeFormTab === 'emergency' ? 'bg-[#8a3d00] text-white' : 'bg-[#f6fbff] text-[#486275]')}>
+                className={cn('flex h-11 items-center justify-center gap-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition', activeFormTab === 'emergency' ? 'bg-[#8a3d00] text-white' : 'bg-gray-50 text-gray-500')}>
                 <Siren className="size-4" />Emergency
               </button>
             </div>
@@ -364,22 +364,22 @@ export function MobileObservasiEmergencyClient({
 
           <div className="space-y-3">
             <Label className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Judul Kejadian</span>
-              <Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" placeholder="Jelaskan kejadian..." value={fTitle} onChange={(e) => setFTitle(e.target.value)} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Judul Kejadian</span>
+              <Input className="h-12 rounded-xl border border-gray-200 bg-white" placeholder="Jelaskan kejadian..." value={fTitle} onChange={(e) => setFTitle(e.target.value)} />
             </Label>
 
             <div className="grid grid-cols-2 gap-2">
               <Label className="space-y-1.5">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Kategori</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Kategori</span>
                 <select value={fCategory} onChange={(e) => setFCategory(e.target.value)}
-                  className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] focus:outline-none focus:ring-2 focus:ring-[#003f78]/30">
+                  className="h-12 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30">
                   {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </Label>
               <Label className="space-y-1.5">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Severity</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Severity</span>
                 <select value={fSeverity} onChange={(e) => setFSeverity(e.target.value)}
-                  className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] focus:outline-none focus:ring-2 focus:ring-[#003f78]/30">
+                  className="h-12 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30">
                   {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Label>
@@ -387,46 +387,46 @@ export function MobileObservasiEmergencyClient({
 
             <div className="grid grid-cols-2 gap-2">
               <Label className="space-y-1.5">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Status</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Status</span>
                 <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}
-                  className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] focus:outline-none focus:ring-2 focus:ring-[#003f78]/30">
+                  className="h-12 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-600/30">
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </Label>
               <Label className="space-y-1.5">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Tanggal</span>
-                <Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" type="date" value={fIncidentDate} onChange={(e) => setFIncidentDate(e.target.value)} />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Tanggal</span>
+                <Input className="h-12 rounded-xl border border-gray-200 bg-white" type="date" value={fIncidentDate} onChange={(e) => setFIncidentDate(e.target.value)} />
               </Label>
             </div>
 
             <Label className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">PIC / Petugas</span>
-              <Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" placeholder="Nama penanggung jawab" value={fPicName} onChange={(e) => setFPicName(e.target.value)} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">PIC / Petugas</span>
+              <Input className="h-12 rounded-xl border border-gray-200 bg-white" placeholder="Nama penanggung jawab" value={fPicName} onChange={(e) => setFPicName(e.target.value)} />
             </Label>
 
             <Label className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Deskripsi / Kronologi</span>
-              <Textarea className="rounded-2xl border-0 bg-[#e9f6fd]" rows={3} placeholder="Jelaskan kronologi kejadian..." value={fDesc} onChange={(e) => setFDesc(e.target.value)} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Deskripsi / Kronologi</span>
+              <Textarea className="rounded-xl border border-gray-200 bg-white" rows={3} placeholder="Jelaskan kronologi kejadian..." value={fDesc} onChange={(e) => setFDesc(e.target.value)} />
             </Label>
 
             <Label className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Root Cause Analysis (RCA)</span>
-              <Textarea className="rounded-2xl border-0 bg-[#e9f6fd]" rows={2} placeholder="Analisis akar masalah..." value={fRca} onChange={(e) => setFRca(e.target.value)} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Root Cause Analysis (RCA)</span>
+              <Textarea className="rounded-xl border border-gray-200 bg-white" rows={2} placeholder="Analisis akar masalah..." value={fRca} onChange={(e) => setFRca(e.target.value)} />
             </Label>
 
             <Label className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Tindakan Perbaikan</span>
-              <Textarea className="rounded-2xl border-0 bg-[#e9f6fd]" rows={2} placeholder="Tindakan korektif yang dilakukan..." value={fAction} onChange={(e) => setFAction(e.target.value)} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Tindakan Perbaikan</span>
+              <Textarea className="rounded-xl border border-gray-200 bg-white" rows={2} placeholder="Tindakan korektif yang dilakukan..." value={fAction} onChange={(e) => setFAction(e.target.value)} />
             </Label>
 
             <Label className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Dokumentasi URL</span>
-              <Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" placeholder="Link foto/dokumen pendukung" value={fDocUrl} onChange={(e) => setFDocUrl(e.target.value)} />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Dokumentasi URL</span>
+              <Input className="h-12 rounded-xl border border-gray-200 bg-white" placeholder="Link foto/dokumen pendukung" value={fDocUrl} onChange={(e) => setFDocUrl(e.target.value)} />
             </Label>
 
             {fDocUrl && (
-              <div className="rounded-xl bg-[#f8fbff] p-3">
-                <a href={fDocUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-bold text-[#003f78]">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <a href={fDocUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-bold text-blue-600">
                   <FileText className="size-4" />Buka dokumentasi
                 </a>
               </div>
@@ -434,8 +434,8 @@ export function MobileObservasiEmergencyClient({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" className="h-12 rounded-2xl" onClick={() => setFormOpen(false)}>Batal</Button>
-            <Button className="h-12 rounded-2xl bg-[#003f78] text-white" disabled={saving} onClick={handleSave}>
+            <Button variant="outline" className="h-12 rounded-xl" onClick={() => setFormOpen(false)}>Batal</Button>
+            <Button className="h-12 rounded-xl bg-blue-600 text-white" disabled={saving} onClick={handleSave}>
               {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}
               {editing ? 'Perbarui' : 'Simpan'}
             </Button>
@@ -445,27 +445,27 @@ export function MobileObservasiEmergencyClient({
 
       {/* ============ DETAIL VIEW ============ */}
       {detailOpen && detailItem && (
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-4 rounded-xl bg-white p-4 border border-gray-100">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Detail Record</p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">{detailItem.title}</h2>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">Detail Record</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-900">{detailItem.title}</h2>
             </div>
-            <button type="button" className="text-xs font-black text-[#486275]" onClick={() => setDetailOpen(false)}>Tutup</button>
+            <button type="button" className="text-xs font-semibold text-gray-500" onClick={() => setDetailOpen(false)}>Tutup</button>
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-bold', severityColor[detailItem.severity] || 'bg-slate-50 text-slate-700')}>{detailItem.severity}</span>
-            <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-bold', statusColor[detailItem.investigationStatus] || 'bg-slate-50 text-slate-700')}>{detailItem.investigationStatus}</span>
-            <span className="rounded-full bg-[#f6fbff] px-2.5 py-1 text-[10px] font-bold text-[#486275]">{detailItem.category}</span>
+            <span className={cn('rounded-md border px-2.5 py-1 text-[10px] font-bold', severityColor[detailItem.severity] || 'bg-slate-50 text-slate-700')}>{detailItem.severity}</span>
+            <span className={cn('rounded-md border px-2.5 py-1 text-[10px] font-bold', statusColor[detailItem.investigationStatus] || 'bg-slate-50 text-slate-700')}>{detailItem.investigationStatus}</span>
+            <span className="rounded-md bg-gray-50 px-2.5 py-1 text-[10px] font-bold text-gray-500">{detailItem.category}</span>
           </div>
 
-          <div className="rounded-xl bg-[#f8fbff] p-3">
-            <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
-              {detailItem.picName && <div><p className="text-[9px] font-black uppercase">PIC</p><p className="mt-0.5 text-[#082033]">{detailItem.picName}</p></div>}
-              <div><p className="text-[9px] font-black uppercase">Tanggal</p><p className="mt-0.5 text-[#082033]">{formatDate(detailItem.incidentDate)}</p></div>
-              {detailItem.siteId && <div><p className="text-[9px] font-black uppercase">Site ID</p><p className="mt-0.5 text-[#082033]">{detailItem.siteId}</p></div>}
-              <div><p className="text-[9px] font-black uppercase">Diupdate</p><p className="mt-0.5 text-[#082033]">{formatDate(detailItem.updatedAt)}</p></div>
+          <div className="rounded-xl bg-gray-50 p-3">
+            <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-gray-500">
+              {detailItem.picName && <div><p className="text-[9px] font-semibold uppercase">PIC</p><p className="mt-0.5 text-gray-900">{detailItem.picName}</p></div>}
+              <div><p className="text-[9px] font-semibold uppercase">Tanggal</p><p className="mt-0.5 text-gray-900">{formatDate(detailItem.incidentDate)}</p></div>
+              {detailItem.siteId && <div><p className="text-[9px] font-semibold uppercase">Site ID</p><p className="mt-0.5 text-gray-900">{detailItem.siteId}</p></div>}
+              <div><p className="text-[9px] font-semibold uppercase">Diupdate</p><p className="mt-0.5 text-gray-900">{formatDate(detailItem.updatedAt)}</p></div>
             </div>
           </div>
 
@@ -474,9 +474,9 @@ export function MobileObservasiEmergencyClient({
           {detailItem.immediateCorrectiveAction && <ReportBlock title="Tindakan Perbaikan" value={detailItem.immediateCorrectiveAction} />}
 
           {detailItem.documentationUrl && (
-            <div className="rounded-xl bg-[#f8fbff] p-3">
-              <p className="text-[9px] font-black uppercase text-[#486275]">Dokumentasi</p>
-              <a href={detailItem.documentationUrl} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-2 text-xs font-bold text-[#003f78]">
+            <div className="rounded-xl bg-gray-50 p-3">
+              <p className="text-[9px] font-semibold uppercase text-gray-500">Dokumentasi</p>
+              <a href={detailItem.documentationUrl} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-2 text-xs font-bold text-blue-600">
                 <FileText className="size-4" />Buka dokumentasi
               </a>
               {detailItem.documentationUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) && (
@@ -486,7 +486,7 @@ export function MobileObservasiEmergencyClient({
           )}
 
           {access.canEdit && (
-            <Button className="h-12 w-full rounded-2xl bg-[#003f78] text-white"
+            <Button className="h-12 w-full rounded-xl bg-blue-600 text-white"
               onClick={() => { setDetailOpen(false); openEdit(detailItem) }}>
               <Pencil className="mr-2 size-4" />Edit Record
             </Button>
@@ -500,12 +500,12 @@ export function MobileObservasiEmergencyClient({
 function FilterChip({ active, activeColor, onClick, children }: { active: boolean; activeColor?: string; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
-      className={cn('h-9 shrink-0 rounded-full px-4 text-xs font-black uppercase whitespace-nowrap', active ? (activeColor || 'bg-[#003f78]') + ' text-white' : 'bg-[#f6fbff] text-[#486275]')}>
+      className={cn('h-9 shrink-0 rounded-lg px-4 text-xs font-semibold uppercase whitespace-nowrap', active ? (activeColor || 'bg-blue-600') + ' text-white' : 'bg-gray-50 text-gray-500')}>
       {children}
     </button>
   )
 }
 
 function ReportBlock({ title, value }: { title: string; value: string }) {
-  return <div className="rounded-xl bg-[#f8fbff] p-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">{title}</p><p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-[#082033]">{value || '-'}</p></div>
+  return <div className="rounded-xl bg-gray-50 p-3"><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">{title}</p><p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-gray-900">{value || '-'}</p></div>
 }

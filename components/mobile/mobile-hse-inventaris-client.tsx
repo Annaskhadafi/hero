@@ -23,14 +23,14 @@ function fd(v: Date | string | null) { if (!v) return '-'; return new Date(v).to
 function CardShell({ title, subtitle, icon: Icon, children }: { title: string; subtitle: string; icon: typeof HardHat; children: React.ReactNode }) {
   return (
     <div className="space-y-4 pb-6">
-      <section className="rounded-[1.35rem] bg-gradient-to-br from-[#003f78] to-[#0f172a] p-4 text-white shadow-[0_18px_38px_rgba(0,63,120,0.22)]">
+      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#b9dff6]">HSE Mobile</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight">{title}</h1>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#d8efff]">{subtitle}</p>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">HSE Mobile</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">{title}</h1>
+            <p className="mt-1.5 text-sm leading-relaxed text-blue-200">{subtitle}</p>
           </div>
-          <span className="flex size-11 items-center justify-center rounded-2xl bg-white/12"><Icon className="size-5" /></span>
+          <span className="flex size-10 items-center justify-center rounded-xl bg-white/10"><Icon className="size-5 text-blue-200" /></span>
         </div>
       </section>
       {children}
@@ -45,16 +45,16 @@ function CondBadge({ item, access, onStatusChange }: { item: HseInventory; acces
   let ico = <CheckCircle className="mr-1 size-3 text-emerald-600" />
   if (item.condition === 'Perlu Perbaikan') { s = 'bg-amber-50 text-amber-700 border-amber-200'; ico = <Wrench className="mr-1 size-3 text-amber-600" /> }
   else if (item.condition === 'Rusak') { s = 'bg-rose-50 text-rose-700 border-rose-200'; ico = <AlertTriangle className="mr-1 size-3 text-rose-600" /> }
-  const badge = <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold', s)}>{ico}{item.condition}</span>
+  const badge = <span className={cn('inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-medium', s)}>{ico}{item.condition}</span>
   if (!access.canEdit) return badge
   return (
     <div className="relative" onMouseLeave={() => setOpen(false)}>
       <button type="button" onClick={() => setOpen(!open)} className="focus:outline-none">{badge}</button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-xl border border-[#d8e4ee] bg-white p-1.5 shadow-xl">
+        <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-xl border border-gray-200 bg-white p-1.5 shadow-lg">
           {CONDITIONS.map((c) => (
             <button key={c} type="button" disabled={item.condition === c} onClick={() => { setOpen(false); onStatusChange(item.id, c) }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-[#082033] hover:bg-[#e9f6fd] disabled:opacity-30">{c === item.condition && <CheckCircle2 className="size-3 text-emerald-600" />}{c}</button>
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-30">{c === item.condition && <CheckCircle2 className="size-3 text-emerald-600" />}{c}</button>
           ))}
         </div>
       )}
@@ -64,15 +64,15 @@ function CondBadge({ item, access, onStatusChange }: { item: HseInventory; acces
 
 function StatCard({ label, value, icon: Icon, color }: { label: string; value: string; icon: any; color: string }) {
   const m: Record<string,string> = { blue: 'bg-blue-50 text-blue-700', emerald: 'bg-emerald-50 text-emerald-700', amber: 'bg-amber-50 text-amber-700', rose: 'bg-rose-50 text-rose-700' }
-  return <div className="rounded-[1.15rem] bg-white p-3.5 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"><div className="flex items-center justify-between"><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">{label}</p><span className={cn('flex size-8 items-center justify-center rounded-xl', m[color] || m.blue)}><Icon className="size-4" /></span></div><p className="mt-1.5 text-2xl font-black text-[#082033]">{value}</p></div>
+  return <div className="rounded-xl border border-gray-100 bg-white p-3"><div className="flex items-center justify-between"><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{label}</p><span className={cn('flex size-8 items-center justify-center rounded-lg', m[color] || m.blue)}><Icon className="size-4" /></span></div><p className="mt-1.5 text-xl font-bold text-gray-900">{value}</p></div>
 }
 
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" onClick={onClick} className={cn('h-9 shrink-0 rounded-full px-4 text-xs font-black uppercase whitespace-nowrap', active ? 'bg-[#003f78] text-white' : 'bg-[#f6fbff] text-[#486275]')}>{children}</button>
+  return <button type="button" onClick={onClick} className={cn('h-8 shrink-0 rounded-lg px-3 text-xs font-medium whitespace-nowrap', active ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-600')}>{children}</button>
 }
 
 function ReportBlock({ title, value }: { title: string; value: string }) {
-  return <div className="rounded-xl bg-[#f8fbff] p-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">{title}</p><p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-[#082033]">{value || '-'}</p></div>
+  return <div className="rounded-lg bg-gray-50 p-3"><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{title}</p><p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-gray-900">{value || '-'}</p></div>
 }
 
 export function MobileHseInventarisClient({ data, access, userEmails: initialEmails }: { data: HseInventory[]; access: Access; userEmails: { id: number; name: string; email: string }[] }) {
@@ -150,10 +150,10 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
         <StatCard label="Expired / Rusak" value={String(stats.expiredCount + stats.rusakCount)} icon={AlertTriangle} color="rose" />
       </section>
 
-      <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+      <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#486275] pointer-events-none" />
-          <Input className="h-12 rounded-2xl border-0 bg-[#f6fbff] pl-11" placeholder="Cari aset..." value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <Input className="h-11 rounded-xl border border-gray-200 bg-white pl-10" placeholder="Cari aset..." value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           <FilterChip active={catFilter === 'all'} onClick={() => setCatFilter('all')}>Semua</FilterChip>
@@ -162,45 +162,45 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
         <div className="flex gap-2 overflow-x-auto pb-1">
           {['all', ...CONDITIONS].map((c) => <FilterChip key={c} active={condFilter === c} onClick={() => setCondFilter(c)}>{c === 'all' ? 'Semua Kondisi' : c}</FilterChip>)}
         </div>
-        {access.canEdit && <Button type="button" className="h-12 w-full rounded-2xl bg-[#003f78] text-white" onClick={openCreate}><Plus className="mr-2 size-4" />Tambah Aset</Button>}
+        {access.canEdit && <Button type="button" className="h-11 w-full rounded-xl bg-blue-600 text-white" onClick={openCreate}><Plus className="mr-2 size-4" />Tambah Aset</Button>}
       </section>
 
       {filtered.length === 0 ? (
-        <section className="rounded-[1.25rem] bg-white p-8 text-center shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          <HardHat className="mx-auto size-10 text-[#486275]/40" />
-          <p className="mt-3 text-sm font-bold text-[#486275]">Tidak ada aset ditemukan</p>
+        <section className="rounded-xl border border-gray-100 bg-white p-8 text-center">
+          <HardHat className="mx-auto size-10 text-gray-300" />
+          <p className="mt-3 text-sm text-gray-500">Tidak ada aset ditemukan</p>
         </section>
       ) : (
-        <section className="grid gap-3">
+        <section className="grid gap-2">
           {filtered.map((item) => {
             const et = item.expirationDate ? new Date(item.expirationDate).getTime() : null
             const isExpired = et && now.getTime() > et
             const isDue = et && !isExpired && (item.reminderDaysBefore || 30) * 86400000 >= (et - now.getTime())
             return (
-              <article key={item.id} className="rounded-[1.15rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+              <article key={item.id} className="rounded-xl border border-gray-100 bg-white p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h2 className="truncate text-sm font-black text-[#082033]">{item.name}</h2>
-                      {isExpired && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-800">EXPIRED</span>}
-                      {isDue && <span className="shrink-0 animate-pulse rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black text-amber-800">DUE SOON</span>}
+                      <h2 className="truncate text-sm font-semibold text-gray-900">{item.name}</h2>
+                      {isExpired && <span className="shrink-0 rounded-md bg-red-100 px-2 py-0.5 text-[9px] font-medium text-red-700">EXPIRED</span>}
+                      {isDue && <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[9px] font-medium text-amber-700">DUE SOON</span>}
                     </div>
-                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-[#486275]">{item.documentId}</p>
+                    <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-500">{item.documentId}</p>
                   </div>
                   <CondBadge item={item} access={access} onStatusChange={handleStatusChange} />
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold text-[#486275]">
-                  <span>Kategori: <span className="text-[#082033]">{item.category}</span></span>
-                  <span>Qty: <span className="text-[#082033]">{item.qty}</span></span>
-                  <span>Lokasi: <span className="text-[#082033]">{item.location}</span></span>
-                  <span>Exp: <span className="text-[#082033]">{fd(item.expirationDate)}</span></span>
-                  {item.validityMonths && <span>Masa: <span className="text-[#082033]">{item.validityMonths} bln</span></span>}
-                  <span>PIC: <span className="text-[#082033]">{item.picName || '-'}</span></span>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-500">
+                  <span>Kategori: <span className="text-gray-900">{item.category}</span></span>
+                  <span>Qty: <span className="text-gray-900">{item.qty}</span></span>
+                  <span>Lokasi: <span className="text-gray-900">{item.location}</span></span>
+                  <span>Exp: <span className="text-gray-900">{fd(item.expirationDate)}</span></span>
+                  {item.validityMonths && <span>Masa: <span className="text-gray-900">{item.validityMonths} bln</span></span>}
+                  <span>PIC: <span className="text-gray-900">{item.picName || '-'}</span></span>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                  <Button variant="outline" type="button" className="h-9 rounded-2xl text-[10px] font-black" onClick={() => openDetail(item)}><Eye className="mr-1 size-3" />Detail</Button>
-                  {access.canEdit && <Button variant="outline" type="button" className="h-9 rounded-2xl text-[10px] font-black" onClick={() => openEdit(item)}><Pencil className="mr-1 size-3" />Edit</Button>}
-                  {access.canDelete && <Button variant="outline" type="button" className="h-9 rounded-2xl text-[10px] font-black text-[#8a3d00]" onClick={() => handleDelete(item.id)}><Trash2 className="mr-1 size-3" />Hapus</Button>}
+                  <Button variant="outline" type="button" className="h-9 rounded-lg text-xs font-medium" onClick={() => openDetail(item)}><Eye className="mr-1 size-3" />Detail</Button>
+                  {access.canEdit && <Button variant="outline" type="button" className="h-9 rounded-lg text-xs font-medium" onClick={() => openEdit(item)}><Pencil className="mr-1 size-3" />Edit</Button>}
+                  {access.canDelete && <Button variant="outline" type="button" className="h-9 rounded-lg text-xs font-medium text-orange-600" onClick={() => handleDelete(item.id)}><Trash2 className="mr-1 size-3" />Hapus</Button>}
                 </div>
               </article>
             )
@@ -209,102 +209,102 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
       )}
 
       {formOpen && (
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">{editing ? 'Edit' : 'Tambah'} Aset</p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">{editing ? editing.name : 'Inventaris Baru'}</h2>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">{editing ? 'Edit' : 'Tambah'} Aset</p>
+              <h2 className="mt-1 text-base font-semibold text-gray-900">{editing ? editing.name : 'Inventaris Baru'}</h2>
             </div>
-            <button type="button" className="text-xs font-black text-[#486275]" onClick={() => setFormOpen(false)}>Tutup</button>
+            <button type="button" className="text-xs text-gray-500" onClick={() => setFormOpen(false)}>Tutup</button>
           </div>
           <div className="space-y-3">
-            <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Nama Barang</span><Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" placeholder="Helm Safety" value={fn} onChange={(e) => setFn(e.target.value)} /></Label>
+            <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Nama Barang</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Helm Safety" value={fn} onChange={(e) => setFn(e.target.value)} /></label>
             <div className="grid grid-cols-2 gap-2">
-              <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Kategori</span>
-                <select value={fcat} onChange={(e) => setFcat(e.target.value)} className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] outline-none">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-              </Label>
-              <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Qty</span><Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" type="number" min={1} value={fq} onChange={(e) => setFq(Number(e.target.value))} /></Label>
+              <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Kategori</span>
+                <select value={fcat} onChange={(e) => setFcat(e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+              </label>
+              <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Qty</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" type="number" min={1} value={fq} onChange={(e) => setFq(Number(e.target.value))} /></label>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Kondisi</span>
-                <select value={fcond} onChange={(e) => setFcond(e.target.value)} className="h-12 w-full rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] outline-none">{CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-              </Label>
-              <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Lokasi</span><Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" placeholder="Gudang - Rak A2" value={floc} onChange={(e) => setFloc(e.target.value)} /></Label>
+              <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Kondisi</span>
+                <select value={fcond} onChange={(e) => setFcond(e.target.value)} className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none">{CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+              </label>
+              <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Lokasi</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Gudang - Rak A2" value={floc} onChange={(e) => setFloc(e.target.value)} /></label>
             </div>
-            <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">PIC</span><Input className="h-12 rounded-2xl border-0 bg-[#e9f6fd]" placeholder="Nama petugas" value={fpic} onChange={(e) => setFpic(e.target.value)} /></Label>
+            <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">PIC</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Nama petugas" value={fpic} onChange={(e) => setFpic(e.target.value)} /></label>
 
-            <div className="rounded-xl bg-[#f8fbff] p-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Masa Berlaku & Reminder</p>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <p className="text-xs font-medium text-gray-500">Masa Berlaku & Reminder</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Label className="space-y-1"><span className="text-[9px] font-bold text-[#486275]">Tgl Beli</span><Input className="h-11 rounded-2xl border-0 bg-white" type="date" value={fpdate} onChange={(e) => setFpdate(e.target.value)} /></Label>
-                <Label className="space-y-1"><span className="text-[9px] font-bold text-[#486275]">Masa (Bulan)</span><Input className="h-11 rounded-2xl border-0 bg-white" type="number" min={1} value={fvmonths} onChange={(e) => setFvmonths(Number(e.target.value))} /></Label>
+                <label className="space-y-1"><span className="text-[11px] text-gray-500">Tgl Beli</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" type="date" value={fpdate} onChange={(e) => setFpdate(e.target.value)} /></label>
+                <label className="space-y-1"><span className="text-[11px] text-gray-500">Masa (Bulan)</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" type="number" min={1} value={fvmonths} onChange={(e) => setFvmonths(Number(e.target.value))} /></label>
               </div>
-              <div className="mt-2 flex items-center justify-between rounded-xl bg-white p-2.5 text-xs"><span className="font-bold text-[#486275]">Expired:</span><span className="font-black text-rose-600">{autoExp}</span></div>
-              <div className="mt-2"><Label className="space-y-1"><span className="text-[9px] font-bold text-[#486275]">Reminder (hari)</span><Input className="h-11 rounded-2xl border-0 bg-white" type="number" min={1} value={frdays} onChange={(e) => setFrdays(Number(e.target.value))} /></Label></div>
+              <div className="mt-2 flex items-center justify-between rounded-lg bg-white p-2.5 text-xs"><span className="text-gray-500">Expired:</span><span className="font-semibold text-rose-600">{autoExp}</span></div>
+              <div className="mt-2"><label className="space-y-1"><span className="text-[11px] text-gray-500">Reminder (hari)</span><Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" type="number" min={1} value={frdays} onChange={(e) => setFrdays(Number(e.target.value))} /></label></div>
               <div className="mt-2 space-y-1">
-                <span className="text-[9px] font-bold text-[#486275]">Email Penerima Reminder</span>
+                <span className="text-[11px] text-gray-500">Email Penerima Reminder</span>
                 <div className="relative">
-                  <button type="button" onClick={() => setEpOpen(!epOpen)} className="flex h-11 w-full items-center justify-between rounded-2xl border-0 bg-white px-4 text-xs font-semibold text-[#486275]">{selEmails.length > 0 ? selEmails.length + ' penerima' : 'Pilih penerima...'}</button>
+                  <button type="button" onClick={() => setEpOpen(!epOpen)} className="flex h-11 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-600">{selEmails.length > 0 ? selEmails.length + ' penerima' : 'Pilih penerima...'}</button>
                   {epOpen && (
-                    <div className="absolute left-0 top-full z-30 mt-1 w-full rounded-xl border border-[#d8e4ee] bg-white p-2 shadow-xl" onMouseLeave={() => setEpOpen(false)}>
-                      <Input className="mb-2 h-9 rounded-xl border-0 bg-[#f6fbff] text-xs" placeholder="Cari email..." value={sq} onChange={(e) => setSq(e.target.value)} />
+                    <div className="absolute left-0 top-full z-30 mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 shadow-lg" onMouseLeave={() => setEpOpen(false)}>
+                      <Input className="mb-2 h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs" placeholder="Cari email..." value={sq} onChange={(e) => setSq(e.target.value)} />
                       <div className="max-h-40 space-y-0.5 overflow-y-auto">
-                        {filtEmails.length === 0 && !addCustom && <p className="p-3 text-center text-xs text-[#486275]">Tidak ada</p>}
-                        {filtEmails.map((u) => { const sel = selEmails.includes(u.email); return <button key={u.id} type="button" onClick={() => toggleEmail(u.email)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs hover:bg-[#e9f6fd]"><span className={cn('grid size-4 place-items-center rounded border', sel ? 'border-[#003f78] bg-[#003f78] text-white' : 'border-[#d8e4ee]')}>{sel && <CheckCircle2 className="size-3" />}</span><span className="font-bold text-[#082033]">{u.name}</span><span className="text-[#486275]">{u.email}</span></button> })}
-                        {addCustom && <button type="button" onClick={() => { toggleEmail(sq.trim()); setSq('') }} className="flex w-full items-center gap-2 rounded-lg bg-[#003f78]/5 px-2.5 py-2 text-left text-xs font-bold text-[#003f78]"><Plus className="size-3" />Tambah &quot;{sq.trim()}&quot;</button>}
+                        {filtEmails.length === 0 && !addCustom && <p className="p-3 text-center text-xs text-gray-500">Tidak ada</p>}
+                        {filtEmails.map((u) => { const sel = selEmails.includes(u.email); return <button key={u.id} type="button" onClick={() => toggleEmail(u.email)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs hover:bg-gray-50"><span className={cn('grid size-4 place-items-center rounded border', sel ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300')}>{sel && <CheckCircle2 className="size-3" />}</span><span className="font-medium text-gray-900">{u.name}</span><span className="text-gray-500">{u.email}</span></button> })}
+                        {addCustom && <button type="button" onClick={() => { toggleEmail(sq.trim()); setSq('') }} className="flex w-full items-center gap-2 rounded-lg bg-blue-50 px-2.5 py-2 text-left text-xs font-medium text-blue-700"><Plus className="size-3" />Tambah &quot;{sq.trim()}&quot;</button>}
                       </div>
                     </div>
                   )}
                 </div>
                 {selEmails.length > 0 && (
-                  <div className="mt-1 flex max-h-20 flex-wrap gap-1 overflow-y-auto rounded-lg border border-[#d8e4ee] bg-white p-2">
-                    {selEmails.map((email) => { const mu = emails.find((u) => u.email === email); return <span key={email} className="inline-flex items-center gap-1 rounded-md bg-[#f6fbff] px-2 py-0.5 text-[9px] font-bold text-[#082033]">{mu ? mu.name : email}<button type="button" onClick={() => toggleEmail(email)} className="text-[#486275] hover:text-rose-600"><X className="size-2.5" /></button></span> })}
+                  <div className="mt-1 flex max-h-20 flex-wrap gap-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                    {selEmails.map((email) => { const mu = emails.find((u) => u.email === email); return <span key={email} className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-0.5 text-[10px] text-gray-700">{mu ? mu.name : email}<button type="button" onClick={() => toggleEmail(email)} className="text-gray-400 hover:text-rose-600"><X className="size-2.5" /></button></span> })}
                   </div>
                 )}
               </div>
             </div>
 
-            <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Catatan</span><Textarea className="rounded-2xl border-0 bg-[#e9f6fd]" rows={2} placeholder="Catatan..." value={fnotes} onChange={(e) => setFnotes(e.target.value)} /></Label>
-            <Label className="space-y-1.5"><span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Foto Barang</span>
+            <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Catatan</span><Textarea className="rounded-xl border border-gray-200 bg-white px-3 py-2.5" rows={2} placeholder="Catatan..." value={fnotes} onChange={(e) => setFnotes(e.target.value)} /></label>
+            <label className="space-y-1.5"><span className="text-xs font-medium text-gray-500">Foto Barang</span>
               <div className="flex items-center gap-3">
-                <label className="flex h-11 cursor-pointer items-center gap-2 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-xs font-bold text-[#486275]">
+                <label className="flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-600">
                   {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}{fphoto ? 'Ganti' : 'Upload'}
                   <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
                 </label>
-                {fphoto && <div className="size-11 overflow-hidden rounded-xl border bg-white"><img src={fphoto} alt="" className="size-full object-cover" /></div>}
+                {fphoto && <div className="size-11 overflow-hidden rounded-lg border bg-white"><img src={fphoto} alt="" className="size-full object-cover" /></div>}
               </div>
-            </Label>
+            </label>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" type="button" className="h-12 rounded-2xl" onClick={() => setFormOpen(false)}>Batal</Button>
-            <Button type="button" className="h-12 rounded-2xl bg-[#003f78] text-white" disabled={saving || uploading} onClick={handleSave}>{saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}{editing ? 'Perbarui' : 'Simpan'}</Button>
+            <Button variant="outline" type="button" className="h-11 rounded-xl" onClick={() => setFormOpen(false)}>Batal</Button>
+            <Button type="button" className="h-11 rounded-xl bg-blue-600 text-white" disabled={saving || uploading} onClick={handleSave}>{saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}{editing ? 'Perbarui' : 'Simpan'}</Button>
           </div>
         </section>
       )}
 
       {detailOpen && detailItem && (
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
-            <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Detail Aset</p><h2 className="mt-1 text-lg font-black text-[#082033]">{detailItem.name}</h2></div>
-            <button type="button" className="text-xs font-black text-[#486275]" onClick={() => setDetailOpen(false)}>Tutup</button>
+            <div><p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Detail Aset</p><h2 className="mt-1 text-base font-semibold text-gray-900">{detailItem.name}</h2></div>
+            <button type="button" className="text-xs text-gray-500" onClick={() => setDetailOpen(false)}>Tutup</button>
           </div>
-          <div className="flex items-center gap-2 rounded-xl bg-[#f8fbff] p-2 text-xs"><FileSpreadsheet className="size-4 text-[#003f78]" /><span className="font-bold text-[#082033]">{detailItem.documentId}</span><span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black text-emerald-800">Verified</span></div>
-          <div className="rounded-xl bg-[#f8fbff] p-3">
-            <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-[#486275]">
-              <div><p className="text-[9px] font-black uppercase">Kategori</p><p className="mt-0.5 text-[#082033]">{detailItem.category}</p></div>
-              <div><p className="text-[9px] font-black uppercase">Qty</p><p className="mt-0.5 text-[#082033]">{detailItem.qty}</p></div>
-              <div><p className="text-[9px] font-black uppercase">Lokasi</p><p className="mt-0.5 text-[#082033]">{detailItem.location}</p></div>
-              <div><p className="text-[9px] font-black uppercase">Kondisi</p><p className="mt-0.5 font-black">{detailItem.condition}</p></div>
-              <div><p className="text-[9px] font-black uppercase">PIC</p><p className="mt-0.5 text-[#082033]">{detailItem.picName || '-'}</p></div>
-              <div><p className="text-[9px] font-black uppercase">Masa</p><p className="mt-0.5 text-[#082033]">{detailItem.validityMonths ? detailItem.validityMonths + ' bln' : '-'}</p></div>
-              <div><p className="text-[9px] font-black uppercase">Tgl Beli</p><p className="mt-0.5 text-[#082033]">{fd(detailItem.purchaseDate)}</p></div>
-              <div><p className="text-[9px] font-black uppercase">Expired</p><p className="mt-0.5 font-black">{fd(detailItem.expirationDate)}</p></div>
+          <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-2 text-xs"><FileSpreadsheet className="size-4 text-blue-600" /><span className="font-medium text-gray-900">{detailItem.documentId}</span><span className="ml-auto rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Verified</span></div>
+          <div className="rounded-lg bg-gray-50 p-3">
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-500">
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Kategori</p><p className="mt-0.5 text-gray-900">{detailItem.category}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Qty</p><p className="mt-0.5 text-gray-900">{detailItem.qty}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Lokasi</p><p className="mt-0.5 text-gray-900">{detailItem.location}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Kondisi</p><p className="mt-0.5 font-medium text-gray-900">{detailItem.condition}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">PIC</p><p className="mt-0.5 text-gray-900">{detailItem.picName || '-'}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Masa</p><p className="mt-0.5 text-gray-900">{detailItem.validityMonths ? detailItem.validityMonths + ' bln' : '-'}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Tgl Beli</p><p className="mt-0.5 text-gray-900">{fd(detailItem.purchaseDate)}</p></div>
+              <div><p className="text-[10px] font-medium uppercase tracking-wider">Expired</p><p className="mt-0.5 font-medium text-gray-900">{fd(detailItem.expirationDate)}</p></div>
             </div>
           </div>
           {detailItem.notes && <ReportBlock title="Catatan" value={detailItem.notes} />}
-          {detailItem.reminderEmailRecipients && <div className="rounded-xl bg-[#f8fbff] p-3"><p className="text-[9px] font-black uppercase text-[#486275]">Penerima Email</p><div className="mt-1 flex flex-wrap gap-1">{detailItem.reminderEmailRecipients.split(',').map((e) => <span key={e} className="rounded-md bg-white px-2 py-0.5 text-[9px] font-bold text-[#082033] shadow-sm">{e.trim()}</span>)}</div></div>}
-          {detailItem.photoUrl && <div><p className="text-[9px] font-black uppercase text-[#486275]">Foto</p><a href={detailItem.photoUrl} target="_blank" rel="noreferrer"><img src={detailItem.photoUrl} alt={detailItem.name} className="mt-1 w-full max-h-64 rounded-xl border object-contain bg-white" /></a></div>}
-          <div className="grid grid-cols-2 gap-2">{access.canEdit && <Button variant="outline" type="button" className="h-11 rounded-2xl" onClick={() => { setDetailOpen(false); openEdit(detailItem) }}><Pencil className="mr-2 size-4" />Edit</Button>}</div>
+          {detailItem.reminderEmailRecipients && <div className="rounded-lg bg-gray-50 p-3"><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Penerima Email</p><div className="mt-1 flex flex-wrap gap-1">{detailItem.reminderEmailRecipients.split(',').map((e) => <span key={e} className="rounded-md bg-white px-2 py-0.5 text-[10px] text-gray-700">{e.trim()}</span>)}</div></div>}
+          {detailItem.photoUrl && <div><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Foto</p><a href={detailItem.photoUrl} target="_blank" rel="noreferrer"><img src={detailItem.photoUrl} alt={detailItem.name} className="mt-1 w-full max-h-64 rounded-lg border object-contain bg-white" /></a></div>}
+          <div className="grid grid-cols-2 gap-2">{access.canEdit && <Button variant="outline" type="button" className="h-11 rounded-xl" onClick={() => { setDetailOpen(false); openEdit(detailItem) }}><Pencil className="mr-2 size-4" />Edit</Button>}</div>
         </section>
       )}
     </CardShell>

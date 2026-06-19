@@ -560,36 +560,36 @@ export function MobileHseChecklistClient({
 
   return (
     <div className="space-y-5 pb-6">
-      <section className="rounded-[1.35rem] bg-gradient-to-br from-[#003f78] to-[#0f172a] p-4 text-white shadow-[0_18px_38px_rgba(0,63,120,0.22)]">
+      <section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-5 text-white">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#b9dff6]">Digital Checklist</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight">Mobile Generator</h1>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#d8efff]">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">Digital Checklist</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight">Mobile Generator</h1>
+            <p className="mt-1.5 text-sm leading-relaxed text-blue-200">
               Pilih template, isi area, lalu jalankan checklist langsung dari HP.
             </p>
           </div>
-          <span className="flex size-11 items-center justify-center rounded-2xl bg-white/12">
-            <ClipboardCheck className="size-5" />
+          <span className="flex size-10 items-center justify-center rounded-xl bg-white/10">
+            <ClipboardCheck className="size-5 text-blue-200" />
           </span>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <div className="rounded-[1rem] bg-white/10 px-3 py-3">
-            <p className="text-2xl font-black">{templates.length}</p>
-            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#b9dff6]">Template</p>
+          <div className="rounded-xl bg-white/10 px-3 py-3">
+            <p className="text-xl font-bold text-white">{templates.length}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-blue-200">Template</p>
           </div>
-          <div className="rounded-[1rem] bg-white/10 px-3 py-3">
-            <p className="text-2xl font-black">{openCount}</p>
-            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#b9dff6]">Open</p>
+          <div className="rounded-xl bg-white/10 px-3 py-3">
+            <p className="text-xl font-bold text-white">{openCount}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-blue-200">Open</p>
           </div>
-          <div className="rounded-[1rem] bg-white/10 px-3 py-3">
-            <p className="text-2xl font-black">{completedCount}</p>
-            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#b9dff6]">Done</p>
+          <div className="rounded-xl bg-white/10 px-3 py-3">
+            <p className="text-xl font-bold text-white">{completedCount}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-blue-200">Done</p>
           </div>
         </div>
       </section>
 
-      <section className="grid grid-cols-3 gap-2 rounded-[1.1rem] bg-white p-1 shadow-[0_12px_26px_rgba(8,32,51,0.08)]">
+      <section className="grid grid-cols-3 gap-2 rounded-xl border border-gray-100 bg-white p-1">
         {([
           ['templates', 'Template'],
           ['history', 'Riwayat'],
@@ -600,8 +600,8 @@ export function MobileHseChecklistClient({
             type="button"
             onClick={() => setActiveView(value)}
             className={cn(
-              'h-11 rounded-[0.9rem] text-[11px] font-black uppercase tracking-[0.12em]',
-              activeView === value ? 'bg-[#003f78] text-white' : 'text-[#486275]'
+              'h-9 rounded-lg text-xs font-medium',
+              activeView === value ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-600'
             )}
           >
             {label}
@@ -610,49 +610,49 @@ export function MobileHseChecklistClient({
       </section>
 
       {templateDraft ? (
-        <section className="space-y-4 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-4 rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Template Builder</p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Template Builder</p>
+              <h2 className="mt-1 text-base font-semibold text-gray-900">
                 {templateDraft.mode === 'create' ? 'Buat template' : templateDraft.mode === 'edit' ? 'Edit template' : 'Lihat template'}
               </h2>
             </div>
-            <button type="button" onClick={() => setTemplateDraft(null)} className="flex size-9 items-center justify-center rounded-full bg-[#f6fbff] text-[#486275]" aria-label="Tutup template builder">
+            <button type="button" onClick={() => setTemplateDraft(null)} className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400" aria-label="Tutup template builder">
               <X className="size-4" />
             </button>
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Nama Template</span>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Nama Template</span>
             <Input
               value={templateDraft.title}
               disabled={templateDraft.mode === 'view'}
               onChange={(event) => setTemplateDraft((current) => current ? { ...current, title: event.target.value } : current)}
-              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+              className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900"
             />
           </Label>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Deskripsi</span>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Deskripsi</span>
             <Textarea
               value={templateDraft.description}
               disabled={templateDraft.mode === 'view'}
               onChange={(event) => setTemplateDraft((current) => current ? { ...current, description: event.target.value } : current)}
-              className="min-h-[84px] rounded-2xl border-0 bg-[#e9f6fd] px-4 py-3 text-sm font-semibold text-[#082033]"
+              className="min-h-[84px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900"
             />
           </Label>
 
           <div className="space-y-3">
             {templateDraft.items.map((item, index) => (
-              <article key={index} className="space-y-3 rounded-[1rem] bg-[#f8fbff] p-3">
+              <article key={index} className="space-y-3 rounded-xl bg-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Poin {index + 1}</span>
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Poin {index + 1}</span>
                   {templateDraft.mode !== 'view' && templateDraft.items.length > 1 ? (
                     <button
                       type="button"
                       onClick={() => setTemplateDraft((current) => current ? { ...current, items: current.items.filter((_, i) => i !== index) } : current)}
-                      className="text-[#8a3d00]"
+                      className="text-orange-700"
                       aria-label="Hapus poin"
                     >
                       <Trash2 className="size-4" />
@@ -664,14 +664,14 @@ export function MobileHseChecklistClient({
                   disabled={templateDraft.mode === 'view'}
                   onChange={(event) => setTemplateDraft((current) => current ? { ...current, items: current.items.map((entry, i) => i === index ? { ...entry, prompt: event.target.value } : entry) } : current)}
                   placeholder="Pertanyaan / poin pemeriksaan"
-                  className="min-h-[76px] rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
+                  className="min-h-[76px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900"
                 />
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <select
                     value={item.inputType}
                     disabled={templateDraft.mode === 'view'}
                     onChange={(event) => setTemplateDraft((current) => current ? { ...current, items: current.items.map((entry, i) => i === index ? { ...entry, inputType: event.target.value as ChecklistInputType } : entry) } : current)}
-                    className="h-11 rounded-2xl border-0 bg-white px-3 text-xs font-black text-[#082033]"
+                    className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900"
                   >
                     <option value="yes_no_na">YES / NO / N/A</option>
                     <option value="scale_1_5">Skala 1-5</option>
@@ -681,7 +681,7 @@ export function MobileHseChecklistClient({
                     type="button"
                     disabled={templateDraft.mode === 'view'}
                     onClick={() => setTemplateDraft((current) => current ? { ...current, items: current.items.map((entry, i) => i === index ? { ...entry, isRequired: !entry.isRequired } : entry) } : current)}
-                    className={cn('h-11 rounded-2xl px-3 text-[10px] font-black uppercase', item.isRequired ? 'bg-[#003f78] text-white' : 'bg-white text-[#486275]')}
+                    className={cn('h-8 rounded-lg px-3 text-[10px] font-medium uppercase', item.isRequired ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-500')}
                   >
                     Wajib
                   </button>
@@ -695,13 +695,13 @@ export function MobileHseChecklistClient({
               <Button
                 type="button"
                 variant="outline"
-                className="h-12 rounded-2xl"
+                className="h-11 rounded-xl"
                 onClick={() => setTemplateDraft((current) => current ? { ...current, items: [...current.items, { prompt: '', inputType: 'yes_no_na', isRequired: true }] } : current)}
               >
                 <Plus className="size-4" />
                 Tambah Poin
               </Button>
-              <Button type="button" className="h-12 rounded-2xl bg-[#003f78] text-white" disabled={isSavingTemplate} onClick={() => void saveTemplateDraft()}>
+              <Button type="button" className="h-11 rounded-xl bg-blue-600 text-white" disabled={isSavingTemplate} onClick={() => void saveTemplateDraft()}>
                 {isSavingTemplate ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
                 Simpan
               </Button>
@@ -711,12 +711,12 @@ export function MobileHseChecklistClient({
       ) : null}
 
       {checklist ? (
-        <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-3 rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Active Checklist</p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">{checklist.title}</h2>
-              <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-[#486275]">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Active Checklist</p>
+              <h2 className="mt-1 text-base font-semibold text-gray-900">{checklist.title}</h2>
+              <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
                 <MapPin className="size-3.5" />
                 {checklist.area} • {currentUserName}
               </p>
@@ -724,20 +724,20 @@ export function MobileHseChecklistClient({
             <button
               type="button"
               onClick={() => setChecklist(null)}
-              className="flex size-9 items-center justify-center rounded-full bg-[#f6fbff] text-[#486275]"
+              className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400"
               aria-label="Tutup checklist aktif"
             >
               <X className="size-4" />
             </button>
           </div>
 
-          <div className="rounded-[1rem] bg-[#f6fbff] p-3">
-            <div className="flex items-center justify-between text-xs font-black uppercase tracking-[0.12em] text-[#486275]">
+          <div className="rounded-xl bg-gray-50 p-3">
+            <div className="flex items-center justify-between text-xs font-medium text-gray-500">
               <span>{progress.done}/{progress.total} terisi</span>
               <span>{progress.percent}%</span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#d8ecf8]">
-              <div className="h-full rounded-full bg-[#003f78]" style={{ width: `${progress.percent}%` }} />
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+              <div className="h-full rounded-full bg-blue-600" style={{ width: `${progress.percent}%` }} />
             </div>
           </div>
 
@@ -747,14 +747,14 @@ export function MobileHseChecklistClient({
               const isCompleted = checklist.status === 'completed'
               const canAnswer = access.canEdit && !isCompleted
               return (
-                <article key={item.id} className="rounded-[1.15rem] bg-[#f8fbff] p-4">
+                <article key={item.id} className="rounded-xl bg-gray-50 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Item {index + 1}</p>
-                      <h3 className="mt-1 text-sm font-black leading-5 text-[#082033]">{item.prompt}</h3>
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Item {index + 1}</p>
+                      <h3 className="mt-1 text-sm font-semibold leading-5 text-gray-900">{item.prompt}</h3>
                     </div>
                     {item.isRequired ? (
-                      <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase text-[#486275]">Wajib</span>
+                      <span className="rounded-md bg-white px-2.5 py-1 text-[10px] font-medium text-gray-500">Wajib</span>
                     ) : null}
                   </div>
 
@@ -767,8 +767,8 @@ export function MobileHseChecklistClient({
                           disabled={!canAnswer}
                           onClick={() => updateAnswer(item, { ...answer, valueChoice: value })}
                           className={cn(
-                            'h-12 rounded-2xl text-sm font-black uppercase',
-                            answer.valueChoice === value ? 'bg-[#003f78] text-white' : 'bg-white text-[#486275]'
+                            'h-11 rounded-xl text-sm font-medium uppercase',
+                            answer.valueChoice === value ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-500'
                           )}
                         >
                           {value === 'na' ? 'N/A' : value}
@@ -786,8 +786,8 @@ export function MobileHseChecklistClient({
                           disabled={!canAnswer}
                           onClick={() => updateAnswer(item, { ...answer, valueNumber: value })}
                           className={cn(
-                            'h-11 rounded-2xl text-sm font-black',
-                            answer.valueNumber === value ? 'bg-[#003f78] text-white' : 'bg-white text-[#486275]'
+                            'h-10 rounded-lg text-sm font-medium',
+                            answer.valueNumber === value ? 'bg-blue-600 text-white' : 'border border-gray-200 bg-white text-gray-500'
                           )}
                         >
                           {value}
@@ -802,14 +802,14 @@ export function MobileHseChecklistClient({
                       onChange={(event) => updateAnswer(item, { ...answer, valueText: event.target.value })}
                       disabled={!canAnswer}
                       placeholder="Tulis catatan kondisi / temuan..."
-                      className="mt-4 min-h-[96px] rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
+                      className="mt-4 min-h-[96px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900"
                     />
                   ) : null}
 
                   <div className="mt-4 space-y-2">
                     <div className="flex flex-wrap gap-2">
                       {answer.attachments.map((url, attachmentIndex) => (
-                        <div key={`${url}-${attachmentIndex}`} className="relative size-16 overflow-hidden rounded-xl bg-white">
+                        <div key={`${url}-${attachmentIndex}`} className="relative size-16 overflow-hidden rounded-lg bg-white">
                           <img src={url} alt="Lampiran checklist" className="h-full w-full object-cover" />
                           {canAnswer ? (
                             <button
@@ -824,7 +824,7 @@ export function MobileHseChecklistClient({
                         </div>
                       ))}
                       {canAnswer ? (
-                        <label className="flex size-16 cursor-pointer items-center justify-center rounded-xl border border-dashed border-[#b9cad8] bg-white text-[#486275]">
+                        <label className="flex size-16 cursor-pointer items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white text-gray-500">
                           <input
                             type="file"
                             accept="image/*"
@@ -843,11 +843,11 @@ export function MobileHseChecklistClient({
             })}
           </div>
 
-          <div className="sticky bottom-20 z-[1] grid grid-cols-2 gap-2 rounded-[1.15rem] bg-white/95 p-2 shadow-[0_16px_34px_rgba(8,32,51,0.14)] backdrop-blur">
+          <div className="sticky bottom-20 z-[1] grid grid-cols-2 gap-2 rounded-xl border border-gray-200 bg-white/95 p-2 backdrop-blur">
             <Button
               type="button"
               variant="outline"
-              className="h-12 rounded-2xl"
+              className="h-11 rounded-xl"
               disabled={!access.canEdit || isSaving || checklist.status === 'completed'}
               onClick={() => void saveChecklist('in_progress')}
             >
@@ -856,7 +856,7 @@ export function MobileHseChecklistClient({
             </Button>
             <Button
               type="button"
-              className="h-12 rounded-2xl bg-[#003f78] text-white"
+              className="h-11 rounded-xl bg-blue-600 text-white"
               disabled={!access.canEdit || isSaving || checklist.status === 'completed'}
               onClick={() => void saveChecklist('completed')}
             >
@@ -866,59 +866,59 @@ export function MobileHseChecklistClient({
           </div>
         </section>
       ) : activeView === 'templates' ? (
-        <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-3 rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Start Checklist</p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">Pilih template inspeksi</h2>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Start Checklist</p>
+              <h2 className="mt-1 text-base font-semibold text-gray-900">Pilih template inspeksi</h2>
             </div>
             {access.canEdit ? (
-              <Button type="button" size="icon" className="size-11 rounded-2xl bg-[#003f78] text-white" onClick={openCreateTemplate}>
+              <Button type="button" size="icon" className="size-10 rounded-xl bg-blue-600 text-white" onClick={openCreateTemplate}>
                 <Plus className="size-4" />
               </Button>
             ) : null}
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Lokasi / Area</span>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Lokasi / Area</span>
             <Input
               value={area}
               onChange={(event) => setArea(event.target.value)}
               placeholder="Contoh: Workshop tire bay"
-              className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+              className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900"
             />
           </Label>
 
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#486275]" />
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Cari template..."
-              className="h-12 rounded-2xl border-0 bg-[#f6fbff] pl-11 pr-4 text-sm font-semibold text-[#082033]"
+              className="h-11 rounded-xl border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900"
             />
           </div>
 
           <div className="grid gap-3">
             {filteredTemplates.map((template) => (
-              <article key={template.templateId} className="rounded-[1.15rem] bg-[#f8fbff] p-4">
+              <article key={template.templateId} className="rounded-xl bg-gray-50 p-4">
                 <div className="flex items-start gap-3">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-white text-[#003f78]">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-blue-600">
                     <ClipboardList className="size-5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-black text-[#082033]">{template.templateTitle}</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">{template.templateTitle}</h3>
                     {template.templateDescription ? (
-                      <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-[#486275]">{template.templateDescription}</p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">{template.templateDescription}</p>
                     ) : null}
-                    <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
+                    <p className="mt-2 text-[10px] font-medium uppercase tracking-wider text-gray-500">
                       Rev {template.latestRevisionNumber} • {template.itemCount} poin
                     </p>
                   </div>
                 </div>
                 <Button
                   type="button"
-                  className="mt-4 h-12 w-full rounded-2xl bg-[#003f78] text-white"
+                  className="mt-4 h-11 w-full rounded-xl bg-blue-600 text-white"
                   disabled={!access.canEdit || (isStarting && activeTemplate?.templateId === template.templateId)}
                   onClick={() => void startChecklist(template)}
                 >
@@ -926,16 +926,16 @@ export function MobileHseChecklistClient({
                   Gunakan Template
                 </Button>
                 <div className="mt-2 grid grid-cols-3 gap-2">
-                  <Button type="button" variant="outline" className="h-10 rounded-2xl" onClick={() => void openTemplate(template, 'view')}>
+                  <Button type="button" variant="outline" className="h-9 rounded-xl" onClick={() => void openTemplate(template, 'view')}>
                     <Eye className="size-4" />
                   </Button>
                   {access.canEdit ? (
-                    <Button type="button" variant="outline" className="h-10 rounded-2xl" onClick={() => void openTemplate(template, 'edit')}>
+                    <Button type="button" variant="outline" className="h-9 rounded-xl" onClick={() => void openTemplate(template, 'edit')}>
                       <Pencil className="size-4" />
                     </Button>
                   ) : null}
                   {access.canDelete ? (
-                    <Button type="button" variant="outline" className="h-10 rounded-2xl text-[#8a3d00]" onClick={() => void removeTemplate(template.templateId)}>
+                    <Button type="button" variant="outline" className="h-9 rounded-xl text-orange-700" onClick={() => void removeTemplate(template.templateId)}>
                       <Trash2 className="size-4" />
                     </Button>
                   ) : null}
@@ -943,7 +943,7 @@ export function MobileHseChecklistClient({
               </article>
             ))}
             {filteredTemplates.length === 0 ? (
-              <div className="rounded-[1.15rem] bg-[#f8fbff] p-5 text-center text-sm font-semibold text-[#486275]">
+              <div className="rounded-xl bg-gray-50 p-5 text-center text-sm font-medium text-gray-500">
                 Template tidak ditemukan.
               </div>
             ) : null}
@@ -952,69 +952,69 @@ export function MobileHseChecklistClient({
       ) : null}
 
       {reportData ? (
-        <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+        <section className="space-y-3 rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Report Preview</p>
-              <h2 className="mt-1 text-lg font-black text-[#082033]">{reportData.header.titleSnapshot}</h2>
-              <p className="mt-1 text-xs font-semibold text-[#486275]">{reportData.header.area} • Score {reportData.header.scorePercent ?? '-'}</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Report Preview</p>
+              <h2 className="mt-1 text-base font-semibold text-gray-900">{reportData.header.titleSnapshot}</h2>
+              <p className="mt-1 text-xs text-gray-500">{reportData.header.area} • Score {reportData.header.scorePercent ?? '-'}</p>
             </div>
-            <button type="button" onClick={() => setReportData(null)} className="flex size-9 items-center justify-center rounded-full bg-[#f6fbff] text-[#486275]" aria-label="Tutup report">
+            <button type="button" onClick={() => setReportData(null)} className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400" aria-label="Tutup report">
               <X className="size-4" />
             </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="outline" className="h-12 rounded-2xl" disabled={isDownloadingPdf || isPrintingPdf} onClick={() => void downloadReportPdf()}>
+            <Button type="button" variant="outline" className="h-11 rounded-xl" disabled={isDownloadingPdf || isPrintingPdf} onClick={() => void downloadReportPdf()}>
               {isDownloadingPdf ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
               PDF
             </Button>
-            <Button type="button" className="h-12 rounded-2xl bg-[#003f78] text-white" disabled={isDownloadingPdf || isPrintingPdf} onClick={() => void printReportPdf()}>
+            <Button type="button" className="h-11 rounded-xl bg-blue-600 text-white" disabled={isDownloadingPdf || isPrintingPdf} onClick={() => void printReportPdf()}>
               {isPrintingPdf ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
               Cetak
             </Button>
           </div>
 
-          <div ref={reportDocumentRef} className="overflow-hidden rounded-[1rem] border border-[#d8e4ee] bg-white">
-            <div className="flex items-start justify-between gap-4 border-b border-[#d8e4ee] p-4">
+          <div ref={reportDocumentRef} className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 p-4">
               <div className="flex items-center gap-3">
                 <img src="/cp_logo-removebg-preview.png" alt="Logo" className="h-9 w-auto object-contain" />
                 <div>
-                  <p className="text-sm font-black text-[#082033]">PT. CHITRA PARATAMA</p>
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Official HSE System</p>
+                  <p className="text-sm font-semibold text-gray-900">PT. CHITRA PARATAMA</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Official HSE System</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Score</p>
-                <p className="text-2xl font-black text-[#082033]">{reportData.header.scorePercent ?? 0}%</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Score</p>
+                <p className="text-2xl font-bold text-gray-900">{reportData.header.scorePercent ?? 0}%</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 bg-[#f6fbff] p-4 text-xs font-semibold text-[#486275]">
+            <div className="grid grid-cols-2 gap-3 bg-gray-50 p-4 text-xs text-gray-500">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em]">Lokasi</p>
-                <p className="mt-1 text-[#082033]">{reportData.header.area}</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider">Lokasi</p>
+                <p className="mt-1 text-gray-900">{reportData.header.area}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em]">Status</p>
-                <p className="mt-1 text-[#082033]">{reportData.header.status}</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider">Status</p>
+                <p className="mt-1 text-gray-900">{reportData.header.status}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em]">Tanggal</p>
-                <p className="mt-1 text-[#082033]">{formatDate(reportData.header.completedAt ?? reportData.header.createdAt)}</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider">Tanggal</p>
+                <p className="mt-1 text-gray-900">{formatDate(reportData.header.completedAt ?? reportData.header.createdAt)}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em]">PIC</p>
-                <p className="mt-1 text-[#082033]">{reportData.header.responsibleName ?? '-'}</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider">PIC</p>
+                <p className="mt-1 text-gray-900">{reportData.header.responsibleName ?? '-'}</p>
               </div>
             </div>
 
             <div className="grid gap-2 p-4">
             {reportData.items.map((item, index) => (
-              <article key={item.id} className="rounded-[1rem] bg-[#f8fbff] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Item {index + 1}</p>
-                <h3 className="mt-1 text-sm font-black text-[#082033]">{item.prompt}</h3>
-                <p className="mt-2 text-xs font-semibold text-[#486275]">
+              <article key={item.id} className="rounded-xl bg-gray-50 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Item {index + 1}</p>
+                <h3 className="mt-1 text-sm font-semibold text-gray-900">{item.prompt}</h3>
+                <p className="mt-2 text-xs text-gray-500">
                   {item.inputType === 'yes_no_na'
                     ? `Jawaban: ${item.answer?.valueChoice || '-'}`
                     : item.inputType === 'scale_1_5'
@@ -1024,7 +1024,7 @@ export function MobileHseChecklistClient({
                 {item.answer?.attachments?.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {item.answer.attachments.map((url, index) => (
-                      <img key={`${url}-${index}`} src={url} alt="Lampiran laporan" className="size-16 rounded-xl object-cover" />
+                      <img key={`${url}-${index}`} src={url} alt="Lampiran laporan" className="size-16 rounded-lg object-cover" />
                     ))}
                   </div>
                 ) : null}
@@ -1032,16 +1032,16 @@ export function MobileHseChecklistClient({
             ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-8 border-t border-[#d8e4ee] p-4 text-center">
+            <div className="grid grid-cols-2 gap-8 border-t border-gray-200 p-4 text-center">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Dilaporkan Oleh</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Dilaporkan Oleh</p>
                 <div className="h-10" />
-                <p className="border-t border-[#d8e4ee] pt-2 text-xs font-black text-[#082033]">{reportData.header.responsibleName ?? '-'}</p>
+                <p className="border-t border-gray-200 pt-2 text-xs font-semibold text-gray-900">{reportData.header.responsibleName ?? '-'}</p>
               </div>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Diverifikasi Sistem</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Diverifikasi Sistem</p>
                 <div className="h-10" />
-                <p className="border-t border-[#d8e4ee] pt-2 text-xs font-black text-[#003f78]">DIGITAL SIGNATURE</p>
+                <p className="border-t border-gray-200 pt-2 text-xs font-semibold text-blue-600">DIGITAL SIGNATURE</p>
               </div>
             </div>
           </div>
@@ -1051,38 +1051,38 @@ export function MobileHseChecklistClient({
       {activeView === 'history' ? <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Riwayat</p>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Checklist terbaru</h2>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Riwayat</p>
+            <h2 className="mt-1 text-base font-semibold text-gray-900">Checklist terbaru</h2>
           </div>
-          {isLoadingHistory ? <Loader2 className="size-4 animate-spin text-[#486275]" /> : null}
+          {isLoadingHistory ? <Loader2 className="size-4 animate-spin text-gray-500" /> : null}
         </div>
         <div className="grid gap-3">
           {history.slice(0, 8).map((row) => (
             <article
               key={row.id}
-              className="rounded-[1.15rem] bg-white p-4 text-left shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+              className="rounded-xl border border-gray-100 bg-white p-4 text-left"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-black text-[#082033]">{row.titleSnapshot}</h3>
-                  <p className="mt-1 text-xs font-semibold text-[#486275]">{row.area} • {formatDate(row.createdAt)}</p>
+                  <h3 className="text-sm font-semibold text-gray-900">{row.titleSnapshot}</h3>
+                  <p className="mt-1 text-xs text-gray-500">{row.area} • {formatDate(row.createdAt)}</p>
                 </div>
-                <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-black uppercase', row.status === 'completed' ? 'bg-[#dff4e8] text-[#14532d]' : 'bg-[#fff8e8] text-[#8c5818]')}>
+                <span className={cn('rounded-md px-2.5 py-1 text-[10px] font-medium', row.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
                   {row.status}
                 </span>
               </div>
-              <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
+              <p className="mt-3 text-[10px] font-medium uppercase tracking-wider text-gray-500">
                 Score {row.scorePercent ?? '-'} • PIC {row.responsibleName ?? '-'}
               </p>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <Button type="button" variant="outline" className="h-10 rounded-2xl" onClick={() => void openHistoryChecklist(row)}>
+                <Button type="button" variant="outline" className="h-9 rounded-xl" onClick={() => void openHistoryChecklist(row)}>
                   <Pencil className="size-4" />
                 </Button>
-                <Button type="button" variant="outline" className="h-10 rounded-2xl" onClick={() => void openChecklistReport(row)}>
+                <Button type="button" variant="outline" className="h-9 rounded-xl" onClick={() => void openChecklistReport(row)}>
                   <FileText className="size-4" />
                 </Button>
                 {access.canDelete ? (
-                  <Button type="button" variant="outline" className="h-10 rounded-2xl text-[#8a3d00]" onClick={() => void removeChecklist(row.id)}>
+                  <Button type="button" variant="outline" className="h-9 rounded-xl text-orange-700" onClick={() => void removeChecklist(row.id)}>
                     <Trash2 className="size-4" />
                   </Button>
                 ) : null}
@@ -1090,7 +1090,7 @@ export function MobileHseChecklistClient({
             </article>
           ))}
           {history.length === 0 ? (
-            <div className="rounded-[1.15rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+            <div className="rounded-xl border border-gray-100 bg-white p-5 text-center text-sm font-medium text-gray-500">
               Belum ada riwayat checklist.
             </div>
           ) : null}
@@ -1100,20 +1100,20 @@ export function MobileHseChecklistClient({
       {activeView === 'logs' ? (
         <section className="space-y-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Log Aktivitas</p>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Audit checklist</h2>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Log Aktivitas</p>
+            <h2 className="mt-1 text-base font-semibold text-gray-900">Audit checklist</h2>
           </div>
           <div className="grid gap-3">
             {auditLogs.slice(0, 25).map((log) => (
-              <article key={log.id} className="rounded-[1.15rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+              <article key={log.id} className="rounded-xl border border-gray-100 bg-white p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-black text-[#082033]">{log.action}</h3>
-                    <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{log.description}</p>
+                    <h3 className="text-sm font-semibold text-gray-900">{log.action}</h3>
+                    <p className="mt-1 text-xs leading-5 text-gray-500">{log.description}</p>
                   </div>
-                  <span className="rounded-full bg-[#f6fbff] px-2.5 py-1 text-[10px] font-black uppercase text-[#486275]">{log.severity}</span>
+                  <span className="rounded-md bg-gray-50 px-2.5 py-1 text-[10px] font-medium text-gray-500">{log.severity}</span>
                 </div>
-                <p className="mt-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
+                <p className="mt-3 text-[10px] font-medium uppercase tracking-wider text-gray-500">
                   {formatDate(log.createdAt)} • {log.actorName ?? 'System'}
                 </p>
               </article>
