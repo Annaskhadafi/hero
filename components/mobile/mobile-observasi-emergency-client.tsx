@@ -215,7 +215,7 @@ export function MobileObservasiEmergencyClient({
   const uniqueCategories = React.useMemo(() => Array.from(new Set(records.map((r) => r.category))).sort(), [records])
 
   return (
-    <CardShell title="Observasi & Emergency" subtitle="Catat observasi K3, laporkan insiden, lacak investigasi dan tindak lanjut dari HP." icon={Siren}>
+    <CardShell title="Observasi & Emergency" subtitle="" icon={Siren}>
       {/* Stats */}
       <section className="grid grid-cols-4 gap-2">
         <div className="rounded-[1rem] bg-white p-3 border border-gray-100">

@@ -41,7 +41,6 @@ export default async function MobileActivityInputPage() {
       <div>
         <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Aktivitas Harian</p>
         <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900">{pagePurpose.title}</h1>
-        <p className="mt-1.5 text-sm text-gray-500">{pagePurpose.description}</p>
       </div>
 
       {/* Info cards */}

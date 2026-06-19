@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { MobileActivityLog } from "@/components/mobile/mobile-activity-log";
 import { getServerSession } from "@/lib/auth-session";
+
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { cn } from "@/lib/utils";
@@ -51,9 +52,6 @@ export default async function MobileActivityPage() {
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">Aktivitas Harian</p>
             <h1 className="mt-1 text-xl font-bold tracking-tight">{pagePurpose.title}</h1>
-            <p className="mt-1.5 text-sm leading-relaxed text-blue-200">
-              {pagePurpose.description}
-            </p>
           </div>
           <Link
             prefetch={false}

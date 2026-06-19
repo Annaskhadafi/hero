@@ -142,7 +142,7 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
   const handleStatusChange = async (id: number, condition: string) => { if (!access.canEdit) return; try { const r = await updateHseInventoryStatus(id, condition); if (r.success) { toast.success('Kondisi jadi ' + condition); router.refresh() } else toast.error(r.error || 'Gagal update') } catch { toast.error('Gagal update') } }
 
   return (
-    <CardShell title="Inventaris HSE" subtitle="Kelola aset keselamatan, pantau masa berlaku, dan kirim reminder expired." icon={HardHat}>
+    <CardShell title="Inventaris HSE" subtitle="" icon={HardHat}>
       <section className="grid grid-cols-2 gap-2.5">
         <StatCard label="Total Aset" value={String(stats.totalItems)} icon={FileSpreadsheet} color="blue" />
         <StatCard label="Kondisi Baik" value={String(stats.baikCount)} icon={CheckCircle} color="emerald" />

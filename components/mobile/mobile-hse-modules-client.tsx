@@ -73,7 +73,7 @@ export function MobileIncidentClient({ records, access }: { records: Incident[];
     if (result.success) { toast.success('Incident dihapus.'); router.refresh() } else toast.error(result.error)
   }
 
-  return <CardShell title="Incident Report" subtitle="Lapor, lihat, edit, dan follow-up insiden dari HP." icon={AlertTriangle}>
+  return <CardShell title="Incident Report" subtitle="" icon={AlertTriangle}>
     {access.canEdit ? <Button className="h-11 w-full rounded-xl bg-blue-600 text-white" onClick={startCreate}><Plus className="size-4" />Buat Incident</Button> : null}
     {openForm ? <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
       <Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Judul incident" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -93,7 +93,7 @@ export function MobileCorrectiveActionClient({ records, access }: { records: Cor
   const [form, setForm] = React.useState({ title: '', sourceType: 'manual', actionPlan: '', assigneeName: '', priority: 'Medium' })
   const save = async () => { if (!access.canEdit) return; await saveMobileCorrectiveAction(form); toast.success('Corrective action tersimpan.'); setForm({ title: '', sourceType: 'manual', actionPlan: '', assigneeName: '', priority: 'Medium' }); router.refresh() }
   return (
-    <CardShell title="Corrective Action" subtitle="Universal action tracker untuk semua sumber HSE." icon={CheckCircle2}>
+    <CardShell title="Corrective Action" subtitle="" icon={CheckCircle2}>
       {access.canEdit ? (
         <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
           <Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Judul action" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -239,7 +239,7 @@ export function MobileJsaClient({ rows, access }: { rows: JsaRow[]; access: Acce
   }
 
   return (
-    <CardShell title="JSA Mobile" subtitle="Form Job Safety Analysis lengkap, dioptimasi untuk HP." icon={FileText}>
+    <CardShell title="JSA Mobile" subtitle="" icon={FileText}>
       {access.canEdit ? (
         <Button className="h-11 rounded-xl bg-blue-600 text-white" onClick={resetCreate}>
           <Plus className="size-4" /> Buat JSA
@@ -271,7 +271,7 @@ export function MobilePtwClient({ sources, access, permits }: { sources: HiradcE
   const [form, setForm] = React.useState({ projectName: '', permitType: 'Hot Work', location: '', area: '', riskLevel: 'High', description: '', controlSteps: '' })
   const save = async () => { if (!access.canEdit) return toast.error('Role tidak boleh buat PTW.'); await saveMobilePtwPermit(form); toast.success('PTW tersimpan ke database.'); setForm({ projectName: '', permitType: 'Hot Work', location: '', area: '', riskLevel: 'High', description: '', controlSteps: '' }); router.refresh() }
   return (
-    <CardShell title="PTW Mobile" subtitle="Buat Permit to Work dari HP, tersimpan ke database." icon={HardHat}>
+    <CardShell title="PTW Mobile" subtitle="" icon={HardHat}>
       {access.canEdit ? (
         <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
           <Input className="h-11 rounded-xl border border-gray-200 bg-white px-3" placeholder="Nama pekerjaan" value={form.projectName} onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
@@ -344,7 +344,7 @@ export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
     } finally { setBusy(null) }
   }
 
-  return <CardShell title="HIRADC Viewer" subtitle="Cari bahaya, risiko, kontrol, lalu download PDF dari HP." icon={Flame}>
+  return <CardShell title="HIRADC Viewer" subtitle="" icon={Flame}>
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
       <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" /><Input className="h-11 rounded-xl border border-gray-200 bg-white pl-10" placeholder="Cari aktivitas / bahaya / kontrol..." value={query} onChange={(e) => setQuery(e.target.value)} /></div>
       <div className="flex gap-2 overflow-x-auto pb-1">
