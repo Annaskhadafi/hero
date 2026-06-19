@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Clock3, MapPinned, UserRound } from "lucide-react";
+import { ArrowLeft, Clock3, UserRound } from "lucide-react";
 
 import { MobileDailyActivityForm } from "@/components/mobile/mobile-daily-activity-form";
-import { Badge } from "@/components/ui/badge";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -15,16 +14,13 @@ function dateTimeLocalValue(reference: Date) {
 
 export default async function MobileActivityInputPage() {
   const session = await getServerSession();
-
-  if (!session?.user?.email) {
-    redirect("/sign-in");
-  }
+  if (!session?.user?.email) redirect("/sign-in");
 
   const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
   if (!data) {
     return (
-      <div className="rounded-lg bg-white p-5 text-sm font-semibold leading-6 text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
-        Data employee belum tersedia untuk akun ini. Activity input belum bisa dibuka.
+      <div className="rounded-xl border border-gray-100 bg-white p-5 text-sm text-gray-500">
+        Data employee belum tersedia untuk akun ini.
       </div>
     );
   }
@@ -34,106 +30,94 @@ export default async function MobileActivityInputPage() {
   const pagePurpose = getActivityPagePurpose("input");
 
   return (
-    <div className="space-y-5">
-      <section className="space-y-3">
-        <Link
-          prefetch={false}
-          href="/mobile/activity"
-          className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#486275]"
-        >
-          <ArrowLeft className="size-4" />
-          Kembali ke aktivitas harian
-        </Link>
+    <div className="space-y-4 pb-6">
+      {/* Back link */}
+      <Link prefetch={false} href="/mobile/activity"
+        className="inline-flex items-center gap-2 text-xs font-medium text-gray-500">
+        <ArrowLeft className="size-4" /> Kembali ke aktivitas harian
+      </Link>
 
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Aktivitas Harian</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">{pagePurpose.title}</h1>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">{pagePurpose.description}</p>
-        </div>
-      </section>
+      {/* Header */}
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Aktivitas Harian</p>
+        <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900">{pagePurpose.title}</h1>
+        <p className="mt-1.5 text-sm text-gray-500">{pagePurpose.description}</p>
+      </div>
 
-      <section className="grid grid-cols-2 gap-3">
-        <div className="rounded-[1.2rem] bg-[#e9f6fd] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-          <Clock3 className="size-5 text-[#003f78]" />
-          <p className="mt-3 text-lg font-black text-[#082033]">{data.summary.shift}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Shift aktif</p>
+      {/* Info cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <Clock3 className="size-5 text-blue-600" />
+          <p className="mt-3 text-lg font-bold text-gray-900">{data.summary.shift}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Shift aktif</p>
         </div>
-        <div className="rounded-[1.2rem] bg-[#e9f6fd] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-          <UserRound className="size-5 text-[#003f78]" />
-          <p className="mt-3 text-lg font-black text-[#082033]">{data.employee.id}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">Employee ID</p>
+        <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <UserRound className="size-5 text-blue-600" />
+          <p className="mt-3 text-lg font-bold text-gray-900">{data.employee.id}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Employee ID</p>
         </div>
-      </section>
+      </div>
 
-      <section className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+      {/* Current Context */}
+      <section className="rounded-xl border border-gray-100 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Current Context</p>
-            <p className="mt-1 text-base font-black text-[#082033]">{data.employee.name}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Current Context</p>
+            <p className="mt-1 text-base font-semibold text-gray-900">{data.employee.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
+            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
               {data.site?.name ?? "Site"}
-            </Badge>
-            <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
+            </span>
+            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
               {data.assignments.length} assignment
-            </Badge>
+            </span>
           </div>
         </div>
-
-        <div className="mt-3 rounded-[1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8a5a00] shadow-[inset_0_0_0_1px_rgba(245,158,11,0.12)]">
-          Save bisa gagal kalau:
-          pilih activity library belum diisi, assignment belum dipilih saat mode `Assigned`, waktu selesai lebih kecil dari waktu mulai,
-          atau waktu bentrok dengan activity lain.
+        <div className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+          Save bisa gagal kalau: pilih activity library belum diisi, assignment belum dipilih saat mode `Assigned`,
+          waktu selesai lebih kecil dari waktu mulai, atau waktu bentrok dengan activity lain.
         </div>
       </section>
 
+      {/* Daily Route */}
       {data.routeChecklist ? (
-        <section className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        <section className="rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Matched Daily Route</p>
-              <p className="mt-1 text-base font-black text-[#082033]">{data.routeChecklist.routeName}</p>
-              <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-                {data.routeChecklist.groupCount} group • {data.routeChecklist.itemCount} item • {data.routeChecklist.shiftCode}
+              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Matched Daily Route</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{data.routeChecklist.routeName}</p>
+              <p className="mt-2 text-xs text-gray-500">
+                {data.routeChecklist.groupCount} group &bull; {data.routeChecklist.itemCount} item &bull; {data.routeChecklist.shiftCode}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
-                {data.routeChecklist.routeCode}
-              </Badge>
+              <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{data.routeChecklist.routeCode}</span>
               {data.routeChecklist.activeSpl ? (
-                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
-                  {data.routeChecklist.activeSpl.splNumber}
-                </Badge>
+                <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{data.routeChecklist.activeSpl.splNumber}</span>
               ) : null}
               {data.routeChecklist.positionName ? (
-                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
-                  {data.routeChecklist.positionName}
-                </Badge>
+                <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{data.routeChecklist.positionName}</span>
               ) : null}
             </div>
           </div>
         </section>
       ) : null}
 
+      {/* SPL Checklist */}
       {data.standaloneOvertimeChecklist ? (
-        <section className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        <section className="rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Checklist SPL Aktif</p>
-              <p className="mt-1 text-base font-black text-[#082033]">{data.standaloneOvertimeChecklist.title}</p>
-              <p className="mt-2 text-xs font-semibold leading-5 text-[#486275]">
-                {data.standaloneOvertimeChecklist.splNumber} • {data.standaloneOvertimeChecklist.lineCount} line
+              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Checklist SPL Aktif</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{data.standaloneOvertimeChecklist.title}</p>
+              <p className="mt-2 text-xs text-gray-500">
+                {data.standaloneOvertimeChecklist.splNumber} &bull; {data.standaloneOvertimeChecklist.lineCount} line
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge className="border-0 bg-[#eaf4fb] text-[9px] font-black uppercase tracking-[0.14em] text-[#003f78]">
-                {data.standaloneOvertimeChecklist.progressPercent}% progress
-              </Badge>
-              <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black uppercase tracking-[0.14em] text-[#8a5a00]">
-                {data.standaloneOvertimeChecklist.plannedPointsTotal} pts
-              </Badge>
+              <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{data.standaloneOvertimeChecklist.progressPercent}% progress</span>
+              <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{data.standaloneOvertimeChecklist.plannedPointsTotal} pts</span>
             </div>
           </div>
         </section>
