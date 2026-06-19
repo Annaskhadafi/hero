@@ -2274,6 +2274,51 @@ Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract 
       reviewLink: 'https://hero.example.com/dashboard/hc/contract-review/form/15',
     },
   },
+  {
+    name: 'HR Counseling New Session',
+    templateCode: 'hr_counseling_new_session',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'specific',
+    ccEmail: '',
+    subject: 'Sesi Konsultasi Baru: {{category}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0">
+<p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{hrName}},</p>
+<p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Karyawan <strong>{{employeeName}}</strong> telah memulai sesi konsultasi curhat baru dengan Anda.</p>
+<p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Kategori Masalah</p>
+<table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr></table>
+<p style="color:#1f2937;font-size:14px;line-height:1.6;margin:16px 0 8px">Silakan masuk ke dashboard untuk membalas pesan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Halo {{hrName}},
+
+Karyawan {{employeeName}} telah memulai sesi konsultasi curhat baru dengan Anda.
+
+Kategori Masalah: {{category}}
+
+Silakan masuk ke dashboard untuk membalas pesan.`,
+    description: 'Notifikasi email ke HR ketika sesi konsultasi baru dibuat oleh karyawan.',
+    variables: ['hrName', 'employeeName', 'category', 'sessionId'],
+    sampleValues: {
+      hrName: 'Budi Santoso',
+      employeeName: 'Andi Kusuma',
+      category: 'Kesehatan Mental',
+      sessionId: '12',
+    },
+  },
 ]
 
 export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
@@ -2304,6 +2349,7 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["start_date_email", "HC Recruitment"],
   ["custom_bulk", "HC Recruitment"],
   ["mcu_", "HC Recruitment"],
+  ["hr_counseling_", "HR Counseling"],
 ];
 
 export function getTemplateFeature(templateCode: string): string {

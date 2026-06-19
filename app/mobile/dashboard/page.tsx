@@ -12,6 +12,7 @@ import {
   Sparkles,
   TriangleAlert,
   Trophy,
+  MessageSquare,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -268,6 +269,23 @@ export default async function MobileDashboardPage() {
           </div>
           <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#dcfce7] text-[#15803d]">
             <Sparkles className="size-4" />
+          </span>
+        </Link>
+      </section>
+
+      <section>
+        <Link
+          prefetch={false}
+          href="/mobile/curhat"
+          className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-white px-4 py-4 text-[#003461] shadow-[0_14px_30px_rgba(8,32,51,0.08)] active:scale-[0.98]"
+        >
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#486275]">Bantuan Karyawan</p>
+            <p className="mt-1 text-base font-black">Curhat Dengan HR</p>
+            <p className="mt-1 text-xs font-semibold text-[#486275]">Konsultasi tertutup dan rahasia</p>
+          </div>
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
+            <MessageSquare className="size-4" />
           </span>
         </Link>
       </section>
