@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Siren,
   Stethoscope,
+  MoreHorizontal
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   HSE_EMERGENCY_DRAFT_STORAGE_KEY,
   HSE_OBSERVATION_DRAFT_STORAGE_KEY,
@@ -178,6 +180,7 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
   const queuedMode = searchParams.get("mode") === "emergency" ? "emergency" : "observation";
 
   const [activeTab, setActiveTab] = useState<"observation" | "emergency">(queuedMode);
+  const [openHseDrawer, setOpenHseDrawer] = useState(false);
   const [geo, setGeo] = useState<GeoState>(initialGeo);
   const [observations, setObservations] = useState(data.observations);
   const [incidents, setIncidents] = useState(data.incidents);
@@ -471,29 +474,14 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
         </div>
       </section>
 
-      <section className="space-y-3">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">HSE Mobile Menu</p>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Field quick actions</h2>
-          </div>
-          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275] shadow-[0_10px_24px_rgba(8,32,51,0.08)]">
-            {hseFieldActions.length} tools
-          </span>
+      <section className="space-y-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">HSE Quick Actions</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-4 gap-y-4 gap-x-2 rounded-[1.5rem] bg-white p-5 shadow-[0_12px_32px_rgba(8,32,51,0.06)] border border-slate-100">
           {hseFieldActions.map((action) => {
             const Icon = action.icon;
-            const content = (
-              <>
-                <span className={`flex size-10 items-center justify-center rounded-2xl ${action.tone}`}>
-                  <Icon className="size-5" />
-                </span>
-                <span className="mt-4 block text-sm font-black text-[#082033]">{action.title}</span>
-                <span className="mt-1 block text-xs font-semibold leading-5 text-[#486275]">{action.description}</span>
-              </>
-            );
 
             if ("tab" in action && action.tab) {
               return (
@@ -504,9 +492,14 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
                     setActiveTab(action.tab);
                     document.getElementById("hse-submit-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }}
-                  className="min-h-[128px] rounded-[1.25rem] bg-white p-4 text-left shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+                  className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform"
                 >
-                  {content}
+                  <div className={`flex size-11 items-center justify-center rounded-2xl ${action.tone}`}>
+                    <Icon className="size-5" />
+                  </div>
+                  <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">
+                    {action.title}
+                  </span>
                 </button>
               );
             }
@@ -515,40 +508,84 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               <Link
                 key={action.title}
                 href={action.href}
-                className="min-h-[128px] rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]"
+                className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform"
               >
-                {content}
+                <div className={`flex size-11 items-center justify-center rounded-2xl ${action.tone}`}>
+                  <Icon className="size-5" />
+                </div>
+                <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">
+                  {action.title}
+                </span>
               </Link>
             );
           })}
         </div>
       </section>
 
-      <section className="space-y-3">
+      <section className="space-y-4">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">All HSE Features</p>
-          <h2 className="mt-1 text-lg font-black tracking-tight text-[#082033]">Admin & compliance</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Compliance & Admin</p>
         </div>
-        <div className="rounded-[1.25rem] bg-white p-2 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
-          {hseAdminFeatures.map((feature) => {
+
+        <div className="grid grid-cols-4 gap-y-4 gap-x-2 rounded-[1.5rem] bg-white p-5 shadow-[0_12px_32px_rgba(8,32,51,0.06)] border border-slate-100">
+          {hseAdminFeatures.slice(0, 3).map((feature) => {
             const Icon = feature.icon;
             return (
               <Link
                 key={feature.title}
                 href={feature.href}
-                className="flex min-h-16 items-center gap-3 rounded-[1rem] px-3 py-3 active:bg-[#f6fbff]"
+                className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform"
               >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#f6fbff] text-[#003f78]">
+                <div className="flex size-11 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-600">
                   <Icon className="size-5" />
+                </div>
+                <span className="mt-2 text-[10px] font-bold text-slate-700 leading-tight truncate w-full px-1">
+                  {feature.title.split(" ")[0]}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-black text-[#082033]">{feature.title}</span>
-                  <span className="block truncate text-xs font-semibold text-[#486275]">{feature.meta}</span>
-                </span>
-                <span className="text-lg font-black text-[#9ab0bf]">›</span>
               </Link>
             );
           })}
+
+          <Sheet open={openHseDrawer} onOpenChange={setOpenHseDrawer}>
+            <SheetTrigger asChild>
+              <button className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform">
+                <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 group-hover:bg-slate-200 transition-colors">
+                  <MoreHorizontal className="size-5" />
+                </div>
+                <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">
+                  Lainnya
+                </span>
+              </button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="rounded-t-[2rem] px-6 pb-8 pt-4 max-h-[85vh] overflow-y-auto">
+              <SheetHeader className="mb-6 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-1.5 bg-slate-200 rounded-full mb-4" />
+                <SheetTitle className="text-lg font-black text-[#003461]">Semua Fitur HSE</SheetTitle>
+              </SheetHeader>
+
+              <div className="space-y-3">
+                {hseAdminFeatures.map((feature, index) => {
+                  const Icon = feature.icon;
+                  return (
+                    <Link
+                      key={index}
+                      href={feature.href}
+                      onClick={() => setOpenHseDrawer(false)}
+                      className="flex items-center gap-4 rounded-2xl bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600">
+                        <Icon className="size-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-[#003461]">{feature.title}</p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{feature.meta}</p>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </section>
 

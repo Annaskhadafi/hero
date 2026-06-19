@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Send, ArrowLeft, CheckCircle2, Paperclip, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 type Message = {
   id: number;
@@ -49,6 +50,7 @@ export default function ChatClient({
   const [isSending, setIsSending] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -199,7 +201,12 @@ export default function ChatClient({
                     {msg.readableUrl && (
                       <div className="mt-1">
                         {msg.attachmentUrl?.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                          <img src={msg.readableUrl} alt="Attachment" className="max-w-full max-h-48 rounded-md object-contain" />
+                          <img 
+                            src={msg.readableUrl} 
+                            alt="Attachment" 
+                            className="max-w-full max-h-48 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity" 
+                            onClick={() => setPreviewImage(msg.readableUrl || null)}
+                          />
                         ) : (
                           <a href={msg.readableUrl} target="_blank" rel="noreferrer" className="underline text-xs flex items-center gap-1">
                             <Paperclip className="w-3 h-3" /> Lihat Lampiran
@@ -258,6 +265,18 @@ export default function ChatClient({
           </form>
         </div>
       </div>
+
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none shadow-none flex items-center justify-center">
+          {previewImage && (
+            <img
+              src={previewImage}
+              alt="Preview Image"
+              className="max-w-full max-h-[85vh] object-contain rounded-lg"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

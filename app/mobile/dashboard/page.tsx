@@ -17,6 +17,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { MobilePortalChitraSlider } from "@/components/mobile/mobile-portal-chitra-slider";
+import { MobileDashboardServices } from "@/components/mobile/mobile-dashboard-services";
 import { getApprovalCenterData } from "@/lib/approval-workspace";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -148,6 +149,8 @@ export default async function MobileDashboardPage() {
       </div>
     );
   }
+  
+  const isHR = data.employee.section === "HRGA" || data.employee.section === "HR-GA";
 
   const primaryAssignment = data.assignments[0];
   const nextAction = getNextAction(data);
@@ -236,78 +239,7 @@ export default async function MobileDashboardPage() {
         </span>
       </Link>
 
-      <section className="grid grid-cols-2 gap-3">
-        <Link
-          prefetch={false}
-          href="/mobile/attendance"
-          className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-[1.25rem] bg-white text-center text-[#003461] shadow-[0_14px_30px_rgba(8,32,51,0.08)] ring-1 ring-[#d8e8f3] active:scale-[0.98]"
-        >
-          <BriefcaseBusiness className="size-5" />
-          <span className="text-[10px] font-black uppercase tracking-[0.16em]">Check-In Work</span>
-        </Link>
-        <Link
-          prefetch={false}
-          href="/mobile/hse"
-          className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-[1.25rem] bg-white text-center text-[#5a2200] shadow-[0_14px_30px_rgba(90,34,0,0.08)] ring-1 ring-[#ead8ce] active:scale-[0.98]"
-        >
-          <ShieldCheck className="size-5" />
-          <span className="text-[10px] font-black uppercase tracking-[0.16em]">HSE Report</span>
-        </Link>
-      </section>
-
-      <section>
-        <Link
-          prefetch={false}
-          href="/api/lms/sso"
-          target="_blank"
-          className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[#f0fdf4] border border-[#bbf7d0] px-4 py-4 text-[#14532d] shadow-[0_14px_30px_rgba(20,83,45,0.06)] active:scale-[0.98]"
-        >
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#166534]">Chitra Learning LMS</p>
-            <p className="mt-1 text-base font-black text-[#14532d]">Buka LMS & Mulai Belajar</p>
-            <p className="mt-1 text-xs font-semibold text-[#166534]">Akses ribuan materi sertifikasi online</p>
-          </div>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#dcfce7] text-[#15803d]">
-            <Sparkles className="size-4" />
-          </span>
-        </Link>
-      </section>
-
-      <section>
-        <Link
-          prefetch={false}
-          href="/mobile/curhat"
-          className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-white px-4 py-4 text-[#003461] shadow-[0_14px_30px_rgba(8,32,51,0.08)] active:scale-[0.98]"
-        >
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#486275]">Bantuan Karyawan</p>
-            <p className="mt-1 text-base font-black">Curhat Dengan HR</p>
-            <p className="mt-1 text-xs font-semibold text-[#486275]">Konsultasi tertutup dan rahasia</p>
-          </div>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
-            <MessageSquare className="size-4" />
-          </span>
-        </Link>
-      </section>
-
-      {(data.employee.section === "HRGA" || data.employee.section === "HR-GA") && (
-        <section>
-          <Link
-            prefetch={false}
-            href="/mobile/hr-counseling"
-            className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-gradient-to-r from-[#003461] to-[#005193] px-4 py-4 text-white shadow-[0_14px_30px_rgba(8,32,51,0.2)] active:scale-[0.98]"
-          >
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#93c5fd]">Human Capital Panel</p>
-              <p className="mt-1 text-base font-black">Inbox HR Counseling</p>
-              <p className="mt-1 text-xs font-semibold text-[#bfdbfe]">Kelola sesi curhat karyawan</p>
-            </div>
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#eff6ff] text-[#003f78]">
-              <MessageSquare className="size-4" />
-            </span>
-          </Link>
-        </section>
-      )}
+      <MobileDashboardServices isHR={isHR} />
 
       <MobilePortalChitraSlider apps={portalApps} />
 
