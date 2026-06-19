@@ -119,6 +119,39 @@ function formatMenuArea(value: string) {
   return labels[value] ?? value.replaceAll("_", " ");
 }
 
+function hasMobileCounterpart(url: string | null | undefined, resource: string | null | undefined): boolean {
+  if (!url) return false;
+  if (url.startsWith("/mobile")) return true;
+  const cleanUrl = url.split("?")[0];
+  if (cleanUrl === "/dashboard/activity-hub/my-day") return true;
+  if (cleanUrl.startsWith("/dashboard/activity-hub")) return true;
+  if (cleanUrl === "/dashboard/overtime-requests" || cleanUrl.startsWith("/dashboard/overtime")) return true;
+  if (cleanUrl === "/dashboard/timesheet" || cleanUrl.startsWith("/dashboard/scheduling-timesheet")) return true;
+  if (cleanUrl === "/dashboard/approval") return true;
+  if (cleanUrl === "/dashboard/curhat") return true;
+  if (cleanUrl === "/dashboard/hr-counseling") return true;
+  if (cleanUrl === "/dashboard/hse" || cleanUrl.startsWith("/dashboard/hse/")) return true;
+  if (cleanUrl === "/dashboard/gamification") return true;
+  if (cleanUrl === "/dashboard/wellness") return true;
+  if (cleanUrl === "/dashboard/executive") return true;
+  if (cleanUrl === "/dashboard/cargo-manifest") return true;
+  if (cleanUrl === "/dashboard/security/roles") return true;
+  if (cleanUrl === "/dashboard/reports") return true;
+  if (cleanUrl === "/dashboard/training") return true;
+  if (cleanUrl === "/dashboard/attendance" || cleanUrl.startsWith("/dashboard/attendance/")) return true;
+  if (cleanUrl === "/dashboard/lms" || cleanUrl.startsWith("/api/lms")) return true;
+
+  const segments = cleanUrl.split("/").filter(Boolean);
+  const lastSegment = segments[segments.length - 1];
+  const knownMobilePages = [
+    "activity", "approval", "attendance", "cargo-manifest", "curhat",
+    "executive", "gamification", "hr-counseling", "hse", "lms",
+    "notifications", "overtime", "profile", "reports", "timesheet",
+    "training", "wellness"
+  ];
+  return knownMobilePages.includes(lastSegment);
+}
+
 function SubmitButton({
   children,
   variant = "default",
@@ -570,11 +603,19 @@ export function SecurityRoleManagement({
                                       canSelectAll: false,
                                     };
 
+                                  const isMobile = hasMobileCounterpart(menuItem.url, menuItem.resource);
                                   return (
                                     <TableRow key={menuItem.id}>
                                       <TableCell>
                                         <div>
-                                          <p className="font-medium">{menuItem.title}</p>
+                                          <div className="flex items-center gap-2">
+                                            <p className="font-medium">{menuItem.title}</p>
+                                            {isMobile && (
+                                              <Badge variant="secondary" className="gap-0.5 text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-700 border-none hover:bg-sky-500/15 py-0.5 h-auto">
+                                                <Smartphone className="size-2.5" /> Mobile
+                                              </Badge>
+                                            )}
+                                          </div>
                                           <p className="text-xs text-muted-foreground">{menuItem.section}</p>
                                         </div>
                                       </TableCell>
@@ -600,12 +641,13 @@ export function SecurityRoleManagement({
                           {items.map((menuItem) => {
                             const currentPermission =
                               permissionByMenuId.get(menuItem.id) ?? {
-                                menuItemId: menuItem.id,
+                                menuItem: menuItem.id,
                                 canView: false,
                                 canEdit: false,
                                 canDelete: false,
                                 canSelectAll: false,
                               };
+                            const isMobile = hasMobileCounterpart(menuItem.url, menuItem.resource);
 
                             return (
                               <section
@@ -613,7 +655,14 @@ export function SecurityRoleManagement({
                                 className="rounded-lg bg-surface-container-lowest p-4 shadow-[0_10px_22px_rgba(0,52,97,0.08)]"
                               >
                                 <div>
-                                  <p className="font-medium">{menuItem.title}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium">{menuItem.title}</p>
+                                    {isMobile && (
+                                      <Badge variant="secondary" className="gap-0.5 text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-700 border-none py-0.5 h-auto">
+                                        <Smartphone className="size-2.5" /> Mobile
+                                      </Badge>
+                                    )}
+                                  </div>
                                   <p className="text-xs text-muted-foreground">
                                     {menuItem.section}
                                   </p>

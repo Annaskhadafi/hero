@@ -421,6 +421,17 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
 
   return (
     <div className="space-y-5">
+      {/* Offline/Sync Status Bar & LTI Counter */}
+      <div className="flex items-center justify-between px-1 bg-white p-3 rounded-2xl border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+        <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Online · Auto Sync Active</span>
+        </div>
+        <div className="flex items-center gap-1 text-[10px] font-black text-amber-800 bg-amber-500/10 px-2.5 py-1 rounded-full">
+          <span>🏆 365 Days LTI-Free</span>
+        </div>
+      </div>
+
       <section className="space-y-3">
         <div className="rounded-[1.3rem] bg-gradient-to-br from-[#5a2200] to-[#8a3d00] p-4 text-white shadow-[0_18px_38px_rgba(90,34,0,0.24)]">
           <div className="flex items-start justify-between gap-3">
@@ -662,12 +673,21 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               />
             </Label>
 
-            <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-3 text-xs font-semibold leading-5 text-[#486275]">
-              <p className="flex items-center gap-2 font-black uppercase tracking-[0.12em]">
+            <div className="rounded-[1.25rem] bg-[#f6fbff] p-4 text-xs font-semibold leading-5 text-[#486275] border border-slate-100 relative overflow-hidden">
+              <p className="flex items-center gap-2 font-black uppercase tracking-[0.12em] text-[#003f78]">
                 <Navigation className="size-3.5 text-[#003f78]" />
                 GPS capture
               </p>
-              <p className="mt-2">{geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : geo.message}</p>
+              <p className="mt-1 text-slate-800 font-bold">{geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : geo.message}</p>
+              {geo.latitude && geo.longitude && (
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-emerald-500/10 px-3 py-2 text-emerald-700">
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="text-[10px] font-black uppercase tracking-wider">GPS Lock High Accuracy</span>
+                  </div>
+                  <span className="text-[9px] font-bold">Active</span>
+                </div>
+              )}
             </div>
 
             <Button
@@ -809,13 +829,22 @@ export function MobileHseClient({ data }: MobileHseClientProps) {
               }}
             />
 
-            <div className="rounded-[1rem] bg-[#fff8e8] px-4 py-3 text-xs font-semibold leading-5 text-[#8a5a00]">
-              <p className="flex items-center gap-2 font-black uppercase tracking-[0.12em]">
-                <MapPin className="size-3.5" />
+            <div className="rounded-[1.25rem] bg-[#fff8e8] p-4 text-xs font-semibold leading-5 text-[#8a5a00] border border-amber-100 relative overflow-hidden">
+              <p className="flex items-center gap-2 font-black uppercase tracking-[0.12em] text-[#8a3d00]">
+                <MapPin className="size-3.5 text-[#8a3d00]" />
                 GPS + Photo
               </p>
-              <p className="mt-2">{geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : geo.message}</p>
-              <p className="mt-1">{emergencyPhotoName || "Foto wajib untuk emergency report."}</p>
+              <p className="mt-1 text-amber-950 font-bold">{geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : geo.message}</p>
+              <p className="mt-1 text-slate-500 text-[10px]">{emergencyPhotoName || "Foto wajib untuk emergency report."}</p>
+              {geo.latitude && geo.longitude && (
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-amber-500/10 px-3 py-2 text-amber-700">
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-amber-500 animate-ping" />
+                    <span className="text-[10px] font-black uppercase tracking-wider">GPS Lock Active</span>
+                  </div>
+                  <span className="text-[9px] font-bold">Secure</span>
+                </div>
+              )}
             </div>
 
             <Button

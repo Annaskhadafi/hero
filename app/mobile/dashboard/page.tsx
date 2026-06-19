@@ -16,12 +16,13 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { MobilePortalChitraSlider } from "@/components/mobile/mobile-portal-chitra-slider";
 import { MobileDashboardServices } from "@/components/mobile/mobile-dashboard-services";
+import { MobileDashboardHeader } from "@/components/mobile/mobile-dashboard-header";
+import { MobileDashboardTabs } from "@/components/mobile/mobile-dashboard-tabs";
 import { getApprovalCenterData } from "@/lib/approval-workspace";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
-import { getVisiblePortalChitraAppsForEmail } from "@/lib/portal-chitra";
+import { getSidebarDataForUser } from "@/lib/hero-admin";
 import { cn } from "@/lib/utils";
 
 function getGreeting() {
@@ -129,6 +130,47 @@ function MiniAvatar({ label, active = false }: { label: string; active?: boolean
   );
 }
 
+function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefined | null): string | null {
+  if (!desktopUrl) return null;
+  if (desktopUrl.startsWith("/mobile")) return desktopUrl;
+
+  const cleanUrl = desktopUrl.split("?")[0];
+
+  if (cleanUrl === "/dashboard/activity-hub/my-day") return "/mobile/activity/input";
+  if (cleanUrl.startsWith("/dashboard/activity-hub")) return "/mobile/activity";
+  if (cleanUrl === "/dashboard/overtime-requests" || cleanUrl.startsWith("/dashboard/overtime")) return "/mobile/overtime";
+  if (cleanUrl === "/dashboard/timesheet" || cleanUrl.startsWith("/dashboard/scheduling-timesheet")) return "/mobile/timesheet";
+  if (cleanUrl === "/dashboard/approval") return "/mobile/approval";
+  if (cleanUrl === "/dashboard/curhat") return "/mobile/curhat";
+  if (cleanUrl === "/dashboard/hr-counseling") return "/mobile/hr-counseling";
+  if (cleanUrl === "/dashboard/hse" || cleanUrl.startsWith("/dashboard/hse/")) return "/mobile/hse";
+  if (cleanUrl === "/dashboard/gamification") return "/mobile/gamification";
+  if (cleanUrl === "/dashboard/wellness") return "/mobile/wellness";
+  if (cleanUrl === "/dashboard/executive") return "/mobile/executive";
+  if (cleanUrl === "/dashboard/cargo-manifest") return "/mobile/cargo-manifest";
+  if (cleanUrl === "/dashboard/security/roles") return "/mobile/security/roles";
+  if (cleanUrl === "/dashboard/reports") return "/mobile/reports";
+  if (cleanUrl === "/dashboard/training") return "/mobile/training";
+  if (cleanUrl === "/dashboard/attendance" || cleanUrl.startsWith("/dashboard/attendance/")) return "/mobile/attendance";
+  if (cleanUrl === "/dashboard/lms" || cleanUrl.startsWith("/api/lms")) return "/mobile/lms";
+
+  const segments = cleanUrl.split("/").filter(Boolean);
+  const lastSegment = segments[segments.length - 1];
+  
+  const knownMobilePages = [
+    "activity", "approval", "attendance", "cargo-manifest", "curhat",
+    "executive", "gamification", "hr-counseling", "hse", "lms",
+    "notifications", "overtime", "profile", "reports", "timesheet",
+    "training", "wellness"
+  ];
+
+  if (knownMobilePages.includes(lastSegment)) {
+    return `/mobile/${lastSegment}`;
+  }
+
+  return null;
+}
+
 export default async function MobileDashboardPage() {
   const session = await getServerSession();
 
@@ -136,10 +178,10 @@ export default async function MobileDashboardPage() {
     redirect("/sign-in");
   }
 
-  const [data, approvalData, portalApps] = await Promise.all([
+  const [data, approvalData, sidebarData] = await Promise.all([
     getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }),
     getApprovalCenterData(session.user.email),
-    getVisiblePortalChitraAppsForEmail(session.user.email, { mobileOnly: true }),
+    getSidebarDataForUser(session.user.email),
   ]);
 
   if (!data) {
@@ -151,6 +193,24 @@ export default async function MobileDashboardPage() {
   }
   
   const isHR = data.employee.section === "HRGA" || data.employee.section === "HR-GA";
+  
+  const rawSidebarItems = [...sidebarData.navMain, ...sidebarData.navSecondary];
+  const seenUrls = new Set<string>();
+  const sidebarItems = rawSidebarItems
+    .map((item) => {
+      const mobileUrl = getMobileUrlForDesktopUrl(item.url || "", item.resource);
+      if (!mobileUrl) return null;
+      return {
+        ...item,
+        url: mobileUrl,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => {
+      if (item === null) return false;
+      if (seenUrls.has(item.url)) return false;
+      seenUrls.add(item.url);
+      return true;
+    });
 
   const primaryAssignment = data.assignments[0];
   const nextAction = getNextAction(data);
@@ -188,101 +248,57 @@ export default async function MobileDashboardPage() {
 
   return (
     <div className="space-y-5">
-      <section className="space-y-1">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Command Center</p>
-        <h1 className="text-2xl font-black tracking-tight text-[#003461]">
-          {getGreeting()}, {firstName(data.employee.name)}
-        </h1>
-      </section>
+      <MobileDashboardHeader 
+        employeeName={data.employee.name} 
+        totalPoints={data.employee.totalPoints} 
+        currentLevel={data.summary.currentLevel} 
+      />
 
-      <section className="overflow-hidden rounded-[1.35rem] bg-[#003f78] p-4 text-white shadow-[0_20px_42px_rgba(0,63,120,0.26)]">
-        <div className="flex items-start justify-between">
+
+
+      <MobileDashboardServices isHR={isHR} sidebarItems={sidebarItems} />
+
+      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] border border-slate-100/80 border-l-4 border-l-[#f4b183]">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <Badge className="border-0 bg-white/16 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-white">
-              <Trophy className="mr-1 size-3" />
-              Current Rank
-            </Badge>
-            <p className="mt-2 text-2xl font-black italic leading-none tracking-tight">
-              {data.summary.currentLevel.toUpperCase()}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#b9dff6]">PTS</p>
-            <p className="text-3xl font-black leading-none">{data.employee.totalPoints.toLocaleString("id-ID")}</p>
-          </div>
-        </div>
-
-        <div className="mt-6 grid grid-cols-2 gap-4 text-[9px] font-black uppercase tracking-[0.18em] text-[#b9dff6]">
-          <span>XP Progress</span>
-          <span className="text-right">Next Level · Pro</span>
-        </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#0a5798]">
-          <div
-            className="h-full rounded-full bg-[#f4a78d] shadow-[0_0_18px_rgba(244,167,141,0.55)]"
-            style={{ width: `${levelProgress}%` }}
-          />
-        </div>
-      </section>
-
-      <Link
-        prefetch={false}
-        href={nextAction.href}
-        className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-white px-4 py-4 text-[#082033] shadow-[0_14px_30px_rgba(8,32,51,0.08)] active:scale-[0.98]"
-      >
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#486275]">Next action</p>
-          <p className="mt-1 text-base font-black">{nextAction.label}</p>
-          <p className="mt-1 text-xs font-semibold text-[#486275]">{nextAction.detail}</p>
-        </div>
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#e9f6fd] text-[#003f78]">
-          <ArrowRight className="size-4" />
-        </span>
-      </Link>
-
-      <MobileDashboardServices isHR={isHR} />
-
-      <MobilePortalChitraSlider apps={portalApps} />
-
-      <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Approval Snapshot</p>
-            <h2 className="mt-1 text-lg font-black leading-tight text-[#082033]">
+            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#f4a78d]">Approval Center</p>
+            <h2 className="mt-1 text-base font-black leading-tight text-[#082033]">
               {approvalData.inboxMetrics.pendingActivities > 0
-                ? `${approvalData.inboxMetrics.pendingActivities} item menunggu`
-                : "Inbox approval clear"}
+                ? `${approvalData.inboxMetrics.pendingActivities} Item Menunggu`
+                : "Inbox Approval Bersih"}
             </h2>
-            <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-              {approvalData.inboxMetrics.pendingGroups} group • {approvalData.inboxMetrics.dueSoon} due soon •{" "}
-              {approvalData.inboxMetrics.overdue} overdue
-            </p>
           </div>
           <Link
             prefetch={false}
             href="/mobile/approval"
-            className={cn(
-              "flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-3 text-[10px] font-black uppercase tracking-[0.08em] active:scale-[0.98]",
-              approvalData.inboxMetrics.overdue > 0 || approvalData.inboxMetrics.dueSoon > 0
-                ? "bg-[#f6dfcf] text-[#5a2200]"
-                : "bg-[#e9f6fd] text-[#003f78]",
-            )}
+            className="flex h-9 items-center gap-1 rounded-xl bg-[#003f78] px-3.5 text-[9px] font-black uppercase tracking-[0.12em] text-white active:scale-95 transition-transform"
           >
             Review
-            <ArrowRight className="size-3.5" />
+            <ArrowRight className="size-3" />
           </Link>
         </div>
-        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-          {[
-            ["Group", approvalData.inboxMetrics.pendingGroups],
-            ["Item", approvalData.inboxMetrics.pendingActivities],
-            ["Soon", approvalData.inboxMetrics.dueSoon],
-            ["Late", approvalData.inboxMetrics.overdue],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg bg-[#f6fbff] px-2 py-2">
-              <p className="text-base font-black leading-none text-[#082033]">{value}</p>
-              <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#486275]">{label}</p>
-            </div>
-          ))}
+
+        {/* Sleek inline metrics */}
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-center gap-2">
+          <div className="flex-1">
+            <span className="block text-xs font-black text-[#082033]">{approvalData.inboxMetrics.pendingGroups}</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Group</span>
+          </div>
+          <div className="h-6 w-[1px] bg-slate-100" />
+          <div className="flex-1">
+            <span className="block text-xs font-black text-[#082033]">{approvalData.inboxMetrics.pendingActivities}</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
+          </div>
+          <div className="h-6 w-[1px] bg-slate-100" />
+          <div className="flex-1">
+            <span className="block text-xs font-black text-amber-600">{approvalData.inboxMetrics.dueSoon}</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Soon</span>
+          </div>
+          <div className="h-6 w-[1px] bg-slate-100" />
+          <div className="flex-1">
+            <span className="block text-xs font-black text-rose-600">{approvalData.inboxMetrics.overdue}</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Late</span>
+          </div>
         </div>
       </section>
 
@@ -343,69 +359,12 @@ export default async function MobileDashboardPage() {
         </section>
       ) : null}
 
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="size-1.5 rounded-full bg-[#5a2200]" />
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Pekerjaan Aktual</p>
-        </div>
-
-        <div className="rounded-[1.3rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
-          {primaryAssignment ? (
-            <div className="border-l-4 border-[#003f78] pl-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-black leading-tight text-[#082033]">
-                    {primaryAssignment.customJobName || primaryAssignment.activityName || "Pekerjaan Aktual"}
-                  </h2>
-                  <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-[#486275]">
-                    <MapPin className="size-3.5" />
-                    {data.site?.name ?? data.employee.workLocation ?? "Site"}
-                  </div>
-                </div>
-                <Badge className="border-0 bg-[#eaf4fb] px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-[#003f78]">
-                  {primaryAssignment.statusLabel}
-                </Badge>
-              </div>
-
-              <div className="mt-4 border-t border-dashed border-[#d8e8f3] pt-3">
-                <div className="grid grid-cols-2 gap-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
-                  <div>
-                    <p>Started</p>
-                    <p className="mt-1 text-xs text-[#082033]">{formatShortTime(primaryAssignment.createdAt)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p>E.T.A</p>
-                    <p className="mt-1 text-xs text-[#082033]">{formatShortTime(primaryAssignment.deadline)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl bg-[#f6fbff] p-4 text-center">
-              <p className="text-sm font-black text-[#082033]">Belum ada assignment aktif hari ini.</p>
-              <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                Tetap bisa input aktivitas mandiri atau buka menu kerja.
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Link
-                  prefetch={false}
-                  href="/mobile/activity/input"
-                  className="flex min-h-11 items-center justify-center rounded-lg bg-[#003f78] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-white active:scale-[0.98]"
-                >
-                  Input
-                </Link>
-                <Link
-                  prefetch={false}
-                  href="/mobile/approval"
-                  className="flex min-h-11 items-center justify-center rounded-lg bg-white px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#003f78] shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] active:scale-[0.98]"
-                >
-                  Approval
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
+      <MobileDashboardTabs 
+        primaryAssignment={primaryAssignment} 
+        recentFeed={recentFeed} 
+        siteName={data.site?.name ?? ""} 
+        workLocation={data.employee.workLocation ?? ""} 
+      />
 
       <section className="space-y-3">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Attendance Summary</p>
@@ -442,44 +401,7 @@ export default async function MobileDashboardPage() {
         </div>
       </section>
 
-      <section className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Recent Activity</p>
-        {recentFeed.length > 0 ? (
-          <div className="space-y-2">
-            {recentFeed.map((item) => {
-              const Icon =
-                item.tone === "penalty" ? TriangleAlert : item.tone === "point" ? Sparkles : CheckCircle2;
 
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 rounded-[1.1rem] bg-white p-3 shadow-[0_10px_24px_rgba(8,32,51,0.06)]"
-                >
-                  <span
-                    className={cn(
-                      "flex size-10 shrink-0 items-center justify-center rounded-xl",
-                      item.tone === "penalty" ? "bg-[#f6dfcf] text-[#5a2200]" : "bg-[#e9f6fd] text-[#003f78]",
-                    )}
-                  >
-                    <Icon className="size-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-black text-[#082033]">{item.title}</p>
-                    <p className="truncate text-xs font-semibold text-[#486275]">{item.detail}</p>
-                  </div>
-                  <p className="shrink-0 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
-                    {formatFeedTime(item.at)}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-[1.2rem] bg-white p-5 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
-            Belum ada aktivitas, poin, atau penalty hari ini.
-          </div>
-        )}
-      </section>
     </div>
   );
 }

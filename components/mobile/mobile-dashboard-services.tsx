@@ -16,13 +16,57 @@ import {
   Bell,
   User
 } from "lucide-react";
+import {
+  IconBook,
+  IconChartBar,
+  IconChecklist,
+  IconClockHour4,
+  IconDashboard,
+  IconDatabase,
+  IconFileWord,
+  IconFolder,
+  IconHelp,
+  IconListDetails,
+  IconMail,
+  IconReport,
+  IconSettings,
+  IconShieldHalfFilled,
+  IconUsers,
+} from "@tabler/icons-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+
+const iconMap = {
+  "book-open": IconBook,
+  "chart-bar": IconChartBar,
+  checklist: IconChecklist,
+  clock: IconClockHour4,
+  dashboard: IconDashboard,
+  database: IconDatabase,
+  "file-word": IconFileWord,
+  folder: IconFolder,
+  help: IconHelp,
+  "list-details": IconListDetails,
+  mail: IconMail,
+  report: IconReport,
+  settings: IconSettings,
+  shield: IconShieldHalfFilled,
+  users: IconUsers,
+} as const;
+
+type NavItem = {
+  title: string;
+  url: string;
+  section?: string;
+  iconName?: string;
+  resource?: string;
+};
 
 type DashboardServicesProps = {
   isHR: boolean;
+  sidebarItems: NavItem[];
 };
 
-export function MobileDashboardServices({ isHR }: DashboardServicesProps) {
+export function MobileDashboardServices({ isHR, sidebarItems }: DashboardServicesProps) {
   const [open, setOpen] = useState(false);
 
   const mainServices = [
@@ -71,8 +115,6 @@ export function MobileDashboardServices({ isHR }: DashboardServicesProps) {
     },
   ];
 
-  // If list is shorter than 8 (when not HR, it's 6), we can fill it or put "Lainnya" as the last item.
-  // We'll show up to 7 items directly, and the 8th item is always "Lainnya".
   const visibleServices = mainServices.slice(0, 7);
 
   const extraServices = [
@@ -106,13 +148,22 @@ export function MobileDashboardServices({ isHR }: DashboardServicesProps) {
     },
   ];
 
+  // Group sidebarItems by section
+  const groupedSidebarItems = sidebarItems.reduce((acc, item) => {
+    const secName = item.section || "Lainnya";
+    if (!acc[secName]) {
+      acc[secName] = [];
+    }
+    acc[secName].push(item);
+    return acc;
+  }, {} as Record<string, NavItem[]>);
+
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between pl-1">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Layanan Chitra</p>
       </div>
 
-      {/* Gopay/Gojek grid layout (4 columns) */}
       <div className="grid grid-cols-4 gap-y-5 gap-x-2 rounded-[1.5rem] bg-white p-5 shadow-[0_12px_32px_rgba(8,32,51,0.06)] border border-slate-100">
         {visibleServices.map((service, index) => (
           <Link
@@ -130,7 +181,7 @@ export function MobileDashboardServices({ isHR }: DashboardServicesProps) {
           </Link>
         ))}
 
-        {/* Lainnya Trigger */}
+        {/* Lainnya Trigger Sheet */}
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <button className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform">
@@ -142,54 +193,84 @@ export function MobileDashboardServices({ isHR }: DashboardServicesProps) {
               </span>
             </button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="rounded-t-[2rem] px-6 pb-8 pt-4 max-h-[85vh] overflow-y-auto">
-            <SheetHeader className="mb-6 flex flex-col items-center justify-center text-center">
+          <SheetContent side="bottom" className="rounded-t-[2rem] px-6 pb-8 pt-4 max-h-[85vh] overflow-y-auto space-y-6">
+            <SheetHeader className="mb-4 flex flex-col items-center justify-center text-center">
               <div className="w-12 h-1.5 bg-slate-200 rounded-full mb-4" />
               <SheetTitle className="text-lg font-black text-[#003461]">Semua Layanan Chitra</SheetTitle>
             </SheetHeader>
 
-            <div className="space-y-6">
-              {/* Direct links */}
-              <div className="grid grid-cols-4 gap-4">
-                {mainServices.map((service, index) => (
+            {/* Direct Core Services */}
+            <div className="grid grid-cols-4 gap-4">
+              {mainServices.map((service, index) => (
+                <Link
+                  key={index}
+                  href={service.href}
+                  target={service.target}
+                  onClick={() => setOpen(false)}
+                  className="flex flex-col items-center justify-center text-center group"
+                >
+                  <div className={`flex size-12 items-center justify-center rounded-2xl ${service.bg}`}>
+                    <service.icon className="size-5" />
+                  </div>
+                  <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">
+                    {service.title}
+                  </span>
+                </Link>
+              ))}
+            </div>
+
+
+
+            {/* Dynamic RBAC Sidebar Items - Grouped and Rendered as Grid of Icons */}
+            {Object.keys(groupedSidebarItems).map((sectionName) => {
+              const items = groupedSidebarItems[sectionName];
+              return (
+                <div key={sectionName} className="border-t border-slate-100 pt-5 space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pl-1">{sectionName}</h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    {items.map((item, index) => {
+                      const TablerIcon = iconMap[item.iconName as keyof typeof iconMap] ?? IconFolder;
+                      return (
+                        <Link
+                          key={index}
+                          href={item.url}
+                          onClick={() => setOpen(false)}
+                          className="flex flex-col items-center justify-center text-center group active:scale-95 transition-transform"
+                        >
+                          <div className="flex size-12 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-600 group-hover:bg-sky-500/20 transition-colors">
+                            <TablerIcon className="size-5" />
+                          </div>
+                          <span className="mt-2 text-[10px] font-bold text-slate-700 leading-tight line-clamp-1 w-full px-1">
+                            {item.title}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Extra/Utility Services */}
+            <div className="border-t border-slate-100 pt-5 space-y-3">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pl-1">Aktivitas & Akun</h3>
+              <div className="grid gap-3">
+                {extraServices.map((service, index) => (
                   <Link
                     key={index}
                     href={service.href}
-                    target={service.target}
                     onClick={() => setOpen(false)}
-                    className="flex flex-col items-center justify-center text-center group"
+                    className="flex items-center gap-4 rounded-2xl bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors"
                   >
-                    <div className={`flex size-12 items-center justify-center rounded-2xl ${service.bg}`}>
+                    <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${service.bg}`}>
                       <service.icon className="size-5" />
                     </div>
-                    <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">
-                      {service.title}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-[#003461]">{service.title}</p>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{service.description}</p>
+                    </div>
                   </Link>
                 ))}
-              </div>
-
-              {/* Utility / Secondary links */}
-              <div className="border-t border-slate-100 pt-5 space-y-3">
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pl-1">Fitur Tambahan</h3>
-                <div className="grid gap-3">
-                  {extraServices.map((service, index) => (
-                    <Link
-                      key={index}
-                      href={service.href}
-                      onClick={() => setOpen(false)}
-                      className="flex items-center gap-4 rounded-2xl bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${service.bg}`}>
-                        <service.icon className="size-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-[#003461]">{service.title}</p>
-                        <p className="text-xs text-slate-500 truncate mt-0.5">{service.description}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
               </div>
             </div>
           </SheetContent>
