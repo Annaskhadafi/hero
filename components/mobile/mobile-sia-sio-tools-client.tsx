@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { BadgeCheck, Download, Eye, FileText, Loader2, Pencil, Plus, Printer, Search, Trash2 } from 'lucide-react'
+import { BadgeCheck, Download, Eye, FileText, Loader2, Pencil, Plus, Search, ShieldCheck, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -52,7 +52,7 @@ export function MobileSiaSioToolsClient({ access }: { access: Access }) {
   const [status, setStatus] = React.useState('all')
   const [detail, setDetail] = React.useState<CertificationRecord | null>(null)
   const [draft, setDraft] = React.useState<CertificationRecord | null>(null)
-  const [busy, setBusy] = React.useState<'pdf' | 'print' | null>(null)
+  const [busy, setBusy] = React.useState<'pdf' | null>(null)
   const docRef = React.useRef<HTMLDivElement>(null)
 
   const filtered = records.filter((row) => `${row.assetOrOperator} ${row.certificationType} ${row.assetTag} ${row.area} ${row.pic}`.toLowerCase().includes(query.toLowerCase()) && (status === 'all' || row.status === status))
@@ -64,12 +64,89 @@ export function MobileSiaSioToolsClient({ access }: { access: Access }) {
   function remove(id: string) { if (!access.canDelete) return; if (!confirm('Hapus sertifikasi ini?')) return; persist(records.filter((row) => row.id !== id)); toast.success('Sertifikasi dihapus.') }
   async function renderCanvas() { const element = docRef.current; if (!element) return null; const clone = element.cloneNode(true) as HTMLDivElement; clone.style.position = 'fixed'; clone.style.top = '-10000px'; clone.style.left = '0'; clone.style.width = '794px'; clone.style.background = '#fff'; document.body.appendChild(clone); try { await document.fonts?.ready; const { default: html2canvas } = await import('html2canvas-pro'); return await html2canvas(clone, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 794 }) } finally { clone.remove() } }
   async function downloadPdf() { if (!detail) return; setBusy('pdf'); try { const canvas = await renderCanvas(); if (!canvas) return; const { default: jsPDF } = await import('jspdf'); const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }); const width = pdf.internal.pageSize.getWidth(); const height = pdf.internal.pageSize.getHeight(); const imgHeight = canvas.height * width / canvas.width; const img = canvas.toDataURL('image/png'); let left = imgHeight; let pos = 0; pdf.addImage(img, 'PNG', 0, pos, width, imgHeight); left -= height; while (left > 0) { pos -= height; pdf.addPage(); pdf.addImage(img, 'PNG', 0, pos, width, imgHeight); left -= height } pdf.save(`${detail.id}.pdf`) } finally { setBusy(null) } }
-  async function printDoc() { if (!detail) return; setBusy('print'); try { const canvas = await renderCanvas(); if (!canvas) return; const win = window.open('', '_blank', 'width=900,height=1200'); if (!win) return alert('Popup diblokir.'); win.document.write(`<!doctype html><html><head><title>${detail.id}</title><style>@page{size:A4;margin:10mm}body{margin:0}img{width:100%;height:auto}</style></head><body><img src="${canvas.toDataURL('image/png')}" /></body></html>`); win.document.close(); setTimeout(() => { win.focus(); win.print(); win.close() }, 250) } finally { setBusy(null) } }
+
 
   return <div className="space-y-5 pb-6"><section className="rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 p-4 text-white border border-gray-100"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-100">HSE Mobile</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">SIA/SIO Tools</h1><p className="mt-2 text-sm font-semibold leading-6 text-blue-50">Kelola sertifikasi operator, equipment, reminder expiry, attachment, dan PDF.</p></div><span className="flex size-11 items-center justify-center rounded-xl bg-white/12"><BadgeCheck className="size-5" /></span></div><div className="mt-4 grid grid-cols-3 gap-2"><Stat label="Total" value={records.length} /><Stat label="Near" value={near} /><Stat label="Expired" value={expired} /></div></section>
     <section className="space-y-3 rounded-xl bg-white p-4 border border-gray-100"><div className="relative"><Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-gray-500" /><Input className="h-12 rounded-xl border-0 bg-[#f6fbff] pl-11" placeholder="Cari operator / asset / tag..." value={query} onChange={(e) => setQuery(e.target.value)} /></div><div className="flex gap-2 overflow-x-auto pb-1">{['all', 'Active', 'Near Expiry', 'Expired', 'Pending Review', 'Missing Attachment'].map((item) => <button key={item} onClick={() => setStatus(item)} className={cn('h-9 shrink-0 rounded-md px-4 text-xs font-semibold uppercase', status === item ? 'bg-blue-600 text-white' : 'bg-[#f6fbff] text-gray-500')}>{item}</button>)}</div>{access.canEdit ? <Button className="h-12 w-full rounded-xl bg-blue-600 text-white" onClick={() => setDraft(makeEmpty())}><Plus className="size-4" />Tambah Sertifikasi</Button> : null}</section>
     {draft ? <section className="space-y-3 rounded-xl bg-white p-4 border border-gray-100"><div className="flex justify-between"><h2 className="text-lg font-semibold text-gray-900">Form Sertifikasi</h2><button className="text-xs font-semibold text-gray-500" onClick={() => setDraft(null)}>Tutup</button></div><Field label="Asset / Operator" value={draft.assetOrOperator} onChange={(v) => setDraft({ ...draft, assetOrOperator: v })} /><div className="grid grid-cols-2 gap-2"><Field label="Tipe" value={draft.certificationType} onChange={(v) => setDraft({ ...draft, certificationType: v })} /><Field label="Category" value={draft.category} onChange={(v) => setDraft({ ...draft, category: v })} /></div><div className="grid grid-cols-2 gap-2"><Field label="Asset Tag" value={draft.assetTag} onChange={(v) => setDraft({ ...draft, assetTag: v })} /><Field label="Permit No" value={draft.permitNumber} onChange={(v) => setDraft({ ...draft, permitNumber: v })} /></div><div className="grid grid-cols-2 gap-2"><Field label="Area" value={draft.area} onChange={(v) => setDraft({ ...draft, area: v })} /><Field label="Expiry" type="date" value={draft.expiryDate} onChange={(v) => setDraft({ ...draft, expiryDate: v })} /></div><Field label="PIC" value={draft.pic} onChange={(v) => setDraft({ ...draft, pic: v })} /><Field label="Examiner" value={draft.examiner} onChange={(v) => setDraft({ ...draft, examiner: v })} /><Textarea className="rounded-xl border border-gray-200 bg-white" placeholder="Standard / regulasi" value={draft.standard} onChange={(e) => setDraft({ ...draft, standard: e.target.value })} /><Textarea className="rounded-xl border border-gray-200 bg-white" placeholder="Attachment preview" value={draft.attachmentPreview} onChange={(e) => setDraft({ ...draft, attachmentPreview: e.target.value })} /><Button className="h-12 w-full rounded-xl bg-blue-600 text-white" onClick={saveDraft}>Simpan</Button></section> : null}
-    {detail ? <section className="space-y-3 rounded-xl bg-white p-4 border border-gray-100"><div className="flex justify-between gap-3"><h2 className="text-lg font-semibold text-gray-900">{detail.assetOrOperator}</h2><button className="text-xs font-semibold text-gray-500" onClick={() => setDetail(null)}>Tutup</button></div><div className="grid grid-cols-2 gap-2"><Button variant="outline" className="h-12 rounded-xl" disabled={Boolean(busy)} onClick={() => void downloadPdf()}>{busy === 'pdf' ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}PDF</Button><Button className="h-12 rounded-xl bg-blue-600 text-white" disabled={Boolean(busy)} onClick={() => void printDoc()}>{busy === 'print' ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}Cetak</Button></div><div ref={docRef} className="rounded-[1rem] border border-[#d8e4ee] bg-white p-4"><div className="flex justify-between border-b border-[#d8e4ee] pb-4"><div><p className="text-sm font-semibold text-gray-900">PT. CHITRA PARATAMA</p><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">SIA/SIO & Tools Certification</p></div><div className="text-right"><p className="text-[10px] font-semibold text-gray-500">ID</p><p className="text-lg font-semibold text-gray-900">{detail.id}</p></div></div><div className="grid grid-cols-2 gap-3 bg-[#f6fbff] p-4 text-xs font-semibold"><Info label="Type" value={detail.certificationType} /><Info label="Status" value={detail.status} /><Info label="Risk" value={detail.risk} /><Info label="Expiry" value={formatDate(detail.expiryDate)} /></div><div className="space-y-3 p-4"><InfoBlock title="Asset / Operator" value={detail.assetOrOperator} /><InfoBlock title="Location" value={`${detail.projectLocation} • ${detail.area}`} /><InfoBlock title="Permit / Tag" value={`${detail.permitNumber} • ${detail.assetTag}`} /><InfoBlock title="PIC / Examiner" value={`${detail.pic} • ${detail.examiner}`} /><InfoBlock title="Standard" value={detail.standard} /><InfoBlock title="Attachment" value={detail.attachmentName} /><InfoBlock title="Reminder" value={`Recipients: ${detail.reminder.recipients.join(', ')} • Escalation: ${detail.reminder.escalationRecipients.join(', ')} • Days before: ${detail.reminder.daysBeforeExpiry.join(', ')} • Last sent: ${detail.reminder.lastSent} • Next: ${detail.reminder.nextReminder}`} /></div></div></section> : null}
+    {detail ? <section className="space-y-3 rounded-xl bg-white p-4 border border-gray-100">
+      <div className="flex justify-between gap-3">
+        <h2 className="text-lg font-semibold text-gray-900">{detail.assetOrOperator}</h2>
+        <button className="text-xs font-semibold text-gray-500" onClick={() => setDetail(null)}>Tutup</button>
+      </div>
+      <Button variant="outline" className="w-full h-12 rounded-xl" disabled={Boolean(busy)} onClick={() => void downloadPdf()}>
+        {busy === 'pdf' ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} Download PDF
+      </Button>
+      <div ref={docRef} className="bg-white rounded-2xl border border-slate-200 p-8 relative overflow-hidden" style={{ width: '794px' }}>
+        <div className="absolute top-12 right-12 opacity-10 pointer-events-none"><ShieldCheck className="w-48 h-48" /></div>
+        <div className="flex items-center gap-6 pb-6 border-b border-slate-200">
+          <img src="/cp_logo-removebg-preview.png" alt="PT Chitra Paratama Logo" className="w-[120px] h-[60px] object-contain shrink-0" />
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">PT. CHITRA PARATAMA</h1>
+            <p className="text-blue-700 font-bold text-sm tracking-wide">SAFETY FIRST | COLLABORATE -INNOVATE - DOMINATE</p>
+            <p className="text-[10px] text-slate-600 mt-1 font-bold">OFFICIAL HSE SYSTEM</p>
+          </div>
+          <div className="ml-auto">
+            <div className="w-16 h-16 border-2 border-slate-800 rounded-full flex items-center justify-center rotate-12">
+              <div className="text-[10px] font-bold text-center leading-tight">VERIFIED<br />DOCUMENT</div>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 py-6 border-b border-slate-100">
+          <div><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1">Document ID</p><p className="font-bold text-slate-900 text-[11px]">{detail.id}</p></div>
+          <div><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1">Classification</p><p className="font-bold text-slate-900 text-[11px]">{detail.category}</p></div>
+          <div><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1">Location / Site</p><p className="font-bold text-slate-900 text-[11px]">{detail.area}</p></div>
+          <div><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1">Date / Period</p><p className="font-bold text-slate-900 text-[11px]">{formatDate(detail.expiryDate)}</p></div>
+          <div><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1">PIC / Auditor</p><p className="font-bold text-slate-900 text-[11px]">{detail.examiner}</p></div>
+          <div><p className="text-[8px] font-bold text-slate-400 uppercase tracking-wide mb-1">Status</p><span className="inline-block rounded-md border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700 uppercase">{detail.status}</span></div>
+        </div>
+        <div className="flex flex-col lg:flex-row items-start justify-between gap-6 py-8">
+          <div className="max-w-3xl">
+            <p className="text-blue-600 font-bold text-sm tracking-widest uppercase mb-2">Workshop Tire Certification Control</p>
+            <h2 className="text-3xl font-black text-slate-900 leading-tight uppercase mb-4">{detail.assetOrOperator}</h2>
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-block rounded-md bg-slate-900 text-white px-2 py-0.5 text-xs font-bold">ID: {detail.id}</span>
+              <span className="inline-block rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold uppercase text-slate-700">{detail.certificationType}</span>
+              <span className="inline-block rounded-md border border-blue-200 bg-blue-50 text-blue-700 px-2 py-0.5 text-xs font-bold">{detail.projectLocation}</span>
+            </div>
+          </div>
+          <div className="text-left lg:text-right">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Risk & Expiry</p>
+            <div className={cn("rounded-xl border-2 px-6 py-4 text-center shadow-sm", detail.risk === "Critical" ? "border-red-200 bg-red-50 text-red-700" : detail.risk === "High" ? "border-yellow-200 bg-yellow-50 text-yellow-700" : "border-green-200 bg-green-50 text-green-700")}>
+              <p className="text-2xl font-black leading-none">{detail.risk}</p>
+              <p className="mt-1 text-xs font-bold opacity-80">RISK</p>
+            </div>
+          </div>
+        </div>
+        <div className="grid lg:grid-cols-[1fr_0.42fr] gap-4">
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <h5 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 mb-4"><ShieldCheck className="size-4" /> Identitas & Validitas Sertifikasi</h5>
+            <div className="grid md:grid-cols-2 gap-4 text-xs font-bold uppercase tracking-wider text-slate-500">
+              <div>Tipe Sertifikat<br /><span className="text-slate-900 normal-case font-semibold">{detail.certificationType}</span></div>
+              <div>Kategori / Klasifikasi<br /><span className="text-slate-900 normal-case font-semibold">{detail.subcategory}</span></div>
+              <div>Nomor Seri / Izin<br /><span className="text-blue-700 normal-case font-semibold">{detail.permitNumber}</span></div>
+              <div>Proyek / Penempatan<br /><span className="text-slate-900 normal-case font-semibold">{detail.projectLocation}</span></div>
+              <div>PIC / Owner<br /><span className="text-slate-900 normal-case font-semibold">{detail.pic}</span></div>
+              <div>Standard<br /><span className="text-slate-900 normal-case font-semibold">{detail.standard}</span></div>
+            </div>
+          </div>
+          <div>
+            <div className="rounded-2xl bg-[#1a2332] p-5 text-white">
+              <h5 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 mb-4"><FileText className="size-4" /> Attachment</h5>
+              <p className="text-sm font-semibold">{detail.attachmentName}</p>
+              <p className="text-xs text-slate-400 mt-1">{detail.attachmentType}</p>
+              {detail.attachmentPreview && <p className="text-xs text-slate-400 mt-3 italic">"{detail.attachmentPreview}"</p>}
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-5 mt-4">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Reminder Schedule</h5>
+              <div className="text-xs text-slate-600"><span className="font-semibold">Pengirim:</span> {detail.reminder.recipients.join(', ')}</div>
+              <div className="text-xs text-slate-600 mt-1"><span className="font-semibold">H-</span>{detail.reminder.daysBeforeExpiry.join(', ')} hari</div>
+              <div className="text-xs text-slate-600 mt-1"><span className="font-semibold">Next:</span> {detail.reminder.nextReminder}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section> : null}
     <section className="grid gap-3">{filtered.map((row) => <article key={row.id} className="rounded-xl bg-white p-4 border border-gray-100"><div className="flex justify-between gap-3"><h2 className="text-sm font-semibold text-gray-900">{row.assetOrOperator}</h2><span className="rounded-md bg-[#f6fbff] px-2.5 py-1 text-[10px] font-semibold uppercase text-gray-500">{row.status}</span></div><p className="mt-1 text-xs font-semibold text-gray-500">{row.certificationType} • {row.assetTag}</p><p className="mt-2 text-xs font-semibold text-[#8c5818]">Expiry {formatDate(row.expiryDate)} • {daysLeft(row.expiryDate)} hari</p><div className="mt-3 grid grid-cols-3 gap-2"><Button variant="outline" className="h-10 rounded-xl" onClick={() => setDetail(row)}><Eye className="size-4" /></Button>{access.canEdit ? <Button variant="outline" className="h-10 rounded-xl" onClick={() => setDraft(row)}><Pencil className="size-4" /></Button> : null}{access.canDelete ? <Button variant="outline" className="h-10 rounded-xl text-[#8a3d00]" onClick={() => remove(row.id)}><Trash2 className="size-4" /></Button> : null}</div></article>)}</section>
   </div>
 }
