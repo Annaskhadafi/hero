@@ -459,6 +459,22 @@ export function EmailTemplateSettingsPanel({
                             <span className="sr-only">Test email</span>
                           </Button>
                         ) : null}
+                        {EMAIL_TEMPLATE_PRESET_MAP[template.templateCode] ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-xl text-primary hover:bg-surface-container-low"
+                            onClick={() => handleRestorePreset(template.templateCode)}
+                            disabled={restoringCode === template.templateCode}
+                            aria-label={`Restore default template ${template.name}`}
+                            title={`Restore default template ${template.name}`}
+                          >
+                            <RotateCcw
+                              className={restoringCode === template.templateCode ? "size-4 animate-spin" : "size-4"}
+                            />
+                            <span className="sr-only">Restore Default</span>
+                          </Button>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -512,7 +528,6 @@ export function EmailTemplateSettingsPanel({
                         Reset ke Default
                       </Button>
                     ) : null}
-
                   <div className="grid gap-2 md:grid-cols-2">
                     {EMAIL_TEMPLATE_PRESETS.map((preset) => (
                       <Button

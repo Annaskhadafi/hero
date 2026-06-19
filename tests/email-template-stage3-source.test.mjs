@@ -23,20 +23,22 @@ test("email template preset registry covers stage 3 workflow templates", () => {
   assert.match(source, /EMAIL_TEMPLATE_PRESET_MAP/);
 });
 
-test("email template settings panel exposes workflow registry and live preview", () => {
+test("email template settings panel exposes template table, feature column, test action and live preview", () => {
   const source = read("components/email-template-settings-panel.tsx");
 
-  assert.match(source, /Workflow Template Registry/);
-  assert.match(source, /EMAIL_TEMPLATE_PRESETS\.map/);
-  assert.match(source, /handleOpenFromRegistry/);
+  assert.match(source, /Email Template/);
+  assert.match(source, /Fitur/);
+  assert.match(source, /getTemplateFeature/);
+  assert.match(source, /handleSendTest/);
+  assert.match(source, /sendTemplateTestAction/);
   assert.match(source, /handleRestorePreset/);
-  assert.match(source, /handleSyncAllPresets/);
   assert.match(source, /Reset ke Default/);
   assert.match(source, /Restore Default/);
-  assert.match(source, /Sync Semua Preset/);
+  assert.match(source, /Sync Preset/);
   assert.match(source, /Live Preview/);
   assert.match(source, /renderTemplatePreview/);
   assert.match(source, /data-filter-origin/);
+  assert.match(source, /data-filter-feature/);
   assert.match(source, /TableMultiFilter/);
 });
 
