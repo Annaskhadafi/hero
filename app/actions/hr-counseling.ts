@@ -171,7 +171,7 @@ export async function createSession(hrId: number, category: string) {
       fallbackSubject: `Sesi Konsultasi Baru: ${category}`,
       fallbackHtml: `<p>Halo ${hrEmployee.name},</p><p>Karyawan <strong>${employee.name}</strong> telah memulai sesi konsultasi curhat baru dengan Anda tentang <strong>${category}</strong>.</p><p>Silakan masuk ke dashboard untuk membalas.</p>`,
       fallbackText: `Halo ${hrEmployee.name},\nKaryawan ${employee.name} telah memulai sesi konsultasi curhat baru dengan Anda tentang ${category}.`,
-      to: [hrEmployee.email],
+      recipients: [hrEmployee.email],
       variables: {
         hrName: hrEmployee.name,
         employeeName: employee.name,
