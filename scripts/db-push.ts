@@ -14,14 +14,29 @@ p.stdout.on("data", (data: Buffer) => {
   process.stdout.write(data);
   const output = data.toString();
 
-  const handledSafePrompt =
-    output.includes("Yes, truncate the table") ||
+  const createColumnPrompt = output.includes("create column") && output.includes("rename column");
+
+  if (createColumnPrompt) {
+    // Default already "create column", just press Enter
+    p.stdin.write("\r");
+    return;
+  }
+
+  const safePromptWithDefaultNo =
     output.includes("No, add the constraint without truncating the table") ||
     output.includes("You are about to add a not-null constraint");
 
-  if (handledSafePrompt) {
-    // Kirim Arrow Down (\x1B[B) lalu Enter (\r)
-    p.stdin.write("\x1B[B\r");
+  if (safePromptWithDefaultNo) {
+    // "No" is already selected by default, just Enter to confirm
+    p.stdin.write("\r");
+    return;
+  }
+
+  const abortPrompt = output.includes("No, abort");
+
+  if (abortPrompt) {
+    // "No, abort" is default — just press Enter to abort
+    p.stdin.write("\r");
     return;
   }
 

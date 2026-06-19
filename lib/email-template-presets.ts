@@ -336,7 +336,7 @@ export const EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   },
   {
     name: 'HC Onboarding Link',
-    templateCode: 'onboarding_link',
+    templateCode: 'hc_onboarding_link',
     templateType: 'Notification',
     deliveryChannel: 'email',
     recipientScope: 'candidate,hc',

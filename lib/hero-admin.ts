@@ -1743,7 +1743,7 @@ const EMAIL_TEMPLATE_SEEDS = [
   },
   {
     name: 'HC Onboarding Link',
-    templateCode: 'onboarding_link',
+    templateCode: 'hc_onboarding_link',
     templateType: 'Notification',
     deliveryChannel: 'email',
     recipientScope: 'candidate,hc',
