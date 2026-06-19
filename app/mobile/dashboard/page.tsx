@@ -290,6 +290,25 @@ export default async function MobileDashboardPage() {
         </Link>
       </section>
 
+      {(data.employee.section === "HRGA") && (
+        <section>
+          <Link
+            prefetch={false}
+            href="/mobile/hr-counseling"
+            className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-gradient-to-r from-[#003461] to-[#005193] px-4 py-4 text-white shadow-[0_14px_30px_rgba(8,32,51,0.2)] active:scale-[0.98]"
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#93c5fd]">Human Capital Panel</p>
+              <p className="mt-1 text-base font-black">Inbox HR Counseling</p>
+              <p className="mt-1 text-xs font-semibold text-[#bfdbfe]">Kelola sesi curhat karyawan</p>
+            </div>
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#eff6ff] text-[#003f78]">
+              <MessageSquare className="size-4" />
+            </span>
+          </Link>
+        </section>
+      )}
+
       <MobilePortalChitraSlider apps={portalApps} />
 
       <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)]">

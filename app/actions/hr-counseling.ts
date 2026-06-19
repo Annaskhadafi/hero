@@ -205,6 +205,10 @@ export async function closeSession(sessionId: number) {
   revalidatePath("/dashboard/hr-counseling");
   revalidatePath(`/dashboard/curhat/${sessionId}`);
   revalidatePath(`/dashboard/hr-counseling/${sessionId}`);
+  revalidatePath("/mobile/curhat");
+  revalidatePath("/mobile/hr-counseling");
+  revalidatePath(`/mobile/curhat/${sessionId}`);
+  revalidatePath(`/mobile/hr-counseling/${sessionId}`);
 }
 
 export async function getMessages(sessionId: number) {
@@ -274,6 +278,8 @@ export async function sendMessage(sessionId: number, message: string, attachment
 
   revalidatePath(`/dashboard/curhat/${sessionId}`);
   revalidatePath(`/dashboard/hr-counseling/${sessionId}`);
+  revalidatePath(`/mobile/curhat/${sessionId}`);
+  revalidatePath(`/mobile/hr-counseling/${sessionId}`);
   
   return newMessage;
 }
