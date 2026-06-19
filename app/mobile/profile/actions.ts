@@ -40,6 +40,7 @@ export async function updateMobileProfileAction(
   }
 
   const name = formValue(formData, "name");
+  const email = formValue(formData, "email");
   const phoneNumber = formValue(formData, "phoneNumber");
   const domicile = formValue(formData, "domicile");
   const birthPlaceDate = formValue(formData, "birthPlaceDate");
@@ -59,24 +60,27 @@ export async function updateMobileProfileAction(
     employeeFilters.push(eq(employees.authUserId, session.user.id));
   }
 
+  const userUpdate: { name: string; image: string | null; updatedAt: Date; email?: string; emailVerified?: boolean } = {
+    name,
+    image: profileImage || null,
+    updatedAt: new Date(),
+  }
+  const empUpdate: { name: string; phoneNumber: string; domicile: string; birthPlaceDate: string; email?: string } = {
+    name,
+    phoneNumber,
+    domicile: domicile || "Belum diisi",
+    birthPlaceDate,
+  }
+
+  if (email && email !== normalizedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    userUpdate.email = email.toLowerCase()
+    userUpdate.emailVerified = false
+    empUpdate.email = email.toLowerCase()
+  }
+
   await Promise.all([
-    db
-      .update(user)
-      .set({
-        name,
-        image: profileImage || null,
-        updatedAt: new Date(),
-      })
-      .where(eq(user.id, session.user.id)),
-    db
-      .update(employees)
-      .set({
-        name,
-        phoneNumber,
-        domicile: domicile || "Belum diisi",
-        birthPlaceDate,
-      })
-      .where(or(...employeeFilters)),
+    db.update(user).set(userUpdate).where(eq(user.id, session.user.id)),
+    db.update(employees).set(empUpdate).where(or(...employeeFilters)),
   ]);
 
   revalidatePath("/mobile/profile");
@@ -85,5 +89,45 @@ export async function updateMobileProfileAction(
   return {
     ok: true,
     message: "Profile tersimpan.",
+  };
+}
+
+export async function updateMobileEmailAction(
+  _previousState: MobileProfileActionState = emptyState,
+  formData: FormData,
+): Promise<MobileProfileActionState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session?.user?.email) {
+    return { ok: false, message: "Session tidak valid." };
+  }
+
+  const newEmail = formValue(formData, "email");
+
+  if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    return { ok: false, message: "Format email tidak valid." };
+  }
+
+  const normalizedEmail = newEmail.toLowerCase();
+
+  await Promise.all([
+    db
+      .update(user)
+      .set({ email: normalizedEmail, emailVerified: false, updatedAt: new Date() })
+      .where(eq(user.id, session.user.id)),
+    db
+      .update(employees)
+      .set({ email: normalizedEmail })
+      .where(eq(employees.authUserId, session.user.id)),
+  ]);
+
+  revalidatePath("/mobile/profile");
+  revalidatePath("/mobile/dashboard");
+
+  return {
+    ok: true,
+    message: "Email berhasil diperbarui.",
   };
 }

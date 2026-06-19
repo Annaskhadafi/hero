@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState, type FormEvent } from "react";
-import { KeyRound, PencilLine } from "lucide-react";
+import { useActionState, useEffect, useState, type FormEvent } from "react";
+import { KeyRound, Mail, PencilLine, X } from "lucide-react";
 
 import {
   updateMobileProfileAction,
+  updateMobileEmailAction,
   type MobileProfileActionState,
 } from "@/app/mobile/profile/actions";
 import { ProfilePhotoField } from "@/components/profile-photo-field";
@@ -37,7 +38,7 @@ const initialState: MobileProfileActionState = {
   message: "",
 };
 
-export function MobileProfileSettings({ profile }: MobileProfileSettingsProps) {
+export function MobileProfileSettings({ profile, showEmailPrompt }: MobileProfileSettingsProps & { showEmailPrompt?: boolean }) {
   const [profileState, profileAction, isProfilePending] = useActionState(
     updateMobileProfileAction,
     initialState,
@@ -45,6 +46,31 @@ export function MobileProfileSettings({ profile }: MobileProfileSettingsProps) {
   const [passwordError, setPasswordError] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [isPasswordPending, setIsPasswordPending] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailDismissed, setEmailDismissed] = useState(false);
+  const [emailValue, setEmailValue] = useState('');
+  const [emailState, setEmailState] = useState<MobileProfileActionState>({ ok: false, message: '' });
+  const [emailPending, setEmailPending] = useState(false);
+
+  useEffect(() => {
+    if (showEmailPrompt && !emailDismissed) setEmailOpen(true)
+  }, [showEmailPrompt, emailDismissed])
+
+  async function handleEmailSave() {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) {
+      setEmailState({ ok: false, message: 'Format email tidak valid.' })
+      return
+    }
+    setEmailPending(true)
+    const fd = new FormData()
+    fd.set('email', emailValue)
+    const res = await updateMobileEmailAction({ ok: false, message: '' }, fd)
+    setEmailState(res)
+    setEmailPending(false)
+    if (res.ok) {
+      setTimeout(() => { setEmailOpen(false); setEmailDismissed(true) }, 1500)
+    }
+  }
 
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -129,9 +155,10 @@ export function MobileProfileSettings({ profile }: MobileProfileSettingsProps) {
               <Label htmlFor="mobile-profile-email">Email</Label>
               <Input
                 id="mobile-profile-email"
-                value={profile.email}
-                disabled
-                className="min-h-12 bg-[#e6f6ff]"
+                name="email"
+                defaultValue={profile.email}
+                placeholder="nama@email.com"
+                className="min-h-12 bg-white border border-gray-200"
               />
             </div>
 
@@ -256,6 +283,71 @@ export function MobileProfileSettings({ profile }: MobileProfileSettingsProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {emailOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/30" onClick={() => { setEmailOpen(false); setEmailDismissed(true) }}>
+          <div className="w-full max-w-[430px] mx-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-white px-5 pb-8 pt-5">
+              <div className="mb-5 flex items-center justify-between">
+                <h2 className="text-base font-semibold text-gray-900">Update Email</h2>
+                <button onClick={() => { setEmailOpen(false); setEmailDismissed(true) }} className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white">
+                  <X className="size-4 text-gray-400" />
+                </button>
+              </div>
+
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <Mail className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">Email Default Terdeteksi</p>
+                    <p className="text-xs text-amber-800 mt-1">
+                      Email Anda saat ini (<strong>{profile.email}</strong>) masih menggunakan format default.
+                      Segera ganti dengan email pribadi Anda agar notifikasi dan informasi penting dapat diterima.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-500">Email Baru</label>
+                  <input
+                    type="email"
+                    value={emailValue}
+                    onChange={(e) => setEmailValue(e.target.value)}
+                    placeholder="nama@email.com"
+                    className="mt-1 h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {emailState.message ? (
+                  <p className={emailState.ok ? 'text-xs font-medium text-emerald-600' : 'text-xs font-medium text-orange-600'}>
+                    {emailState.message}
+                  </p>
+                ) : null}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEmailOpen(false); setEmailDismissed(true) }}
+                    className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700"
+                  >
+                    Nanti
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleEmailSave()}
+                    disabled={emailPending || !emailValue.trim()}
+                    className="flex-1 h-11 rounded-xl bg-blue-600 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {emailPending ? 'Menyimpan...' : 'Simpan'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

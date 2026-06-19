@@ -147,6 +147,7 @@ export function MobileHseChecklistClient({
   const [activeView, setActiveView] = React.useState<'templates' | 'history' | 'logs'>('templates')
   const [query, setQuery] = React.useState('')
   const [area, setArea] = React.useState('')
+  const [areaError, setAreaError] = React.useState('')
   const [activeTemplate, setActiveTemplate] = React.useState<TemplateRow | null>(null)
   const [checklist, setChecklist] = React.useState<ActiveChecklist | null>(null)
   const [templateDraft, setTemplateDraft] = React.useState<TemplateDraft | null>(null)
@@ -257,7 +258,7 @@ export function MobileHseChecklistClient({
       return
     }
     if (!area.trim()) {
-      toast.error('Isi lokasi/area dulu.')
+      setAreaError('Wajib isi lokasi/area sebelum menggunakan template.')
       return
     }
 
@@ -880,13 +881,14 @@ export function MobileHseChecklistClient({
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Lokasi / Area</span>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Lokasi / Area <span className="text-orange-500">*</span></span>
             <Input
               value={area}
-              onChange={(event) => setArea(event.target.value)}
+              onChange={(event) => { setArea(event.target.value); setAreaError('') }}
               placeholder="Contoh: Workshop tire bay"
-              className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900"
+              className={cn('h-11 rounded-xl border bg-white px-3 text-sm text-gray-900', areaError ? 'border-orange-400' : 'border-gray-200')}
             />
+            {areaError ? <p className="text-xs text-orange-600 mt-1">{areaError}</p> : null}
           </Label>
 
           <div className="relative">
