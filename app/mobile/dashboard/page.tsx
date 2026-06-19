@@ -290,7 +290,7 @@ export default async function MobileDashboardPage() {
         </Link>
       </section>
 
-      {(data.employee.section === "HRGA") && (
+      {(data.employee.section === "HRGA" || data.employee.section === "HR-GA") && (
         <section>
           <Link
             prefetch={false}
