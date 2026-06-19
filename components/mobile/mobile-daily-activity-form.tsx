@@ -690,7 +690,7 @@ export function MobileDailyActivityForm({
     checklistContext?.groups.flatMap((group) =>
       group.items.map((item) => {
         const stateForItem = routeItemState[item.id];
-        const fallbackPoints = item.pointOverride ?? item.libraryPoints ?? 0;
+        const basePoints = item.pointOverride ?? item.libraryPoints ?? 0;
 
         return {
           routeItemId: item.routeItemId,
@@ -721,7 +721,7 @@ export function MobileDailyActivityForm({
           isChecked: stateForItem?.isChecked ?? false,
           actualPoints:
             stateForItem?.isChecked
-              ? Number(stateForItem.actualPoints || fallbackPoints || 0)
+              ? Number(stateForItem.actualPoints || basePoints || 0)
               : 0,
           sortOrder: item.sortOrder,
         };
@@ -778,7 +778,7 @@ export function MobileDailyActivityForm({
 
   function validatePayload() {
     if (!geo.latitude && !manualLocation.trim()) {
-      return "Aktifkan GPS atau isi lokasi manual sebagai fallback.";
+      return "Aktifkan GPS atau isi lokasi manual.";
     }
 
     if (
@@ -1608,7 +1608,7 @@ export function MobileDailyActivityForm({
           </div>
 
           <Label className="block space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Fallback manual location</span>
+            <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Lokasi Manual</span>
             <Input
               value={manualLocation}
               onChange={(event) => setManualLocation(event.target.value)}

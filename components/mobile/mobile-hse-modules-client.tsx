@@ -357,6 +357,7 @@ export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
     {selected ? <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">Detail HIRADC</p><h2 className="mt-1 text-base font-semibold text-gray-900">{selected.activityName}</h2></div><button type="button" className="text-xs text-gray-500" onClick={() => setSelected(null)}>Tutup</button></div>
       <Button variant="outline" className="w-full h-11 rounded-xl" disabled={Boolean(busy)} onClick={() => void downloadPdf()}>{busy === 'pdf' ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}Download PDF</Button>
+      <div className="overflow-x-auto -mx-4 px-4">
       <div ref={documentRef} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative overflow-hidden" style={{ width: '794px' }}>
         <div className="absolute top-12 right-12 opacity-10 pointer-events-none">
           <ShieldCheck className="w-48 h-48" />
@@ -460,6 +461,7 @@ export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </section> : null}
 
