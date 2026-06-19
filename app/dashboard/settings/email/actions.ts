@@ -103,6 +103,10 @@ const emailTemplatePresetSchema = z.object({
     .regex(/^[a-z0-9_]+$/, "Kode template preset tidak valid."),
 });
 
+const emailTemplateTestSchema = z.object({
+  templateId: z.coerce.number().int().positive(),
+});
+
 const hseSafetyNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
@@ -657,6 +661,94 @@ export async function syncEmailTemplatePresetsAction(
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Gagal sync preset template email.",
+    };
+  }
+}
+
+export async function sendTemplateTestAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  const parsed = emailTemplateTestSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "ID template tidak valid.",
+    };
+  }
+
+  try {
+    const session = await getServerSession();
+    const recipient = session?.user?.email?.trim();
+
+    if (!recipient) {
+      return {
+        status: "error",
+        message: "Login dengan akun yang memiliki alamat email untuk test template.",
+      };
+    }
+
+    const smtpConfig = await getExistingSmtpSettings();
+    const fallbackSmtp = await getEmailSmtpSettingsData();
+
+    const transportSettings: EmailTransportSettings = {
+      host: smtpConfig.host || fallbackSmtp.host,
+      port: smtpConfig.port || fallbackSmtp.port,
+      encryption: smtpConfig.encryption || fallbackSmtp.encryption,
+      username: smtpConfig.username || fallbackSmtp.username,
+      passwordSecret: smtpConfig.passwordSecret || fallbackSmtp.passwordSecret,
+      fromEmail: smtpConfig.fromEmail || fallbackSmtp.fromEmail,
+      fromName: smtpConfig.fromName || fallbackSmtp.fromName,
+      replyToEmail: smtpConfig.replyToEmail || fallbackSmtp.replyToEmail,
+      timeoutSeconds: smtpConfig.timeoutSeconds || fallbackSmtp.timeoutSeconds,
+    };
+
+    const [template] = await db
+      .select()
+      .from(emailTemplates)
+      .where(eq(emailTemplates.id, parsed.data.templateId))
+      .limit(1);
+
+    if (!template) {
+      return {
+        status: "error",
+        message: "Template tidak ditemukan.",
+      };
+    }
+
+    const subject = `[TEST] ${template.subject}`;
+    const htmlNotice = `<div style="padding:8px 12px;margin-bottom:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:13px;color:#92400e;"><strong>EMAIL TEST — Template: ${template.name}</strong><br>Email ini dikirim untuk tujuan pengujian template. Placeholder <code>{{variable}}</code> tidak akan dirender.</div>`;
+    const textNotice = `[EMAIL TEST — Template: ${template.name}]\nEmail ini dikirim untuk tujuan pengujian template.\n\n`;
+
+    const html = template.htmlContent
+      ? `${htmlNotice}${template.htmlContent}`
+      : `${htmlNotice}<p>Template tidak memiliki HTML content.</p>`;
+    const text = template.textContent
+      ? `${textNotice}${template.textContent}`
+      : `${textNotice}Template tidak memiliki text content.`;
+
+    await sendEmailViaSmtp(transportSettings, {
+      to: recipient,
+      subject,
+      html,
+      text,
+      templateName: template.name,
+      templateCode: template.templateCode,
+      actorEmail: session?.user?.email ?? null,
+    });
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: `Test template "${template.name}" berhasil dikirim ke ${recipient}.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gagal mengirim test template.";
+    return {
+      status: "error",
+      message: `Test template gagal: ${message}`,
     };
   }
 }

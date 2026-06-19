@@ -2279,3 +2279,36 @@ Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract 
 export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
   EMAIL_TEMPLATE_PRESETS.map((preset) => [preset.templateCode, preset])
 ) satisfies Record<string, EmailTemplatePreset>
+
+const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
+  ["approval_", "Approval"],
+  ["attendance_permission_", "Attendance / Permission"],
+  ["daily_report_", "Daily Report"],
+  ["leave_request_", "Leave"],
+  ["overtime_", "Overtime"],
+  ["daily_activity_", "Daily Activity"],
+  ["offboarding_", "Offboarding"],
+  ["hse_", "HSE Safety"],
+  ["hc_employee_", "HC Management"],
+  ["hc_disciplinary_", "HC Management"],
+  ["hc_performance_review_", "HC Management"],
+  ["contract_review_", "Contract Review"],
+  ["user_invitation", "User Management"],
+  ["onboarding_link", "Onboarding"],
+  ["hc_onboarding_", "HC Recruitment"],
+  ["application_received", "HC Recruitment"],
+  ["interview_invitation", "HC Recruitment"],
+  ["test_assigned", "HC Recruitment"],
+  ["offering_letter", "HC Recruitment"],
+  ["hired_email", "HC Recruitment"],
+  ["start_date_email", "HC Recruitment"],
+  ["custom_bulk", "HC Recruitment"],
+  ["mcu_", "HC Recruitment"],
+];
+
+export function getTemplateFeature(templateCode: string): string {
+  for (const [prefix, feature] of TEMPLATE_FEATURE_PREFIXES) {
+    if (templateCode.startsWith(prefix)) return feature;
+  }
+  return "Custom";
+}

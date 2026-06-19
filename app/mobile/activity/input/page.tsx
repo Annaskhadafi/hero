@@ -73,10 +73,7 @@ export default async function MobileActivityInputPage() {
             </span>
           </div>
         </div>
-        <div className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
-          Save bisa gagal kalau: pilih activity library belum diisi, assignment belum dipilih saat mode `Assigned`,
-          waktu selesai lebih kecil dari waktu mulai, atau waktu bentrok dengan activity lain.
-        </div>
+
       </section>
 
       {/* Daily Route */}

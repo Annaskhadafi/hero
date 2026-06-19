@@ -999,7 +999,7 @@ export function MobileDailyActivityForm({
           <DialogHeader className="bg-[linear-gradient(135deg,rgba(0,52,97,0.96),rgba(0,75,135,0.92))] px-5 py-5 text-left text-white">
             <DialogTitle className="text-xl font-black">Pilih Kamus Aktivitas</DialogTitle>
             <DialogDescription className="text-white/80">
-              Search, scroll, lalu centang banyak item sesuai section. Item terpilih muncul sebagai checklist di bawah form.
+              
             </DialogDescription>
           </DialogHeader>
 
@@ -1154,7 +1154,7 @@ export function MobileDailyActivityForm({
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Library activity</span>
                   <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">
-                    Searchable, scrollable, multi checklist.
+                    
                   </p>
                 </div>
                 <Badge className="border-0 bg-[#eaf4fb] text-[10px] font-black uppercase tracking-[0.12em] text-[#003f78]">
@@ -1356,7 +1356,7 @@ export function MobileDailyActivityForm({
               </div>
             ) : (
               <div className="rounded-[1rem] bg-[#f6fbff] px-4 py-8 text-center text-sm font-semibold text-[#486275]">
-                Open picker di atas, search activity, lalu pilih beberapa library.
+                
               </div>
             )}
           </section>

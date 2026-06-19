@@ -9,12 +9,14 @@ import {
   Plus,
   RefreshCcw,
   RotateCcw,
+  Send,
   WandSparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   restoreEmailTemplatePresetAction,
   saveEmailTemplateAction,
+  sendTemplateTestAction,
   syncEmailTemplatePresetsAction,
   toggleEmailTemplateActiveAction,
   type EmailSettingsActionState,
@@ -22,6 +24,7 @@ import {
 import {
   EMAIL_TEMPLATE_PRESETS,
   EMAIL_TEMPLATE_PRESET_MAP,
+  getTemplateFeature,
   type EmailTemplatePreset,
 } from "@/lib/email-template-presets";
 import { Badge } from "@/components/ui/badge";
