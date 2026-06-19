@@ -1535,8 +1535,30 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: 'all',
     ccEmail: '',
     subject: 'Magic link masuk untuk {{userName}}',
-    htmlContent: '<p>Gunakan link berikut untuk masuk ke HERO: {{magicLink}}</p>',
-    textContent: 'Gunakan link berikut untuk masuk ke HERO: {{magicLink}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HERO System</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{userName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Gunakan tautan berikut untuk masuk ke akun HERO Anda. Tautan ini bersifat rahasia dan hanya dapat digunakan sekali.</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{magicLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Masuk ke HERO</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Jika Anda tidak merasa meminta tautan ini, abaikan email ini.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Yth. {{userName}},
+
+Gunakan tautan berikut untuk masuk ke akun HERO Anda. Tautan ini bersifat rahasia dan hanya dapat digunakan sekali.
+
+{{magicLink}}
+
+Jika Anda tidak merasa meminta tautan ini, abaikan email ini.`,
     isActive: true,
   },
   {
@@ -1547,8 +1569,28 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: 'approver',
     ccEmail: '',
     subject: 'Tugas approval baru #{{requestId}}',
-    htmlContent: '<p>Request #{{requestId}} menunggu approval Anda.</p>',
-    textContent: 'Request #{{requestId}} menunggu approval Anda.',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah permohonan baru memerlukan persetujuan Anda.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Permohonan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor Request</td><td style="padding:4px 0;color:#1f2937;font-size:13px">#{{requestId}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan masuk ke dashboard approval untuk meninjau dan mengambil tindakan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Sebuah permohonan baru memerlukan persetujuan Anda.
+
+Nomor Request: #{{requestId}}
+
+Silakan masuk ke dashboard approval untuk meninjau dan mengambil tindakan.`,
     isActive: true,
   },
   {
@@ -1559,8 +1601,28 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: 'approver',
     ccEmail: '',
     subject: 'Reminder SLA untuk request #{{requestId}}',
-    htmlContent: '<p>SLA request #{{requestId}} hampir jatuh tempo.</p>',
-    textContent: 'SLA request #{{requestId}} hampir jatuh tempo.',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Permohonan berikut mendekati batas waktu SLA dan memerlukan tindakan segera.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Permohonan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor Request</td><td style="padding:4px 0;color:#1f2937;font-size:13px">#{{requestId}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap segera melakukan review sebelum batas waktu berakhir.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Permohonan berikut mendekati batas waktu SLA dan memerlukan tindakan segera.
+
+Nomor Request: #{{requestId}}
+
+Harap segera melakukan review sebelum batas waktu berakhir.`,
     isActive: true,
   },
   {
@@ -1571,8 +1633,31 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: 'hc,approver',
     ccEmail: '',
     subject: 'Reminder approval izin {{employeeName}}',
-    htmlContent: '<p>Izin {{permissionType}} atas nama {{employeeName}} tanggal {{requestDate}} menunggu approval HR.</p>',
-    textContent: 'Izin {{permissionType}} atas nama {{employeeName}} tanggal {{requestDate}} menunggu approval HR.',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Terdapat pengajuan izin yang menunggu persetujuan HR.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Izin</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permissionType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{requestDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard untuk menyetujui atau menolak pengajuan ini.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Terdapat pengajuan izin yang menunggu persetujuan HR.
+
+Detail Pengajuan:
+Nama Karyawan: {{employeeName}}
+Jenis Izin: {{permissionType}}
+Tanggal: {{requestDate}}
+
+Silakan login ke dashboard untuk menyetujui atau menolak pengajuan ini.`,
     isActive: true,
   },
   {
@@ -1583,8 +1668,30 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: 'admin,pjo',
     ccEmail: '',
     subject: 'Daily Report {{siteName}} - {{reportDate}}',
-    htmlContent: '<p>Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.</p>',
-    textContent: 'Daily report {{siteName}} tanggal {{reportDate}} siap dikirim.',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Laporan harian berikut telah siap untuk dikirim.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Laporan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{siteName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reportDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan review laporan sebelum didistribusikan ke pihak terkait.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Laporan harian berikut telah siap untuk dikirim.
+
+Informasi Laporan:
+Site: {{siteName}}
+Tanggal: {{reportDate}}
+
+Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
     isActive: true,
   },
   {
@@ -1596,9 +1703,36 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Undangan akun HERO untuk {{userName}}',
     htmlContent:
-      '<p>Halo {{userName}},</p><p>Akun HERO Anda sudah dibuat.</p><p>Terima undangan: <a href="{{invitationLink}}">{{invitationLink}}</a></p><p>Verifikasi email: <a href="{{verificationLink}}">{{verificationLink}}</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{userName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Akun HERO Anda telah berhasil dibuat. Silakan selesaikan proses aktivasi melalui tautan di bawah ini.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Aktivasi Akun</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{invitationLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Terima Undangan</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Setelah menerima undangan, verifikasi alamat email Anda melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{verificationLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Verifikasi Email</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Tautan undangan ini bersifat sementara. Segera selesaikan proses aktivasi Anda.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{userName}}, akun HERO Anda sudah dibuat. Terima undangan: {{invitationLink}}. Verifikasi email: {{verificationLink}}',
+      `Halo {{userName}},
+
+Akun HERO Anda telah berhasil dibuat. Silakan selesaikan proses aktivasi melalui tautan di bawah ini.
+
+Aktivasi Akun:
+Terima undangan: {{invitationLink}}
+Verifikasi email: {{verificationLink}}
+
+Tautan undangan ini bersifat sementara. Segera selesaikan proses aktivasi Anda.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1610,9 +1744,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Link onboarding HERO untuk {{candidateName}}',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Silakan lengkapi onboarding Anda melalui link berikut:</p><p><a href="{{onboardingLink}}">{{onboardingLink}}</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Selamat! Data Anda telah terdaftar di sistem HERO. Silakan lengkapi proses onboarding melalui tautan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Onboarding Karyawan</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Form Onboarding</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pastikan dokumen identitas dan data rekening sudah siap sebelum mengisi formulir.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, silakan lengkapi onboarding Anda melalui link berikut: {{onboardingLink}}',
+      `Halo {{candidateName}},
+
+Selamat! Data Anda telah terdaftar di sistem HERO. Silakan lengkapi proses onboarding melalui tautan berikut:
+
+{{onboardingLink}}
+
+Pastikan dokumen identitas dan data rekening sudah siap sebelum mengisi formulir.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1624,9 +1783,37 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Pengajuan cuti {{leaveTypeName}} dari {{employeeName}}',
     htmlContent:
-      '<p>{{employeeName}} mengirim pengajuan cuti {{leaveTypeName}} untuk {{startDate}} sampai {{endDate}} ({{totalDays}} hari).</p><p>{{reason}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Seorang karyawan telah mengirimkan pengajuan cuti baru.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan Cuti</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Cuti</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaveTypeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Selesai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{endDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Total Hari</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{totalDays}} hari</td></tr></table><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Alasan</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">{{reason}}</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard untuk memproses pengajuan ini.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      '{{employeeName}} mengirim pengajuan cuti {{leaveTypeName}} untuk {{startDate}} sampai {{endDate}} ({{totalDays}} hari). {{reason}}',
+      `Seorang karyawan telah mengirimkan pengajuan cuti baru.
+
+Detail Pengajuan Cuti:
+Nama Karyawan: {{employeeName}}
+Jenis Cuti: {{leaveTypeName}}
+Tanggal Mulai: {{startDate}}
+Tanggal Selesai: {{endDate}}
+Total Hari: {{totalDays}} hari
+
+Alasan:
+{{reason}}
+
+Silakan login ke dashboard untuk memproses pengajuan ini.`,
     isActive: true,
   },
   {
@@ -1638,9 +1825,36 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Pengajuan cuti Anda {{decisionLabel}}',
     htmlContent:
-      '<p>Halo {{employeeName}},</p><p>Pengajuan cuti {{leaveTypeName}} Anda telah {{decisionLabel}}.</p><p>{{startDate}} sampai {{endDate}}</p><p>{{approverName}}</p><p>{{rejectionReason}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pengajuan cuti {{leaveTypeName}} Anda telah <strong>{{decisionLabel}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan Cuti</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Cuti</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaveTypeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Selesai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{endDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Diproses Oleh</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approverName}}</td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{employeeName}}, pengajuan cuti {{leaveTypeName}} Anda telah {{decisionLabel}}. {{startDate}} sampai {{endDate}}. {{approverName}} {{rejectionReason}}',
+      `Halo {{employeeName}},
+
+Pengajuan cuti {{leaveTypeName}} Anda telah {{decisionLabel}}.
+
+Detail Pengajuan Cuti:
+Jenis Cuti: {{leaveTypeName}}
+Tanggal Mulai: {{startDate}}
+Tanggal Selesai: {{endDate}}
+Diproses Oleh: {{approverName}}
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1652,9 +1866,35 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Pengajuan {{permissionType}} Anda {{decisionLabel}}',
     htmlContent:
-      '<p>Halo {{employeeName}},</p><p>Pengajuan {{permissionType}} Anda telah {{decisionLabel}}.</p><p>Tanggal: {{requestDate}}</p><p>{{approverNote}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pengajuan {{permissionType}} Anda telah <strong>{{decisionLabel}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Izin</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permissionType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{requestDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Catatan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approverNote}}</td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{employeeName}}, pengajuan {{permissionType}} Anda telah {{decisionLabel}}. Tanggal: {{requestDate}}. {{approverNote}}',
+      `Halo {{employeeName}},
+
+Pengajuan {{permissionType}} Anda telah {{decisionLabel}}.
+
+Detail Pengajuan:
+Jenis Izin: {{permissionType}}
+Tanggal: {{requestDate}}
+Catatan: {{approverNote}}
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1666,9 +1906,36 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '{{splNumber}} siap dikerjakan',
     htmlContent:
-      '<p>{{title}} dijadwalkan untuk {{workDate}}.</p><p>Nomor SPL: {{splNumber}}</p><p>Jam mulai: {{plannedStart}}</p><p>Jam selesai: {{plannedEnd}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Anda mendapatkan penugasan lembur (overtime) sebagai berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Penugasan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor SPL</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{splNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{workDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jam Mulai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{plannedStart}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jam Selesai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{plannedEnd}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      '{{title}} dijadwalkan untuk {{workDate}}. Nomor SPL: {{splNumber}}. Jam mulai: {{plannedStart}}. Jam selesai: {{plannedEnd}}.',
+      `Halo {{employeeName}},
+
+Anda mendapatkan penugasan lembur (overtime) sebagai berikut.
+
+Detail Penugasan:
+Judul: {{title}}
+Nomor SPL: {{splNumber}}
+Tanggal: {{workDate}}
+Jam Mulai: {{plannedStart}}
+Jam Selesai: {{plannedEnd}}
+
+Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.`,
     isActive: true,
   },
   {
@@ -1680,9 +1947,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Daily Activity menunggu approval',
     htmlContent:
-      '<p>{{employeeName}} mengirim daily activity baru.</p><p>Aktivitas: {{activityTitle}}</p><p>Kategori: {{activityType}}</p><p>Waktu: {{submissionTime}}</p><p>{{notes}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Seorang anggota tim telah mengirimkan laporan aktivitas harian yang menunggu review Anda.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Aktivitas</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Aktivitas</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{activityTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{activityType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Waktu Submit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{submissionTime}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard untuk mereview dan menyetujui aktivitas ini.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      '{{employeeName}} mengirim daily activity baru. Aktivitas: {{activityTitle}}. Kategori: {{activityType}}. Waktu: {{submissionTime}}. {{notes}}',
+      `Seorang anggota tim telah mengirimkan laporan aktivitas harian yang menunggu review Anda.
+
+Detail Aktivitas:
+Karyawan: {{employeeName}}
+Aktivitas: {{activityTitle}}
+Kategori: {{activityType}}
+Waktu Submit: {{submissionTime}}
+
+Silakan login ke dashboard untuk mereview dan menyetujui aktivitas ini.`,
     isActive: true,
   },
   {
@@ -1694,9 +1985,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '{{title}}',
     htmlContent:
-      '<p>Halo {{employeeName}},</p><p>{{intro}}</p><p>Status: {{status}}</p><p>{{detailsSummary}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">{{intro}}</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Status Offboarding</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Ringkasan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{detailsSummary}}</td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{employeeName}}, {{intro}} Status: {{status}}. {{detailsSummary}}',
+      `Halo {{employeeName}},
+
+{{intro}}
+
+Status Offboarding:
+Status: {{status}}
+Ringkasan: {{detailsSummary}}
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1708,9 +2024,37 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Lamaran diterima untuk {{jobTitle}}',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Terima kasih. Lamaran Anda untuk posisi <strong>{{jobTitle}}</strong> sudah kami terima.</p><p>Sumber: {{source}}</p><p>Waktu submit: {{submittedAt}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Terima kasih atas ketertarikan Anda untuk bergabung dengan PT Chitra Paratama. Lamaran Anda untuk posisi <strong>{{jobTitle}}</strong> telah kami terima dengan baik.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Lamaran</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Sumber</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{source}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Waktu Submit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{submittedAt}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Tim Human Capital akan meninjau lamaran Anda dan akan menghubungi Anda jika memenuhi kualifikasi yang dibutuhkan.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, terima kasih. Lamaran Anda untuk posisi {{jobTitle}} sudah kami terima. Sumber: {{source}}. Waktu submit: {{submittedAt}}.',
+      `Halo {{candidateName}},
+
+Terima kasih atas ketertarikan Anda untuk bergabung dengan PT Chitra Paratama. Lamaran Anda untuk posisi {{jobTitle}} telah kami terima dengan baik.
+
+Informasi Lamaran:
+Posisi: {{jobTitle}}
+Sumber: {{source}}
+Waktu Submit: {{submittedAt}}
+
+Tim Human Capital akan meninjau lamaran Anda dan akan menghubungi Anda jika memenuhi kualifikasi yang dibutuhkan.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1722,9 +2066,41 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[HERO] Undangan Interview - {{jobTitle}}',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Anda diundang interview untuk posisi <strong>{{jobTitle}}</strong>.</p><p>Jadwal: {{date}} {{time}}</p><p>Tipe: {{interviewType}}</p><p>Lokasi/Link: {{location}}</p><p>Pewawancara: {{interviewer}}</p><p>Durasi: {{duration}} menit</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Berdasarkan hasil seleksi berkas, Anda memenuhi kualifikasi untuk mengikuti tahap interview.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Interview</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Waktu</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{time}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tipe</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{interviewType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi / Link</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pewawancara</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{interviewer}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Durasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{duration}} menit</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap konfirmasi kehadiran Anda sebelum jadwal interview dimulai.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, Anda diundang interview untuk posisi {{jobTitle}}. Jadwal: {{date}} {{time}}. Tipe: {{interviewType}}. Lokasi/Link: {{location}}. Pewawancara: {{interviewer}}. Durasi: {{duration}} menit.',
+      `Halo {{candidateName}},
+
+Berdasarkan hasil seleksi berkas, Anda memenuhi kualifikasi untuk mengikuti tahap interview.
+
+Detail Interview:
+Posisi: {{jobTitle}}
+Tanggal: {{date}}
+Waktu: {{time}}
+Tipe: {{interviewType}}
+Lokasi/Link: {{location}}
+Pewawancara: {{interviewer}}
+Durasi: {{duration}} menit
+
+Harap konfirmasi kehadiran Anda sebelum jadwal interview dimulai.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1736,9 +2112,40 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[HERO] Undangan Tes Online - {{jobTitle}}',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Anda diundang mengikuti tes untuk <strong>{{jobTitle}}</strong>.</p><p>Jadwal: {{date}} {{time}}</p><p>Akses: <a href="{{testLink}}">{{testLink}}</a></p><p>Keterangan: {{location}}</p><p>Masa aktif: {{duration}} hari</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Anda diundang untuk mengikuti tes online sebagai bagian dari proses seleksi untuk posisi <strong>{{jobTitle}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Tes Online</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jadwal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}} {{time}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Keterangan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Masa Aktif</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{duration}} hari</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Akses tes online melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{testLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Mulai Tes Online</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pastikan koneksi internet Anda stabil sebelum memulai tes.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, Anda diundang mengikuti tes untuk {{jobTitle}}. Jadwal: {{date}} {{time}}. Akses: {{testLink}}. Keterangan: {{location}}. Masa aktif: {{duration}} hari.',
+      `Halo {{candidateName}},
+
+Anda diundang untuk mengikuti tes online sebagai bagian dari proses seleksi untuk posisi {{jobTitle}}.
+
+Detail Tes Online:
+Posisi: {{jobTitle}}
+Jadwal: {{date}} {{time}}
+Keterangan: {{location}}
+Masa Aktif: {{duration}} hari
+
+Akses tes: {{testLink}}
+
+Pastikan koneksi internet Anda stabil sebelum memulai tes.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1750,9 +2157,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Link onboarding HERO',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Silakan lengkapi data onboarding Anda melalui link berikut:</p><p><a href="{{onboardingLink}}">{{onboardingLink}}</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Data onboarding Anda telah siap. Silakan lengkapi data diri melalui tautan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Onboarding Karyawan</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Lengkapi Data Onboarding</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pastikan seluruh dokumen yang diperlukan telah disiapkan sebelum mengisi formulir.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, silakan lengkapi data onboarding Anda melalui link berikut: {{onboardingLink}}.',
+      `Halo {{candidateName}},
+
+Data onboarding Anda telah siap. Silakan lengkapi data diri melalui tautan berikut:
+
+{{onboardingLink}}
+
+Pastikan seluruh dokumen yang diperlukan telah disiapkan sebelum mengisi formulir.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1764,9 +2196,36 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[HERO] Surat Penawaran Kerja - {{jobTitle}}',
     htmlContent:
-      '<p>Kepada Yth. <strong>{{candidateName}}</strong>,</p><p>Bersama ini kami sampaikan penawaran kerja untuk posisi <strong>{{jobTitle}}</strong> di {{companyName}}.</p><p>Surat lengkap terlampir pada email ini.</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Kepada Yth. {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dengan ini kami sampaikan <strong>Surat Penawaran Kerja (Offering Letter)</strong> untuk posisi <strong>{{jobTitle}}</strong> di {{companyName}}.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Penawaran</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Perusahaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{companyName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen surat penawaran kerja terlampir pada email ini. Silakan ditinjau dan ditandatangani sebelum batas waktu yang tertera.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Kepada Yth. {{candidateName}}, bersama ini kami sampaikan penawaran kerja untuk posisi {{jobTitle}} di {{companyName}}. Surat lengkap terlampir pada email ini.',
+      `Kepada Yth. {{candidateName}},
+
+Dengan ini kami sampaikan Surat Penawaran Kerja (Offering Letter) untuk posisi {{jobTitle}} di {{companyName}}.
+
+Informasi Penawaran:
+Posisi: {{jobTitle}}
+Perusahaan: {{companyName}}
+
+Dokumen surat penawaran kerja terlampir pada email ini. Silakan ditinjau dan ditandatangani sebelum batas waktu yang tertera.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -1778,9 +2237,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'JSA baru: {{jsaNumber}}',
     htmlContent:
-      '<p>JSA baru telah dibuat.</p><p>Nomor: {{jsaNumber}}</p><p>Pekerjaan: {{jobDescription}}</p><p>Risk level: {{riskLevel}}</p><p>Tim: {{teamMembers}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah dokumen Job Safety Analysis (JSA) baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi JSA</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor JSA</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jsaNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobDescription}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tim</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{teamMembers}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau dan memproses dokumen JSA.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'JSA baru telah dibuat. Nomor: {{jsaNumber}}. Pekerjaan: {{jobDescription}}. Risk level: {{riskLevel}}. Tim: {{teamMembers}}.',
+      `Sebuah dokumen Job Safety Analysis (JSA) baru telah dibuat.
+
+Informasi JSA:
+Nomor JSA: {{jsaNumber}}
+Pekerjaan: {{jobDescription}}
+Risk Level: {{riskLevel}}
+Tim: {{teamMembers}}
+
+Silakan login ke dashboard HSE untuk meninjau dan memproses dokumen JSA.`,
     isActive: true,
   },
   {
@@ -1792,9 +2275,32 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update JSA: {{jsaNumber}}',
     htmlContent:
-      '<p>JSA telah diperbarui.</p><p>Nomor: {{jsaNumber}}</p><p>Pekerjaan: {{jobDescription}}</p><p>Risk level: {{riskLevel}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Job Safety Analysis (JSA) berikut telah diperbarui.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi JSA</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor JSA</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jsaNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobDescription}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk melihat perubahan terbaru.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'JSA telah diperbarui. Nomor: {{jsaNumber}}. Pekerjaan: {{jobDescription}}. Risk level: {{riskLevel}}.',
+      `Dokumen Job Safety Analysis (JSA) berikut telah diperbarui.
+
+Informasi JSA:
+Nomor JSA: {{jsaNumber}}
+Pekerjaan: {{jobDescription}}
+Risk Level: {{riskLevel}}
+
+Silakan login ke dashboard HSE untuk melihat perubahan terbaru.`,
     isActive: true,
   },
   {
@@ -1806,9 +2312,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'HIRADC register baru: {{title}}',
     htmlContent:
-      '<p>Register HIRADC baru dibuat.</p><p>Judul: {{title}}</p><p>Departemen: {{department}}</p><p>Lokasi: {{location}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah register HIRADC baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi HIRADC</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Departemen</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{department}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau register HIRADC.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Register HIRADC baru dibuat. Judul: {{title}}. Departemen: {{department}}. Lokasi: {{location}}. Status: {{status}}.',
+      `Sebuah register HIRADC baru telah dibuat.
+
+Informasi HIRADC:
+Judul: {{title}}
+Departemen: {{department}}
+Lokasi: {{location}}
+Status: {{status}}
+
+Silakan login ke dashboard HSE untuk meninjau register HIRADC.`,
     isActive: true,
   },
   {
@@ -1820,9 +2350,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update HIRADC register: {{title}}',
     htmlContent:
-      '<p>Register HIRADC diperbarui.</p><p>Judul: {{title}}</p><p>Departemen: {{department}}</p><p>Lokasi: {{location}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Register HIRADC berikut telah diperbarui.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi HIRADC</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Departemen</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{department}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk melihat perubahan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Register HIRADC diperbarui. Judul: {{title}}. Departemen: {{department}}. Lokasi: {{location}}. Status: {{status}}.',
+      `Register HIRADC berikut telah diperbarui.
+
+Informasi HIRADC:
+Judul: {{title}}
+Departemen: {{department}}
+Lokasi: {{location}}
+Status: {{status}}
+
+Silakan login ke dashboard HSE untuk melihat perubahan.`,
     isActive: true,
   },
   {
@@ -1834,9 +2388,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'PTW baru: {{permitNumber}}',
     htmlContent:
-      '<p>Permit To Work baru dibuat.</p><p>Nomor: {{permitNumber}}</p><p>Pekerjaan: {{projectName}}</p><p>Tipe: {{permitType}}</p><p>Lokasi: {{location}}</p><p>Risk level: {{riskLevel}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah dokumen Permit To Work (PTW) baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi PTW</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor PTW</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{projectName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tipe</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permitType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau dokumen PTW.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Permit To Work baru dibuat. Nomor: {{permitNumber}}. Pekerjaan: {{projectName}}. Tipe: {{permitType}}. Lokasi: {{location}}. Risk level: {{riskLevel}}.',
+      `Sebuah dokumen Permit To Work (PTW) baru telah dibuat.
+
+Informasi PTW:
+Nomor PTW: {{permitNumber}}
+Pekerjaan: {{projectName}}
+Tipe: {{permitType}}
+Lokasi: {{location}}
+Risk Level: {{riskLevel}}
+
+Silakan login ke dashboard HSE untuk meninjau dokumen PTW.`,
     isActive: true,
   },
   {
@@ -1848,9 +2427,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update PTW: {{permitNumber}}',
     htmlContent:
-      '<p>Permit To Work diperbarui.</p><p>Nomor: {{permitNumber}}</p><p>Pekerjaan: {{projectName}}</p><p>Status: {{status}}</p><p>Risk level: {{riskLevel}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Permit To Work (PTW) berikut telah diperbarui.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi PTW</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor PTW</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{projectName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk melihat perubahan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Permit To Work diperbarui. Nomor: {{permitNumber}}. Pekerjaan: {{projectName}}. Status: {{status}}. Risk level: {{riskLevel}}.',
+      `Dokumen Permit To Work (PTW) berikut telah diperbarui.
+
+Informasi PTW:
+Nomor PTW: {{permitNumber}}
+Pekerjaan: {{projectName}}
+Status: {{status}}
+Risk Level: {{riskLevel}}
+
+Silakan login ke dashboard HSE untuk melihat perubahan.`,
     isActive: true,
   },
   {
@@ -1862,9 +2465,35 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Observasi HSE baru: {{title}}',
     htmlContent:
-      '<p>Observasi HSE baru telah dibuat.</p><p>Site: {{siteName}}</p><p>Pelapor: {{reporterName}}</p><p>Kategori: {{category}}</p><p>Severity: {{severity}}</p><p>Lokasi: {{location}}</p><p>{{notes}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah observasi HSE baru telah dilaporkan.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Observasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{siteName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pelapor</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reporterName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk menindaklanjuti observasi ini.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Observasi HSE baru telah dibuat. Site: {{siteName}}. Pelapor: {{reporterName}}. Kategori: {{category}}. Severity: {{severity}}. Lokasi: {{location}}. {{notes}}',
+      `Sebuah observasi HSE baru telah dilaporkan.
+
+Informasi Observasi:
+Judul: {{title}}
+Site: {{siteName}}
+Pelapor: {{reporterName}}
+Kategori: {{category}}
+Severity: {{severity}}
+Lokasi: {{location}}
+
+Silakan login ke dashboard HSE untuk menindaklanjuti observasi ini.`,
     isActive: true,
   },
   {
@@ -1876,9 +2505,32 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update observasi HSE: {{title}}',
     htmlContent:
-      '<p>Status observasi HSE berubah.</p><p>Judul: {{title}}</p><p>Lokasi: {{location}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status observasi HSE berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Observasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Status observasi HSE berubah. Judul: {{title}}. Lokasi: {{location}}. Status: {{status}}.',
+      `Status observasi HSE berikut telah berubah.
+
+Informasi Observasi:
+Judul: {{title}}
+Lokasi: {{location}}
+Status: {{status}}
+
+Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -1890,9 +2542,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Incident HSE baru: {{title}}',
     htmlContent:
-      '<p>Incident HSE baru telah dibuat.</p><p>Tipe: {{type}}</p><p>Impact: {{impact}}</p><p>Unit: {{unitNumber}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah insiden HSE baru telah dilaporkan.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tipe</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{type}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Impact</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{impact}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Unit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{unitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk menindaklanjuti insiden ini.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Incident HSE baru telah dibuat. Tipe: {{type}}. Impact: {{impact}}. Unit: {{unitNumber}}. Status: {{status}}.',
+      `Sebuah insiden HSE baru telah dilaporkan.
+
+Informasi Insiden:
+Judul: {{title}}
+Tipe: {{type}}
+Impact: {{impact}}
+Unit: {{unitNumber}}
+Status: {{status}}
+
+Silakan login ke dashboard HSE untuk menindaklanjuti insiden ini.`,
     isActive: true,
   },
   {
@@ -1904,9 +2581,32 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update incident HSE: {{title}}',
     htmlContent:
-      '<p>Status incident HSE berubah.</p><p>Judul: {{title}}</p><p>Unit: {{unitNumber}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status insiden HSE berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Unit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{unitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Status incident HSE berubah. Judul: {{title}}. Unit: {{unitNumber}}. Status: {{status}}.',
+      `Status insiden HSE berikut telah berubah.
+
+Informasi Insiden:
+Judul: {{title}}
+Unit: {{unitNumber}}
+Status: {{status}}
+
+Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -1918,9 +2618,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Incident report baru: {{title}}',
     htmlContent:
-      '<p>Incident report HSE baru dicatat.</p><p>Kategori: {{category}}</p><p>Severity: {{severity}}</p><p>PIC: {{picName}}</p><p>Status: {{investigationStatus}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah laporan insiden HSE baru telah dicatat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Laporan Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Investigasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{investigationStatus}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau laporan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Incident report HSE baru dicatat. Kategori: {{category}}. Severity: {{severity}}. PIC: {{picName}}. Status: {{investigationStatus}}.',
+      `Sebuah laporan insiden HSE baru telah dicatat.
+
+Informasi Laporan Insiden:
+Judul: {{title}}
+Kategori: {{category}}
+Severity: {{severity}}
+PIC: {{picName}}
+Status Investigasi: {{investigationStatus}}
+
+Silakan login ke dashboard HSE untuk meninjau laporan.`,
     isActive: true,
   },
   {
@@ -1932,9 +2657,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update incident report: {{title}}',
     htmlContent:
-      '<p>Status incident report berubah.</p><p>Judul: {{title}}</p><p>Severity: {{severity}}</p><p>Status lama: {{previousStatus}}</p><p>Status baru: {{investigationStatus}}</p><p>PIC: {{picName}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status laporan insiden HSE berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Laporan Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Sebelumnya</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{previousStatus}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Baru</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{investigationStatus}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Status incident report berubah. Judul: {{title}}. Severity: {{severity}}. Status lama: {{previousStatus}}. Status baru: {{investigationStatus}}. PIC: {{picName}}.',
+      `Status laporan insiden HSE berikut telah berubah.
+
+Informasi Laporan Insiden:
+Judul: {{title}}
+Severity: {{severity}}
+Status Sebelumnya: {{previousStatus}}
+Status Baru: {{investigationStatus}}
+PIC: {{picName}}
+
+Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -1946,9 +2696,35 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Safety inspection baru: {{title}}',
     htmlContent:
-      '<p>Safety inspection baru dibuat.</p><p>Tanggal: {{inspectionDate}}</p><p>Lokasi: {{location}}</p><p>Kategori: {{category}}</p><p>Status: {{status}}</p><p>PIC: {{picName}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah safety inspection baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Inspeksi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{inspectionDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau inspeksi.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Safety inspection baru dibuat. Tanggal: {{inspectionDate}}. Lokasi: {{location}}. Kategori: {{category}}. Status: {{status}}. PIC: {{picName}}.',
+      `Sebuah safety inspection baru telah dibuat.
+
+Informasi Inspeksi:
+Judul: {{title}}
+Tanggal: {{inspectionDate}}
+Lokasi: {{location}}
+Kategori: {{category}}
+Status: {{status}}
+PIC: {{picName}}
+
+Silakan login ke dashboard HSE untuk meninjau inspeksi.`,
     isActive: true,
   },
   {
@@ -1960,9 +2736,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update safety inspection: {{title}}',
     htmlContent:
-      '<p>Status safety inspection berubah.</p><p>Judul: {{title}}</p><p>Lokasi: {{location}}</p><p>Status lama: {{previousStatus}}</p><p>Status baru: {{status}}</p><p>PIC: {{picName}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status safety inspection berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Inspeksi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Sebelumnya</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{previousStatus}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Baru</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Status safety inspection berubah. Judul: {{title}}. Lokasi: {{location}}. Status lama: {{previousStatus}}. Status baru: {{status}}. PIC: {{picName}}.',
+      `Status safety inspection berikut telah berubah.
+
+Informasi Inspeksi:
+Judul: {{title}}
+Lokasi: {{location}}
+Status Sebelumnya: {{previousStatus}}
+Status Baru: {{status}}
+PIC: {{picName}}
+
+Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -1974,9 +2775,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Safety induction baru: {{fullName}}',
     htmlContent:
-      '<p>Form safety induction baru disubmit.</p><p>Nama: {{fullName}}</p><p>Instansi: {{companyOrigin}}</p><p>Telepon: {{phoneNumber}}</p><p>Tujuan: {{purpose}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah formulir safety induction baru telah disubmit.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Induction</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{fullName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Instansi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{companyOrigin}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Telepon</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{phoneNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tujuan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{purpose}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk memproses induction.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Form safety induction baru disubmit. Nama: {{fullName}}. Instansi: {{companyOrigin}}. Telepon: {{phoneNumber}}. Tujuan: {{purpose}}.',
+      `Sebuah formulir safety induction baru telah disubmit.
+
+Informasi Induction:
+Nama: {{fullName}}
+Instansi: {{companyOrigin}}
+Telepon: {{phoneNumber}}
+Tujuan: {{purpose}}
+
+Silakan login ke dashboard HSE untuk memproses induction.`,
     isActive: true,
   },
   {
@@ -1988,9 +2813,36 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[HERO HSE] Pengingat Kedaluwarsa Aset: {{itemName}}',
     htmlContent:
-      '<p>Aset HSE mendekati kedaluwarsa.</p><p>Nama: {{itemName}}</p><p>Kategori: {{category}}</p><p>Lokasi: {{location}}</p><p>Tanggal beli: {{purchaseDate}}</p><p>Masa berlaku: {{validityMonths}}</p><p>Tanggal expired: {{expirationDate}}</p><p>PIC: {{picName}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">HSE</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Aset HSE berikut mendekati masa kedaluwarsa dan memerlukan perhatian segera.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Aset</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Aset</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{itemName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Beli</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{purchaseDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Masa Berlaku</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{validityMonths}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Expired</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{expirationDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku habis.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Aset HSE mendekati kedaluwarsa. Nama: {{itemName}}. Kategori: {{category}}. Lokasi: {{location}}. Tanggal beli: {{purchaseDate}}. Masa berlaku: {{validityMonths}}. Tanggal expired: {{expirationDate}}. PIC: {{picName}}.',
+      `Aset HSE berikut mendekati masa kedaluwarsa dan memerlukan perhatian segera.
+
+Informasi Aset:
+Nama Aset: {{itemName}}
+Kategori: {{category}}
+Lokasi: {{location}}
+Tanggal Beli: {{purchaseDate}}
+Masa Berlaku: {{validityMonths}}
+Tanggal Expired: {{expirationDate}}
+PIC: {{picName}}
+
+Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku habis.`,
     isActive: true,
   },
   {
@@ -2002,9 +2854,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Data employee baru: {{employeeName}}',
     htmlContent:
-      '<p>Master employee baru telah dibuat.</p><p>Nama: {{employeeName}}</p><p>Employee ID: {{employeeId}}</p><p>Email: {{employeeEmail}}</p><p>Account status: {{accountStatus}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Seorang karyawan baru telah berhasil didaftarkan ke dalam sistem HERO.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Karyawan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Employee ID</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeId}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Email</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeEmail}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Akun</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{accountStatus}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk memverifikasi data.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Master employee baru telah dibuat. Nama: {{employeeName}}. Employee ID: {{employeeId}}. Email: {{employeeEmail}}. Account status: {{accountStatus}}.',
+      `Seorang karyawan baru telah berhasil didaftarkan ke dalam sistem HERO.
+
+Informasi Karyawan:
+Nama: {{employeeName}}
+Employee ID: {{employeeId}}
+Email: {{employeeEmail}}
+Status Akun: {{accountStatus}}
+
+Silakan login ke dashboard HC untuk memverifikasi data.`,
     isActive: true,
   },
   {
@@ -2016,9 +2892,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update employee: {{employeeName}}',
     htmlContent:
-      '<p>Data employee telah diperbarui.</p><p>Nama: {{employeeName}}</p><p>Employee ID: {{employeeId}}</p><p>Email: {{employeeEmail}}</p><p>Account status: {{accountStatus}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Data karyawan berikut telah diperbarui di dalam sistem HERO.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Karyawan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Employee ID</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeId}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Email</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeEmail}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Akun</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{accountStatus}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk melihat perubahan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Data employee telah diperbarui. Nama: {{employeeName}}. Employee ID: {{employeeId}}. Email: {{employeeEmail}}. Account status: {{accountStatus}}.',
+      `Data karyawan berikut telah diperbarui di dalam sistem HERO.
+
+Informasi Karyawan:
+Nama: {{employeeName}}
+Employee ID: {{employeeId}}
+Email: {{employeeEmail}}
+Status Akun: {{accountStatus}}
+
+Silakan login ke dashboard HC untuk melihat perubahan.`,
     isActive: true,
   },
   {
@@ -2030,9 +2930,35 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Tindakan disipliner baru: {{employeeName}}',
     htmlContent:
-      '<p>Tindakan disipliner baru telah dibuat.</p><p>Karyawan: {{employeeName}}</p><p>Kategori: {{categoryName}}</p><p>Severity: {{severity}}</p><p>SP Level: {{spLevel}}</p><p>Status: {{status}}</p><p>No surat: {{letterNumber}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah tindakan disipliner baru telah dicatat untuk karyawan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Disipliner</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{categoryName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Level SP</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{spLevel}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">No. Surat</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{letterNumber}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Tindakan disipliner baru telah dibuat. Karyawan: {{employeeName}}. Kategori: {{categoryName}}. Severity: {{severity}}. SP Level: {{spLevel}}. Status: {{status}}. No surat: {{letterNumber}}.',
+      `Sebuah tindakan disipliner baru telah dicatat untuk karyawan berikut.
+
+Informasi Disipliner:
+Karyawan: {{employeeName}}
+Kategori: {{categoryName}}
+Severity: {{severity}}
+Level SP: {{spLevel}}
+Status: {{status}}
+No. Surat: {{letterNumber}}
+
+Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -2044,9 +2970,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Update disipliner: {{employeeName}}',
     htmlContent:
-      '<p>Status tindakan disipliner berubah.</p><p>Karyawan: {{employeeName}}</p><p>Kategori: {{categoryName}}</p><p>SP Level: {{spLevel}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status tindakan disipliner untuk karyawan berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Disipliner</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{categoryName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Level SP</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{spLevel}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Status tindakan disipliner berubah. Karyawan: {{employeeName}}. Kategori: {{categoryName}}. SP Level: {{spLevel}}. Status: {{status}}.',
+      `Status tindakan disipliner untuk karyawan berikut telah berubah.
+
+Informasi Disipliner:
+Karyawan: {{employeeName}}
+Kategori: {{categoryName}}
+Level SP: {{spLevel}}
+Status: {{status}}
+
+Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -2058,9 +3008,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Performance review baru: {{employeeName}}',
     htmlContent:
-      '<p>Performance review baru telah dibuat.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah performance review baru telah dibuat untuk karyawan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Performance Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{cycleName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk mengisi review.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Performance review baru telah dibuat. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}.',
+      `Sebuah performance review baru telah dibuat untuk karyawan berikut.
+
+Informasi Performance Review:
+Karyawan: {{employeeName}}
+Reviewer: {{reviewerName}}
+Periode: {{cycleName}}
+Status: {{status}}
+
+Silakan login ke dashboard HC untuk mengisi review.`,
     isActive: true,
   },
   {
@@ -2072,9 +3046,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Performance review disubmit: {{employeeName}}',
     htmlContent:
-      '<p>Performance review telah disubmit.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Performance review untuk karyawan berikut telah disubmit oleh reviewer.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Performance Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{cycleName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk meninjau hasil review.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Performance review telah disubmit. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}.',
+      `Performance review untuk karyawan berikut telah disubmit oleh reviewer.
+
+Informasi Performance Review:
+Karyawan: {{employeeName}}
+Reviewer: {{reviewerName}}
+Periode: {{cycleName}}
+Status: {{status}}
+
+Silakan login ke dashboard HC untuk meninjau hasil review.`,
     isActive: true,
   },
   {
@@ -2086,9 +3084,34 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Performance review diacknowledge: {{employeeName}}',
     htmlContent:
-      '<p>Performance review telah diacknowledge.</p><p>Employee: {{employeeName}}</p><p>Reviewer: {{reviewerName}}</p><p>Cycle: {{cycleName}}</p><p>Status: {{status}}</p><p>Rating: {{overallRating}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Performance review untuk karyawan berikut telah di-acknowledge oleh karyawan terkait.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Performance Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{cycleName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Rating</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{overallRating}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk melihat hasil akhir.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Performance review telah diacknowledge. Employee: {{employeeName}}. Reviewer: {{reviewerName}}. Cycle: {{cycleName}}. Status: {{status}}. Rating: {{overallRating}}.',
+      `Performance review untuk karyawan berikut telah di-acknowledge oleh karyawan terkait.
+
+Informasi Performance Review:
+Karyawan: {{employeeName}}
+Reviewer: {{reviewerName}}
+Periode: {{cycleName}}
+Status: {{status}}
+Rating: {{overallRating}}
+
+Silakan login ke dashboard HC untuk melihat hasil akhir.`,
     isActive: true,
   },
   {
@@ -2100,9 +3123,39 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Selamat! Anda diterima di PT Chitra Paratama',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Anda diterima untuk posisi <strong>{{jobTitle}}</strong>.</p><p>Tanggal mulai kerja: {{startDate}}</p><p>Silakan lengkapi onboarding melalui link berikut:</p><p><a href="{{onboardingUrl}}">{{onboardingUrl}}</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Selamat! Anda dinyatakan <strong>lulus seleksi</strong> dan diterima untuk bergabung sebagai <strong>{{jobTitle}}</strong> di PT Chitra Paratama.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Penerimaan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai Kerja</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan lengkapi proses onboarding melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingUrl}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Lengkapi Onboarding</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Kami tunggu kontribusi terbaik Anda di PT Chitra Paratama!</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, Anda diterima untuk posisi {{jobTitle}}. Tanggal mulai kerja: {{startDate}}. Lengkapi onboarding melalui {{onboardingUrl}}.',
+      `Halo {{candidateName}},
+
+Selamat! Anda dinyatakan lulus seleksi dan diterima untuk bergabung sebagai {{jobTitle}} di PT Chitra Paratama.
+
+Informasi Penerimaan:
+Posisi: {{jobTitle}}
+Tanggal Mulai Kerja: {{startDate}}
+
+Silakan lengkapi proses onboarding melalui tautan berikut:
+{{onboardingUrl}}
+
+Kami tunggu kontribusi terbaik Anda di PT Chitra Paratama!
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -2114,9 +3167,37 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: 'Informasi mulai kerja {{candidateName}}',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Selamat datang di PT Chitra Paratama.</p><p>Posisi: {{jobTitle}}</p><p>Tanggal mulai kerja: {{startDate}}</p><p>Lengkapi administrasi onboarding: <a href="{{onboardingUrl}}">{{onboardingUrl}}</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Selamat datang di PT Chitra Paratama! Kami sangat senang menyambut Anda sebagai bagian dari keluarga besar perusahaan kami.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Mulai Kerja</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai Kerja</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan lengkapi administrasi onboarding melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingUrl}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Lengkapi Administrasi</a></td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, selamat datang di PT Chitra Paratama. Posisi: {{jobTitle}}. Tanggal mulai kerja: {{startDate}}. Lengkapi administrasi onboarding: {{onboardingUrl}}.',
+      `Halo {{candidateName}},
+
+Selamat datang di PT Chitra Paratama! Kami sangat senang menyambut Anda sebagai bagian dari keluarga besar perusahaan kami.
+
+Informasi Mulai Kerja:
+Posisi: {{jobTitle}}
+Tanggal Mulai Kerja: {{startDate}}
+
+Silakan lengkapi administrasi onboarding melalui tautan berikut:
+{{onboardingUrl}}
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -2127,8 +3208,29 @@ const EMAIL_TEMPLATE_SEEDS = [
     recipientScope: 'candidate,hc',
     ccEmail: '',
     subject: 'Pesan dari Tim Human Capital',
-    htmlContent: '<p>Halo {{candidateName}},</p><p>{{messageBodyHtml}}</p>',
-    textContent: 'Halo {{candidateName}},\n\n{{messageBody}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">{{messageBodyHtml}}</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent: `Halo {{candidateName}},
+
+{{messageBody}}
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -2140,9 +3242,36 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[HERO] Surat Pengantar Medical Check Up - {{candidateName}}',
     htmlContent:
-      '<p>Kepada Yth. Admin {{clinicName}},</p><p>Mohon bantuannya untuk melakukan MCU calon karyawan berikut:</p><p>Nama: {{candidateName}}</p><p>Tanggal MCU: {{date}}</p><p>Paket: {{paket}}</p><p>Biaya ditagihkan ke PT Chitra Paratama.</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Kepada Yth. Admin {{clinicName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Mohon bantuannya untuk melaksanakan Medical Check Up (MCU) bagi calon karyawan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Data Calon Karyawan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{candidateName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal MCU</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Paket MCU</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{paket}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Biaya MCU akan ditagihkan ke PT Chitra Paratama sesuai dengan perjanjian kerja sama yang telah disepakati.</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Atas perhatian dan bantuannya, kami ucapkan terima kasih.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Kepada Yth. Admin {{clinicName}}, mohon bantuannya untuk melakukan MCU calon karyawan berikut: Nama {{candidateName}}, Tanggal MCU {{date}}, Paket {{paket}}. Biaya ditagihkan ke PT Chitra Paratama.',
+      `Kepada Yth. Admin {{clinicName}},
+
+Mohon bantuannya untuk melaksanakan Medical Check Up (MCU) bagi calon karyawan berikut.
+
+Data Calon Karyawan:
+Nama: {{candidateName}}
+Tanggal MCU: {{date}}
+Paket MCU: {{paket}}
+
+Biaya MCU akan ditagihkan ke PT Chitra Paratama.
+
+Atas perhatian dan bantuannya, kami ucapkan terima kasih.`,
     isActive: true,
   },
   {
@@ -2154,9 +3283,38 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[HERO] Undangan Medical Check Up - {{jobTitle}}',
     htmlContent:
-      '<p>Halo {{candidateName}},</p><p>Anda diundang mengikuti MCU untuk posisi <strong>{{jobTitle}}</strong>.</p><p>Klinik: {{clinicName}}</p><p>Tanggal: {{date}}</p><p>Paket: {{paket}}</p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Anda dijadwalkan untuk mengikuti Medical Check Up (MCU) sebagai bagian dari proses seleksi untuk posisi <strong>{{jobTitle}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Jadwal MCU</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Klinik</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{clinicName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Paket</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{paket}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap datang tepat waktu dan membawa identitas diri yang berlaku.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Halo {{candidateName}}, Anda diundang mengikuti MCU untuk posisi {{jobTitle}}. Klinik: {{clinicName}}. Tanggal: {{date}}. Paket: {{paket}}.',
+      `Halo {{candidateName}},
+
+Anda dijadwalkan untuk mengikuti Medical Check Up (MCU) sebagai bagian dari proses seleksi untuk posisi {{jobTitle}}.
+
+Jadwal MCU:
+Posisi: {{jobTitle}}
+Klinik: {{clinicName}}
+Tanggal: {{date}}
+Paket: {{paket}}
+
+Harap datang tepat waktu dan membawa identitas diri yang berlaku.
+
+Salam,
+Tim Human Capital`,
     isActive: true,
   },
   {
@@ -2168,9 +3326,38 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[Contract Review] Reminder: {{employeeName}} ({{employeeSn}}) berakhir {{contractEndDate}}',
     htmlContent:
-      '<p>Yth. {{recipientName}},</p><p>Contract review untuk karyawan berikut masih perlu ditindaklanjuti.</p><p>Nama: {{employeeName}}</p><p>SN: {{employeeSn}}</p><p>Section: {{employeeSection}}</p><p>Site: {{employeeSite}}</p><p>Berakhir: {{contractEndDate}}</p><p><a href="{{reviewLink}}">Buka review</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Yth. {{recipientName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Berikut adalah pengingat untuk dokumen Contract Review yang masih perlu ditindaklanjuti.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Contract Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Section</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSection}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSite}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kontrak Berakhir</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{contractEndDate}}</td></tr></table><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{reviewLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Review</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Segera lakukan review sebelum masa kontrak berakhir.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Yth. {{recipientName}}, contract review untuk {{employeeName}} ({{employeeSn}}) masih perlu ditindaklanjuti. Section: {{employeeSection}}. Site: {{employeeSite}}. Berakhir: {{contractEndDate}}. Review: {{reviewLink}}.',
+      `Yth. {{recipientName}},
+
+Berikut adalah pengingat untuk dokumen Contract Review yang masih perlu ditindaklanjuti.
+
+Informasi Contract Review:
+Nama Karyawan: {{employeeName}}
+SN: {{employeeSn}}
+Section: {{employeeSection}}
+Site: {{employeeSite}}
+Kontrak Berakhir: {{contractEndDate}}
+
+Buka review: {{reviewLink}}
+
+Segera lakukan review sebelum masa kontrak berakhir.`,
     isActive: true,
   },
   {
@@ -2182,9 +3369,38 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[Contract Review] Menunggu Persetujuan Anda - {{employeeName}} ({{employeeSn}})',
     htmlContent:
-      '<p>Yth. {{approverName}},</p><p>Contract Review berikut membutuhkan persetujuan Anda.</p><p>Nama: {{employeeName}}</p><p>SN: {{employeeSn}}</p><p>Section: {{employeeSection}}</p><p>Site: {{employeeSite}}</p><p>Tahap: {{approvalStep}}</p><p><a href="{{approvalLink}}">Buka approval</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Yth. {{approverName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Contract Review berikut membutuhkan persetujuan Anda.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Contract Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Section</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSection}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSite}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tahap</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approvalStep}}</td></tr></table><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{approvalLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Approval</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap segera memberikan keputusan persetujuan Anda.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Yth. {{approverName}}, Contract Review berikut membutuhkan persetujuan Anda. Nama: {{employeeName}}. SN: {{employeeSn}}. Section: {{employeeSection}}. Site: {{employeeSite}}. Tahap: {{approvalStep}}. Approval: {{approvalLink}}.',
+      `Yth. {{approverName}},
+
+Dokumen Contract Review berikut membutuhkan persetujuan Anda.
+
+Informasi Contract Review:
+Nama Karyawan: {{employeeName}}
+SN: {{employeeSn}}
+Section: {{employeeSection}}
+Site: {{employeeSite}}
+Tahap: {{approvalStep}}
+
+Buka approval: {{approvalLink}}
+
+Harap segera memberikan keputusan persetujuan Anda.`,
     isActive: true,
   },
   {
@@ -2196,9 +3412,33 @@ const EMAIL_TEMPLATE_SEEDS = [
     ccEmail: '',
     subject: '[TEST] Contract Review - {{employeeName}}',
     htmlContent:
-      '<p>Contract Review test untuk {{employeeName}} ({{employeeSn}}) telah dibuat.</p><p>Silakan buka form review: <a href="{{reviewLink}}">{{reviewLink}}</a></p>',
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Contract Review untuk uji coba telah berhasil dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Tes</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr></table><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{reviewLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Form Review</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract Review.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
     textContent:
-      'Contract Review test untuk {{employeeName}} ({{employeeSn}}) telah dibuat. Buka form review: {{reviewLink}}.',
+      `Dokumen Contract Review untuk uji coba telah berhasil dibuat.
+
+Informasi Tes:
+Nama Karyawan: {{employeeName}}
+SN: {{employeeSn}}
+
+Buka form review: {{reviewLink}}
+
+Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract Review.`,
     isActive: true,
   },
 ]
