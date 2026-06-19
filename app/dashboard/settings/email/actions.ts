@@ -690,18 +690,17 @@ export async function sendTemplateTestAction(
     }
 
     const smtpConfig = await getExistingSmtpSettings();
-    const fallbackSmtp = await getEmailSmtpSettingsData();
 
     const transportSettings: EmailTransportSettings = {
-      host: smtpConfig.host || fallbackSmtp.host,
-      port: smtpConfig.port || fallbackSmtp.port,
-      encryption: smtpConfig.encryption || fallbackSmtp.encryption,
-      username: smtpConfig.username || fallbackSmtp.username,
-      passwordSecret: smtpConfig.passwordSecret || fallbackSmtp.passwordSecret,
-      fromEmail: smtpConfig.fromEmail || fallbackSmtp.fromEmail,
-      fromName: smtpConfig.fromName || fallbackSmtp.fromName,
-      replyToEmail: smtpConfig.replyToEmail || fallbackSmtp.replyToEmail,
-      timeoutSeconds: smtpConfig.timeoutSeconds || fallbackSmtp.timeoutSeconds,
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      encryption: smtpConfig.encryption,
+      username: smtpConfig.username,
+      passwordSecret: smtpConfig.passwordSecret,
+      fromEmail: smtpConfig.fromEmail,
+      fromName: smtpConfig.fromName,
+      replyToEmail: smtpConfig.replyToEmail,
+      timeoutSeconds: smtpConfig.timeoutSeconds,
     };
 
     const [template] = await db

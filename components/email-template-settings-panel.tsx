@@ -126,6 +126,7 @@ export function EmailTemplateSettingsPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [restoringCode, setRestoringCode] = useState<string | null>(null);
+  const [testSendingId, setTestSendingId] = useState<number | null>(null);
   const [isSyncingPresets, setIsSyncingPresets] = useState(false);
 
   const templatesByCode = useMemo(
@@ -280,126 +281,67 @@ export function EmailTemplateSettingsPanel({
     setIsSyncingPresets(false);
   };
 
+  const handleSendTest = async (template: EmailTemplateRecord) => {
+    setTestSendingId(template.id);
+
+    const form = new FormData();
+    form.append("templateId", template.id.toString());
+
+    const result = await sendTemplateTestAction(INITIAL_STATE, form);
+
+    if (result.status === "success") {
+      toast.success(result.message);
+      router.refresh();
+    } else {
+      toast.error(result.message);
+    }
+
+    setTestSendingId(null);
+  };
+
   return (
     <Card className="rounded-lg p-4 shadow-sm">
-      <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="font-display text-lg font-semibold">Workflow Template Registry</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Preset ini memetakan template email sistem ke kode workflow yang dipakai modul.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Badge className="rounded-full border-0 bg-primary/10 text-primary">
-                {EMAIL_TEMPLATE_PRESETS.length} preset
-              </Badge>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-lg"
-                onClick={handleSyncAllPresets}
-                disabled={isSyncingPresets}
-              >
-                <RefreshCcw className="size-4" />
-                {isSyncingPresets ? "Sync..." : "Sync Semua Preset"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {EMAIL_TEMPLATE_PRESETS.map((preset) => {
-              const existingTemplate = templatesByCode.get(preset.templateCode);
-
-              return (
-                <div
-                  key={preset.templateCode}
-                  className="rounded-xl border bg-surface-container-low p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold">{preset.name}</p>
-                      <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                        {preset.templateCode}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full bg-surface-container-lowest text-xs"
-                    >
-                      {existingTemplate ? "Tersedia" : "Belum ada"}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{preset.description}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className="rounded-full">
-                      {preset.templateType}
-                    </Badge>
-                    <Badge variant="outline" className="rounded-full">
-                      {preset.variables.length} variabel
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-lg"
-                      onClick={() => handleOpenFromRegistry(preset)}
-                    >
-                      <WandSparkles className="size-4" />
-                      {existingTemplate ? "Edit Default" : "Buat dari Preset"}
-                    </Button>
-                    {existingTemplate ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-lg"
-                        onClick={() => handleRestorePreset(preset.templateCode)}
-                        disabled={restoringCode === preset.templateCode}
-                      >
-                        <RotateCcw className="size-4" />
-                        {restoringCode === preset.templateCode ? "Restore..." : "Restore Default"}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
-          <h3 className="font-display text-lg font-semibold">Ringkasan Template</h3>
-          <div className="mt-4 space-y-3">
-            {[
-              ["Total template", String(templates.length)],
-              ["Template aktif", String(activeTemplatesCount)],
-              ["Template workflow", String(presetTemplatesCount)],
-              ["Template custom", String(customTemplatesCount)],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between gap-3 rounded-lg bg-surface-container-low px-3 py-2"
-              >
-                <span className="text-sm text-muted-foreground">{label}</span>
-                <span className="font-display text-lg font-semibold tabular-nums">{value}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 rounded-lg bg-surface-container-low p-3 text-sm text-muted-foreground">
-            Gunakan registry untuk audit cepat kode template sistem, lalu edit subject atau body tanpa
-            menebak placeholder manual.
-          </div>
-        </Card>
+      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="font-display text-lg font-semibold">Email Template</h2>
+          <p className="text-sm text-muted-foreground">
+            Kelola template email yang dipakai modul approval, auth, invitation, dan workflow notifikasi.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="rounded-full border-0 bg-primary/10 text-primary">
+            {activeTemplatesCount} aktif
+          </Badge>
+          <Badge variant="outline" className="rounded-full">
+            {presetTemplatesCount} workflow
+          </Badge>
+          <Badge variant="outline" className="rounded-full">
+            {customTemplatesCount} custom
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-lg"
+            onClick={handleSyncAllPresets}
+            disabled={isSyncingPresets}
+          >
+            <RefreshCcw className="size-4" />
+            {isSyncingPresets ? "Sync..." : "Sync Preset"}
+          </Button>
+          <Button
+            onClick={() => handleOpenDialog()}
+            className="rounded-[1rem] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]"
+          >
+            <Plus className="size-4" />
+            Template Baru
+          </Button>
+        </div>
       </div>
 
       <MinimalTableShell
-        title="Email Template"
-        description="Kelola template email yang dipakai modul approval, auth, invitation, dan workflow notifikasi."
         label="email templates"
         fileName="email-templates"
-        searchPlaceholder="Cari nama, kode, tipe, atau subject..."
+        searchPlaceholder="Cari nama, kode, fitur, tipe, atau subject..."
         filters={
           <div className="flex flex-wrap gap-2">
             <TableMultiFilter
@@ -411,6 +353,15 @@ export function EmailTemplateSettingsPanel({
               ]}
             />
             <TableMultiFilter
+              label="feature"
+              filterKey="feature"
+              options={Array.from(
+                new Set(templates.map((template) => getTemplateFeature(template.templateCode)))
+              )
+                .sort()
+                .map((feature) => ({ value: feature.toLowerCase().replace(/[^a-z0-9]+/g, "_"), label: feature }))}
+            />
+            <TableMultiFilter
               label="active"
               filterKey="active"
               options={[
@@ -420,91 +371,110 @@ export function EmailTemplateSettingsPanel({
             />
           </div>
         }
-        actions={
-          <Button
-            onClick={() => handleOpenDialog()}
-            className="rounded-[1rem] bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)]"
-          >
-            <Plus className="size-4" />
-            Template Baru
-          </Button>
-        }
       >
-        <Table>
+          <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Name</TableHead>
               <TableHead>Kode</TableHead>
+              <TableHead>Fitur</TableHead>
               <TableHead>Origin</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Channel</TableHead>
-              <TableHead>Variabel</TableHead>
               <TableHead>Subject</TableHead>
               <TableHead>Aktif</TableHead>
-              <TableHead>Aksi</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {templates.length > 0 ? (
-              templates.map((template) => (
-                <TableRow
-                  key={template.id}
-                  className="hover:bg-surface-container"
-                  data-date-value={template.updatedAt.toISOString()}
-                  data-filter-origin={
-                    EMAIL_TEMPLATE_PRESET_MAP[template.templateCode] ? "workflow" : "custom"
-                  }
-                  data-filter-active={template.isActive ? "active" : "inactive"}
-                >
-                  <TableCell>
-                    <div className="min-w-0">
-                      <p className="font-semibold">{template.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {EMAIL_TEMPLATE_PRESET_MAP[template.templateCode]?.description ??
-                          "Template custom dari admin."}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{template.templateCode}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="rounded-full">
-                      {EMAIL_TEMPLATE_PRESET_MAP[template.templateCode] ? "Workflow" : "Custom"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="rounded-full">
-                      {template.templateType}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{template.deliveryChannel}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {EMAIL_TEMPLATE_PRESET_MAP[template.templateCode]?.variables.length ?? 0}
-                  </TableCell>
-                  <TableCell className="max-w-[360px] truncate text-muted-foreground">
-                    {template.subject}
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={template.isActive}
-                      onCheckedChange={(checked) => handleToggleActive(template, checked)}
-                      disabled={togglingId === template.id}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="rounded-xl text-primary hover:bg-surface-container-low"
-                      onClick={() => handleOpenDialog(template)}
-                      aria-label={`Edit template ${template.name}`}
-                      title={`Edit template ${template.name}`}
-                    >
-                      <Pencil className="size-4" />
-                      <span className="sr-only">Edit template</span>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              templates.map((template) => {
+                const feature = getTemplateFeature(template.templateCode);
+                const isEmailChannel = template.deliveryChannel.split(",").some((channel) => channel.trim() === "email");
+
+                return (
+                  <TableRow
+                    key={template.id}
+                    className="hover:bg-surface-container"
+                    data-date-value={template.updatedAt.toISOString()}
+                    data-filter-origin={
+                      EMAIL_TEMPLATE_PRESET_MAP[template.templateCode] ? "workflow" : "custom"
+                    }
+                    data-filter-feature={feature.toLowerCase().replace(/[^a-z0-9]+/g, "_")}
+                    data-filter-active={template.isActive ? "active" : "inactive"}
+                  >
+                    <TableCell>
+                      <div className="min-w-0">
+                        <p className="font-semibold">{template.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {EMAIL_TEMPLATE_PRESET_MAP[template.templateCode]?.description ??
+                            "Template custom dari admin."}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{template.templateCode}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-full">
+                        {feature}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-full">
+                        {EMAIL_TEMPLATE_PRESET_MAP[template.templateCode] ? "Workflow" : "Custom"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-full">
+                        {template.templateType}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{template.deliveryChannel}</TableCell>
+                    <TableCell className="max-w-[280px] truncate text-muted-foreground">
+                      {template.subject}
+                    </TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={template.isActive}
+                        onCheckedChange={(checked) => handleToggleActive(template, checked)}
+                        disabled={togglingId === template.id}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {isEmailChannel ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-xl text-primary hover:bg-surface-container-low"
+                            onClick={() => handleSendTest(template)}
+                            disabled={testSendingId === template.id}
+                            aria-label={`Test email template ${template.name}`}
+                            title={`Test email template ${template.name}`}
+                          >
+                            {testSendingId === template.id ? (
+                              <RefreshCcw className="size-4 animate-spin" />
+                            ) : (
+                              <Send className="size-4" />
+                            )}
+                            <span className="sr-only">Test email</span>
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-xl text-primary hover:bg-surface-container-low"
+                          onClick={() => handleOpenDialog(template)}
+                          aria-label={`Edit template ${template.name}`}
+                          title={`Edit template ${template.name}`}
+                        >
+                          <Pencil className="size-4" />
+                          <span className="sr-only">Edit template</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
@@ -531,16 +501,7 @@ export function EmailTemplateSettingsPanel({
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_360px]">
               <div className="space-y-4">
                 <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-display text-base font-semibold">
-                        Preset Workflow Cepat
-                      </h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Pilih preset untuk mengisi subject, body, dan metadata template sistem.
-                      </p>
-                    </div>
-                    {activePreset ? (
+                  {activePreset ? (
                       <Button
                         type="button"
                         variant="outline"
@@ -551,9 +512,8 @@ export function EmailTemplateSettingsPanel({
                         Reset ke Default
                       </Button>
                     ) : null}
-                  </div>
 
-                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                  <div className="grid gap-2 md:grid-cols-2">
                     {EMAIL_TEMPLATE_PRESETS.map((preset) => (
                       <Button
                         key={preset.templateCode}
