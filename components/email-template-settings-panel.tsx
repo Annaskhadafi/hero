@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -129,11 +129,6 @@ export function EmailTemplateSettingsPanel({
   const [testSendingId, setTestSendingId] = useState<number | null>(null);
   const [isSyncingPresets, setIsSyncingPresets] = useState(false);
 
-  const templatesByCode = useMemo(
-    () => new Map(templates.map((template) => [template.templateCode, template])),
-    [templates],
-  );
-
   const presetTemplatesCount = templates.filter((template) =>
     Boolean(EMAIL_TEMPLATE_PRESET_MAP[template.templateCode]),
   ).length;
@@ -175,11 +170,6 @@ export function EmailTemplateSettingsPanel({
     }
 
     setIsDialogOpen(true);
-  };
-
-  const handleOpenFromRegistry = (preset: EmailTemplatePreset) => {
-    const existingTemplate = templatesByCode.get(preset.templateCode);
-    handleOpenDialog(existingTemplate, preset);
   };
 
   const handleResetToPreset = () => {
@@ -517,17 +507,6 @@ export function EmailTemplateSettingsPanel({
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_360px]">
               <div className="space-y-4">
                 <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
-                  {activePreset ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-lg"
-                        onClick={handleResetToPreset}
-                      >
-                        <RotateCcw className="size-4" />
-                        Reset ke Default
-                      </Button>
-                    ) : null}
                   <div className="grid gap-2 md:grid-cols-2">
                     {EMAIL_TEMPLATE_PRESETS.map((preset) => (
                       <Button
