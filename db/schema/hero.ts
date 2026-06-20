@@ -3090,3 +3090,19 @@ export const broadcastInteractions = pgTable('hero_broadcast_interactions', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hcLeaderPerformance = pgTable('hero_hc_leader_performance', {
+  id: serial('id').primaryKey(),
+  leaderSn: text('leader_sn').notNull(),
+  reviewerSn: text('reviewer_sn'),
+  period: text('period').notNull(), // e.g., '2026 Q1', '2026 Annual'
+  surveyScore: integer('survey_score').notNull(), // 1-5
+  responseTimeScore: integer('response_time_score').notNull(), // 1-5
+  leadershipScore: integer('leadership_score').notNull(), // 1-5
+  overallScore: decimal('overall_score', { precision: 3, scale: 2 }).notNull(), // average score
+  feedback: text('feedback').notNull().default(''), // qualitative review notes
+  status: text('status').notNull().default('draft'), // 'draft', 'submitted', 'reviewed'
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+

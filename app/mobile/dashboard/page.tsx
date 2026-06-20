@@ -153,6 +153,7 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
   if (cleanUrl === "/dashboard/training") return "/mobile/training";
   if (cleanUrl === "/dashboard/attendance" || cleanUrl.startsWith("/dashboard/attendance/")) return "/mobile/attendance";
   if (cleanUrl === "/dashboard/lms" || cleanUrl.startsWith("/api/lms")) return "/mobile/lms";
+  if (cleanUrl === "/dashboard/hc/leader-performance" || cleanUrl.startsWith("/dashboard/hc/leader-performance")) return "/mobile/leader-performance";
 
   const segments = cleanUrl.split("/").filter(Boolean);
   const lastSegment = segments[segments.length - 1];
@@ -161,7 +162,7 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
     "activity", "approval", "attendance", "cargo-manifest", "curhat",
     "executive", "gamification", "hr-counseling", "hse", "lms",
     "notifications", "overtime", "profile", "reports", "timesheet",
-    "training", "wellness"
+    "training", "wellness", "leader-performance"
   ];
 
   if (knownMobilePages.includes(lastSegment)) {

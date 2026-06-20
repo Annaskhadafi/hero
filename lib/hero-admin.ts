@@ -802,6 +802,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'Human Capital',
+    groupLabel: 'Performance & Development',
+    title: 'Leader Performance',
+    url: '/dashboard/hc/leader-performance',
+    iconName: 'users',
+    resource: 'hc_leader_performance',
+    sortOrder: 16,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Attendance
   {
     menuArea: 'secondary',
@@ -3138,15 +3150,91 @@ Silakan login ke dashboard HC untuk meninjau hasil review.`,
 </div>`,
     textContent:
       `Performance review untuk karyawan berikut telah di-acknowledge oleh karyawan terkait.
-
+ 
 Informasi Performance Review:
 Karyawan: {{employeeName}}
 Reviewer: {{reviewerName}}
 Periode: {{cycleName}}
 Status: {{status}}
 Rating: {{overallRating}}
-
+ 
 Silakan login ke dashboard HC untuk melihat hasil akhir.`,
+    isActive: true,
+  },
+  {
+    name: 'HC Leader Performance Submitted',
+    templateCode: 'hc_leader_performance_submitted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Evaluasi Leader Performance disubmit: {{leaderName}}',
+    htmlContent:
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#0f172a,#334155);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#cbd5e1;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#94a3b8;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Evaluasi Leader Performance untuk pimpinan berikut telah disubmit.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Evaluasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Leader</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaderName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{period}}</td></tr><tr><td style="padding:4px 0;color:#1f2937;font-size:13px;width:120px;vertical-align:top">Skor Rata-rata</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{overallScore}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk meninjau hasil lengkap evaluasi pimpinan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent:
+      `Evaluasi Leader Performance untuk pimpinan berikut telah disubmit.
+      
+Informasi Evaluasi:
+Leader: {{leaderName}}
+Reviewer: {{reviewerName}}
+Periode: {{period}}
+Skor Rata-rata: {{overallScore}}
+
+Silakan login ke dashboard HC untuk meninjau hasil lengkap evaluasi pimpinan.`,
+    isActive: true,
+  },
+  {
+    name: 'HC Leader Performance Reviewed',
+    templateCode: 'hc_leader_performance_reviewed',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hc,employee,reviewer',
+    ccEmail: '',
+    subject: 'Evaluasi Leader Performance selesai ditinjau: {{leaderName}}',
+    htmlContent:
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#0f172a,#334155);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#cbd5e1;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital</p></td>
+<td align="right"><span style="color:#94a3b8;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Evaluasi Leader Performance untuk pimpinan berikut telah selesai ditinjau oleh HC / Admin.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Evaluasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Leader</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaderName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{period}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">Reviewed</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk detail lebih lanjut.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent:
+      `Evaluasi Leader Performance untuk pimpinan berikut telah selesai ditinjau oleh HC / Admin.
+      
+Informasi Evaluasi:
+Leader: {{leaderName}}
+Reviewer: {{reviewerName}}
+Periode: {{period}}
+Status: Reviewed
+
+Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     isActive: true,
   },
   {
@@ -3632,6 +3720,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
         'settings_email',
         'portal_chitra',
         'settings_portal_chitra',
+        'hc_leader_performance',
       ].includes(resource),
       canSelectAll: false,
     }
