@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ChevronDown,
   Eye,
   FileText,
   Pencil,
@@ -10,6 +11,7 @@ import {
   RefreshCcw,
   RotateCcw,
   Send,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,9 +28,11 @@ import {
   getTemplateFeature,
   type EmailTemplatePreset,
 } from "@/lib/email-template-presets";
+import { EmployeeMultiSelect } from "@/components/employee-multi-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -52,6 +56,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
 
 type EmailTemplateRecord = {
@@ -119,12 +124,14 @@ export function EmailTemplateSettingsPanel({
   hseCcEmails,
   hcRecipientEmails,
   hcCcEmails,
+  employees,
 }: {
   templates: EmailTemplateRecord[];
   hseRecipientEmails: string;
   hseCcEmails: string;
   hcRecipientEmails: string;
   hcCcEmails: string;
+  employees: Array<{ id: number; name: string; email: string }>;
 }) {
   const router = useRouter();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -141,7 +148,14 @@ export function EmailTemplateSettingsPanel({
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
+  const selectedRecipientEmails = scopeList.filter((scope) => scope.includes("@"));
+  const selectedCcEmails = formData.ccEmail
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
   const scopeDescriptions = scopeList.map((scope) => {
+    if (scope.includes("@")) return { label: "User terpilih", detail: scope };
     if (scope === "employee") return { label: "employee", detail: "Variabel: {{employeeName}}, {{employeeEmail}}" };
     if (scope === "candidate") return { label: "candidate", detail: "Variabel: {{candidateName}}, {{candidateEmail}}" };
     if (scope === "approver") return { label: "approver", detail: "Ditentukan oleh approval engine saat runtime" };
@@ -524,7 +538,7 @@ export function EmailTemplateSettingsPanel({
       </MinimalTableShell>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="w-[min(96vw,1100px)] max-w-[min(96vw,1100px)]">
+        <DialogContent className="w-[min(98vw,1400px)] max-w-[min(98vw,1400px)] max-h-[94vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate ? "Edit Template Email" : "Buat Template Email"}
@@ -538,7 +552,7 @@ export function EmailTemplateSettingsPanel({
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_360px]">
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="space-y-2 xl:col-span-1">
+                  <div className="space-y-2">
                     <Label htmlFor="template-name">Nama Template</Label>
                     <Input
                       id="template-name"
@@ -548,7 +562,7 @@ export function EmailTemplateSettingsPanel({
                       required
                     />
                   </div>
-                  <div className="space-y-2 xl:col-span-1">
+                  <div className="space-y-2">
                     <Label htmlFor="template-code">Kode Template</Label>
                     <Input
                       id="template-code"
@@ -563,7 +577,7 @@ export function EmailTemplateSettingsPanel({
                       required
                     />
                   </div>
-                  <div className="space-y-2 xl:col-span-1">
+                  <div className="space-y-2">
                     <Label htmlFor="template-type">Type</Label>
                     <Input
                       id="template-type"
@@ -575,7 +589,7 @@ export function EmailTemplateSettingsPanel({
                       required
                     />
                   </div>
-                  <div className="space-y-2 xl:col-span-1">
+                  <div className="space-y-2">
                     <Label htmlFor="template-active">Status</Label>
                     <div className="flex h-10 items-center rounded-lg border bg-surface-container-low px-3">
                       <Switch
@@ -588,33 +602,43 @@ export function EmailTemplateSettingsPanel({
                       </span>
                     </div>
                   </div>
-                  <div className="space-y-2 xl:col-span-2">
-                    <Label htmlFor="template-channel">Channel</Label>
-                    <Input
-                      id="template-channel"
-                      value={formData.deliveryChannel}
-                      onChange={(event) =>
-                        setFormData({ ...formData, deliveryChannel: event.target.value })
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-3 rounded-xl border bg-surface-container-lowest p-3">
+                    <div className="flex items-start gap-2">
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+                        <Users className="size-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <Label>Scope Penerima</Label>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Pilih user tujuan email. Untuk workflow lama, isi scope manual seperti hc, hse, approver tetap bisa dipakai.
+                        </p>
+                      </div>
+                    </div>
+                    <EmployeeMultiSelect
+                      label="penerima"
+                      selectedEmails={selectedRecipientEmails}
+                      onChange={(emails) =>
+                        setFormData({ ...formData, recipientScope: emails.join(", ") || "all" })
                       }
-                      placeholder="email,bell,pwa_push"
-                      required
+                      employees={employees}
+                      placeholder="Pilih user penerima utama..."
                     />
-                  </div>
-                  <div className="space-y-2 xl:col-span-1">
-                    <Label htmlFor="template-scope">Scope Penerima</Label>
                     <Input
                       id="template-scope"
                       value={formData.recipientScope}
                       onChange={(event) =>
                         setFormData({ ...formData, recipientScope: event.target.value })
                       }
-                      placeholder="approver"
+                      placeholder="Pilih user atau isi scope: hc, hse, approver"
                       required
                     />
                     {scopeDescriptions.length > 0 ? (
-                      <div className="space-y-1">
-                        {scopeDescriptions.map((scope) => (
-                          <div key={scope.label} className="rounded-lg bg-surface-container-low px-3 py-1.5 text-xs">
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {scopeDescriptions.map((scope, index) => (
+                          <div key={scope.label + "-" + index} className="rounded-lg bg-surface-container-low px-3 py-2 text-xs">
                             <span className="font-semibold">{scope.label}:</span>{" "}
                             <span className="text-muted-foreground">{scope.detail}</span>
                           </div>
@@ -622,8 +646,21 @@ export function EmailTemplateSettingsPanel({
                       </div>
                     ) : null}
                   </div>
-                  <div className="space-y-2 xl:col-span-1">
-                    <Label htmlFor="template-cc">CC Email</Label>
+
+                  <div className="space-y-3 rounded-xl border bg-surface-container-lowest p-3">
+                    <div>
+                      <Label>CC Email</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Pilih user CC. Nilai ini juga digabung dengan CC runtime dari domain fitur.
+                      </p>
+                    </div>
+                    <EmployeeMultiSelect
+                      label="CC"
+                      selectedEmails={selectedCcEmails}
+                      onChange={(emails) => setFormData({ ...formData, ccEmail: emails.join(", ") })}
+                      employees={employees}
+                      placeholder="Pilih user CC..."
+                    />
                     <Input
                       id="template-cc"
                       value={formData.ccEmail}
@@ -644,32 +681,6 @@ export function EmailTemplateSettingsPanel({
                   />
                 </div>
 
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="template-html">HTML Content</Label>
-                    <Textarea
-                      id="template-html"
-                      value={formData.htmlContent}
-                      onChange={(event) =>
-                        setFormData({ ...formData, htmlContent: event.target.value })
-                      }
-                      placeholder="<p>Request #{{requestId}} menunggu approval Anda.</p>"
-                      className="min-h-64 font-mono text-xs"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="template-text">Text Content</Label>
-                    <Textarea
-                      id="template-text"
-                      value={formData.textContent}
-                      onChange={(event) =>
-                        setFormData({ ...formData, textContent: event.target.value })
-                      }
-                      placeholder="Request #{{requestId}} menunggu approval Anda."
-                      className="min-h-64 font-mono text-xs"
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-4">
@@ -717,41 +728,108 @@ export function EmailTemplateSettingsPanel({
                 </Card>
 
                 <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+                      <Send className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <Label>Channel</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Pilih channel pengiriman notifikasi.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {[
+                      { id: "email", label: "Email", desc: "Kirim via email SMTP" },
+                      { id: "bell", label: "Notification Bell", desc: "Notifikasi di header aplikasi" },
+                      { id: "pwa_push", label: "PWA Push", desc: "Push notification ke browser" },
+                    ].map((channel) => {
+                      const selected = formData.deliveryChannel.split(",").map((c) => c.trim());
+                      const isChecked = selected.includes(channel.id);
+                      return (
+                        <label
+                          key={channel.id}
+                          className="flex items-start gap-3 rounded-lg border bg-surface-container-low px-3 py-2 cursor-pointer hover:bg-surface-container-low/80 transition-colors"
+                        >
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={(checked) => {
+                              const next = checked
+                                ? [...selected, channel.id]
+                                : selected.filter((c) => c !== channel.id);
+                              setFormData({ ...formData, deliveryChannel: next.join(",") });
+                            }}
+                            className="mt-0.5"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{channel.label}</p>
+                            <p className="text-xs text-muted-foreground">{channel.desc}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </div>
+            </div>
+
+            <Card className="rounded-lg border bg-surface-container-lowest p-4 shadow-sm">
+              <Tabs defaultValue="preview" className="min-w-0">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Eye className="size-4 text-primary" />
                     <h3 className="font-display text-base font-semibold">Live Preview</h3>
                   </div>
-                  <div className="mt-4 rounded-lg bg-surface-container-low p-3">
+                  <TabsList className="grid w-auto grid-cols-3">
+                    <TabsTrigger value="preview">Live Preview</TabsTrigger>
+                    <TabsTrigger value="html">HTML Content</TabsTrigger>
+                    <TabsTrigger value="text">Text Content</TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent value="preview" className="mt-4">
+                  <div className="mb-3 rounded-lg bg-surface-container-low p-3">
                     <p className="text-xs text-muted-foreground">Subject</p>
                     <p className="mt-1 text-sm font-medium">{previewSubject}</p>
                   </div>
+                  <div className="h-[480px] overflow-hidden rounded-xl border bg-white">
+                    <iframe
+                      srcDoc={previewHtml}
+                      title="Live preview HTML"
+                      className="h-full w-full"
+                      sandbox="allow-same-origin"
+                    />
+                  </div>
+                </TabsContent>
 
-                  <Tabs defaultValue="html" className="mt-4 min-w-0">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="html">HTML</TabsTrigger>
-                      <TabsTrigger value="text">Text</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="html" className="mt-4">
-                      <div className="h-[320px] overflow-hidden rounded-xl border bg-white">
-                        <iframe
-                          srcDoc={previewHtml}
-                          title="Live preview HTML"
-                          className="h-full w-full"
-                          sandbox="allow-same-origin"
-                        />
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="text" className="mt-4">
-                      <div className="h-[320px] overflow-auto rounded-xl border p-4">
-                        <pre className="whitespace-pre-wrap break-words font-mono text-sm">
-                          {previewText}
-                        </pre>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </Card>
-              </div>
-            </div>
+                <TabsContent value="html" className="mt-4">
+                  <Label htmlFor="template-html">HTML Content</Label>
+                  <Textarea
+                    id="template-html"
+                    value={formData.htmlContent}
+                    onChange={(event) =>
+                      setFormData({ ...formData, htmlContent: event.target.value })
+                    }
+                    placeholder="<p>Request #{{requestId}} menunggu approval Anda.</p>"
+                    className="mt-2 min-h-[480px] font-mono text-xs"
+                  />
+                </TabsContent>
+
+                <TabsContent value="text" className="mt-4">
+                  <Label htmlFor="template-text">Text Content</Label>
+                  <Textarea
+                    id="template-text"
+                    value={formData.textContent}
+                    onChange={(event) =>
+                      setFormData({ ...formData, textContent: event.target.value })
+                    }
+                    placeholder="Request #{{requestId}} menunggu approval Anda."
+                    className="mt-2 min-h-[480px] font-mono text-xs"
+                  />
+                </TabsContent>
+              </Tabs>
+            </Card>
 
             <DialogFooter>
               <DialogClose asChild>

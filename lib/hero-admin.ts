@@ -3690,6 +3690,26 @@ function dedupeMenuItemsByPage<
   })
 }
 
+const OWN_SCOPE_RESOURCES = new Set([
+  'tire_service',
+  'overtime_requests',
+  'tire_engineer',
+  'hr_counseling_user',
+  'hc_attendance_permission',
+  'hc_contract_review',
+  'hc_disciplinary',
+  'hc_certificate',
+  'hc_performance',
+  'hc_leader_performance',
+  'approval_inbox',
+  'request_center',
+  'notification_center',
+  'attendance',
+  'attendance_records',
+  'attendance_exceptions',
+  'scheduling_timesheet',
+])
+
 function getDefaultMenuPermission(roleName: string, resource: string) {
   if (roleName === 'Super Admin') {
     return {
@@ -3697,6 +3717,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       canEdit: true,
       canDelete: true,
       canSelectAll: true,
+      dataScope: 'global',
     }
   }
 
@@ -3707,6 +3728,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       canEdit: allowed,
       canDelete: allowed,
       canSelectAll: false,
+      dataScope: 'own',
     }
   }
 
@@ -3723,6 +3745,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
         'hc_leader_performance',
       ].includes(resource),
       canSelectAll: false,
+      dataScope: 'global',
     }
   }
 
@@ -3731,6 +3754,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     canEdit: !['settings_email', 'portal_chitra', 'settings_portal_chitra'].includes(resource),
     canDelete: false,
     canSelectAll: false,
+    dataScope: OWN_SCOPE_RESOURCES.has(resource) ? 'own' : 'global',
   }
 }
 
@@ -4010,6 +4034,13 @@ async function ensureHeroGovernanceTables() {
       can_select_all boolean not null default false,
       created_at timestamp not null default now()
     );
+  `)
+
+  await db.execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE hero_role_menu_permissions ADD COLUMN IF NOT EXISTS data_scope text NOT NULL DEFAULT 'own';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
   `)
 
   await db.execute(sql`
@@ -5860,6 +5891,10 @@ export async function getSecurityRolesData() {
         id: employees.id,
         accessRole: employees.accessRole,
         name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        section: employees.section,
+        isActive: employees.isActive,
       })
       .from(employees)
       .orderBy(employees.name),
@@ -5886,6 +5921,15 @@ export async function getSecurityRolesData() {
     })),
     menuItems: dedupeMenuItemsByPage(menuItems),
     menuPermissions,
+    users: users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      accessRole: u.accessRole,
+      jobTitle: u.jobTitle,
+      section: u.section,
+      isActive: u.isActive,
+    })),
   }
 }
 
@@ -5984,6 +6028,20 @@ export async function getHumanCapitalNotificationConfigData() {
   )
 }
 
+
+export async function getActiveEmployeesForSelect() {
+  const rows = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, true))
+    .orderBy(asc(employees.name))
+
+  return rows
+}
 export async function getEmailSmtpSettingsData() {
   await ensureHeroGovernanceSeedData()
 
@@ -6224,3 +6282,4 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+

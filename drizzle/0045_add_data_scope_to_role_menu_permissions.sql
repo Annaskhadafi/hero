@@ -1,0 +1,1 @@
+ALTER TABLE "hero_role_menu_permissions" ADD COLUMN "data_scope" text NOT NULL DEFAULT 'own';

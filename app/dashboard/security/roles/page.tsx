@@ -2,7 +2,7 @@ import { SecurityRoleManagement } from "@/components/security-role-management";
 import { getSecurityRolesData } from "@/lib/hero-admin";
 
 export default async function SecurityRolesPage() {
-  const { roles, menuItems, menuPermissions } = await getSecurityRolesData();
+  const { roles, menuItems, menuPermissions, users } = await getSecurityRolesData();
 
   return (
     <div className="space-y-6">
@@ -17,6 +17,7 @@ export default async function SecurityRolesPage() {
         roles={roles}
         menuItems={menuItems}
         menuPermissions={menuPermissions}
+        users={users}
       />
     </div>
   );

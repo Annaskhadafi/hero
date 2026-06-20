@@ -1111,6 +1111,7 @@ export const roleMenuPermissions = pgTable('hero_role_menu_permissions', {
   canEdit: boolean('can_edit').notNull().default(false),
   canDelete: boolean('can_delete').notNull().default(false),
   canSelectAll: boolean('can_select_all').notNull().default(false),
+  dataScope: text('data_scope').notNull().default('own'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

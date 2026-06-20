@@ -1665,13 +1665,14 @@ const manageSecurityUserSchema = z.object({
 })
 
 const manageSecurityRoleSchema = z.object({
-  intent: z.enum(['create-role', 'duplicate-role', 'delete-role', 'save-menu-permissions']),
+  intent: z.enum(['create-role', 'duplicate-role', 'delete-role', 'save-menu-permissions', 'assign-user-role', 'remove-user-role']),
   roleId: optionalFormString,
   roleName: optionalFormString,
   description: optionalFormString,
   scope: optionalFormString,
   sourceRoleId: optionalFormString,
   permissionsJson: optionalFormString,
+  employeeId: optionalFormString,
 })
 
 const optionalRecordId = z.preprocess(
@@ -4723,6 +4724,7 @@ export async function manageSecurityRoleAction(
       scope: formData.get('scope'),
       sourceRoleId: formData.get('sourceRoleId'),
       permissionsJson: formData.get('permissionsJson'),
+      employeeId: formData.get('employeeId'),
     })
 
     if (payload.intent === 'create-role') {
@@ -4761,6 +4763,7 @@ export async function manageSecurityRoleAction(
             canEdit: false,
             canDelete: false,
             canSelectAll: false,
+            dataScope: 'own',
           }))
         )
       }
@@ -4819,6 +4822,7 @@ export async function manageSecurityRoleAction(
             canEdit: permission.canEdit,
             canDelete: permission.canDelete,
             canSelectAll: permission.canSelectAll,
+            dataScope: permission.dataScope || 'own',
           }))
         )
       }
@@ -4899,6 +4903,7 @@ export async function manageSecurityRoleAction(
         canEdit: boolean
         canDelete: boolean
         canSelectAll: boolean
+        dataScope: string
       }>
 
       for (const item of matrix) {
@@ -4921,6 +4926,7 @@ export async function manageSecurityRoleAction(
               canEdit: item.canEdit,
               canDelete: item.canDelete,
               canSelectAll: item.canSelectAll,
+              dataScope: item.dataScope || 'own',
             })
             .where(eq(roleMenuPermissions.id, existingPermission.id))
         } else {
@@ -4931,6 +4937,7 @@ export async function manageSecurityRoleAction(
             canEdit: item.canEdit,
             canDelete: item.canDelete,
             canSelectAll: item.canSelectAll,
+            dataScope: item.dataScope || 'own',
           })
         }
       }
@@ -4939,6 +4946,106 @@ export async function manageSecurityRoleAction(
       return {
         status: 'success',
         message: 'Checklist RBAC role berhasil disimpan.',
+      }
+    }
+
+    if (payload.intent === 'assign-user-role') {
+      const roleId = Number(payload.roleId)
+      const employeeId = Number(payload.employeeId)
+
+      if (!roleId || !employeeId) {
+        return { status: 'error', message: 'Role dan employee harus dipilih.' }
+      }
+
+      const [role] = await db
+        .select()
+        .from(securityRoles)
+        .where(eq(securityRoles.id, roleId))
+        .limit(1)
+
+      if (!role) {
+        return { status: 'error', message: 'Role tidak valid.' }
+      }
+
+      const [employee] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.id, employeeId))
+        .limit(1)
+
+      if (!employee) {
+        return { status: 'error', message: 'Employee tidak ditemukan.' }
+      }
+
+      const oldRole = employee.accessRole
+      await db
+        .update(employees)
+        .set({ accessRole: role.name })
+        .where(eq(employees.id, employeeId))
+
+      if (employee.authUserId) {
+        await db.delete(session).where(eq(session.userId, employee.authUserId))
+      }
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.role_changed',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Role changed from ${oldRole} to ${role.name} via role management`,
+        severity: 'warning',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `${employee.name} berhasil dipindahkan ke role ${role.name}.`,
+      }
+    }
+
+    if (payload.intent === 'remove-user-role') {
+      const employeeId = Number(payload.employeeId)
+
+      if (!employeeId) {
+        return { status: 'error', message: 'Employee harus dipilih.' }
+      }
+
+      const [employee] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.id, employeeId))
+        .limit(1)
+
+      if (!employee) {
+        return { status: 'error', message: 'Employee tidak ditemukan.' }
+      }
+
+      const oldRole = employee.accessRole
+      const defaultRole = 'Site Admin'
+      await db
+        .update(employees)
+        .set({ accessRole: defaultRole })
+        .where(eq(employees.id, employeeId))
+
+      if (employee.authUserId) {
+        await db.delete(session).where(eq(session.userId, employee.authUserId))
+      }
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.role_changed',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Role changed from ${oldRole} to ${defaultRole} via role management (removed from role)`,
+        severity: 'warning',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `${employee.name} berhasil dihapus dari role. Dikembalikan ke ${defaultRole}.`,
       }
     }
 
