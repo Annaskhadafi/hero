@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { MobileAppShell } from "@/components/mobile/mobile-app-shell";
 import { getServerSession } from "@/lib/auth-session";
 import { getMobileNotificationCount } from "@/lib/mobile-data";
+import { MobileBroadcastPopup } from "@/components/mobile/mobile-broadcast-popup";
+import { getEligibleBroadcastsForMobile } from "@/app/actions/broadcast";
 
 import "@/app/dashboard/theme.css";
 
@@ -31,12 +33,15 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     ? await getMobileNotificationCount(session.user.email)
     : 0;
 
+  const eligibleBroadcasts = await getEligibleBroadcastsForMobile();
+
   return (
     <MobileAppShell
       userName={session.user.name || session.user.email || "HERO User"}
       notificationCount={notificationCount}
     >
       {children}
+      <MobileBroadcastPopup initialBroadcasts={eligibleBroadcasts} />
     </MobileAppShell>
   );
 }

@@ -49,6 +49,7 @@ const bottomNavItems = [
 
 const drawerItems = [
   { label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
+  { label: 'Informasi HO', href: '/mobile/information', icon: Bell },
   { label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },
   { ...mobileActivityDrawerItem, icon: ClipboardList },
   { label: 'Absensi Wajah', href: '/mobile/attendance/face', icon: ScanFace },

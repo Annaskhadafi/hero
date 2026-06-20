@@ -101,6 +101,12 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
       icon: MessageSquare,
       bg: "bg-pink-500/10 text-pink-600",
     },
+    {
+      title: "Informasi HO",
+      href: "/mobile/information",
+      icon: Bell,
+      bg: "bg-amber-500/10 text-amber-600",
+    },
     ...(isHR ? [{
       title: "Inbox HR",
       href: "/mobile/hr-counseling",

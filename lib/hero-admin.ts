@@ -1285,6 +1285,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'Command Center',
+    title: 'Command Center',
+    url: '/dashboard/command-center',
+    iconName: 'bell',
+    resource: 'command_center',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
 ] as const
 
 const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems) => {

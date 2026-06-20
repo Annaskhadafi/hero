@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import {
+  IconBell,
   IconBook,
   IconChartBar,
   IconChecklist,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/sidebar"
 
 const iconMap = {
+  bell: IconBell,
   "book-open": IconBook,
   "chart-bar": IconChartBar,
   checklist: IconChecklist,
@@ -99,6 +101,7 @@ const desktopMenuIconMap = {
   HSE: IconShieldHalfFilled,
   "Central Service": IconDatabase,
   Laporan: IconReport,
+  "Command Center": IconBell,
   Pengaturan: IconSettings,
 } as const
 

@@ -3053,3 +3053,40 @@ export const sioReminderConfig = pgTable('hero_sio_reminder_config', {
   isActive: boolean('is_active').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+export const broadcastCategories = pgTable('hero_broadcast_categories', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const broadcasts = pgTable('hero_broadcasts', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content'),
+  imageUrl: text('image_url'),
+  linkUrl: text('link_url'),
+  mediaType: text('media_type').notNull().default('image'), // 'image', 'video', 'text'
+  targetType: text('target_type').notNull(), // 'all', 'department', 'section'
+  targetId: integer('target_id'), // ID of the department or section if applicable
+  targetValue: text('target_value'), // Name/code of target department or section
+  maxPopups: integer('max_popups').notNull().default(5),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdBy: text('created_by'), // authUserId
+  categoryId: integer('category_id').references(() => broadcastCategories.id, { onDelete: 'set null' }),
+})
+
+export const broadcastInteractions = pgTable('hero_broadcast_interactions', {
+  id: serial('id').primaryKey(),
+  broadcastId: integer('broadcast_id')
+    .notNull()
+    .references(() => broadcasts.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(), // authUserId of the employee
+  viewsCount: integer('views_count').notNull().default(0),
+  liked: boolean('liked'), // true = like, false = dislike, null = none
+  dismissed: boolean('dismissed').notNull().default(false),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
