@@ -35,6 +35,20 @@
 - Jangan mengklaim database sudah ter-push jika command belum dijalankan atau bukti status belum ada.
 - Jika database belum ter-push, gagal push, atau environment target tidak jelas, laporkan jelas di final response beserta command/status terakhir dan next step yang perlu dilakukan.
 
+### User Management as Single Source of Truth
+
+- **`hero_employees` (User Management)** adalah SATU-SATUNYA sumber data karyawan untuk seluruh sistem.
+- Dilarang menggunakan `hero_hr_employees` (tabel import staging) untuk query data karyawan di runtime code (actions, pages, API routes, lib helpers).
+- Jika menulis kode baru yang butuh data karyawan, WAJIB query dari `hero_employees` dan join ke `hero_master_departments`, `hero_master_sections`, `hero_sites`.
+- Kolom mapping jika referensi schema lama diperlukan:
+  - `employeeId` → `employee_sn`
+  - `fullName` → `name`
+  - `contractStart` → `contract_duration_start`
+  - `contractEnd` → `contract_duration_end`
+  - `accountStatus` → `employment_status`
+  - `workLocationId` → tidak ada di hero_employees, gunakan null
+- Tabel `hero_hr_employees` HANYA boleh dipakai untuk: migration scripts, data import tools, dan audit scripts — bukan runtime application code.
+
 ### Next.js Root Layout Guard
 
 - Jika menyentuh `app/layout.tsx`, `RootLayout`, atau document shell Next.js, wajib pertahankan struktur root valid: `<html>` hanya membungkus `<body>` (dan metadata/head yang dikelola Next), jangan menaruh `<Script>` / `<script>` langsung sebagai child dari `<html>`.
