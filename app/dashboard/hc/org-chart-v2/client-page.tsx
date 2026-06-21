@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   Crown,
@@ -737,13 +737,16 @@ export function OrgChartV2ClientPage({
 
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const initializedRef = useRef(false);
-  if (!initializedRef.current && allIds.size > 0) {
-    initializedRef.current = true;
-    // Default: only expand departments, sections/sub-sections collapsed
-    const deptOnlyIds = new Set<number>();
-    for (const d of orgData.departments) deptOnlyIds.add(d.id);
-    setTimeout(() => setExpanded(deptOnlyIds), 0);
-  }
+
+  // Default: only expand departments, sections/sub-sections collapsed
+  useEffect(() => {
+    if (!initializedRef.current && orgData.departments.length > 0) {
+      initializedRef.current = true;
+      const deptOnlyIds = new Set<number>();
+      for (const d of orgData.departments) deptOnlyIds.add(d.id);
+      setExpanded(deptOnlyIds);
+    }
+  }, [orgData.departments]);
 
   const handleToggle = (id: number) => setExpanded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const handleExpandAll = () => setExpanded(new Set(allIds));
