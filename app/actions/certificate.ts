@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db";
-import { hcCertificates, hrDepartments, hrEmployees } from "@/db/schema/hero";
-import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { hcCertificates, employees, masterDepartments } from "@/db/schema/hero";
+import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const CERTIFICATE_PATH = "/dashboard/hc/certificate";
@@ -24,7 +24,7 @@ export async function getCertificates() {
   const rows = await db
     .select({
       id: hcCertificates.id,
-      employeeId: sql<number | null>`coalesce(${hcCertificates.employeeId}, ${hrEmployees.id})`,
+      employeeId: sql<number | null>`coalesce(${hcCertificates.employeeId}, ${employees.id})`,
       employeeName: hcCertificates.employeeName,
       certificateType: hcCertificates.certificateType,
       licenseNumber: hcCertificates.licenseNumber,
@@ -34,20 +34,17 @@ export async function getCertificates() {
       status: hcCertificates.status,
       createdAt: hcCertificates.createdAt,
       updatedAt: hcCertificates.updatedAt,
-      employeeCode: hrEmployees.employeeId,
-      employeeFullName: hrEmployees.fullName,
-      departmentId: hrDepartments.id,
-      departmentName: hrDepartments.name,
+      employeeCode: employees.employeeSn,
+      employeeFullName: employees.name,
+      departmentId: masterDepartments.id,
+      departmentName: masterDepartments.name,
     })
     .from(hcCertificates)
     .leftJoin(
-      hrEmployees,
-      or(
-        eq(hcCertificates.employeeId, hrEmployees.id),
-        eq(hcCertificates.employeeName, hrEmployees.employeeId)
-      )
+      employees,
+      eq(hcCertificates.employeeId, employees.id)
     )
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .orderBy(asc(hcCertificates.expiryDate));
 
   return rows.filter(isUsableCertificateRow).map((row) => enrichCertificate(row));
@@ -170,7 +167,7 @@ async function toCertificatePayload(data: CertificateInput) {
 }
 
 async function getEmployeeContext(employeeId: number) {
-  const [employee] = await db.select({ fullName: hrEmployees.fullName }).from(hrEmployees).where(eq(hrEmployees.id, employeeId)).limit(1);
+  const [employee] = await db.select({ fullName: employees.name }).from(employees).where(eq(employees.id, employeeId)).limit(1);
   return employee;
 }
 

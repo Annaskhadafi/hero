@@ -1,7 +1,7 @@
 import { getContractReviewSettings, getContractReviews } from "@/app/actions/contract-review"
 import { ContractReviewClientPage } from "./client-page"
 import { db } from "@/db"
-import { employees as umEmployees, hrEmployees } from "@/db/schema/hero"
+import { employees } from "@/db/schema/hero"
 import { eq } from "drizzle-orm"
 
 export const metadata = {
@@ -35,17 +35,17 @@ export default async function ContractReviewPage() {
   const [hrEmps, umEmps] = await Promise.all([
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeId: hrEmployees.employeeId,
-        department: hrEmployees.departmentId,
+        id: employees.id,
+        name: employees.name,
+        employeeId: employees.employeeSn,
+        department: employees.departmentId,
       })
-      .from(hrEmployees)
-      .where(eq(hrEmployees.isActive, true)),
+      .from(employees)
+      .where(eq(employees.isActive, true)),
     db
-      .select({ name: umEmployees.name, email: umEmployees.email })
-      .from(umEmployees)
-      .where(eq(umEmployees.isActive, true)),
+      .select({ name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.isActive, true)),
   ])
 
   const employees = hrEmps.map((emp) => ({ ...emp }))

@@ -2,13 +2,11 @@
 
 import { db } from "@/db";
 import {
-  hrEmployees,
-  hrPositions,
-  hrWorkLocations,
-  hrDepartments,
-  hrSections,
-  hrSites,
   employees,
+  hrPositions,
+  masterDepartments,
+  masterSections,
+  sites,
   trainingRecords,
   sioCertifications,
   hcEmployeeContractReviews,
@@ -26,7 +24,6 @@ import {
   wellnessRecords,
   hcCandidateMcu,
   streakRecords,
-  hrServiceBands
 } from "@/db/schema/hero";
 import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 
@@ -83,39 +80,37 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
   // 1. Fetch main HR Employee details
   const [hrEmp] = await db
     .select({
-      id: hrEmployees.id,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      email: hrEmployees.email,
-      joinDate: hrEmployees.joinDate,
-      contractStart: hrEmployees.contractStart,
-      contractEnd: hrEmployees.contractEnd,
-      birthDate: hrEmployees.birthDate,
-      accountStatus: hrEmployees.accountStatus,
-      genderCode: hrEmployees.genderCode,
-      ageBandCode: hrEmployees.ageBandCode,
-      serviceBandCode: hrServiceBands.name,
-      educationCode: hrEmployees.educationCode,
-      demographicEmployeeStatusCode: hrEmployees.demographicEmployeeStatusCode,
-      locationCategoryCode: hrEmployees.locationCategoryCode,
-      isActive: hrEmployees.isActive,
+      id: employees.id,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      email: employees.email,
+      joinDate: employees.joinDate,
+      contractStart: employees.contractDurationStart,
+      contractEnd: employees.contractDurationEnd,
+      birthDate: employees.birthDate,
+      accountStatus: employees.employmentStatus,
+      genderCode: sql<string | null>`${employees.gender}`.as('gender_code'),
+      ageBandCode: sql<string | null>`null`.as('age_band_code'),
+      serviceBandCode: sql<string | null>`null`.as('service_band_code'),
+      educationCode: employees.education,
+      demographicEmployeeStatusCode: sql<string | null>`null`.as('demographic_employee_status_code'),
+      locationCategoryCode: sql<string | null>`null`.as('location_category_code'),
+      isActive: employees.isActive,
       jobTitle: hrPositions.rankName,
       levelName: hrPositions.levelName,
-      departmentId: hrEmployees.departmentId,
-      departmentName: hrDepartments.name,
-      sectionName: hrSections.name,
-      siteName: hrSites.name,
-      location: hrWorkLocations.name,
-      authUserId: hrEmployees.authUserId,
+      departmentId: employees.departmentId,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+      siteName: sites.name,
+      location: employees.workLocation,
+      authUserId: employees.authUserId,
     })
-    .from(hrEmployees)
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-    .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
-    .leftJoin(hrServiceBands, eq(hrEmployees.serviceBandCode, hrServiceBands.code))
-    .where(eq(hrEmployees.id, hrEmployeeId))
+    .from(employees)
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(eq(employees.id, hrEmployeeId))
     .limit(1);
 
   if (!hrEmp) return null;
@@ -361,13 +356,13 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
   let managerName: string | null = null;
   if (hrEmp.departmentId) {
     const [deptManager] = await db
-      .select({ name: hrEmployees.fullName })
-      .from(hrEmployees)
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+      .select({ name: employees.name })
+      .from(employees)
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
       .where(
         and(
-          eq(hrEmployees.departmentId, hrEmp.departmentId),
-          eq(hrEmployees.isActive, true),
+          eq(employees.departmentId, hrEmp.departmentId),
+          eq(employees.isActive, true),
           or(
             sql`LOWER(${hrPositions.rankName}) LIKE '%manager%'`,
             sql`LOWER(${hrPositions.levelName}) LIKE '%manager%'`,

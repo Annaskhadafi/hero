@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections } from '@/db/schema/hero'
+import { employees, hrOrgNodes, hrPositions, masterDepartments, masterSections } from '@/db/schema/hero'
 import { and, asc, eq, ilike, or } from 'drizzle-orm'
 import { SuratKeteranganClient } from './client-form'
 
@@ -35,42 +35,42 @@ export default async function SuratKeteranganPage() {
   const [employeesData, hrSignersData] = await Promise.all([
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeSn: hrEmployees.employeeId,
-        joinYear: hrEmployees.joinDate,
-        section: hrSections.name,
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        joinYear: employees.joinDate,
+        section: masterSections.name,
         jobTitle: hrPositions.rankName,
       })
-      .from(hrEmployees)
-      .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .where(eq(hrEmployees.isActive, true))
-      .orderBy(asc(hrEmployees.fullName)),
+      .from(employees)
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeSn: hrEmployees.employeeId,
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
         jobTitle: hrPositions.rankName,
       })
-      .from(hrEmployees)
-      .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .leftJoin(hrOrgNodes, eq(hrEmployees.orgNodeId, hrOrgNodes.id))
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .leftJoin(hrOrgNodes, eq(employees.orgNodeId, hrOrgNodes.id))
       .where(
         and(
-          eq(hrEmployees.isActive, true),
+          eq(employees.isActive, true),
           or(
             ilike(hrOrgNodes.name, '%HR-GA%'),
             ilike(hrOrgNodes.name, '%HR GA%'),
             ilike(hrOrgNodes.pathText, '%HR-GA%'),
             ilike(hrOrgNodes.pathText, '%HR GA%'),
-            eq(hrEmployees.fullName, 'Rendra Rachman')
+            eq(employees.name, 'Rendra Rachman')
           )
         )
       )
-      .orderBy(asc(hrEmployees.fullName)),
+      .orderBy(asc(employees.name)),
   ])
 
   const formattedData = employeesData.map((e) => ({

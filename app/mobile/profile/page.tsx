@@ -103,16 +103,25 @@ export default async function MobileProfilePage() {
     if (!Number.isNaN(uid) && uid !== empId) employeeIds.push(uid)
   }
 
-  // Get hrEmployee record for contract dates & MCU matching
+  // Get employee record for contract dates & MCU matching
   const [hrEmp] = emp?.email ? await db
     .select({
-      id: hrEmployees.id, fullName: hrEmployees.fullName, email: hrEmployees.email,
-      contractStart: hrEmployees.contractStart, contractEnd: hrEmployees.contractEnd,
-      joinDate: hrEmployees.joinDate, birthDate: hrEmployees.birthDate,
+      id: employees.id, name: employees.name, email: employees.email,
+      contractDurationStart: employees.contractDurationStart, contractDurationEnd: employees.contractDurationEnd,
+      joinDate: employees.joinDate, birthDate: employees.birthDate,
     })
+    .from(employees)
+    .where(eq(employees.email, emp.email))
+    .limit(1) : []
+
+  // Get hrEmployees ID for FK joins (hcLeaveRequests, hcCandidateMcu reference hrEmployees.id)
+  const [hrFk] = emp?.email ? await db
+    .select({ id: hrEmployees.id })
     .from(hrEmployees)
     .where(eq(hrEmployees.email, emp.email))
     .limit(1) : []
+
+  const hrFkId = hrFk?.id ?? hrEmp?.id
 
   // ── Queries ────────────────────────────────────────────────
   const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords] = await Promise.all([
@@ -126,7 +135,7 @@ export default async function MobileProfilePage() {
     empId ? db.select().from(sioCertifications).where(inArray(sioCertifications.employeeId, employeeIds)).orderBy(desc(sioCertifications.expiryDate)) : [],
 
     // Sick Leave (hcLeaveRequests where leaveType is SAKIT)
-    hrEmp ? db
+    hrFkId ? db
       .select({
         id: hcLeaveRequests.id, startDate: hcLeaveRequests.startDate, endDate: hcLeaveRequests.endDate,
         totalDays: hcLeaveRequests.totalDays, reason: hcLeaveRequests.reason, status: hcLeaveRequests.status,
@@ -134,21 +143,21 @@ export default async function MobileProfilePage() {
       })
       .from(hcLeaveRequests)
       .leftJoin(hcLeaveTypes, eq(hcLeaveRequests.leaveTypeId, hcLeaveTypes.id))
-      .where(and(eq(hcLeaveRequests.employeeId, hrEmp.id), eq(hcLeaveTypes.code, 'SAKIT')))
+      .where(and(eq(hcLeaveRequests.employeeId, hrFkId), eq(hcLeaveTypes.code, 'SAKIT')))
       .orderBy(desc(hcLeaveRequests.startDate))
       .limit(10) : [],
 
     // MCU Records
-    hrEmp ? db
+    hrFkId ? db
       .select()
       .from(hcCandidateMcu)
-      .where(eq(hcCandidateMcu.candidateId, hrEmp.id))
+      .where(eq(hcCandidateMcu.candidateId, hrFkId))
       .orderBy(desc(hcCandidateMcu.scheduledDate))
       .limit(5) : [],
   ])
 
   // Contract info
-  const contractDaysLeft = hrEmp?.contractEnd ? daysLeft(hrEmp.contractEnd) : null
+  const contractDaysLeft = hrEmp?.contractDurationEnd ? daysLeft(hrEmp.contractDurationEnd) : null
 
   return (
     <div className="space-y-4 pb-6">
@@ -199,9 +208,9 @@ export default async function MobileProfilePage() {
       {hrEmp ? (
         <Section title="Kontrak">
           <Card>
-            <Row icon={<Calendar className="size-4" />} label="Tanggal Mulai" value={fd(hrEmp.contractStart)} />
+            <Row icon={<Calendar className="size-4" />} label="Tanggal Mulai" value={fd(hrEmp.contractDurationStart)} />
             <div className="border-t border-gray-50" />
-            <Row icon={<Calendar className="size-4" />} label="Tanggal Berakhir" value={fd(hrEmp.contractEnd)}
+            <Row icon={<Calendar className="size-4" />} label="Tanggal Berakhir" value={fd(hrEmp.contractDurationEnd)}
               right={contractDaysLeft !== null ? (
                 <span className={cn('text-xs font-medium', contractDaysLeft < 30 ? 'text-orange-600' : 'text-gray-500')}>
                   {contractDaysLeft < 0 ? 'Expired' : `${contractDaysLeft} hari lagi`}

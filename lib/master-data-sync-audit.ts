@@ -3,7 +3,6 @@ import { account, user } from "@/db/schema/auth";
 import {
   employeeSiteAssignments,
   employees,
-  hrEmployees,
   masterDepartments,
   masterPositions,
   masterSections,
@@ -67,7 +66,7 @@ export async function runMasterDataSyncAudit(): Promise<MasterDataSyncAudit> {
       .select({ userId: account.userId, accountId: account.accountId })
       .from(account)
       .where(eq(account.providerId, "credential")),
-    db.select().from(hrEmployees),
+    db.select().from(employees),
     db.select().from(securityRoles),
     db.select().from(sites),
     db.select().from(masterDepartments),
@@ -90,7 +89,7 @@ export async function runMasterDataSyncAudit(): Promise<MasterDataSyncAudit> {
   const departmentById = new Map(departmentRows.map((department) => [department.id, department]));
   const sectionById = new Map(sectionRows.map((section) => [section.id, section]));
   const positionById = new Map(positionRows.map((position) => [position.id, position]));
-  const hrByEmployeeId = new Map(hrEmployeeRows.map((employee) => [normalize(employee.employeeId), employee]));
+  const hrByEmployeeId = new Map(hrEmployeeRows.map((employee) => [normalize(employee.employeeSn), employee]));
   const hrByEmail = new Map(
     hrEmployeeRows
       .filter((employee) => employee.email)
@@ -312,7 +311,7 @@ export async function runMasterDataSyncAudit(): Promise<MasterDataSyncAudit> {
   for (const hrEmployee of hrEmployeeRows) {
     const hasProjection = employeeRows.some(
       (employee) =>
-        normalize(employee.employeeSn) === normalize(hrEmployee.employeeId) ||
+        normalize(employee.employeeSn) === normalize(hrEmployee.employeeSn) ||
         normalize(employee.email) === normalize(hrEmployee.email),
     );
     if (!hasProjection && hrEmployee.isActive) {
@@ -321,7 +320,7 @@ export async function runMasterDataSyncAudit(): Promise<MasterDataSyncAudit> {
         severity: "warning",
         entity: "hr_employee",
         entityId: String(hrEmployee.id),
-        label: `${hrEmployee.fullName} <${hrEmployee.email ?? "no-email"}>`,
+        label: `${hrEmployee.name} <${hrEmployee.email ?? "no-email"}>`,
         detail: "Active HR employee has no matching hero_employees projection.",
       });
     }

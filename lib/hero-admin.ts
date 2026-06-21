@@ -29,13 +29,10 @@ import {
   badges,
   employeeBadges,
   hrDepartments,
-  hrEmployeeStatuses,
-  hrEmployees,
   hrOrgNodes,
   hrPositions,
   hrSections,
   hrSites,
-  hrWorkLocations,
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelRules,
@@ -705,6 +702,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'git-branch',
     resource: 'hc_org_chart',
     sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Human Capital',
+    groupLabel: 'HR Operational',
+    title: 'Org Structure V2',
+    url: '/dashboard/hc/org-chart-v2',
+    iconName: 'list-details',
+    resource: 'hc_org_chart_v2',
+    sortOrder: 8,
     isVisible: true,
     openInNewTab: false,
   },
@@ -5768,41 +5777,41 @@ export async function getSecurityOverviewData() {
 export async function getSecurityUsersData() {
   const rows = await db
     .select({
-      id: hrEmployees.id,
-      employeeSn: hrEmployees.employeeId,
-      siteId: hrEmployees.siteId,
-      joinDate: hrEmployees.joinDate,
-      name: hrEmployees.fullName,
+      id: employees.id,
+      employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
+      joinDate: employees.joinDate,
+      name: employees.name,
       profileImage: authUser.image,
-      birthDate: hrEmployees.birthDate,
+      birthDate: employees.birthDate,
       domicile: employees.domicile,
       directManagerId: employees.directManagerId,
-      section: hrSections.name,
+      section: masterSections.name,
       sectionId: employees.sectionId,
       jobTitle:
         sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as('job_title'),
       workLocation:
-        sql<string>`coalesce(${hrWorkLocations.name}, ${hrOrgNodes.name}, ${hrSites.name}, '')`.as(
+        sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, '')`.as(
           'work_location'
         ),
       phoneNumber: employees.phoneNumber,
-      email: hrEmployees.email,
-      employmentStatus: hrEmployeeStatuses.name,
-      employeeStatusType: hrEmployeeStatuses.name,
+      email: employees.email,
+      employmentStatus: employees.employmentStatus,
+      employeeStatusType: employees.employeeStatusType,
       accessRole:
         sql<string>`coalesce(${employees.accessRole}, ${hrPositions.levelName}, 'User')`.as(
           'access_role'
         ),
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
-      department: hrDepartments.name,
-      departmentId: hrEmployees.departmentId,
+      department: masterDepartments.name,
+      departmentId: employees.departmentId,
       levelName:
         sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as('level_name'),
       fitStatus: sql<string>`'fit'`.as('fit_status'),
-      isActive: hrEmployees.isActive,
-      siteName: hrSites.name,
+      isActive: employees.isActive,
+      siteName: sites.name,
       totalPoints: sql<number>`0`.as('total_points'),
-      contractEnd: hrEmployees.contractEnd,
+      contractEnd: employees.contractDurationEnd,
       gender: employees.gender,
       religion: employees.religion,
       education: employees.education,
@@ -5812,24 +5821,15 @@ export async function getSecurityUsersData() {
       contractDurationEnd: employees.contractDurationEnd,
       permanentDate: employees.permanentDate,
     })
-    .from(hrEmployees)
-    .leftJoin(
-      employees,
-      or(eq(employees.employeeSn, hrEmployees.employeeId), eq(employees.email, hrEmployees.email))
-    )
-    .leftJoin(authUser, eq(hrEmployees.authUserId, authUser.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
-    .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
-    .leftJoin(hrOrgNodes, eq(hrEmployees.orgNodeId, hrOrgNodes.id))
-    .leftJoin(
-      hrEmployeeStatuses,
-      eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code)
-    )
-    .where(eq(hrEmployees.isActive, true))
-    .orderBy(hrEmployees.fullName)
+    .from(employees)
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(hrOrgNodes, eq(employees.orgNodeId, hrOrgNodes.id))
+    .where(eq(employees.isActive, true))
+    .orderBy(employees.name)
 
   const uniqueRowsMap = new Map()
   for (const row of rows) {

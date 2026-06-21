@@ -1,6 +1,6 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { emailTemplates, employees, hrEmployees } from '@/db/schema/hero'
+import { emailTemplates, employees } from '@/db/schema/hero'
 import { sendEmailViaSmtp, type EmailAttachment } from '@/lib/email-delivery'
 import { getPublicAppUrl } from '@/lib/auth-config'
 import { getEmailSmtpSettingsData } from '@/lib/hero-admin'
@@ -297,10 +297,10 @@ export async function getEmployeeContactById(employeeId: number) {
 export async function getHrEmployeeEmailById(employeeId: number) {
   const [employee] = await db
     .select({
-      email: hrEmployees.email,
+      email: employees.email,
     })
-    .from(hrEmployees)
-    .where(eq(hrEmployees.id, employeeId))
+    .from(employees)
+    .where(eq(employees.id, employeeId))
     .limit(1)
 
   return normalizeEmail(employee?.email)
@@ -309,11 +309,11 @@ export async function getHrEmployeeEmailById(employeeId: number) {
 export async function getHrEmployeeContactById(employeeId: number) {
   const [employee] = await db
     .select({
-      name: hrEmployees.fullName,
-      email: hrEmployees.email,
+      name: employees.name,
+      email: employees.email,
     })
-    .from(hrEmployees)
-    .where(eq(hrEmployees.id, employeeId))
+    .from(employees)
+    .where(eq(employees.id, employeeId))
     .limit(1)
 
   return {

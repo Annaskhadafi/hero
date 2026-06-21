@@ -9,7 +9,6 @@ import {
   hcContractReviewReminders,
   hcContractReviewSettings,
   hcEmployeeContractReviews,
-  hrEmployees,
   masterDepartments,
   masterSections,
 } from '@/db/schema/hero'
@@ -447,15 +446,15 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
 
   const [hrEmployee] = await db
     .select({
-      id: hrEmployees.id,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      email: hrEmployees.email,
-      departmentId: hrEmployees.departmentId,
-      sectionId: hrEmployees.sectionId,
+      id: employees.id,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      email: employees.email,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
     })
-    .from(hrEmployees)
-    .where(eq(hrEmployees.id, review.employeeId))
+    .from(employees)
+    .where(eq(employees.id, review.employeeId))
     .limit(1)
 
   if (!hrEmployee) return []
@@ -536,9 +535,9 @@ async function getContractReviewReminderContext(review: typeof hcEmployeeContrac
       .orderBy(asc(hcContractReviewApprovals.stepOrder)),
     review.employeeId
       ? db
-          .select({ employeeId: hrEmployees.employeeId })
-          .from(hrEmployees)
-          .where(eq(hrEmployees.id, review.employeeId))
+          .select({ employeeId: employees.employeeSn })
+          .from(employees)
+          .where(eq(employees.id, review.employeeId))
           .limit(1)
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
@@ -789,7 +788,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
             const [rev] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
             let employeeSection = '', employeeSite = '', employeeSn = ''
             if (rev?.employeeId) {
-              const [hrEmp] = await db.select({ employeeId: hrEmployees.employeeId }).from(hrEmployees).where(eq(hrEmployees.id, rev.employeeId)).limit(1)
+              const [hrEmp] = await db.select({ employeeId: employees.employeeSn }).from(employees).where(eq(employees.id, rev.employeeId)).limit(1)
               if (hrEmp) {
                 const sn = normalizeSn(hrEmp.employeeId)
                 employeeSn = sn
@@ -956,7 +955,7 @@ export async function approveContractReviewStep(
       let employeeSite = ''
       let employeeSn = ''
       if (review?.employeeId) {
-        const [hrEmp] = await db.select({ employeeId: hrEmployees.employeeId }).from(hrEmployees).where(eq(hrEmployees.id, review.employeeId)).limit(1)
+        const [hrEmp] = await db.select({ employeeId: employees.employeeSn }).from(employees).where(eq(employees.id, review.employeeId)).limit(1)
         if (hrEmp) {
           const sn = normalizeSn(hrEmp.employeeId)
           employeeSn = sn
@@ -1045,9 +1044,9 @@ export async function generateTestContractReview() {
     // Find matching hrEmployee
     const sn = normalizeSn(emp.employee_sn)
     const [hrEmp] = await db
-      .select({ id: hrEmployees.id })
-      .from(hrEmployees)
-      .where(or(eq(hrEmployees.employeeId, sn), eq(hrEmployees.employeeId, `EMP-${sn}`)))
+      .select({ id: employees.id })
+      .from(employees)
+      .where(or(eq(employees.employeeSn, sn), eq(employees.employeeSn, `EMP-${sn}`)))
       .limit(1)
 
     const today = new Date()

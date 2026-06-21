@@ -5,9 +5,9 @@ import {
   hcLeaveTypes,
   hcLeaveBalances,
   hcLeaveRequests,
-  hrEmployees,
-  hrDepartments,
-  hrSections,
+  employees,
+  masterDepartments,
+  masterSections,
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count, gte, lte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -53,7 +53,7 @@ export async function getLeaveRequests(filters?: {
     conditions.push(eq(hcLeaveRequests.status, filters.status));
   }
   if (filters?.departmentId) {
-    conditions.push(eq(hrEmployees.departmentId, filters.departmentId));
+    conditions.push(eq(employees.departmentId, filters.departmentId));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -61,10 +61,10 @@ export async function getLeaveRequests(filters?: {
   return await db
     .select({
       id: hcLeaveRequests.id,
-      employeeId: hrEmployees.employeeId,
-      employeeName: hrEmployees.fullName,
-      departmentName: hrDepartments.name,
-      sectionName: hrSections.name,
+      employeeId: employees.employeeSn,
+      employeeName: employees.name,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
       leaveTypeName: hcLeaveTypes.name,
       startDate: hcLeaveRequests.startDate,
       endDate: hcLeaveRequests.endDate,
@@ -78,10 +78,10 @@ export async function getLeaveRequests(filters?: {
       createdAt: hcLeaveRequests.createdAt,
     })
     .from(hcLeaveRequests)
-    .innerJoin(hrEmployees, eq(hcLeaveRequests.employeeId, hrEmployees.id))
+    .innerJoin(employees, eq(hcLeaveRequests.employeeId, employees.id))
     .leftJoin(hcLeaveTypes, eq(hcLeaveRequests.leaveTypeId, hcLeaveTypes.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .where(whereClause)
     .orderBy(desc(hcLeaveRequests.createdAt));
 }
@@ -101,7 +101,7 @@ export async function getLeaveBalances(employeeId?: number) {
     .select({
       id: hcLeaveBalances.id,
       employeeId: hcLeaveBalances.employeeId,
-      employeeName: hrEmployees.fullName,
+      employeeName: employees.name,
       leaveTypeId: hcLeaveBalances.leaveTypeId,
       leaveTypeName: hcLeaveTypes.name,
       year: hcLeaveBalances.year,
@@ -112,7 +112,7 @@ export async function getLeaveBalances(employeeId?: number) {
     })
     .from(hcLeaveBalances)
     .innerJoin(hcLeaveTypes, eq(hcLeaveBalances.leaveTypeId, hcLeaveTypes.id))
-    .innerJoin(hrEmployees, eq(hcLeaveBalances.employeeId, hrEmployees.id))
+    .innerJoin(employees, eq(hcLeaveBalances.employeeId, employees.id))
     .where(whereClause)
     .orderBy(hcLeaveBalances.year, hcLeaveTypes.name);
 }
@@ -295,11 +295,11 @@ export async function createLeaveRequest(data: {
   const [[employee], [leaveType]] = await Promise.all([
     db
       .select({
-        name: hrEmployees.fullName,
-        email: hrEmployees.email,
+        name: employees.name,
+        email: employees.email,
       })
-      .from(hrEmployees)
-      .where(eq(hrEmployees.id, data.employeeId))
+      .from(employees)
+      .where(eq(employees.id, data.employeeId))
       .limit(1),
     db
       .select({

@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrSites, hrWorkLocations, masterLevelStaff, sites } from "@/db/schema/hero";
+import { employees, hrDepartments, hrOrgNodes, hrPositions, hrSections, masterLevelStaff, sites, masterDepartments, masterSections } from "@/db/schema/hero";
 import { user } from "@/db/schema/auth";
 import { asc, eq, inArray, or, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -21,8 +21,8 @@ export async function getOrgChartData() {
       isActive: hrOrgNodes.isActive,
       departmentName: hrDepartments.name,
       sectionName: hrSections.name,
-      siteName: hrSites.name,
-      workLocationName: hrWorkLocations.name,
+      siteName: sites.name,
+      workLocationName: sql<string | null>`null`.as('work_location_name'),
       departmentId: hrOrgNodes.departmentId,
       sectionId: hrOrgNodes.sectionId,
       siteId: hrOrgNodes.siteId,
@@ -31,8 +31,7 @@ export async function getOrgChartData() {
     .from(hrOrgNodes)
     .leftJoin(hrDepartments, eq(hrOrgNodes.departmentId, hrDepartments.id))
     .leftJoin(hrSections, eq(hrOrgNodes.sectionId, hrSections.id))
-    .leftJoin(hrSites, eq(hrOrgNodes.siteId, hrSites.id))
-    .leftJoin(hrWorkLocations, eq(hrOrgNodes.workLocationId, hrWorkLocations.id))
+    .leftJoin(sites, eq(hrOrgNodes.siteId, sites.id))
     .where(eq(hrOrgNodes.isActive, true))
     .orderBy(asc(hrOrgNodes.hierarchyLevel), asc(hrOrgNodes.name));
 
@@ -40,31 +39,29 @@ export async function getOrgChartData() {
 
   const employeeRows = await db
     .select({
-      id: hrEmployees.id,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      orgNodeId: hrEmployees.orgNodeId,
+      id: employees.id,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      orgNodeId: employees.orgNodeId,
       positionName: hrPositions.rankName,
       levelName: sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, 'Staff')`.as('level_name'),
-      email: hrEmployees.email,
-      departmentName: hrDepartments.name,
-      sectionName: hrSections.name,
-      departmentId: hrEmployees.departmentId,
-      sectionId: hrEmployees.sectionId,
-      siteId: hrEmployees.siteId,
-      workLocationId: hrEmployees.workLocationId,
-      positionId: hrEmployees.positionId,
-      siteName: hrSites.name,
-      workLocationName: hrWorkLocations.name,
+      email: employees.email,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
+      workLocationId: sql<string | null>`null`.as('work_location_id'),
+      positionId: employees.positionId,
+      siteName: sites.name,
+      workLocationName: sql<string | null>`null`.as('work_location_name'),
     })
-    .from(hrEmployees)
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-    .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
-    .leftJoin(hrWorkLocations, eq(hrEmployees.workLocationId, hrWorkLocations.id))
-    .leftJoin(employees, or(eq(employees.authUserId, hrEmployees.authUserId), eq(employees.employeeSn, hrEmployees.employeeId)))
-    .where(eq(hrEmployees.isActive, true));
+    .from(employees)
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(eq(employees.isActive, true));
 
   // Deduplicate: the OR join on `employees` table can produce multiple rows
   // for the same hrEmployee when both authUserId AND employeeSn match.
@@ -351,21 +348,21 @@ export async function materializeOrgVirtualNode(data: {
     const employeeIds = Array.from(new Set(data.employeeIds.filter((id) => Number.isFinite(id) && id > 0)));
     if (employeeIds.length > 0) {
       const updatedEmployees = await db
-        .update(hrEmployees)
-        .set({ orgNodeId: newNode.id, updatedAt: new Date() })
-        .where(inArray(hrEmployees.id, employeeIds))
+        .update(employees)
+        .set({ orgNodeId: newNode.id })
+        .where(inArray(employees.id, employeeIds))
         .returning({
-          id: hrEmployees.id,
-          authUserId: hrEmployees.authUserId,
-          employeeId: hrEmployees.employeeId,
-          fullName: hrEmployees.fullName,
-          email: hrEmployees.email,
-          departmentId: hrEmployees.departmentId,
-          sectionId: hrEmployees.sectionId,
-          siteId: hrEmployees.siteId,
-          workLocationId: hrEmployees.workLocationId,
-          positionId: hrEmployees.positionId,
-          orgNodeId: hrEmployees.orgNodeId,
+          id: employees.id,
+          authUserId: employees.authUserId,
+          employeeId: employees.employeeSn,
+          fullName: employees.name,
+          email: employees.email,
+          departmentId: employees.departmentId,
+          sectionId: employees.sectionId,
+          siteId: employees.siteId,
+          workLocationId: sql<string | null>`null`.as('work_location_id'),
+          positionId: employees.positionId,
+          orgNodeId: employees.orgNodeId,
         });
 
       for (const employee of updatedEmployees) {
@@ -479,21 +476,20 @@ async function createRealOrgNodeFromVirtual(node: VirtualOrgNodePayload, parentN
   const employeeIds = Array.from(new Set(node.employeeIds.filter((id) => Number.isFinite(id) && id > 0)));
   if (employeeIds.length > 0) {
     const updatedEmployees = await db
-      .update(hrEmployees)
-      .set({ orgNodeId: newNode.id, updatedAt: new Date() })
-      .where(inArray(hrEmployees.id, employeeIds))
+      .update(employees)
+      .set({ orgNodeId: newNode.id })
+      .where(inArray(employees.id, employeeIds))
       .returning({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
-        positionId: hrEmployees.positionId,
-        orgNodeId: hrEmployees.orgNodeId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        email: employees.email,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
       });
 
     for (const employee of updatedEmployees) {
@@ -521,29 +517,26 @@ async function preserveMovedNodeIdentityFromEmployees(nodeIds: number[]) {
 
   const employeeRows = await db
     .select({
-      orgNodeId: hrEmployees.orgNodeId,
-      departmentId: hrEmployees.departmentId,
-      sectionId: hrEmployees.sectionId,
-      siteId: hrEmployees.siteId,
-      workLocationId: hrEmployees.workLocationId,
+      orgNodeId: employees.orgNodeId,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
     })
-    .from(hrEmployees)
-    .where(inArray(hrEmployees.orgNodeId, uniqueNodeIds));
+    .from(employees)
+    .where(inArray(employees.orgNodeId, uniqueNodeIds));
 
   for (const node of nodeRows) {
     const employeesInNode = employeeRows.filter((employee) => employee.orgNodeId === node.id);
     if (employeesInNode.length === 0) continue;
 
-    const updateData: Partial<typeof hrOrgNodes.$inferInsert> = { updatedAt: new Date() };
+    const updateData: Partial<typeof hrOrgNodes.$inferInsert> = {};
     const departmentId = getSingleValue(employeesInNode.map((employee) => employee.departmentId));
     const sectionId = getSingleValue(employeesInNode.map((employee) => employee.sectionId));
     const siteId = getSingleValue(employeesInNode.map((employee) => employee.siteId));
-    const workLocationId = getSingleValue(employeesInNode.map((employee) => employee.workLocationId));
 
     if (node.departmentId == null && departmentId != null) updateData.departmentId = departmentId;
     if (node.sectionId == null && sectionId != null) updateData.sectionId = sectionId;
     if (node.siteId == null && siteId != null) updateData.siteId = siteId;
-    if (node.workLocationId == null && workLocationId != null) updateData.workLocationId = workLocationId;
 
     if (Object.keys(updateData).length === 1) continue;
 
@@ -737,28 +730,26 @@ export async function updateOrgNode(
         orgNodeId: id,
         departmentId: nodeDefaults?.departmentId ?? null,
         sectionId: nodeDefaults?.sectionId ?? null,
-        updatedAt: new Date(),
         ...(nodeDefaults?.siteId !== null && nodeDefaults?.siteId !== undefined ? { siteId: nodeDefaults.siteId } : {}),
-        ...(nodeDefaults?.workLocationId !== null && nodeDefaults?.workLocationId !== undefined ? { workLocationId: nodeDefaults.workLocationId } : {}),
         ...(headPosition ? { positionId: headPosition.id } : {}),
       };
 
       const [updatedEmp] = await db
-        .update(hrEmployees)
+        .update(employees)
         .set(employeeUpdate)
-        .where(eq(hrEmployees.id, leaderEmployeeId))
+        .where(eq(employees.id, leaderEmployeeId))
         .returning({
-          id: hrEmployees.id,
-          authUserId: hrEmployees.authUserId,
-          employeeId: hrEmployees.employeeId,
-          fullName: hrEmployees.fullName,
-          email: hrEmployees.email,
-          departmentId: hrEmployees.departmentId,
-          sectionId: hrEmployees.sectionId,
-          siteId: hrEmployees.siteId,
-          workLocationId: hrEmployees.workLocationId,
-          positionId: hrEmployees.positionId,
-          orgNodeId: hrEmployees.orgNodeId,
+          id: employees.id,
+          authUserId: employees.authUserId,
+          employeeId: employees.employeeSn,
+          fullName: employees.name,
+          email: employees.email,
+          departmentId: employees.departmentId,
+          sectionId: employees.sectionId,
+          siteId: employees.siteId,
+          workLocationId: sql<string | null>`null`.as('work_location_id'),
+          positionId: employees.positionId,
+          orgNodeId: employees.orgNodeId,
         });
 
       if (updatedEmp) {
@@ -810,9 +801,9 @@ export async function deleteOrgNode(id: number) {
 
     // Check if node has assigned active employees
     const assignedEmployees = await db
-      .select({ id: hrEmployees.id })
-      .from(hrEmployees)
-      .where(and(eq(hrEmployees.orgNodeId, id), eq(hrEmployees.isActive, true)))
+      .select({ id: employees.id })
+      .from(employees)
+      .where(and(eq(employees.orgNodeId, id), eq(employees.isActive, true)))
       .limit(1);
 
     if (assignedEmployees.length > 0) {
@@ -844,27 +835,24 @@ export async function updateOrgChartEmployeeAssignment(employeeId: number, orgNo
       orgNodeId,
       departmentId: nodeDefaults.departmentId,
       sectionId: nodeDefaults.sectionId,
-      updatedAt: new Date(),
       ...(nodeDefaults.siteId !== null ? { siteId: nodeDefaults.siteId } : {}),
-      ...(nodeDefaults.workLocationId !== null ? { workLocationId: nodeDefaults.workLocationId } : {}),
     };
 
     const [updatedEmployee] = await db
-      .update(hrEmployees)
+      .update(employees)
       .set(updateData)
-      .where(eq(hrEmployees.id, employeeId))
+      .where(eq(employees.id, employeeId))
       .returning({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
-        positionId: hrEmployees.positionId,
-        orgNodeId: hrEmployees.orgNodeId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        email: employees.email,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
       });
 
     if (!updatedEmployee) {
@@ -897,28 +885,25 @@ export async function updateOrgChartEmployeeNodeHead(
       orgNodeId,
       departmentId: nodeDefaults.departmentId,
       sectionId: nodeDefaults.sectionId,
-      updatedAt: new Date(),
       ...(nodeDefaults.siteId !== null ? { siteId: nodeDefaults.siteId } : {}),
-      ...(nodeDefaults.workLocationId !== null ? { workLocationId: nodeDefaults.workLocationId } : {}),
       ...(positionId ? { positionId } : {}),
     };
 
     const [updatedEmployee] = await db
-      .update(hrEmployees)
+      .update(employees)
       .set(updateData)
-      .where(eq(hrEmployees.id, employeeId))
+      .where(eq(employees.id, employeeId))
       .returning({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
-        positionId: hrEmployees.positionId,
-        orgNodeId: hrEmployees.orgNodeId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        email: employees.email,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
       });
 
     if (!updatedEmployee) {
@@ -992,10 +977,9 @@ type SyncedOrgChartEmployee = {
   departmentId: number | null;
   sectionId: number | null;
   siteId: number | null;
-  workLocationId?: number | null;
   positionId: number | null;
   orgNodeId: number | null;
-  levelName?: string | null; // Explicit level override from masterLevelStaff selection
+  levelName?: string | null;
 };
 
 function normalizeSiteLabel(value?: string | null) {
@@ -1057,28 +1041,24 @@ async function resolveLegacySiteId(hrSiteName?: string | null, workLocationName?
 }
 
 async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChartEmployee) {
-  const [[department], [section], [position], [hrSite], [workLocation]] = await Promise.all([
+  const [[department], [section], [position], [site]] = await Promise.all([
     employee.departmentId
-      ? db.select({ name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.id, employee.departmentId)).limit(1)
+      ? db.select({ name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.id, employee.departmentId)).limit(1)
       : Promise.resolve([]),
     employee.sectionId
-      ? db.select({ name: hrSections.name }).from(hrSections).where(eq(hrSections.id, employee.sectionId)).limit(1)
+      ? db.select({ name: masterSections.name }).from(masterSections).where(eq(masterSections.id, employee.sectionId)).limit(1)
       : Promise.resolve([]),
     employee.positionId
       ? db.select({ rankName: hrPositions.rankName, levelName: hrPositions.levelName }).from(hrPositions).where(eq(hrPositions.id, employee.positionId)).limit(1)
       : Promise.resolve([]),
     employee.siteId
-      ? db.select({ name: hrSites.name }).from(hrSites).where(eq(hrSites.id, employee.siteId)).limit(1)
-      : Promise.resolve([]),
-    employee.workLocationId
-      ? db.select({ name: hrWorkLocations.name }).from(hrWorkLocations).where(eq(hrWorkLocations.id, employee.workLocationId)).limit(1)
+      ? db.select({ name: sites.name }).from(sites).where(eq(sites.id, employee.siteId)).limit(1)
       : Promise.resolve([]),
   ]);
 
-  const legacySiteId = await resolveLegacySiteId(hrSite?.name, workLocation?.name).catch(() => null);
+  const legacySiteId = await resolveLegacySiteId(site?.name, null).catch(() => null);
 
   const roleName = position?.rankName ?? employee.levelName ?? "";
-  // Use explicit levelName override first, then fall back to position's levelName
   const resolvedLevelName = (employee.levelName?.trim() || position?.levelName?.trim() || null);
   const legacyUpdate = {
     name: employee.fullName,
@@ -1092,7 +1072,7 @@ async function syncOrgChartEmployeeToOperationalEmployee(employee: SyncedOrgChar
     section: section?.name ?? "",
     role: roleName,
     jobTitle: roleName,
-    workLocation: workLocation?.name ?? hrSite?.name ?? "",
+    workLocation: site?.name ?? "",
     ...(resolvedLevelName ? { levelName: resolvedLevelName } : {}),
     ...(legacySiteId ? { siteId: legacySiteId } : {}),
   };
@@ -1137,28 +1117,25 @@ async function syncOrgChartEmployeesInNodesToOperational(nodeIds: number[]) {
     if (!nodeDefaults) continue;
 
     const updatedEmployees = await db
-      .update(hrEmployees)
+      .update(employees)
       .set({
         orgNodeId,
         departmentId: nodeDefaults.departmentId,
         sectionId: nodeDefaults.sectionId,
-        siteId: nodeDefaults.siteId,
-        workLocationId: nodeDefaults.workLocationId,
-        updatedAt: new Date(),
+        ...(nodeDefaults.siteId !== null ? { siteId: nodeDefaults.siteId } : {}),
       })
-      .where(eq(hrEmployees.orgNodeId, orgNodeId))
+      .where(eq(employees.orgNodeId, orgNodeId))
       .returning({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
-        positionId: hrEmployees.positionId,
-        orgNodeId: hrEmployees.orgNodeId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        email: employees.email,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
       });
 
     for (const employee of updatedEmployees) {
@@ -1173,20 +1150,20 @@ async function syncExistingOrgChartEmployeesToOperational(nodeIds: number[]) {
 
   const employeeRows = await db
     .select({
-      id: hrEmployees.id,
-      authUserId: hrEmployees.authUserId,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      email: hrEmployees.email,
-      departmentId: hrEmployees.departmentId,
-      sectionId: hrEmployees.sectionId,
-      siteId: hrEmployees.siteId,
-      workLocationId: hrEmployees.workLocationId,
-      positionId: hrEmployees.positionId,
-      orgNodeId: hrEmployees.orgNodeId,
+      id: employees.id,
+      authUserId: employees.authUserId,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      email: employees.email,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
+      workLocationId: sql<string | null>`null`.as('work_location_id'),
+      positionId: employees.positionId,
+      orgNodeId: employees.orgNodeId,
     })
-    .from(hrEmployees)
-    .where(inArray(hrEmployees.orgNodeId, uniqueNodeIds));
+    .from(employees)
+    .where(inArray(employees.orgNodeId, uniqueNodeIds));
 
   for (const employee of employeeRows) {
     await syncOrgChartEmployeeToOperationalEmployee(employee);
@@ -1219,32 +1196,32 @@ export async function createOrgChartEmployee(data: {
     const nodeDefaults = data.orgNodeId ? await getOrgNodeEmployeeDefaults(data.orgNodeId) : null;
 
     const [createdEmployee] = await db
-      .insert(hrEmployees)
+      .insert(employees)
       .values({
-        employeeId: data.employeeId.trim(),
-        fullName: data.fullName.trim(),
-        email: data.email?.trim() || null,
+        employeeSn: data.employeeId.trim(),
+        name: data.fullName.trim(),
+        email: data.email?.trim() || '',
         departmentId: data.departmentId ?? nodeDefaults?.departmentId ?? null,
         sectionId: data.sectionId ?? nodeDefaults?.sectionId ?? null,
-        siteId: data.siteId ?? nodeDefaults?.siteId ?? null,
-        workLocationId: data.workLocationId ?? nodeDefaults?.workLocationId ?? null,
+        siteId: data.siteId ?? nodeDefaults?.siteId ?? 1,
         positionId: data.positionId ?? null,
         orgNodeId: data.orgNodeId ?? null,
-        accountStatus: "active",
+        employmentStatus: "active",
         isActive: true,
+        role: 'Employee',
+        department: '',
       })
       .returning({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
-        positionId: hrEmployees.positionId,
-        orgNodeId: hrEmployees.orgNodeId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        email: employees.email,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
       });
 
     await syncOrgChartEmployeeToOperationalEmployee({
@@ -1276,26 +1253,32 @@ export async function updateOrgChartEmployeeProfile(
   }
 ) {
   try {
-    const { levelName: levelNameOverride, ...dbData } = data;
+    const { levelName: levelNameOverride, employeeId: empIdStr, fullName, email, departmentId, sectionId, siteId, positionId, orgNodeId } = data;
+    const setData: Record<string, unknown> = {};
+    if (empIdStr !== undefined) setData.employeeSn = empIdStr;
+    if (fullName !== undefined) setData.name = fullName;
+    if (email !== undefined) setData.email = email || '';
+    if (departmentId !== undefined) setData.departmentId = departmentId;
+    if (sectionId !== undefined) setData.sectionId = sectionId;
+    if (siteId !== undefined && siteId !== null) setData.siteId = siteId;
+    if (positionId !== undefined) setData.positionId = positionId;
+    if (orgNodeId !== undefined) setData.orgNodeId = orgNodeId;
+
     const [updatedEmployee] = await db
-      .update(hrEmployees)
-      .set({
-        ...dbData,
-        updatedAt: new Date(),
-      })
-      .where(eq(hrEmployees.id, employeeId))
+      .update(employees)
+      .set(setData)
+      .where(eq(employees.id, employeeId))
       .returning({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
-        positionId: hrEmployees.positionId,
-        orgNodeId: hrEmployees.orgNodeId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        email: employees.email,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        positionId: employees.positionId,
+        orgNodeId: employees.orgNodeId,
       });
 
     if (!updatedEmployee) {
@@ -1316,11 +1299,10 @@ export async function updateOrgChartEmployeeProfile(
 
 // Get departments, sections, sites for dropdowns
 export async function getOrgNodeReferenceData() {
-  const [departments, sections, sitesData, workLocations, rawPositions, levelStaffs] = await Promise.all([
+  const [departments, sections, sitesData, rawPositions, levelStaffs] = await Promise.all([
     db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.isActive, true)).orderBy(asc(hrDepartments.name)),
     db.select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId }).from(hrSections).where(eq(hrSections.isActive, true)).orderBy(asc(hrSections.name)),
-    db.select({ id: hrSites.id, name: hrSites.name }).from(hrSites).where(eq(hrSites.isActive, true)).orderBy(asc(hrSites.name)),
-    db.select({ id: hrWorkLocations.id, name: hrWorkLocations.name }).from(hrWorkLocations).where(eq(hrWorkLocations.isActive, true)).orderBy(asc(hrWorkLocations.name)),
+    db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
     db.select({ id: hrPositions.id, rankName: hrPositions.rankName, levelName: hrPositions.levelName }).from(hrPositions).where(eq(hrPositions.isActive, true)).orderBy(asc(hrPositions.levelName), asc(hrPositions.rankName)),
     db.select({ name: masterLevelStaff.name, sortOrder: masterLevelStaff.sortOrder }).from(masterLevelStaff).where(eq(masterLevelStaff.isActive, true)).orderBy(asc(masterLevelStaff.sortOrder)),
   ]);
@@ -1358,5 +1340,5 @@ export async function getOrgNodeReferenceData() {
       return a.rankName.localeCompare(b.rankName, "id-ID");
     });
 
-  return { departments, sections, sites: sitesData, workLocations, positions, levelStaffs };
+  return { departments, sections, sites: sitesData, positions, levelStaffs };
 }

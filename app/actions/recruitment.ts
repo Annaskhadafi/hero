@@ -7,9 +7,7 @@ import {
   hcCandidateInterviews,
   hcCandidateStages,
   hcCandidatePanelEvaluations,
-  hrEmployees,
-  hrDepartments,
-  hrSections,
+  employees,
   masterDepartments,
   masterSections,
   emailDeliveryLogs,
@@ -924,9 +922,9 @@ type CandidateRow = {
 
 export async function getNextEmployeeId(): Promise<string> {
   const [last] = await db
-    .select({ id: hrEmployees.id })
-    .from(hrEmployees)
-    .orderBy(desc(hrEmployees.id))
+    .select({ id: employees.id })
+    .from(employees)
+    .orderBy(desc(employees.id))
     .limit(1);
   const nextNum = (last?.id ?? 0) + 1;
   return `EMP-${String(nextNum).padStart(4, "0")}`;
@@ -959,15 +957,18 @@ export async function hireAndCreateEmployee(candidateId: number, startDate?: str
 
   const employeeId = await getNextEmployeeId();
 
-  const [employee] = await db.insert(hrEmployees).values({
-    employeeId,
-    fullName: candidate.fullName,
-    email: candidate.email || null,
+  const [employee] = await db.insert(employees).values({
+    employeeSn: employeeId,
+    name: candidate.fullName,
+    email: candidate.email || '',
     birthDate: candidate.dateOfBirth ? candidate.dateOfBirth.toISOString().split("T")[0] : null,
-    genderCode: candidate.gender === "Laki-laki" ? "L" : candidate.gender === "Perempuan" ? "P" : null,
-    accountStatus: "active",
+    gender: candidate.gender === "Laki-laki" ? "L" : candidate.gender === "Perempuan" ? "P" : '',
+    employmentStatus: "active",
     isActive: true,
     joinDate: now.toISOString().split("T")[0],
+    role: 'Employee',
+    department: '',
+    siteId: 1,
   }).returning();
 
   const [currentStageRecord] = await db
@@ -1640,7 +1641,7 @@ export async function updateCandidateStage(
   // 5. Auto-create employee master when hired
   if (nextStage === "Hired") {
     try {
-      const existing = await db.select().from(hrEmployees).where(eq(hrEmployees.email, updated.email)).limit(1);
+      const existing = await db.select().from(employees).where(eq(employees.email, updated.email)).limit(1);
       if (existing.length === 0) {
         // Find department & section IDs by name
         let departmentId: number | null = null;
@@ -1649,32 +1650,35 @@ export async function updateCandidateStage(
           const [rec] = await db.select().from(hcRecruitments).where(eq(hcRecruitments.id, updated.recruitmentId)).limit(1);
           if (rec) {
             if (rec.department) {
-              const d = await db.select().from(hrDepartments).where(eq(hrDepartments.name, rec.department)).limit(1);
+              const d = await db.select().from(masterDepartments).where(eq(masterDepartments.name, rec.department)).limit(1);
               if (d.length > 0) departmentId = d[0].id;
             }
             if (rec.section) {
-              const s = await db.select().from(hrSections).where(eq(hrSections.name, rec.section)).limit(1);
+              const s = await db.select().from(masterSections).where(eq(masterSections.name, rec.section)).limit(1);
               if (s.length > 0) sectionId = s[0].id;
             }
           }
         }
         // Generate next employee ID
-        const maxRow = await db.select({ maxId: sql<number>`MAX(CAST(${hrEmployees.employeeId} AS INTEGER))` }).from(hrEmployees);
+        const maxRow = await db.select({ maxId: sql<number>`MAX(CAST(${employees.employeeSn} AS INTEGER))` }).from(employees);
         const nextId = (maxRow[0]?.maxId ?? 0) + 1;
-        const genderMap: Record<string, string> = { "Laki-laki": "1", "Perempuan": "2", Male: "1", Female: "2", M: "1", F: "2" };
+        const genderMap: Record<string, string> = { "Laki-laki": "L", "Perempuan": "P", Male: "M", Female: "F", M: "M", F: "F" };
         const { format } = await import("date-fns");
-        await db.insert(hrEmployees).values({
-          employeeId: nextId.toString(),
-          fullName: updated.fullName,
-          email: updated.email || null,
+        await db.insert(employees).values({
+          employeeSn: nextId.toString(),
+          name: updated.fullName,
+          email: updated.email || '',
           departmentId,
           sectionId,
           joinDate: format(now, "yyyy-MM-dd"),
-          contractStart: format(now, "yyyy-MM-dd"),
+          contractDurationStart: format(now, "yyyy-MM-dd"),
           birthDate: updated.dateOfBirth ? format(updated.dateOfBirth, "yyyy-MM-dd") : null,
-          genderCode: genderMap[updated.gender] || null,
-          accountStatus: "active",
+          gender: genderMap[updated.gender] || '',
+          employmentStatus: "active",
           isActive: true,
+          role: 'Employee',
+          department: '',
+          siteId: 1,
         });
         revalidatePath("/dashboard/hc/employee");
       }

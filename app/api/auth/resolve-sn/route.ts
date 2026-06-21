@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { employees, hrEmployees } from '@/db/schema/hero'
+import { employees } from '@/db/schema/hero'
 import { eq, or, sql } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 
@@ -35,9 +35,9 @@ export async function POST(req: NextRequest) {
     const snVariants = buildSnLookupVariants(sn)
 
     const [hrEmp] = await db
-      .select({ email: hrEmployees.email, fullName: hrEmployees.fullName })
-      .from(hrEmployees)
-      .where(snMatches(hrEmployees.employeeId, snVariants))
+      .select({ email: employees.email, fullName: employees.name })
+      .from(employees)
+      .where(snMatches(employees.employeeSn, snVariants))
       .limit(1)
 
     if (hrEmp?.email) {

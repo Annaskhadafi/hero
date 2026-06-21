@@ -4,10 +4,10 @@ import { db } from '@/db'
 import {
   hcLetters,
   hcLetterSequences,
-  hrEmployees,
-  hrSections,
+  employees,
+  masterSections,
   hrPositions,
-  hrDepartments,
+  masterDepartments,
 } from '@/db/schema/hero'
 import { eq, and, desc, asc, sql, count } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -417,17 +417,17 @@ export async function deleteLetter(id: number): Promise<{ success: boolean; erro
 export async function getActiveEmployees() {
   return await db
     .select({
-      id: hrEmployees.id,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      departmentName: hrDepartments.name,
-      sectionName: hrSections.name,
+      id: employees.id,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
       positionName: hrPositions.rankName,
     })
-    .from(hrEmployees)
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-    .where(eq(hrEmployees.isActive, true))
-    .orderBy(asc(hrEmployees.fullName))
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .where(eq(employees.isActive, true))
+    .orderBy(asc(employees.name))
 }

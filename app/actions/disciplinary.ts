@@ -7,8 +7,8 @@ import { db } from "@/db";
 import {
   hcDisciplinaryActions,
   hcViolationCategories,
-  hrDepartments,
-  hrEmployees,
+  masterDepartments,
+  employees,
   hrPositions,
 } from "@/db/schema/hero";
 import { getHrEmployeeContactById } from "@/lib/workflow-email";
@@ -142,7 +142,7 @@ function buildDisciplinaryWhere(filters?: DisciplinaryFilters) {
 function buildSearchClause(search: string) {
   const term = `%${search.trim()}%`;
   return or(
-    ilike(hrEmployees.fullName, term),
+    ilike(employees.name, term),
     ilike(hcDisciplinaryActions.letterNumber, term),
     ilike(hcViolationCategories.name, term),
   );
@@ -165,18 +165,18 @@ export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
       notes: hcDisciplinaryActions.notes,
       status: hcDisciplinaryActions.status,
       createdAt: hcDisciplinaryActions.createdAt,
-      employeeName: hrEmployees.fullName,
-      employeeSn: hrEmployees.employeeId,
-      department: hrDepartments.name,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      department: masterDepartments.name,
       position: hrPositions.rankName,
       categoryCode: hcViolationCategories.code,
       categoryName: hcViolationCategories.name,
       severity: hcViolationCategories.severity,
     })
     .from(hcDisciplinaryActions)
-    .leftJoin(hrEmployees, eq(hcDisciplinaryActions.employeeId, hrEmployees.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .leftJoin(employees, eq(hcDisciplinaryActions.employeeId, employees.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .leftJoin(hcViolationCategories, eq(hcDisciplinaryActions.violationCategoryId, hcViolationCategories.id))
     .where(buildDisciplinaryWhere(filters))
     .orderBy(desc(hcDisciplinaryActions.violationDate));
@@ -328,17 +328,17 @@ function isExpiredRecord(status: string, expiryDate: string | Date | null) {
 export async function getActiveEmployees() {
   return db
     .select({
-      id: hrEmployees.id,
-      name: hrEmployees.fullName,
-      employeeSn: hrEmployees.employeeId,
-      department: hrDepartments.name,
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      department: masterDepartments.name,
       position: hrPositions.rankName,
     })
-    .from(hrEmployees)
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-    .where(eq(hrEmployees.isActive, true))
-    .orderBy(asc(hrEmployees.fullName));
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .where(eq(employees.isActive, true))
+    .orderBy(asc(employees.name));
 }
 
 export async function getDisciplinaryCount() {

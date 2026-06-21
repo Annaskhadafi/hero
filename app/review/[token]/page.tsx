@@ -1,7 +1,7 @@
 import { getContractReviewApprovalByToken } from '@/app/actions/contract-review'
 import { ContractReviewPublicApproval } from './public-approval'
 import { db } from '@/db'
-import { hrEmployees, hrDepartments, hrPositions } from '@/db/schema/hero'
+import { employees, masterDepartments, hrPositions } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
 import { eq, or } from 'drizzle-orm'
 
@@ -28,15 +28,15 @@ export default async function ContractReviewPublicPage({ params }: { params: Pro
   if (review?.employeeId) {
     const [hrEmp] = await db
       .select({
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        department: hrDepartments.name,
+        employeeId: employees.employeeSn,
+        fullName: employees.name,
+        department: masterDepartments.name,
         position: hrPositions.levelName,
       })
-      .from(hrEmployees)
-      .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .where(eq(hrEmployees.id, review.employeeId))
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .where(eq(employees.id, review.employeeId))
       .limit(1)
 
     if (hrEmp) {

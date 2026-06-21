@@ -2,10 +2,10 @@
 
 import { db } from "@/db";
 import {
+  employees,
   hcPerformanceCycles,
   hcPerformanceKpis,
   hcPerformanceReviews,
-  hrEmployees,
 } from "@/db/schema/hero";
 import { aliasedTable } from "drizzle-orm/alias";
 import { and, avg, count, desc, eq, gte, sql } from "drizzle-orm";
@@ -73,22 +73,22 @@ function revalidatePerformance(): void {
 }
 
 async function getReviewNotificationContext(reviewId: number) {
-  const reviewer = aliasedTable(hrEmployees, "reviewer");
+  const reviewer = aliasedTable(employees, "reviewer");
   const [row] = await db
     .select({
       reviewId: hcPerformanceReviews.id,
       employeeId: hcPerformanceReviews.employeeId,
       reviewerId: hcPerformanceReviews.reviewerId,
-      employeeName: hrEmployees.fullName,
-      employeeEmail: hrEmployees.email,
-      reviewerName: reviewer.fullName,
+      employeeName: employees.name,
+      employeeEmail: employees.email,
+      reviewerName: reviewer.name,
       reviewerEmail: reviewer.email,
       cycleName: hcPerformanceCycles.name,
       status: hcPerformanceReviews.status,
       overallRating: hcPerformanceReviews.overallRating,
     })
     .from(hcPerformanceReviews)
-    .leftJoin(hrEmployees, eq(hcPerformanceReviews.employeeId, hrEmployees.id))
+    .leftJoin(employees, eq(hcPerformanceReviews.employeeId, employees.id))
     .leftJoin(reviewer, eq(hcPerformanceReviews.reviewerId, reviewer.id))
     .leftJoin(hcPerformanceCycles, eq(hcPerformanceReviews.cycleId, hcPerformanceCycles.id))
     .where(eq(hcPerformanceReviews.id, reviewId))
@@ -162,16 +162,16 @@ export async function deletePerformanceCycle(id: number) {
 }
 
 export async function getPerformanceReviews(filters?: PerformanceReviewFilter) {
-  const reviewer = aliasedTable(hrEmployees, "reviewer");
+  const reviewer = aliasedTable(employees, "reviewer");
   return await db
     .select({
       id: hcPerformanceReviews.id,
       cycleId: hcPerformanceReviews.cycleId,
       employeeId: hcPerformanceReviews.employeeId,
       reviewerId: hcPerformanceReviews.reviewerId,
-      employeeName: hrEmployees.fullName,
-      employeeCode: hrEmployees.employeeId,
-      reviewerName: reviewer.fullName,
+      employeeName: employees.name,
+      employeeCode: employees.employeeSn,
+      reviewerName: reviewer.name,
       cycleName: hcPerformanceCycles.name,
       cycleType: hcPerformanceCycles.cycleType,
       cycleYear: hcPerformanceCycles.year,
@@ -188,7 +188,7 @@ export async function getPerformanceReviews(filters?: PerformanceReviewFilter) {
       createdAt: hcPerformanceReviews.createdAt,
     })
     .from(hcPerformanceReviews)
-    .leftJoin(hrEmployees, eq(hcPerformanceReviews.employeeId, hrEmployees.id))
+    .leftJoin(employees, eq(hcPerformanceReviews.employeeId, employees.id))
     .leftJoin(reviewer, eq(hcPerformanceReviews.reviewerId, reviewer.id))
     .leftJoin(hcPerformanceCycles, eq(hcPerformanceReviews.cycleId, hcPerformanceCycles.id))
     .where(reviewConditions(filters))
@@ -395,8 +395,8 @@ export async function getPerformanceStats() {
 
 export async function getActiveEmployees() {
   return await db
-    .select({ id: hrEmployees.id, employeeId: hrEmployees.employeeId, fullName: hrEmployees.fullName, email: hrEmployees.email })
-    .from(hrEmployees)
-    .where(eq(hrEmployees.isActive, true))
-    .orderBy(hrEmployees.fullName);
+    .select({ id: employees.id, employeeId: employees.employeeSn, fullName: employees.name, email: employees.email })
+    .from(employees)
+    .where(eq(employees.isActive, true))
+    .orderBy(employees.name);
 }

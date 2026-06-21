@@ -1,8 +1,8 @@
 import { getLetterArchives, getLetterStats } from '@/app/actions/surat'
 import { getActiveMcuClinics } from '@/app/actions/hc-mcu-clinics'
 import { db } from '@/db'
-import { hrDepartments, hrEmployees, hrOrgNodes, hrPositions, hrSections, hrEmployeeStatuses, hcCandidates, hcRecruitments } from '@/db/schema/hero'
-import { and, asc, eq, ilike, or, inArray } from 'drizzle-orm'
+import { employees, hrOrgNodes, hrPositions, masterDepartments, masterSections, hcCandidates, hcRecruitments } from '@/db/schema/hero'
+import { and, asc, eq, ilike, or, inArray, sql } from 'drizzle-orm'
 import { SuratWorkspaceClient } from './client-page'
 
 export const metadata = {
@@ -46,45 +46,44 @@ export default async function SuratPage(props: {
   const [employeesData, hrSignersData, letters, stats, candidatesData, sectionsData, departmentsData, supervisorsData, mcuClinicsData] = await Promise.all([
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeSn: hrEmployees.employeeId,
-        joinYear: hrEmployees.joinDate,
-        section: hrSections.name,
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        joinYear: employees.joinDate,
+        section: masterSections.name,
         jobTitle: hrPositions.rankName,
         levelName: hrPositions.levelName,
-        employeeStatusType: hrEmployeeStatuses.name,
+        employeeStatusType: sql<string>`null::text`,
       })
-      .from(hrEmployees)
-      .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .leftJoin(hrEmployeeStatuses, eq(hrEmployees.demographicEmployeeStatusCode, hrEmployeeStatuses.code))
-      .where(eq(hrEmployees.isActive, true))
-      .orderBy(asc(hrEmployees.fullName)),
+      .from(employees)
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeSn: hrEmployees.employeeId,
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
         jobTitle: hrPositions.rankName,
       })
-      .from(hrEmployees)
-      .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .leftJoin(hrOrgNodes, eq(hrEmployees.orgNodeId, hrOrgNodes.id))
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .leftJoin(hrOrgNodes, eq(employees.orgNodeId, hrOrgNodes.id))
       .where(
         and(
-          eq(hrEmployees.isActive, true),
+          eq(employees.isActive, true),
           or(
             ilike(hrOrgNodes.name, '%HR-GA%'),
             ilike(hrOrgNodes.name, '%HR GA%'),
             ilike(hrOrgNodes.pathText, '%HR-GA%'),
             ilike(hrOrgNodes.pathText, '%HR GA%'),
-            eq(hrEmployees.fullName, 'Rendra Rachman')
+            eq(employees.name, 'Rendra Rachman')
           )
         )
       )
-      .orderBy(asc(hrEmployees.fullName)),
+      .orderBy(asc(employees.name)),
     getLetterArchives(),
     getLetterStats(),
     db
@@ -103,32 +102,32 @@ export default async function SuratPage(props: {
       .where(inArray(hcCandidates.currentStage, ['Offering', 'Medical Checkup', 'Hired']))
       .orderBy(asc(hcCandidates.fullName)),
     db
-      .select({ name: hrSections.name })
-      .from(hrSections)
-      .where(eq(hrSections.isActive, true))
-      .orderBy(asc(hrSections.name)),
+      .select({ name: masterSections.name })
+      .from(masterSections)
+      .where(eq(masterSections.isActive, true))
+      .orderBy(asc(masterSections.name)),
     db
-      .select({ name: hrDepartments.name })
-      .from(hrDepartments)
-      .where(eq(hrDepartments.isActive, true))
-      .orderBy(asc(hrDepartments.name)),
+      .select({ name: masterDepartments.name })
+      .from(masterDepartments)
+      .where(eq(masterDepartments.isActive, true))
+      .orderBy(asc(masterDepartments.name)),
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeSn: hrEmployees.employeeId,
-        section: hrSections.name,
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        section: masterSections.name,
         jobTitle: hrPositions.rankName,
       })
-      .from(hrEmployees)
-      .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .where(eq(hrEmployees.isActive, true))
-      .orderBy(asc(hrEmployees.fullName)),
+      .from(employees)
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name)),
     getActiveMcuClinics(),
   ])
 
-  const employees = employeesData.map((employee) => ({
+  const employeeList = employeesData.map((employee) => ({
     ...employee,
     joinYear: employee.joinYear
       ? new Date(employee.joinYear).getFullYear()
@@ -180,7 +179,7 @@ export default async function SuratPage(props: {
 
   return (
     <SuratWorkspaceClient
-      employees={employees}
+      employees={employeeList}
       hrSigners={hrSigners}
       letters={letters}
       stats={stats}

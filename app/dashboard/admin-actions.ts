@@ -97,14 +97,9 @@ import {
   attendanceRecords,
   dailyReports,
   employees,
-  hrDepartments,
   hrEmployeeStatuses,
-  hrEmployees,
   hrOrgNodes,
   hrPositions,
-  hrSections,
-  hrSites,
-  hrWorkLocations,
   hseIncidents,
   hseObservations,
   masterDepartments,
@@ -570,19 +565,14 @@ export async function saveAttendanceRealOverridesAction(
 
   if (!payload.overrides.length) return { ok: true, savedCount: 0 }
 
-  // Ensure site exists - check hrSites (new) or legacy sites table
-  const [existingHrSite] = await db
-    .select({ id: hrSites.id })
-    .from(hrSites)
-    .where(eq(hrSites.id, payload.siteId))
-    .limit(1)
-  const [existingLegacySite] = await db
+  // Ensure site exists in sites table
+  const [existingSite] = await db
     .select({ id: sites.id })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
-  if (!existingHrSite && !existingLegacySite) {
-    // Auto-create in legacy sites table as fallback
+  if (!existingSite) {
+    // Auto-create in sites table as fallback
     await db.execute(sql`
       INSERT INTO hero_sites (id, name, location, customer_name, contract_number, is_active, created_at)
       VALUES (${payload.siteId}, ${'Site ' + payload.siteId}, "" , ${'Site ' + payload.siteId}, "", true, NOW())
@@ -592,14 +582,11 @@ export async function saveAttendanceRealOverridesAction(
 
   // Filter overrides to only include valid employee IDs that exist in DB
   const employeeIds = [...new Set(payload.overrides.map((o) => o.employeeId))]
-  const [validLegacyEmployees, validHrEmployees] = await Promise.all([
-    db.select({ id: employees.id }).from(employees).where(inArray(employees.id, employeeIds)),
-    db.select({ id: hrEmployees.id }).from(hrEmployees).where(inArray(hrEmployees.id, employeeIds)),
-  ])
-  const validEmployeeIds = new Set([
-    ...validLegacyEmployees.map((e) => e.id),
-    ...validHrEmployees.map((e) => e.id),
-  ])
+  const validEmployeeRows = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(inArray(employees.id, employeeIds))
+  const validEmployeeIds = new Set(validEmployeeRows.map((e) => e.id))
   const validOverrides = payload.overrides.filter((o) => validEmployeeIds.has(o.employeeId))
 
   if (!validOverrides.length) return { ok: true, savedCount: 0 }
@@ -830,7 +817,7 @@ export async function createAttendanceImportPreviewAction(
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
-  const [legacyEmployeeRows, hrEmployeeRows] = await Promise.all([
+  const [legacyEmployeeRows] = await Promise.all([
     db
       .select({
         id: employees.id,
@@ -841,24 +828,8 @@ export async function createAttendanceImportPreviewAction(
       })
       .from(employees)
       .leftJoin(sites, eq(employees.siteId, sites.id)),
-    db
-      .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeSn: hrEmployees.employeeId,
-        siteId: hrEmployees.siteId,
-        siteName: hrSites.name,
-      })
-      .from(hrEmployees)
-      .leftJoin(hrSites, eq(hrEmployees.siteId, hrSites.id))
-      .where(eq(hrEmployees.isActive, true)),
   ])
-  // Merge, prefer hrEmployees if same id exists
-  const hrEmployeeIdSet = new Set(hrEmployeeRows.map((e) => e.id))
-  const siteEmployees = [
-    ...hrEmployeeRows,
-    ...legacyEmployeeRows.filter((e) => !hrEmployeeIdSet.has(e.id)),
-  ]
+  const siteEmployees = [...legacyEmployeeRows]
   const aliases = await db
     .select({
       employeeId: timesheetAttendanceEmployeeAliases.employeeId,
@@ -867,17 +838,12 @@ export async function createAttendanceImportPreviewAction(
     })
     .from(timesheetAttendanceEmployeeAliases)
     .where(eq(timesheetAttendanceEmployeeAliases.siteId, payload.siteId))
-  const [hrSiteRow] = await db
-    .select({ name: hrSites.name })
-    .from(hrSites)
-    .where(eq(hrSites.id, payload.siteId))
-    .limit(1)
-  const [legacySiteRow] = await db
+  const [siteRow] = await db
     .select({ name: sites.name })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
-  const site = hrSiteRow ?? legacySiteRow
+  const site = siteRow
   const detection = payload.detection ?? {
     sheetName: '',
     kind: 'auto',
@@ -1444,18 +1410,13 @@ export async function saveSchedulingConfigAction(
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
-  // Validate site exists in hrSites (new) or sites (legacy)
-  const [hrSite] = await db
-    .select({ id: hrSites.id })
-    .from(hrSites)
-    .where(eq(hrSites.id, payload.siteId))
-    .limit(1)
-  const [legacySite] = await db
+  // Validate site exists in sites table
+  const [site] = await db
     .select({ id: sites.id })
     .from(sites)
     .where(eq(sites.id, payload.siteId))
     .limit(1)
-  if (!hrSite && !legacySite) return { ok: false, error: 'Site not found' }
+  if (!site) return { ok: false, error: 'Site not found' }
 
   await db
     .insert(timesheetSchedulingConfigs)
@@ -2909,10 +2870,10 @@ async function resolveHrEmployeeGovernanceIds(params: {
   statusName?: string
 }) {
   const [departments, sections, positions, orgNodes, statuses] = await Promise.all([
-    db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments),
+    db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments),
     db
-      .select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId })
-      .from(hrSections),
+      .select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId })
+      .from(masterSections),
     db.select({ id: hrPositions.id, name: hrPositions.rankName }).from(hrPositions),
     db
       .select({
@@ -3124,22 +3085,21 @@ export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionRe
   // 2. Query eligible employees: email not null, not empty (trimmed), authUserId is null
   const eligibleEmployees = await db
     .select({
-      id: hrEmployees.id,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      email: hrEmployees.email,
-      emailPasswordMigration: hrEmployees.emailPasswordMigration,
-      authUserId: hrEmployees.authUserId,
+      id: employees.id,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      email: employees.email,
+      authUserId: employees.authUserId,
     })
-    .from(hrEmployees)
+    .from(employees)
     .where(
       and(
-        isNotNull(hrEmployees.email),
-        ne(sql`TRIM(${hrEmployees.email})`, ''),
-        isNull(hrEmployees.authUserId)
+        isNotNull(employees.email),
+        ne(sql`TRIM(${employees.email})`, ''),
+        isNull(employees.authUserId)
       )
     )
-    .orderBy(asc(hrEmployees.id))
+    .orderBy(asc(employees.id))
     .limit(500)
 
   // 3. Return early if no eligible employees found
@@ -3185,7 +3145,7 @@ export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionRe
 
       // Determine password
       const plainPassword = determinePassword({
-        emailPasswordMigration: emp.emailPasswordMigration,
+        emailPasswordMigration: null,
         employeeId: emp.employeeId,
       })
 
@@ -3311,9 +3271,9 @@ export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionRe
       // Update employee authUserId
       try {
         await db
-          .update(hrEmployees)
+          .update(employees)
           .set({ authUserId: finalAuthUserId })
-          .where(eq(hrEmployees.id, emp.id))
+          .where(eq(employees.id, emp.id))
       } catch (linkErr: any) {
         if (isConnectionError(linkErr)) {
           interrupted = true
@@ -3427,9 +3387,9 @@ async function ensureAuthUserForHrEmployee(employee: {
       .set({ name: employee.name, updatedAt: new Date() })
       .where(eq(user.id, existingUser.id))
     await db
-      .update(hrEmployees)
+      .update(employees)
       .set({ authUserId: existingUser.id })
-      .where(eq(hrEmployees.id, employee.id))
+      .where(eq(employees.id, employee.id))
     return existingUser.id
   }
 
@@ -3444,7 +3404,7 @@ async function ensureAuthUserForHrEmployee(employee: {
     createdAt: now,
     updatedAt: now,
   })
-  await db.update(hrEmployees).set({ authUserId }).where(eq(hrEmployees.id, employee.id))
+  await db.update(employees).set({ authUserId }).where(eq(employees.id, employee.id))
   return authUserId
 }
 
@@ -3892,29 +3852,20 @@ export async function importSecurityUsersAction(
       return { status: 'error', message: 'CSV has no data rows to import.' }
     }
 
-    const [[defaultHrSite], [defaultLegacySite]] = await Promise.all([
-      db.select().from(hrSites).limit(1),
+    const [[defaultSite]] = await Promise.all([
       db.select().from(sites).limit(1),
     ])
 
-    if (!defaultHrSite) {
-      return { status: 'error', message: 'Site HR default belum tersedia untuk import user.' }
+    if (!defaultSite) {
+      return { status: 'error', message: 'Site default belum tersedia untuk import user.' }
     }
 
     const existingEmployees = await db
       .select({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeId: hrEmployees.employeeId,
-        fullName: hrEmployees.fullName,
-        email: hrEmployees.email,
-      })
-      .from(hrEmployees)
-    const existingLegacyEmployees = await db
-      .select({
         id: employees.id,
         authUserId: employees.authUserId,
         employeeSn: employees.employeeSn,
+        name: employees.name,
         email: employees.email,
       })
       .from(employees)
@@ -3928,16 +3879,7 @@ export async function importSecurityUsersAction(
         .map((employee) => [normalizeEmail(employee.email ?? ''), employee])
     )
     const employeeBySn = new Map(
-      existingEmployees.map((employee) => [normalizeLookupValue(employee.employeeId), employee])
-    )
-    const legacyByEmail = new Map(
-      existingLegacyEmployees.map((employee) => [normalizeEmail(employee.email), employee])
-    )
-    const legacyBySn = new Map(
-      existingLegacyEmployees.map((employee) => [
-        normalizeLookupValue(employee.employeeSn),
-        employee,
-      ])
+      existingEmployees.map((employee) => [normalizeLookupValue(employee.employeeSn), employee])
     )
 
     let importedCount = 0
@@ -3980,7 +3922,7 @@ export async function importSecurityUsersAction(
         department,
         section,
         jobTitle,
-        siteId: defaultHrSite.id,
+        siteId: defaultSite.id,
         statusName: employeeStatusType,
       })
       const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
@@ -4017,10 +3959,12 @@ export async function importSecurityUsersAction(
 
       const hrValues = {
         authUserId: linkedAuthUserId,
-        employeeId: employeeSn,
-        fullName,
+        employeeSn,
+        name: fullName,
         email,
-        siteId: defaultHrSite.id,
+        role: jobTitle,
+        department,
+        siteId: defaultSite.id,
         joinDate: joinDate || null,
         birthDate: birthDate || null,
         departmentId: hrGovernanceIds.departmentId,
@@ -4028,72 +3972,24 @@ export async function importSecurityUsersAction(
         positionId: hrGovernanceIds.positionId,
         orgNodeId: hrGovernanceIds.orgNodeId,
         demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
-        accountStatus: 'active',
-        isActive: true,
-        updatedAt: new Date(),
-      }
-      const legacyValues = {
-        authUserId: linkedAuthUserId,
-        siteId: defaultLegacySite?.id ?? 1,
-        name: fullName,
-        email,
-        employeeSn,
-        joinYear: joinDate ? new Date(joinDate).getFullYear() : new Date().getFullYear(),
-        birthPlaceDate: birthDate || '',
-        domicile: '',
-        departmentId: legacyGovernanceIds.departmentId,
-        sectionId: legacyGovernanceIds.sectionId,
-        positionId: legacyGovernanceIds.positionId,
-        orgNodeId: await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId),
-        gender: gender || '',
-        religion: religion || '',
-        education: education || '',
-        maritalStatus: maritalStatus || '',
-        pointOfHire: pointOfHire || '',
-        joinDate: joinDate || null,
-        contractDurationStart: contractDurationStart || null,
-        contractDurationEnd: contractDurationEnd || null,
-        permanentDate: permanentDate || null,
-        birthDate: birthDate || null,
-        section,
-        department,
-        role: jobTitle,
-        jobTitle,
-        levelName,
-        accessRole,
-        workLocation: workLocation || defaultHrSite.name,
-        phoneNumber: '',
         employmentStatus: 'active',
-        employeeStatusType,
         isActive: true,
       }
 
       if (existing) {
-        await db.update(hrEmployees).set(hrValues).where(eq(hrEmployees.id, existing.id))
+        await db.update(employees).set(hrValues).where(eq(employees.id, existing.id))
         updatedCount += 1
       } else {
         const [inserted] = await db
-          .insert(hrEmployees)
+          .insert(employees)
           .values(hrValues)
-          .returning({ id: hrEmployees.id })
+          .returning({ id: employees.id })
         employeeBySn.set(normalizeLookupValue(employeeSn), {
           ...hrValues,
           id: inserted.id,
           authUserId: linkedAuthUserId,
         })
         importedCount += 1
-      }
-
-      const existingLegacy =
-        legacyBySn.get(normalizeLookupValue(employeeSn)) ?? legacyByEmail.get(email)
-      if (existingLegacy) {
-        await db.update(employees).set(legacyValues).where(eq(employees.id, existingLegacy.id))
-      } else if (defaultLegacySite) {
-        await db.insert(employees).values({
-          ...legacyValues,
-          totalPoints: 0,
-          fitStatus: 'fit',
-        })
       }
     }
 
@@ -4180,22 +4076,14 @@ export async function manageSecurityUserAction(
       const [
         [currentDefaultSite],
         [selectedSite],
-        [currentDefaultLegacySite],
-        [existingHrEmployee],
-        [existingLegacyEmployee],
+        [existingEmployee],
         [existingAuthUser],
         [role],
       ] = await Promise.all([
-        db.select().from(hrSites).limit(1),
-        payload.siteId
-          ? db.select().from(hrSites).where(eq(hrSites.id, payload.siteId)).limit(1)
-          : Promise.resolve([]),
         db.select().from(sites).limit(1),
-        db
-          .select({ id: hrEmployees.id })
-          .from(hrEmployees)
-          .where(or(eq(hrEmployees.email, email), eq(hrEmployees.employeeId, employeeSn)))
-          .limit(1),
+        payload.siteId
+          ? db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+          : Promise.resolve([]),
         db
           .select({ id: employees.id })
           .from(employees)
@@ -4205,7 +4093,7 @@ export async function manageSecurityUserAction(
         db.select().from(securityRoles).where(eq(securityRoles.name, payload.accessRole)).limit(1),
       ])
 
-      if (existingHrEmployee || existingLegacyEmployee || existingAuthUser) {
+      if (existingEmployee || existingAuthUser) {
         return { status: 'error', message: 'Email or SN is already used by another user.' }
       }
 
@@ -4246,58 +4134,37 @@ export async function manageSecurityUserAction(
 
       await upsertCredentialAccount({ authUserId, email, password, now, employeeSn })
 
-      await db.insert(hrEmployees).values({
+      const [createdEmployee] = await db.insert(employees).values({
         authUserId,
-        employeeId: employeeSn,
-        fullName,
+        employeeSn,
+        name: fullName,
         email,
         siteId: defaultSite.id,
         joinDate: parseJoinDateFromYear(payload.joinYear),
+        joinYear: parseJoinYear(payload.joinYear ?? ''),
         birthDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || '') || null,
+        birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
+        domicile: payload.domicile?.trim() || 'Belum diisi',
         departmentId: hrGovernanceIds.departmentId,
         sectionId: hrGovernanceIds.sectionId,
         positionId: hrGovernanceIds.positionId,
         orgNodeId: hrGovernanceIds.orgNodeId,
-        demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
-        accountStatus: normalizedStatus.status,
+        section,
+        department,
+        role: jobTitle,
+        jobTitle,
+        workLocation: defaultSite.name,
+        phoneNumber: payload.phoneNumber?.trim() || '',
+        employmentStatus: normalizedStatus.status,
+        employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
+        accessRole: role.name,
+        levelName: 'Rookie',
+        totalPoints: 0,
+        fitStatus: 'fit',
         isActive: normalizedStatus.isActive,
-        createdAt: now,
-        updatedAt: now,
-      })
+      }).returning({ id: employees.id })
 
-      let createdLegacyEmployeeId: number | null = null
-
-      if (currentDefaultLegacySite) {
-        const [legacyEmployee] = await db.insert(employees).values({
-          authUserId,
-          siteId: currentDefaultLegacySite.id,
-          name: fullName,
-          email,
-          employeeSn,
-          joinYear: parseJoinYear(payload.joinYear ?? ''),
-          birthPlaceDate: normalizeBirthDateValue(payload.birthPlaceDate?.trim() || ''),
-          domicile: payload.domicile?.trim() || 'Belum diisi',
-          departmentId: legacyGovernanceIds.departmentId,
-          sectionId: legacyGovernanceIds.sectionId,
-          positionId: legacyGovernanceIds.positionId,
-          orgNodeId,
-          section,
-          department,
-          role: jobTitle,
-          jobTitle,
-          workLocation: defaultSite.name,
-          phoneNumber: payload.phoneNumber?.trim() || '',
-          employmentStatus: normalizedStatus.status,
-          employeeStatusType: payload.employeeStatusType || 'Permanen | Staff',
-          accessRole: role.name,
-          levelName: 'Rookie',
-          totalPoints: 0,
-          fitStatus: 'fit',
-          isActive: normalizedStatus.isActive,
-        }).returning({ id: employees.id })
-
-        createdLegacyEmployeeId = legacyEmployee?.id ?? null
-      }
+      const createdLegacyEmployeeId = createdEmployee?.id ?? null
 
       if (createdLegacyEmployeeId) {
         try {
@@ -4321,23 +4188,17 @@ export async function manageSecurityUserAction(
 
     const [employee] = await db
       .select({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeSn: hrEmployees.employeeId,
-        name: hrEmployees.fullName,
-        email: hrEmployees.email,
-        siteId: hrEmployees.siteId,
-        workLocationId: hrEmployees.workLocationId,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeSn: employees.employeeSn,
+        name: employees.name,
+        email: employees.email,
+        siteId: employees.siteId,
         accessRole: sql<string>`coalesce(${employees.accessRole}, ${hrPositions.levelName}, 'User')`,
-        legacyEmployeeId: employees.id,
       })
-      .from(hrEmployees)
-      .leftJoin(
-        employees,
-        or(eq(employees.employeeSn, hrEmployees.employeeId), eq(employees.email, hrEmployees.email))
-      )
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .where(eq(hrEmployees.id, payload.employeeId))
+      .from(employees)
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .where(eq(employees.id, payload.employeeId))
       .limit(1)
 
     if (!employee) {
@@ -4345,13 +4206,6 @@ export async function manageSecurityUserAction(
     }
 
     if (payload.intent === 'resend-invitation') {
-      if (!employee.legacyEmployeeId) {
-        return {
-          status: 'error',
-          message: 'Legacy employee record tidak ditemukan untuk kirim invitation.',
-        }
-      }
-
       if (!employee.email) {
         return {
           status: 'error',
@@ -4361,7 +4215,7 @@ export async function manageSecurityUserAction(
 
       try {
         await issueUserInvitation({
-          employeeId: employee.legacyEmployeeId,
+          employeeId: employee.id,
           email: normalizeEmail(employee.email),
           name: employee.name,
         })
@@ -4406,15 +4260,9 @@ export async function manageSecurityUserAction(
       const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const profileImage = normalizeProfileImageValue(payload.profileImage)
       const [selectedSite] = payload.siteId
-        ? await db.select().from(hrSites).where(eq(hrSites.id, payload.siteId)).limit(1)
+        ? await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
         : []
-      const [selectedWorkLocation] = payload.workLocation
-        ? await db
-            .select({ id: hrWorkLocations.id, name: hrWorkLocations.name })
-            .from(hrWorkLocations)
-            .where(eq(hrWorkLocations.name, payload.workLocation))
-            .limit(1)
-        : []
+
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
         section,
@@ -4434,64 +4282,42 @@ export async function manageSecurityUserAction(
       }
 
       await db
-        .update(hrEmployees)
+        .update(employees)
         .set({
-          fullName: payload.fullName || employee.name,
-          employeeId: payload.employeeSn || employee.employeeSn,
+          name: payload.fullName || employee.name,
+          employeeSn: payload.employeeSn || employee.employeeSn,
           joinDate: joinDate || parseJoinDateFromYear(payload.joinYear),
+          joinYear: joinDate ? new Date(joinDate).getFullYear() : parseJoinYear(payload.joinYear ?? ''),
           birthDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || '') || null,
+          birthPlaceDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || ''),
+          domicile: payload.domicile || 'Belum diisi',
+          directManagerId,
           departmentId: hrGovernanceIds.departmentId,
           sectionId: hrGovernanceIds.sectionId,
           positionId: hrGovernanceIds.positionId,
           orgNodeId: hrGovernanceIds.orgNodeId,
           siteId: selectedSite?.id ?? employee.siteId,
-          workLocationId: selectedWorkLocation?.id ?? employee.workLocationId,
+          section,
+          department,
+          role: jobTitle,
+          jobTitle,
+          levelName,
+          gender,
+          religion,
+          education,
+          maritalStatus,
+          pointOfHire,
+          contractDurationStart,
+          contractDurationEnd,
+          permanentDate,
+          workLocation: payload.workLocation || selectedSite?.name || '',
+          phoneNumber: payload.phoneNumber || '',
           email,
-          demographicEmployeeStatusCode: hrGovernanceIds.demographicEmployeeStatusCode,
-          accountStatus: normalizedStatus.status,
+          employmentStatus: normalizedStatus.status,
+          employeeStatusType: payload.employeeStatusType ?? 'Permanen | Staff',
           isActive: normalizedStatus.isActive,
-          updatedAt: new Date(),
         })
-        .where(eq(hrEmployees.id, employee.id))
-
-      if (employee.legacyEmployeeId) {
-        await db
-          .update(employees)
-          .set({
-            name: payload.fullName || employee.name,
-            employeeSn: payload.employeeSn || employee.employeeSn,
-            joinDate,
-            joinYear: joinDate ? new Date(joinDate).getFullYear() : parseJoinYear(payload.joinYear ?? ''),
-            birthDate: birthDateValue,
-            birthPlaceDate: birthDateValue || normalizeBirthDateValue(payload.birthPlaceDate || ''),
-            domicile: payload.domicile || 'Belum diisi',
-            directManagerId,
-            departmentId: legacyGovernanceIds.departmentId,
-            sectionId: legacyGovernanceIds.sectionId,
-            positionId: legacyGovernanceIds.positionId,
-            orgNodeId: legacyOrgNodeId,
-            section,
-            department,
-            role: jobTitle,
-            jobTitle,
-            levelName,
-            gender,
-            religion,
-            education,
-            maritalStatus,
-            pointOfHire,
-            contractDurationStart,
-            contractDurationEnd,
-            permanentDate,
-            workLocation: selectedWorkLocation?.name || payload.workLocation || selectedSite?.name || '',
-            phoneNumber: payload.phoneNumber || '',
-            email,
-            employmentStatus: normalizedStatus.status,
-            employeeStatusType: payload.employeeStatusType ?? 'Permanen | Staff',
-            isActive: normalizedStatus.isActive,
-          })
-          .where(eq(employees.id, employee.legacyEmployeeId))
-      }
+        .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
         await db
@@ -4520,20 +4346,12 @@ export async function manageSecurityUserAction(
 
     if (payload.intent === 'ban-user') {
       await db
-        .update(hrEmployees)
+        .update(employees)
         .set({
           isActive: false,
-          accountStatus: 'inactive',
-          updatedAt: new Date(),
+          employmentStatus: 'inactive',
         })
-        .where(eq(hrEmployees.id, employee.id))
-
-      if (employee.legacyEmployeeId) {
-        await db
-          .update(employees)
-          .set({ isActive: false, employmentStatus: 'inactive' })
-          .where(eq(employees.id, employee.legacyEmployeeId))
-      }
+        .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
         await db.delete(session).where(eq(session.userId, employee.authUserId))
@@ -4563,20 +4381,12 @@ export async function manageSecurityUserAction(
 
     if (payload.intent === 'delete-user') {
       await db
-        .update(hrEmployees)
+        .update(employees)
         .set({
           isActive: false,
-          accountStatus: 'inactive',
-          updatedAt: new Date(),
+          employmentStatus: 'inactive',
         })
-        .where(eq(hrEmployees.id, employee.id))
-
-      if (employee.legacyEmployeeId) {
-        await db
-          .update(employees)
-          .set({ isActive: false, employmentStatus: 'inactive' })
-          .where(eq(employees.id, employee.legacyEmployeeId))
-      }
+        .where(eq(employees.id, employee.id))
 
       if (employee.authUserId) {
         await db.delete(session).where(eq(session.userId, employee.authUserId))
@@ -4611,12 +4421,10 @@ export async function manageSecurityUserAction(
         return { status: 'error', message: 'Selected role is invalid.' }
       }
 
-      if (employee.legacyEmployeeId) {
-        await db
-          .update(employees)
-          .set({ accessRole: role.name })
-          .where(eq(employees.id, employee.legacyEmployeeId))
-      }
+      await db
+        .update(employees)
+        .set({ accessRole: role.name })
+        .where(eq(employees.id, employee.id))
 
       // Kill session so user must re-login with new role
       if (employee.authUserId) {
@@ -6657,42 +6465,30 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
     }
 
     const actorEmail = await getCurrentActorEmail()
-    const selectedHrEmployees = await db
+    const selectedEmployees = await db
       .select({
-        id: hrEmployees.id,
-        authUserId: hrEmployees.authUserId,
-        employeeSn: hrEmployees.employeeId,
-        email: hrEmployees.email,
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeSn: employees.employeeSn,
+        email: employees.email,
       })
-      .from(hrEmployees)
-      .where(inArray(hrEmployees.id, employeeIds))
-    const selectedAuthUserIds = selectedHrEmployees
+      .from(employees)
+      .where(inArray(employees.id, employeeIds))
+    const selectedAuthUserIds = selectedEmployees
       .map((employee) => employee.authUserId)
       .filter((id): id is string => id !== null)
-    const selectedSnValues = selectedHrEmployees
+    const selectedSnValues = selectedEmployees
       .map((employee) => employee.employeeSn)
       .filter(Boolean)
-    const selectedEmailValues = selectedHrEmployees
+    const selectedEmailValues = selectedEmployees
       .map((employee) => employee.email)
       .filter((email): email is string => Boolean(email))
 
     if (action === 'activate') {
       await db
-        .update(hrEmployees)
-        .set({ isActive: true, accountStatus: 'active', updatedAt: new Date() })
-        .where(inArray(hrEmployees.id, employeeIds))
-
-      if (selectedSnValues.length || selectedEmailValues.length) {
-        await db
-          .update(employees)
-          .set({ isActive: true, employmentStatus: 'active' })
-          .where(
-            or(
-              inArray(employees.employeeSn, selectedSnValues),
-              inArray(employees.email, selectedEmailValues)
-            )
-          )
-      }
+        .update(employees)
+        .set({ isActive: true, employmentStatus: 'active' })
+        .where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,
@@ -6709,21 +6505,9 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
 
     if (action === 'ban') {
       await db
-        .update(hrEmployees)
-        .set({ isActive: false, accountStatus: 'inactive', updatedAt: new Date() })
-        .where(inArray(hrEmployees.id, employeeIds))
-
-      if (selectedSnValues.length || selectedEmailValues.length) {
-        await db
-          .update(employees)
-          .set({ isActive: false, employmentStatus: 'inactive' })
-          .where(
-            or(
-              inArray(employees.employeeSn, selectedSnValues),
-              inArray(employees.email, selectedEmailValues)
-            )
-          )
-      }
+        .update(employees)
+        .set({ isActive: false, employmentStatus: 'inactive' })
+        .where(inArray(employees.id, employeeIds))
 
       if (selectedAuthUserIds.length > 0) {
         await db.delete(session).where(inArray(session.userId, selectedAuthUserIds))
@@ -6788,17 +6572,7 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
         await db.delete(user).where(inArray(user.id, selectedAuthUserIds))
       }
 
-      if (selectedSnValues.length || selectedEmailValues.length) {
-        await db
-          .delete(employees)
-          .where(
-            or(
-              inArray(employees.employeeSn, selectedSnValues),
-              inArray(employees.email, selectedEmailValues)
-            )
-          )
-      }
-      await db.delete(hrEmployees).where(inArray(hrEmployees.id, employeeIds))
+      await db.delete(employees).where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,
@@ -6821,21 +6595,9 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       }
 
       await db
-        .update(hrEmployees)
-        .set({ sectionId, updatedAt: new Date() })
-        .where(inArray(hrEmployees.id, employeeIds))
-
-      if (selectedSnValues.length || selectedEmailValues.length) {
-        await db
-          .update(employees)
-          .set({ section: sectionName })
-          .where(
-            or(
-              inArray(employees.employeeSn, selectedSnValues),
-              inArray(employees.email, selectedEmailValues)
-            )
-          )
-      }
+        .update(employees)
+        .set({ sectionId, section: sectionName })
+        .where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,
@@ -6861,21 +6623,9 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       }
 
       await db
-        .update(hrEmployees)
-        .set({ siteId, updatedAt: new Date() })
-        .where(inArray(hrEmployees.id, employeeIds))
-
-      if (selectedSnValues.length || selectedEmailValues.length) {
-        await db
-          .update(employees)
-          .set({ workLocation: siteName })
-          .where(
-            or(
-              inArray(employees.employeeSn, selectedSnValues),
-              inArray(employees.email, selectedEmailValues)
-            )
-          )
-      }
+        .update(employees)
+        .set({ siteId, workLocation: siteName })
+        .where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
         actorEmail,

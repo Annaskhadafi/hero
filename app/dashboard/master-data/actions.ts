@@ -24,7 +24,6 @@ import {
   masterJobTitles,
   masterLevelStaff,
   masterSubSections,
-  hrEmployees,
 } from "@/db/schema/hero";
 import { auth } from "@/lib/auth";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
@@ -2290,7 +2289,7 @@ export async function moveEmployeeSectionAction(
 
     // Cari employee di legacy employees (ID yg dipake di dialog)
     const [legacyEmp] = await db
-      .select({ employeeSn: employees.employeeSn, email: employees.email, name: employees.name })
+      .select({ name: employees.name })
       .from(employees)
       .where(eq(employees.id, employeeId))
       .limit(1);
@@ -2320,30 +2319,6 @@ export async function moveEmployeeSectionAction(
       })
       .where(eq(employees.id, employeeId));
 
-    // Update hrEmployees via SN/email match
-    if (legacyEmp.employeeSn || legacyEmp.email) {
-      const [hrEmp] = await db
-        .select({ id: hrEmployees.id, fullName: hrEmployees.fullName })
-        .from(hrEmployees)
-        .where(
-          legacyEmp.email
-            ? sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn} OR ${hrEmployees.email} = ${legacyEmp.email}`
-            : sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn}`
-        )
-        .limit(1);
-
-      if (hrEmp) {
-        await db
-          .update(hrEmployees)
-          .set({
-            sectionId,
-            ...(section.departmentId ? { departmentId: section.departmentId } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(hrEmployees.id, hrEmp.id));
-      }
-    }
-
     revalidatePath("/dashboard/master-data");
 
     return {
@@ -2368,7 +2343,6 @@ export async function syncAllEmployeeDepartmentsAction(
     const employeesWithSection = await db
       .select({
         empId: employees.id,
-        empName: employees.name,
         empDeptId: employees.departmentId,
         sectionId: employees.sectionId,
         sectionDeptId: masterSections.departmentId,
@@ -2392,32 +2366,6 @@ export async function syncAllEmployeeDepartmentsAction(
           .update(employees)
           .set({ departmentId: emp.sectionDeptId, department: dept?.name ?? '' })
           .where(eq(employees.id, emp.empId));
-
-        // Update hrEmployees via SN/email
-        const [empSn] = await db
-          .select({ employeeSn: employees.employeeSn, email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, emp.empId))
-          .limit(1);
-
-        if (empSn?.employeeSn || empSn?.email) {
-          const [hrEmp] = await db
-            .select({ id: hrEmployees.id })
-            .from(hrEmployees)
-            .where(
-              empSn.email
-                ? sql`${hrEmployees.employeeId} = ${empSn.employeeSn} OR ${hrEmployees.email} = ${empSn.email}`
-                : sql`${hrEmployees.employeeId} = ${empSn.employeeSn}`
-            )
-            .limit(1);
-
-          if (hrEmp) {
-            await db
-              .update(hrEmployees)
-              .set({ departmentId: emp.sectionDeptId, updatedAt: new Date() })
-              .where(eq(hrEmployees.id, hrEmp.id));
-          }
-        }
 
         updatedCount++;
       }
@@ -2467,7 +2415,7 @@ export async function moveEmployeeDepartmentAction(
 
     // Cari employee dulu di legacy employees (ID yg dipake di dialog)
     const [legacyEmp] = await db
-      .select({ employeeSn: employees.employeeSn, email: employees.email, name: employees.name })
+      .select({ name: employees.name })
       .from(employees)
       .where(eq(employees.id, employeeId))
       .limit(1);
@@ -2481,26 +2429,6 @@ export async function moveEmployeeDepartmentAction(
       .update(employees)
       .set({ departmentId, department: dept.name, sectionId: null, section: '' })
       .where(eq(employees.id, employeeId));
-
-    // Update hrEmployees via SN/email match
-    if (legacyEmp.employeeSn || legacyEmp.email) {
-      const [hrEmp] = await db
-        .select({ id: hrEmployees.id, fullName: hrEmployees.fullName })
-        .from(hrEmployees)
-        .where(
-          legacyEmp.email
-            ? sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn} OR ${hrEmployees.email} = ${legacyEmp.email}`
-            : sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn}`
-        )
-        .limit(1);
-
-      if (hrEmp) {
-        await db
-          .update(hrEmployees)
-          .set({ departmentId, sectionId: null, updatedAt: new Date() })
-          .where(eq(hrEmployees.id, hrEmp.id));
-      }
-    }
 
     revalidatePath("/dashboard/master-data");
 

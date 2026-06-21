@@ -1,7 +1,7 @@
 import { ContractReviewClientForm } from "../client-form"
 import { getContractReviewById, getContractReviewSettings } from "@/app/actions/contract-review"
 import { db } from "@/db"
-import { employees as userEmployees, hrEmployees, hrDepartments, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
+import { employees, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
 import { centralServiceEmployees } from "@/db/schema/central-service"
 import { hcContractReviewApprovals } from "@/db/schema/hero"
 import { asc, eq, inArray } from "drizzle-orm"
@@ -25,24 +25,24 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
   const [hrEmps, csEmps, orgNodes, allApprovals, sectionRows, departmentRows] = await Promise.all([
     db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        employeeId: hrEmployees.employeeId,
-        department: hrDepartments.name,
+        id: employees.id,
+        name: employees.name,
+        employeeId: employees.employeeSn,
+        department: masterDepartments.name,
         position: hrPositions.levelName,
         rank: hrPositions.rankName,
         section: masterSections.name,
-        joinDate: hrEmployees.joinDate,
-        orgNodeId: hrEmployees.orgNodeId,
-        departmentId: hrEmployees.departmentId,
-        sectionId: hrEmployees.sectionId,
+        joinDate: employees.joinDate,
+        orgNodeId: employees.orgNodeId,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
         isManagerial: hrPositions.isManagerial,
       })
-      .from(hrEmployees)
-      .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-      .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-      .leftJoin(masterSections, eq(hrEmployees.sectionId, masterSections.id))
-      .where(eq(hrEmployees.isActive, true)),
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .where(eq(employees.isActive, true)),
     db
       .select({
         employeeSn: centralServiceEmployees.employeeSn,
@@ -70,7 +70,7 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
     csBySn.set(`EMP-${c.employeeSn}`, c)
   }
 
-  const employees = hrEmps.map((emp) => {
+  const employeeList = hrEmps.map((emp) => {
     const cs = csBySn.get(emp.employeeId)
     return {
       ...emp,
@@ -94,13 +94,13 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
       ? []
       : await db
           .select({
-            id: userEmployees.id,
-            name: userEmployees.name,
-            email: userEmployees.email,
-            jobTitle: userEmployees.jobTitle,
+            id: employees.id,
+            name: employees.name,
+            email: employees.email,
+            jobTitle: employees.jobTitle,
           })
-          .from(userEmployees)
-          .where(inArray(userEmployees.id, headEmployeeIds))
+          .from(employees)
+          .where(inArray(employees.id, headEmployeeIds))
 
   const headUserMap = new Map(headUsers.map((item) => [item.id, item]))
   const masterHeadMap = {
@@ -130,6 +130,6 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
   }
 
   return (
-    <ContractReviewClientForm employees={employees} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} masterHeadMap={masterHeadMap} />
+    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} masterHeadMap={masterHeadMap} />
   )
 }

@@ -3,7 +3,7 @@
 import { and, eq, lte, isNull, desc, isNotNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/db"
-import { hseInventories, hrEmployees } from "@/db/schema/hero"
+import { hseInventories, employees } from "@/db/schema/hero"
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin"
 import { sendHseSafetyEmail } from "@/lib/hse-safety-email"
 
@@ -314,18 +314,18 @@ export async function getHseUserEmails() {
   try {
     const users = await db
       .select({
-        id: hrEmployees.id,
-        name: hrEmployees.fullName,
-        email: hrEmployees.email,
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
       })
-      .from(hrEmployees)
+      .from(employees)
       .where(
         and(
-          eq(hrEmployees.isActive, true),
-          isNotNull(hrEmployees.email)
+          eq(employees.isActive, true),
+          isNotNull(employees.email)
         )
       )
-      .orderBy(hrEmployees.fullName)
+      .orderBy(employees.name)
     
     return { 
       success: true, 

@@ -5,9 +5,7 @@ import {
   broadcasts,
   broadcastInteractions,
   broadcastCategories,
-  hrDepartments,
-  hrSections,
-  hrEmployees,
+  masterDepartments,
   masterSections,
   employees,
 } from "@/db/schema/hero";
@@ -35,8 +33,8 @@ export interface BroadcastDataInput {
 async function getCreatorPermissions(email: string) {
   const [employee] = await db
     .select()
-    .from(hrEmployees)
-    .where(eq(hrEmployees.email, email))
+    .from(employees)
+    .where(eq(employees.email, email))
     .limit(1);
 
   const [emp] = await db
@@ -156,27 +154,27 @@ export async function createBroadcast(data: BroadcastDataInput) {
 
     if (data.targetType === "all") {
       targetEmployees = await db
-        .select({ id: hrEmployees.id })
-        .from(hrEmployees)
-        .where(eq(hrEmployees.isActive, true));
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.isActive, true));
     } else if (data.targetType === "department" && data.targetId) {
       targetEmployees = await db
-        .select({ id: hrEmployees.id })
-        .from(hrEmployees)
+        .select({ id: employees.id })
+        .from(employees)
         .where(
           and(
-            eq(hrEmployees.isActive, true),
-            eq(hrEmployees.departmentId, data.targetId)
+            eq(employees.isActive, true),
+            eq(employees.departmentId, data.targetId)
           )
         );
     } else if (data.targetType === "section" && data.targetId) {
       targetEmployees = await db
-        .select({ id: hrEmployees.id })
-        .from(hrEmployees)
+        .select({ id: employees.id })
+        .from(employees)
         .where(
           and(
-            eq(hrEmployees.isActive, true),
-            eq(hrEmployees.sectionId, data.targetId)
+            eq(employees.isActive, true),
+            eq(employees.sectionId, data.targetId)
           )
         );
     }
@@ -398,27 +396,27 @@ export async function updateBroadcast(id: number, data: BroadcastDataInput, rese
 
       if (data.targetType === "all") {
         targetEmployees = await db
-          .select({ id: hrEmployees.id })
-          .from(hrEmployees)
-          .where(eq(hrEmployees.isActive, true));
+          .select({ id: employees.id })
+          .from(employees)
+          .where(eq(employees.isActive, true));
       } else if (data.targetType === "department" && data.targetId) {
         targetEmployees = await db
-          .select({ id: hrEmployees.id })
-          .from(hrEmployees)
+          .select({ id: employees.id })
+          .from(employees)
           .where(
             and(
-              eq(hrEmployees.isActive, true),
-              eq(hrEmployees.departmentId, data.targetId)
+              eq(employees.isActive, true),
+              eq(employees.departmentId, data.targetId)
             )
           );
       } else if (data.targetType === "section" && data.targetId) {
         targetEmployees = await db
-          .select({ id: hrEmployees.id })
-          .from(hrEmployees)
+          .select({ id: employees.id })
+          .from(employees)
           .where(
             and(
-              eq(hrEmployees.isActive, true),
-              eq(hrEmployees.sectionId, data.targetId)
+              eq(employees.isActive, true),
+              eq(employees.sectionId, data.targetId)
             )
           );
       }
@@ -474,8 +472,8 @@ export async function getEligibleBroadcastsForMobile() {
   // Get employee details
   const [employee] = await db
     .select()
-    .from(hrEmployees)
-    .where(eq(hrEmployees.email, session.user.email))
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
     .limit(1);
 
   if (!employee) {
@@ -558,8 +556,8 @@ export async function getHistoricalBroadcastsForMobile() {
   // Get employee details
   const [employee] = await db
     .select()
-    .from(hrEmployees)
-    .where(eq(hrEmployees.email, session.user.email))
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
     .limit(1);
 
   if (!employee) {
@@ -698,20 +696,20 @@ export async function getTargetMetadata() {
   const perms = await getCreatorPermissions(session.user.email);
 
   const depts = await db
-    .select({ id: hrDepartments.id, name: hrDepartments.name })
-    .from(hrDepartments)
-    .where(eq(hrDepartments.isActive, true))
-    .orderBy(hrDepartments.name);
+    .select({ id: masterDepartments.id, name: masterDepartments.name })
+    .from(masterDepartments)
+    .where(eq(masterDepartments.isActive, true))
+    .orderBy(masterDepartments.name);
 
   const sects = await db
     .select({
-      id: hrSections.id,
-      name: hrSections.name,
-      departmentId: hrSections.departmentId,
+      id: masterSections.id,
+      name: masterSections.name,
+      departmentId: masterSections.departmentId,
     })
-    .from(hrSections)
-    .where(eq(hrSections.isActive, true))
-    .orderBy(hrSections.name);
+    .from(masterSections)
+    .where(eq(masterSections.isActive, true))
+    .orderBy(masterSections.name);
 
   // Filter sections if the user is a Section Head but not Admin
   const filteredSections = perms.isSuperOrHrAdmin
@@ -791,17 +789,17 @@ export async function getBroadcastAnalytics(broadcastId: number) {
   // Get users who liked
   const likedUsers = await db
     .select({
-      id: hrEmployees.id,
-      name: hrEmployees.fullName,
-      email: hrEmployees.email,
-      department: hrDepartments.name,
-      section: hrSections.name,
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      department: masterDepartments.name,
+      section: masterSections.name,
       updatedAt: broadcastInteractions.updatedAt,
     })
     .from(broadcastInteractions)
-    .innerJoin(hrEmployees, eq(broadcastInteractions.userId, hrEmployees.authUserId))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
+    .innerJoin(employees, eq(broadcastInteractions.userId, employees.authUserId))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .where(
       and(
         eq(broadcastInteractions.broadcastId, broadcastId),
@@ -813,17 +811,17 @@ export async function getBroadcastAnalytics(broadcastId: number) {
   // Get users who disliked
   const dislikedUsers = await db
     .select({
-      id: hrEmployees.id,
-      name: hrEmployees.fullName,
-      email: hrEmployees.email,
-      department: hrDepartments.name,
-      section: hrSections.name,
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      department: masterDepartments.name,
+      section: masterSections.name,
       updatedAt: broadcastInteractions.updatedAt,
     })
     .from(broadcastInteractions)
-    .innerJoin(hrEmployees, eq(broadcastInteractions.userId, hrEmployees.authUserId))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
+    .innerJoin(employees, eq(broadcastInteractions.userId, employees.authUserId))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .where(
       and(
         eq(broadcastInteractions.broadcastId, broadcastId),
@@ -835,39 +833,39 @@ export async function getBroadcastAnalytics(broadcastId: number) {
   // Grouped likes by department
   const departmentLikes = await db
     .select({
-      departmentId: hrEmployees.departmentId,
-      departmentName: hrDepartments.name,
+      departmentId: employees.departmentId,
+      departmentName: masterDepartments.name,
       count: sql<number>`count(*)::int`,
     })
     .from(broadcastInteractions)
-    .innerJoin(hrEmployees, eq(broadcastInteractions.userId, hrEmployees.authUserId))
-    .innerJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
+    .innerJoin(employees, eq(broadcastInteractions.userId, employees.authUserId))
+    .innerJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .where(
       and(
         eq(broadcastInteractions.broadcastId, broadcastId),
         eq(broadcastInteractions.liked, true)
       )
     )
-    .groupBy(hrEmployees.departmentId, hrDepartments.name)
+    .groupBy(employees.departmentId, masterDepartments.name)
     .orderBy(desc(sql`count(*)`));
 
   // Grouped likes by section
   const sectionLikes = await db
     .select({
-      sectionId: hrEmployees.sectionId,
-      sectionName: hrSections.name,
+      sectionId: employees.sectionId,
+      sectionName: masterSections.name,
       count: sql<number>`count(*)::int`,
     })
     .from(broadcastInteractions)
-    .innerJoin(hrEmployees, eq(broadcastInteractions.userId, hrEmployees.authUserId))
-    .innerJoin(hrSections, eq(hrEmployees.sectionId, hrSections.id))
+    .innerJoin(employees, eq(broadcastInteractions.userId, employees.authUserId))
+    .innerJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .where(
       and(
         eq(broadcastInteractions.broadcastId, broadcastId),
         eq(broadcastInteractions.liked, true)
       )
     )
-    .groupBy(hrEmployees.sectionId, hrSections.name)
+    .groupBy(employees.sectionId, masterSections.name)
     .orderBy(desc(sql`count(*)`));
 
   return {

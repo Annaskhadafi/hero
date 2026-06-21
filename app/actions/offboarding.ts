@@ -4,8 +4,8 @@ import { db } from "@/db";
 import {
   hcOffboardingRequests,
   hcClearanceItems,
-  hrEmployees,
-  hrDepartments,
+  employees,
+  masterDepartments,
   hrPositions,
 } from "@/db/schema/hero";
 import { eq, desc, and, sql, count } from "drizzle-orm";
@@ -108,9 +108,9 @@ export async function getOffboardingRecords(filters?: {
     .select({
       id: hcOffboardingRequests.id,
       employeeId: hcOffboardingRequests.employeeId,
-      employeeCode: hrEmployees.employeeId,
-      employeeName: hrEmployees.fullName,
-      departmentName: hrDepartments.name,
+      employeeCode: employees.employeeSn,
+      employeeName: employees.name,
+      departmentName: masterDepartments.name,
       positionName: hrPositions.rankName,
       requestType: hcOffboardingRequests.requestType,
       reason: hcOffboardingRequests.reason,
@@ -126,9 +126,9 @@ export async function getOffboardingRecords(filters?: {
       updatedAt: hcOffboardingRequests.updatedAt,
     })
     .from(hcOffboardingRequests)
-    .leftJoin(hrEmployees, eq(hcOffboardingRequests.employeeId, hrEmployees.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .leftJoin(employees, eq(hcOffboardingRequests.employeeId, employees.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .where(where)
     .orderBy(desc(hcOffboardingRequests.createdAt));
 
@@ -206,9 +206,9 @@ export async function getOffboardingById(id: number) {
     .select({
       id: hcOffboardingRequests.id,
       employeeId: hcOffboardingRequests.employeeId,
-      employeeCode: hrEmployees.employeeId,
-      employeeName: hrEmployees.fullName,
-      departmentName: hrDepartments.name,
+      employeeCode: employees.employeeSn,
+      employeeName: employees.name,
+      departmentName: masterDepartments.name,
       positionName: hrPositions.rankName,
       requestType: hcOffboardingRequests.requestType,
       reason: hcOffboardingRequests.reason,
@@ -224,9 +224,9 @@ export async function getOffboardingById(id: number) {
       updatedAt: hcOffboardingRequests.updatedAt,
     })
     .from(hcOffboardingRequests)
-    .leftJoin(hrEmployees, eq(hcOffboardingRequests.employeeId, hrEmployees.id))
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
+    .leftJoin(employees, eq(hcOffboardingRequests.employeeId, employees.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .where(eq(hcOffboardingRequests.id, id));
 
   if (!record) return null;
@@ -566,9 +566,9 @@ export async function completeOffboarding(id: number) {
 
   // Deactivate the employee
   await db
-    .update(hrEmployees)
-    .set({ isActive: false, updatedAt: new Date() })
-    .where(eq(hrEmployees.id, record.employeeId));
+    .update(employees)
+    .set({ isActive: false })
+    .where(eq(employees.id, record.employeeId));
 
   revalidatePath("/dashboard/hc/offboarding");
   revalidatePath("/dashboard/hc/employee");
@@ -647,16 +647,16 @@ export async function updateExitInterview(
 export async function getActiveEmployees() {
   return await db
     .select({
-      id: hrEmployees.id,
-      employeeId: hrEmployees.employeeId,
-      fullName: hrEmployees.fullName,
-      departmentId: hrEmployees.departmentId,
-      departmentName: hrDepartments.name,
+      id: employees.id,
+      employeeId: employees.employeeSn,
+      fullName: employees.name,
+      departmentId: employees.departmentId,
+      departmentName: masterDepartments.name,
       positionName: hrPositions.rankName,
     })
-    .from(hrEmployees)
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .leftJoin(hrPositions, eq(hrEmployees.positionId, hrPositions.id))
-    .where(eq(hrEmployees.isActive, true))
-    .orderBy(hrEmployees.fullName);
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .where(eq(employees.isActive, true))
+    .orderBy(employees.name);
 }

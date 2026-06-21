@@ -1,6 +1,6 @@
 import { getCertificates, getCertificateStats, getCertificateTypes } from "@/app/actions/certificate";
 import { db } from "@/db";
-import { hrDepartments, hrEmployees } from "@/db/schema/hero";
+import { employees, hrDepartments } from "@/db/schema/hero";
 import { asc, eq } from "drizzle-orm";
 import { CertificateClientPage } from "./client-page";
 
@@ -29,13 +29,13 @@ export default async function CertificatePage() {
 async function getEmployeeOptions() {
   return db
     .select({
-      id: hrEmployees.id,
-      name: hrEmployees.fullName,
-      employeeCode: hrEmployees.employeeId,
+      id: employees.id,
+      name: employees.name,
+      employeeCode: employees.employeeSn,
       departmentName: hrDepartments.name,
     })
-    .from(hrEmployees)
-    .leftJoin(hrDepartments, eq(hrEmployees.departmentId, hrDepartments.id))
-    .where(eq(hrEmployees.isActive, true))
-    .orderBy(asc(hrEmployees.fullName));
+    .from(employees)
+    .leftJoin(hrDepartments, eq(employees.departmentId, hrDepartments.id))
+    .where(eq(employees.isActive, true))
+    .orderBy(asc(employees.name));
 }
