@@ -66,6 +66,7 @@ const sectionSchema = z.object({
   name: z.string().trim().min(1).max(100),
   departmentId: optionalPositiveIntField,
   headEmployeeId: optionalPositiveIntField,
+  parentId: optionalPositiveIntField,
   description: z.string().trim().max(500).optional(),
   isActive: formBooleanField(true),
 });
@@ -862,7 +863,7 @@ export async function manageSectionAction(
     };
   }
 
-  const { intent, id, code, name, departmentId, headEmployeeId, description, isActive } = parsed.data;
+      const { intent, id, code, name, departmentId, headEmployeeId, parentId, description, isActive } = parsed.data;
   const normalizedCode = code.trim().toUpperCase();
 
   try {
@@ -888,6 +889,7 @@ export async function manageSectionAction(
           name,
           departmentId: departmentId || null,
           headEmployeeId: headEmployeeId || null,
+          parentId: parentId || null,
           description: description || "",
           isActive,
           createdAt: now(),
@@ -976,6 +978,7 @@ export async function manageSectionAction(
           name,
           departmentId: departmentId || null,
           headEmployeeId: headEmployeeId || null,
+          parentId: parentId || null,
           description: description || "",
           isActive,
           updatedAt: now(),

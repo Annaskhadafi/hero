@@ -4096,6 +4096,14 @@ async function ensureHeroGovernanceTables() {
   `)
 
   await db.execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE hero_master_sections ADD COLUMN IF NOT EXISTS head_employee_id integer;
+      ALTER TABLE hero_master_sections ADD COLUMN IF NOT EXISTS parent_id integer references hero_master_sections(id) on delete set null;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `)
+
+  await db.execute(sql`
     create table if not exists hero_master_positions (
       id serial primary key,
       code text not null unique,

@@ -1164,6 +1164,9 @@ export const masterSections = pgTable('hero_master_sections', {
     onDelete: 'set null',
   }),
   headEmployeeId: integer('head_employee_id'),
+  parentId: integer('parent_id').references((): AnyPgColumn => masterSections.id, {
+    onDelete: 'set null',
+  }),
   description: text('description').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),

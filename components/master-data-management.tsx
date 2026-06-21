@@ -1653,6 +1653,7 @@ function SectionManagement({
     name: "",
     departmentId: "",
     headEmployeeId: "",
+    parentId: "",
     description: "",
     isActive: true,
   });
@@ -1676,12 +1677,13 @@ function SectionManagement({
         name: section.name,
         departmentId: section.departmentId?.toString() ?? "",
         headEmployeeId: section.headEmployeeId?.toString() ?? "",
+        parentId: section.parentId?.toString() ?? "",
         description: section.description,
         isActive: section.isActive,
       });
     } else {
       setEditingSection(null);
-      setFormData({ code: "", name: "", departmentId: "", headEmployeeId: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", headEmployeeId: "", parentId: "", description: "", isActive: true });
     }
     setIsDialogOpen(true);
   };
@@ -1697,6 +1699,7 @@ function SectionManagement({
     form.append("name", formData.name);
     form.append("departmentId", formData.departmentId);
     form.append("headEmployeeId", formData.headEmployeeId);
+    form.append("parentId", formData.parentId);
     form.append("description", formData.description);
     form.append("isActive", formData.isActive.toString());
 
@@ -1706,7 +1709,7 @@ function SectionManagement({
       toast.success(result.message);
       setIsDialogOpen(false);
       setEditingSection(null);
-      setFormData({ code: "", name: "", departmentId: "", headEmployeeId: "", description: "", isActive: true });
+      setFormData({ code: "", name: "", departmentId: "", headEmployeeId: "", parentId: "", description: "", isActive: true });
       router.refresh();
     } else {
       toast.error(result.message);
@@ -1772,6 +1775,7 @@ function SectionManagement({
                 <TableHead>Nama Section</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Head Section</TableHead>
+                <TableHead>Induk Section</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="w-[90px] text-center">Jml Karyawan</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
@@ -1828,6 +1832,15 @@ function SectionManagement({
                           <span className="font-medium text-[#1e293b]">{section.headEmployeeName}</span>
                         ) : (
                           <span className="text-[#94a3b8]">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {section.parentName ? (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                            {section.parentName}
+                          </Badge>
+                        ) : (
+                          <span className="text-[#94a3b8]">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-[#64748b]">
@@ -1902,7 +1915,7 @@ function SectionManagement({
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={9} className="h-24 text-center text-[#64748b]">
                     Tidak ada data section
                   </TableCell>
                 </TableRow>
@@ -1969,6 +1982,30 @@ function SectionManagement({
                     ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Induk Section</Label>
+              <Select
+                value={formData.parentId || "0"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, parentId: value === "0" ? "" : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih induk section (opsional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">- Tidak ada (root) -</SelectItem>
+                  {sections
+                    .filter((section) => section.isActive && (!editingSection || section.id !== editingSection.id))
+                    .map((section) => (
+                      <SelectItem key={section.id} value={section.id.toString()}>
+                        {section.name} ({section.code})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-[#64748b]">Kosongkan jika ini adalah section induk (root).</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="section-head">Head Section</Label>

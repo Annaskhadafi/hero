@@ -37,6 +37,8 @@ export type MasterSection = {
   departmentName: string | null;
   headEmployeeId: number | null;
   headEmployeeName: string | null;
+  parentId: number | null;
+  parentName: string | null;
   description: string;
   isActive: boolean;
   employeeCount: number;
@@ -511,6 +513,7 @@ export async function getMasterSections(): Promise<MasterSection[]> {
         departmentName: masterDepartments.name,
         headEmployeeId: masterSections.headEmployeeId,
         headEmployeeName: headEmployees.name,
+        parentId: masterSections.parentId,
         description: masterSections.description,
         isActive: masterSections.isActive,
         createdAt: masterSections.createdAt,
@@ -548,10 +551,13 @@ export async function getMasterSections(): Promise<MasterSection[]> {
     subSectionsBySection.set(sub.sectionId, list);
   }
 
+  const sectionNameById = new Map(sectionRows.map((row) => [row.id, row.name]));
+
   return sectionRows.map((section) => ({
     ...section,
     departmentName: section.departmentName ?? null,
     headEmployeeName: section.headEmployeeName ?? null,
+    parentName: section.parentId ? (sectionNameById.get(section.parentId) ?? null) : null,
     employeeCount: countMap.get(section.id) ?? 0,
     subSections: subSectionsBySection.get(section.id) ?? [],
   }));
