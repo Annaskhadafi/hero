@@ -174,7 +174,7 @@ export function CommandCenterClient({
     try {
       const res = await uploadFile(formData);
       if (res.success && res.url) {
-        const finalUrl = res.readableUrl || `/api/uploads/${res.url.split("/").pop()}`;
+        const finalUrl = res.url || `/api/uploads/${res.url.split("/").pop()}`;
         setEditImageUrl(finalUrl);
         toast.success("File berhasil diunggah!");
       } else {
@@ -376,7 +376,7 @@ export function CommandCenterClient({
     try {
       const res = await uploadFile(formData);
       if (res.success && res.url) {
-        const finalUrl = res.readableUrl || `/api/uploads/${res.url.split("/").pop()}`;
+        const finalUrl = res.url || `/api/uploads/${res.url.split("/").pop()}`;
         setImageUrl(finalUrl);
         toast.success("File berhasil diunggah!");
       } else {

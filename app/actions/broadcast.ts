@@ -12,6 +12,7 @@ import {
   employees,
 } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
+import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { eq, and, or, sql, desc, SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { createNotificationEventForEmployee, sendPushNotification } from "@/lib/push-notifications";
@@ -534,8 +535,16 @@ export async function getEligibleBroadcastsForMobile() {
 
   // Filter based on capping logic:
   // Show if viewsCount < maxPopups AND dismissed is false AND no reaction given (liked is null)
-  return eligibleBroadcasts.filter(
+  const filtered = eligibleBroadcasts.filter(
     (b) => b.viewsCount < b.maxPopups && !b.dismissed && b.liked === null
+  );
+
+  // Regenerate signed URLs for images
+  return Promise.all(
+    filtered.map(async (item) => ({
+      ...item,
+      imageUrl: item.imageUrl ? await getS3ObjectReadUrl(item.imageUrl) : item.imageUrl,
+    }))
   );
 }
 
@@ -606,7 +615,15 @@ export async function getHistoricalBroadcastsForMobile() {
     )
     .orderBy(desc(broadcasts.createdAt));
 
-  return history;
+  // Regenerate signed URLs for images
+  const historyWithFreshUrls = await Promise.all(
+    history.map(async (item) => ({
+      ...item,
+      imageUrl: item.imageUrl ? await getS3ObjectReadUrl(item.imageUrl) : item.imageUrl,
+    }))
+  );
+
+  return historyWithFreshUrls;
 }
 
 // 7. Track interactions: view, dismiss, like, dislike
