@@ -79,13 +79,8 @@ import { cn } from '@/lib/utils'
 
 import { SecurityUserBulkActions } from '@/components/security-user-bulk-actions'
 
-// Extract site name from workLocation
-// Example: "Repair & Retread - Sangatta" -> "Sangatta"
-// Example: "Balikpapan" -> "Balikpapan"
-function extractSiteName(workLocation: string | null | undefined): string {
-  if (!workLocation) return '-'
-  const parts = workLocation.split(' - ')
-  return parts.length > 1 ? parts[parts.length - 1].trim() : workLocation.trim()
+function getSiteDisplayName(user: Pick<SecurityUserRecord, 'siteName' | 'workLocation'>): string {
+  return user.siteName || user.workLocation || '-'
 }
 
 const INITIAL_IMPORT_STATE: ImportUsersActionState = {
@@ -288,13 +283,14 @@ export function SecurityUserManagement({
   const [activeTab, setActiveTab] = useState<'directory' | 'dashboard' | 'serviceman-dashboard'>('directory')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
+  const [selectedSections, setSelectedSections] = useState<string[]>([])
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([])
   const [selectedSites, setSelectedSites] = useState<string[]>([])
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
-    name: true, sn: true, department: true, section: false, jobTitle: true,
+    name: true, sn: true, department: true, section: true, jobTitle: true,
     levelStaff: false, peran: true, lokasiSite: true, tipeStatus: false,
     gender: false, agama: false, pendidikan: false, maritalStatus: false,
     poh: false, joinDate: false, contractStart: false, contractEnd: false,
@@ -321,6 +317,10 @@ export function SecurityUserManagement({
     () => getUniqueOptions(users.map((user) => user.department)),
     [users]
   )
+  const sectionFilterOptions = useMemo(
+    () => getUniqueOptions(users.map((user) => user.section)),
+    [users]
+  )
   const roleNames = useMemo(
     () => getUniqueOptions(roleOptions.map((item) => item.name)),
     [roleOptions]
@@ -332,7 +332,7 @@ export function SecurityUserManagement({
   const siteOptions = useMemo(
     () =>
       getUniqueOptions(
-        users.map((user) => extractSiteName(user.workLocation)).filter((s) => s !== '-')
+        users.map((user) => getSiteDisplayName(user)).filter((s) => s !== '-')
       ),
     [users]
   )
@@ -378,6 +378,7 @@ export function SecurityUserManagement({
         user.department,
         user.jobTitle,
         user.accessRole,
+        user.siteName,
         user.workLocation,
         user.phoneNumber,
         user.email,
@@ -389,13 +390,15 @@ export function SecurityUserManagement({
       const matchesKeyword = !query || haystack.includes(query)
       const matchesDepartment =
         selectedDepartments.length === 0 || selectedDepartments.includes(user.department)
+      const matchesSection =
+        selectedSections.length === 0 || selectedSections.includes(user.section)
       const matchesRole = selectedRoles.length === 0 || selectedRoles.includes(user.accessRole)
       const matchesStatusType =
         selectedStatusTypes.length === 0 || selectedStatusTypes.includes(user.employeeStatusType)
       const matchesSite =
-        selectedSites.length === 0 || selectedSites.includes(extractSiteName(user.workLocation))
+        selectedSites.length === 0 || selectedSites.includes(getSiteDisplayName(user))
 
-      return matchesKeyword && matchesDepartment && matchesRole && matchesStatusType && matchesSite
+      return matchesKeyword && matchesDepartment && matchesSection && matchesRole && matchesStatusType && matchesSite
     })
 
     if (!sortKey) return filtered
@@ -409,7 +412,7 @@ export function SecurityUserManagement({
         case 'jobTitle': return u.jobTitle
         case 'levelStaff': return u.levelName
         case 'peran': return u.accessRole
-        case 'lokasiSite': return u.workLocation
+        case 'lokasiSite': return getSiteDisplayName(u)
         case 'tipeStatus': return u.employeeStatusType
         case 'gender': return u.gender
         case 'agama': return u.religion
@@ -432,13 +435,13 @@ export function SecurityUserManagement({
       const cmp = va.localeCompare(vb)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites, users, sortKey, sortDir])
+  }, [searchQuery, selectedDepartments, selectedSections, selectedRoles, selectedStatusTypes, selectedSites, users, sortKey, sortDir])
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
   const safePage = Math.min(page, totalPages - 1)
   const paginatedUsers = filteredUsers.slice(safePage * pageSize, (safePage + 1) * pageSize)
 
-  useEffect(() => { setPage(0) }, [searchQuery, selectedDepartments, selectedRoles, selectedStatusTypes, selectedSites])
+  useEffect(() => { setPage(0) }, [searchQuery, selectedDepartments, selectedSections, selectedRoles, selectedStatusTypes, selectedSites])
 
   const currentYear = new Date().getFullYear()
   const activeUsersCount = users.filter((user) => user.status === 'active').length
@@ -448,6 +451,7 @@ export function SecurityUserManagement({
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
+    selectedSections.length > 0 ||
     selectedRoles.length > 0 ||
     selectedStatusTypes.length > 0 ||
     selectedSites.length > 0
@@ -458,6 +462,7 @@ export function SecurityUserManagement({
   function resetFilters() {
     setSearchQuery('')
     setSelectedDepartments([])
+    setSelectedSections([])
     setSelectedRoles([])
     setSelectedStatusTypes([])
     setSelectedSites([])
@@ -474,7 +479,7 @@ export function SecurityUserManagement({
         user.jobTitle,
         user.levelName,
         user.accessRole,
-        user.workLocation || user.siteName,
+        getSiteDisplayName(user),
         user.employeeStatusType,
         user.gender,
         user.religion,
@@ -841,6 +846,16 @@ export function SecurityUserManagement({
                     Departemen: {department}
                   </FilterChip>
                 ))}
+                {selectedSections.map((section) => (
+                  <FilterChip
+                    key={section}
+                    onRemove={() =>
+                      setSelectedSections((current) => current.filter((item) => item !== section))
+                    }
+                  >
+                    Section: {section}
+                  </FilterChip>
+                ))}
                 {selectedRoles.map((role) => (
                   <FilterChip
                     key={role}
@@ -861,6 +876,16 @@ export function SecurityUserManagement({
                     Status: {statusType}
                   </FilterChip>
                 ))}
+                {selectedSites.map((site) => (
+                  <FilterChip
+                    key={site}
+                    onRemove={() =>
+                      setSelectedSites((current) => current.filter((item) => item !== site))
+                    }
+                  >
+                    Site: {site}
+                  </FilterChip>
+                ))}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -878,6 +903,8 @@ export function SecurityUserManagement({
               selectedIds={selectedIds}
               onClearSelection={() => setSelectedIds([])}
               roleOptions={roleOptions}
+              sections={sections}
+              sites={sites}
             />
 
             <MinimalTableShell
@@ -905,6 +932,13 @@ export function SecurityUserManagement({
                     onChange={setSelectedDepartments}
                     placeholder="Semua departemen"
                     label="Departemen"
+                  />
+                  <MultiSelectDropdown
+                    options={sectionFilterOptions}
+                    selected={selectedSections}
+                    onChange={setSelectedSections}
+                    placeholder="Semua section"
+                    label="Section"
                   />
                   <MultiSelectDropdown
                     options={roleNames}
@@ -1097,7 +1131,7 @@ export function SecurityUserManagement({
                             <TableCell className="text-foreground/85 py-3.5 text-sm">{user.accessRole}</TableCell>
                           ) : null}
                           {columnVisibility.lokasiSite ? (
-                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.workLocation || '-'}</TableCell>
+                            <TableCell className="text-foreground/85 py-3.5 text-sm">{getSiteDisplayName(user)}</TableCell>
                           ) : null}
                           {columnVisibility.tipeStatus ? (
                             <TableCell className="py-3.5">
@@ -1211,7 +1245,7 @@ export function SecurityUserManagement({
                                     <span className="text-muted-foreground">Atasan Langsung:</span>
                                     <span className="font-medium text-foreground">{user.directManagerName || '-'}</span>
                                     <span className="text-muted-foreground">Lokasi Kerja:</span>
-                                    <span className="font-medium text-foreground">{user.workLocation || '-'}</span>
+                                    <span className="font-medium text-foreground">{getSiteDisplayName(user)}</span>
                                   </div>
                                 </div>
 

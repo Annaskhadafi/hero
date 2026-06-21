@@ -42,8 +42,14 @@ export async function getHrPersonnel() {
       and(
         eq(employees.isActive, true),
         or(
-          sql`lower(${employees.section}) = 'hrga'`,
-          sql`lower(${employees.jobTitle}) like '%human capital manager%'`
+          sql`regexp_replace(lower(${employees.section}), '[^a-z0-9]+', '', 'g') = 'hrga'`,
+          sql`exists (
+            select 1
+            from hero_hr_employees he
+            left join hero_hr_sections hs on he.section_id = hs.id
+            where (he.employee_id = ${employees.employeeSn} or he.email = ${employees.email})
+              and regexp_replace(lower(coalesce(hs.name, '')), '[^a-z0-9]+', '', 'g') = 'humancapital'
+          )`
         )
       )
     )

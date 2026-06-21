@@ -6813,6 +6813,86 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       return { status: 'success', message: `Successfully deleted ${employeeIds.length} users` }
     }
 
+    if (action === 'change-section') {
+      const sectionId = Number.parseInt(`${formData.get('sectionId') ?? ''}`, 10)
+      const sectionName = (formData.get('sectionName') as string) || ''
+      if (Number.isNaN(sectionId) || !sectionName) {
+        return { status: 'error', message: 'Section harus dipilih' }
+      }
+
+      await db
+        .update(hrEmployees)
+        .set({ sectionId, updatedAt: new Date() })
+        .where(inArray(hrEmployees.id, employeeIds))
+
+      if (selectedSnValues.length || selectedEmailValues.length) {
+        await db
+          .update(employees)
+          .set({ section: sectionName })
+          .where(
+            or(
+              inArray(employees.employeeSn, selectedSnValues),
+              inArray(employees.email, selectedEmailValues)
+            )
+          )
+      }
+
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.updated',
+        entityType: 'user',
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk changed section to ${sectionName}: ${employeeIds.join(', ')}`,
+        severity: 'info',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `Berhasil mengubah section ${employeeIds.length} user ke ${sectionName}`,
+      }
+    }
+
+    if (action === 'change-site') {
+      const siteId = Number.parseInt(`${formData.get('siteId') ?? ''}`, 10)
+      const siteName = (formData.get('siteName') as string) || ''
+      if (Number.isNaN(siteId) || !siteName) {
+        return { status: 'error', message: 'Site harus dipilih' }
+      }
+
+      await db
+        .update(hrEmployees)
+        .set({ siteId, updatedAt: new Date() })
+        .where(inArray(hrEmployees.id, employeeIds))
+
+      if (selectedSnValues.length || selectedEmailValues.length) {
+        await db
+          .update(employees)
+          .set({ workLocation: siteName })
+          .where(
+            or(
+              inArray(employees.employeeSn, selectedSnValues),
+              inArray(employees.email, selectedEmailValues)
+            )
+          )
+      }
+
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.updated',
+        entityType: 'user',
+        entityLabel: `${employeeIds.length} users`,
+        description: `Bulk changed site to ${siteName}: ${employeeIds.join(', ')}`,
+        severity: 'info',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `Berhasil mengubah lokasi site ${employeeIds.length} user ke ${siteName}`,
+      }
+    }
+
     return { status: 'error', message: 'Invalid bulk action' }
   } catch (error) {
     return {
