@@ -404,15 +404,15 @@ export function EmployeeClientPage({
         if (created) {
           const newEmployee: Employee = {
             id: created.id,
-            employeeId: created.employeeId,
-            fullName: created.fullName,
+            employeeId: created.employeeSn,
+            fullName: created.name,
             email: created.email ?? null,
             joinDate: created.joinDate ?? null,
-            contractStart: created.contractStart ?? null,
-            contractEnd: created.contractEnd ?? null,
+            contractStart: created.contractDurationStart ?? null,
+            contractEnd: created.contractDurationEnd ?? null,
             birthDate: created.birthDate ?? null,
-            accountStatus: created.accountStatus ?? "active",
-            genderCode: created.genderCode ?? null,
+            accountStatus: created.employmentStatus ?? "active",
+            genderCode: null,
             jobTitle: null,
             levelName: null,
             departmentName: filterOptions.departments.find(
