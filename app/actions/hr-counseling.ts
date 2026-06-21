@@ -30,7 +30,6 @@ export async function getCurrentEmployee() {
 }
 
 export async function getHrPersonnel() {
-  // Fetch employees whose department is Human Capital or HR
   const hrList = await db
     .select({
       id: employees.id,
@@ -43,10 +42,8 @@ export async function getHrPersonnel() {
       and(
         eq(employees.isActive, true),
         or(
-          sql`lower(${employees.department}) like '%human capital%'`,
-          sql`lower(${employees.department}) like '%hr%'`,
-          sql`lower(${employees.department}) like '%hc%'`,
-          sql`lower(${employees.department}) = 'hc'`
+          sql`lower(${employees.section}) = 'hrga'`,
+          sql`lower(${employees.jobTitle}) like '%human capital manager%'`
         )
       )
     )
