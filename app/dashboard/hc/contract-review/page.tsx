@@ -48,13 +48,13 @@ export default async function ContractReviewPage() {
       .where(eq(employees.isActive, true)),
   ])
 
-  const employees = hrEmps.map((emp) => ({ ...emp }))
+  const employeeList = hrEmps.map((emp) => ({ ...emp }))
   const enrichedSettings = populateEmailsFromEmployees(settings, umEmps)
 
   return (
     <ContractReviewClientPage
       reviews={reviews as any[]}
-      employees={employees}
+      employees={employeeList}
       settings={enrichedSettings as any}
     />
   )
