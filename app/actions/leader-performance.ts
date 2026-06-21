@@ -10,10 +10,12 @@ import { aliasedTable } from "drizzle-orm/alias";
 import { and, avg, count, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
-  sendHumanCapitalEmail,
   buildHumanCapitalEmail,
+  getHumanCapitalEmailConfig,
+  parseEmailList,
 } from "@/lib/human-capital-email";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
+import { getTemplateRecipientScopeEmails, sendWorkflowEmailToMany } from "@/lib/workflow-email";
 
 const LEADER_PERFORMANCE_PATH = "/dashboard/hc/leader-performance";
 
@@ -229,10 +231,17 @@ async function sendLeaderPerformanceNotifications(id: number) {
 
     if (!review) return;
 
+    // Get configured HC recipients (HRGA) from Settings > Email — no fallback to all HC
+    const hcConfig = await getHumanCapitalEmailConfig();
+    const configuredHcTo = hcConfig.isActive ? parseEmailList(hcConfig.recipientEmails) : [];
+    const hcCc = hcConfig.isActive ? parseEmailList(hcConfig.ccEmails) : [];
+
     if (review.status === "submitted") {
-      // 1. Notify via Bell
+      const templateTo = await getTemplateRecipientScopeEmails("hc_leader_performance_submitted");
+      const hcTo = templateTo.length > 0 ? templateTo : configuredHcTo;
+      // 1. Notify via Bell — only to configured HC recipients (HRGA)
       await notifyWorkflowBellRecipients({
-        recipientEmails: [review.leaderEmail, review.reviewerEmail],
+        recipientEmails: hcTo,
         eventType: "hc_leader_performance_submitted",
         category: "info",
         title: "Evaluasi Leader Performance Disubmit",
@@ -240,7 +249,7 @@ async function sendLeaderPerformanceNotifications(id: number) {
         url: "/dashboard/hc/leader-performance",
       });
 
-      // 2. Notify via Email
+      // 2. Notify via Email — only to configured HC recipients (HRGA)
       const title = `Evaluasi Leader Performance disubmit: ${review.leaderName}`;
       const intro = `Evaluasi Leader Performance untuk pimpinan ${review.leaderName} pada periode ${review.period} telah disubmit oleh penilai ${review.reviewerName || "N/A"} dengan nilai rata-rata ${review.overallScore}.`;
       const emailContent = buildHumanCapitalEmail({
@@ -257,23 +266,28 @@ async function sendLeaderPerformanceNotifications(id: number) {
         ctaUrl: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard/hc/leader-performance`,
       });
 
-      await sendHumanCapitalEmail({
-        templateCode: "hc_leader_performance_submitted",
-        templateName: "HC Leader Performance Submitted",
-        fallbackSubject: title,
-        fallbackHtml: emailContent.html,
-        fallbackText: emailContent.text,
-        actorEmail: review.reviewerEmail,
-        variables: {
-          leaderName: review.leaderName || "",
-          reviewerName: review.reviewerName || "",
-          period: review.period || "",
-          overallScore: review.overallScore || "",
-        },
-        extraTo: review.leaderEmail,
-      });
+      if (hcTo.length > 0) {
+        await sendWorkflowEmailToMany({
+          recipients: hcTo,
+          cc: hcCc,
+          templateCode: "hc_leader_performance_submitted",
+          templateName: "HC Leader Performance Submitted",
+          fallbackSubject: title,
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+          actorEmail: review.reviewerEmail,
+          variables: {
+            leaderName: review.leaderName || "",
+            reviewerName: review.reviewerName || "",
+            period: review.period || "",
+            overallScore: review.overallScore || "",
+          },
+        });
+      }
     } else if (review.status === "reviewed") {
-      // 1. Notify via Bell
+      const templateTo = await getTemplateRecipientScopeEmails("hc_leader_performance_reviewed");
+      const hcTo = templateTo.length > 0 ? templateTo : configuredHcTo;
+      // 1. Notify via Bell — leader + reviewer (mereka perlu tau hasil review)
       await notifyWorkflowBellRecipients({
         recipientEmails: [review.leaderEmail, review.reviewerEmail],
         eventType: "hc_leader_performance_reviewed",
@@ -283,7 +297,7 @@ async function sendLeaderPerformanceNotifications(id: number) {
         url: "/dashboard/hc/leader-performance",
       });
 
-      // 2. Notify via Email
+      // 2. Notify via Email — only to configured HC recipients (HRGA), NOT leader/reviewer
       const title = `Evaluasi Leader Performance selesai ditinjau: ${review.leaderName}`;
       const intro = `Evaluasi Leader Performance untuk pimpinan ${review.leaderName} pada periode ${review.period} telah selesai ditinjau oleh HC / Admin.`;
       const emailContent = buildHumanCapitalEmail({
@@ -299,20 +313,23 @@ async function sendLeaderPerformanceNotifications(id: number) {
         ctaUrl: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard/hc/leader-performance`,
       });
 
-      await sendHumanCapitalEmail({
-        templateCode: "hc_leader_performance_reviewed",
-        templateName: "HC Leader Performance Reviewed",
-        fallbackSubject: title,
-        fallbackHtml: emailContent.html,
-        fallbackText: emailContent.text,
-        actorEmail: review.reviewerEmail,
-        variables: {
-          leaderName: review.leaderName || "",
-          reviewerName: review.reviewerName || "",
-          period: review.period || "",
-        },
-        extraTo: review.leaderEmail,
-      });
+      if (hcTo.length > 0) {
+        await sendWorkflowEmailToMany({
+          recipients: hcTo,
+          cc: hcCc,
+          templateCode: "hc_leader_performance_reviewed",
+          templateName: "HC Leader Performance Reviewed",
+          fallbackSubject: title,
+          fallbackHtml: emailContent.html,
+          fallbackText: emailContent.text,
+          actorEmail: review.reviewerEmail,
+          variables: {
+            leaderName: review.leaderName || "",
+            reviewerName: review.reviewerName || "",
+            period: review.period || "",
+          },
+        });
+      }
     }
   } catch (error) {
     console.error("Failed to send leader performance notifications", error);

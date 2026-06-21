@@ -104,18 +104,35 @@ export function SecurityUserRowActions({
   const [, startRefreshTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [state, formAction] = useActionState(manageSecurityUserAction, INITIAL_STATE)
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState(
-    departments.find((department) => department.name === user.department)?.id.toString() ?? ''
-  )
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState(() => {
+    // Try to find department from section's departmentId first
+    if (user.sectionId) {
+      const sec = sections.find((s) => s.id === user.sectionId);
+      if (sec?.departmentId) return sec.departmentId.toString();
+    }
+    return departments.find((department) => department.name === user.department)?.id.toString() ?? '';
+  })
   const [selectedSectionId, setSelectedSectionId] = useState(
-    sections.find((section) => section.name === user.section)?.id.toString() ?? ''
+    // Match by sectionId first, then by name
+    user.sectionId
+      ? sections.find((s) => s.id === user.sectionId)?.id.toString() ?? ''
+      : sections.find((section) => section.name === user.section)?.id.toString() ?? ''
   )
   const [selectedSiteId, setSelectedSiteId] = useState(user.siteId ? `${user.siteId}` : '')
 
   const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null
-  const filteredSections = selectedDepartmentId
-    ? sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId)
-    : sections
+  const filteredSections = (() => {
+    if (!selectedDepartmentId) return sections;
+    const byDept = sections.filter((section) => section.departmentId?.toString() === selectedDepartmentId);
+    // Always include the currently selected section even if department doesn't match
+    if (selectedSectionId) {
+      const selected = sections.find((s) => s.id.toString() === selectedSectionId);
+      if (selected && !byDept.some((s) => s.id === selected.id)) {
+        byDept.push(selected);
+      }
+    }
+    return byDept;
+  })();
   const selectedDepartmentName =
     departments.find((department) => department.id.toString() === selectedDepartmentId)?.name ||
     user.department
@@ -141,15 +158,19 @@ export function SecurityUserRowActions({
 
   useEffect(() => {
     if (open) {
+      // Prefer sectionId-based resolution
+      const sec = user.sectionId ? sections.find((s) => s.id === user.sectionId) : null;
       setSelectedDepartmentId(
+        sec?.departmentId?.toString() ??
         departments.find((department) => department.name === user.department)?.id.toString() ?? ''
       )
       setSelectedSectionId(
+        sec?.id.toString() ??
         sections.find((section) => section.name === user.section)?.id.toString() ?? ''
       )
       setSelectedSiteId(user.siteId ? `${user.siteId}` : '')
     }
-  }, [departments, open, sections, user.department, user.section, user.siteId])
+  }, [departments, open, sections, user.department, user.section, user.sectionId, user.siteId])
 
   return (
     <>

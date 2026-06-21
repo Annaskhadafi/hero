@@ -42,6 +42,8 @@ export type MasterSection = {
   description: string;
   isActive: boolean;
   employeeCount: number;
+  directEmployeeCount: number;
+  childEmployeeCount: number;
   subSections: MasterSubSection[];
   createdAt: Date;
   updatedAt: Date;
@@ -280,6 +282,8 @@ export async function getMasterDataPageData() {
         .select({
           id: employees.id,
           name: employees.name,
+          employeeSn: employees.employeeSn,
+          email: employees.email,
           jobTitle: employees.jobTitle,
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
@@ -293,6 +297,16 @@ export async function getMasterDataPageData() {
       getMasterLevelStaff(),
     ]);
 
+  // Deduplicate employees by SN (fallback email/id) — same person may have multiple rows
+  const employeeByKey = new Map<string, typeof employeesData[number]>()
+  for (const emp of employeesData) {
+    const key = (emp.employeeSn || emp.email || String(emp.id)).trim().toLowerCase()
+    if (!employeeByKey.has(key)) {
+      employeeByKey.set(key, emp)
+    }
+  }
+  const dedupedEmployees = Array.from(employeeByKey.values())
+
   return {
     sections,
     jobTitles,
@@ -303,7 +317,7 @@ export async function getMasterDataPageData() {
     orgStructures: orgStructuresData,
     approvalMatrices: approvalMatricesData,
     categoryOptions,
-    employees: employeesData,
+    employees: dedupedEmployees,
     levelStaff,
   };
 }
@@ -553,14 +567,40 @@ export async function getMasterSections(): Promise<MasterSection[]> {
 
   const sectionNameById = new Map(sectionRows.map((row) => [row.id, row.name]));
 
-  return sectionRows.map((section) => ({
-    ...section,
-    departmentName: section.departmentName ?? null,
-    headEmployeeName: section.headEmployeeName ?? null,
-    parentName: section.parentId ? (sectionNameById.get(section.parentId) ?? null) : null,
-    employeeCount: countMap.get(section.id) ?? 0,
-    subSections: subSectionsBySection.get(section.id) ?? [],
-  }));
+  // Build parent→children map for recursive counting
+  const childrenMap = new Map<number, number[]>();
+  for (const section of sectionRows) {
+    if (section.parentId == null) continue;
+    const list = childrenMap.get(section.parentId) ?? [];
+    list.push(section.id);
+    childrenMap.set(section.parentId, list);
+  }
+
+  // Recursive helper to collect all descendant IDs
+  function collectDescendantIds(parentId: number): number[] {
+    const childIds = childrenMap.get(parentId) ?? [];
+    const all = [...childIds];
+    for (const childId of childIds) {
+      all.push(...collectDescendantIds(childId));
+    }
+    return all;
+  }
+
+  return sectionRows.map((section) => {
+    const direct = countMap.get(section.id) ?? 0;
+    const descendantIds = collectDescendantIds(section.id);
+    const childTotal = descendantIds.reduce((sum, id) => sum + (countMap.get(id) ?? 0), 0);
+    return {
+      ...section,
+      departmentName: section.departmentName ?? null,
+      headEmployeeName: section.headEmployeeName ?? null,
+      parentName: section.parentId ? (sectionNameById.get(section.parentId) ?? null) : null,
+      employeeCount: direct + childTotal,
+      directEmployeeCount: direct,
+      childEmployeeCount: childTotal,
+      subSections: subSectionsBySection.get(section.id) ?? [],
+    };
+  });
 }
 
 export async function getMasterJobTitles(): Promise<MasterJobTitle[]> {

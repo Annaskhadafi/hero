@@ -89,7 +89,9 @@ export type SecurityUserRecord = {
   directManagerId: number | null
   directManagerName: string | null
   section: string
+  sectionId: number | null
   department: string
+  departmentId: number | null
   jobTitle: string
   workLocation: string
   phoneNumber: string
@@ -5776,6 +5778,7 @@ export async function getSecurityUsersData() {
       domicile: employees.domicile,
       directManagerId: employees.directManagerId,
       section: hrSections.name,
+      sectionId: employees.sectionId,
       jobTitle:
         sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as('job_title'),
       workLocation:
@@ -5792,6 +5795,7 @@ export async function getSecurityUsersData() {
         ),
       role: sql<string>`coalesce(${hrPositions.rankName}, 'Employee')`.as('role'),
       department: hrDepartments.name,
+      departmentId: hrEmployees.departmentId,
       levelName:
         sql<string>`coalesce(${hrPositions.levelName}, ${employees.levelName}, '')`.as('level_name'),
       fitStatus: sql<string>`'fit'`.as('fit_status'),
@@ -5852,7 +5856,9 @@ export async function getSecurityUsersData() {
       ? (employeeNameById.get(row.directManagerId) ?? null)
       : null,
     section: row.section ?? '',
+    sectionId: row.sectionId ?? null,
     department: row.department ?? '',
+    departmentId: row.departmentId ?? null,
     jobTitle: row.jobTitle ?? '',
     workLocation: row.workLocation ?? '',
     employeeStatusType: row.employeeStatusType ?? '',

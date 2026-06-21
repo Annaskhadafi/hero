@@ -24,6 +24,7 @@ import {
   masterJobTitles,
   masterLevelStaff,
   masterSubSections,
+  hrEmployees,
 } from "@/db/schema/hero";
 import { auth } from "@/lib/auth";
 import { ensureHeroGovernanceSeedData } from "@/lib/hero-admin";
@@ -2250,6 +2251,268 @@ export async function simulateApprovalRouteAction(formData: FormData) {
     return {
       status: "error" as const,
       message: error instanceof Error ? error.message : "Gagal mensimulasikan approval route.",
+    };
+  }
+}
+
+export type MoveEmployeeState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+const MOVE_INITIAL_STATE: MoveEmployeeState = { status: "idle", message: "" };
+
+export async function moveEmployeeSectionAction(
+  _state: MoveEmployeeState,
+  formData: FormData
+): Promise<MoveEmployeeState> {
+  try {
+    const employeeId = Number(formData.get("employeeId"));
+    const sectionId = Number(formData.get("sectionId"));
+
+    if (!employeeId) {
+      return { status: "error", message: "Employee ID harus diisi." };
+    }
+    if (!sectionId) {
+      return { status: "error", message: "Section tujuan harus dipilih." };
+    }
+
+    // Verify section exists + get its parent departmentId
+    const [section] = await db
+      .select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId })
+      .from(masterSections)
+      .where(eq(masterSections.id, sectionId))
+      .limit(1);
+
+    if (!section) {
+      return { status: "error", message: "Section tujuan tidak ditemukan." };
+    }
+
+    // Cari employee di legacy employees (ID yg dipake di dialog)
+    const [legacyEmp] = await db
+      .select({ employeeSn: employees.employeeSn, email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, employeeId))
+      .limit(1);
+
+    if (!legacyEmp) {
+      return { status: "error", message: "Employee tidak ditemukan." };
+    }
+
+    // Get department name untuk sync
+    let deptName = '';
+    if (section.departmentId) {
+      const [dept] = await db
+        .select({ name: masterDepartments.name })
+        .from(masterDepartments)
+        .where(eq(masterDepartments.id, section.departmentId))
+        .limit(1);
+      deptName = dept?.name ?? '';
+    }
+
+    // Update legacy employees langsung by ID — sync sectionId + departmentId
+    await db
+      .update(employees)
+      .set({
+        section: section.name,
+        sectionId,
+        ...(section.departmentId ? { departmentId: section.departmentId, department: deptName } : {}),
+      })
+      .where(eq(employees.id, employeeId));
+
+    // Update hrEmployees via SN/email match
+    if (legacyEmp.employeeSn || legacyEmp.email) {
+      const [hrEmp] = await db
+        .select({ id: hrEmployees.id, fullName: hrEmployees.fullName })
+        .from(hrEmployees)
+        .where(
+          legacyEmp.email
+            ? sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn} OR ${hrEmployees.email} = ${legacyEmp.email}`
+            : sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn}`
+        )
+        .limit(1);
+
+      if (hrEmp) {
+        await db
+          .update(hrEmployees)
+          .set({
+            sectionId,
+            ...(section.departmentId ? { departmentId: section.departmentId } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(hrEmployees.id, hrEmp.id));
+      }
+    }
+
+    revalidatePath("/dashboard/master-data");
+
+    return {
+      status: "success",
+      message: `${legacyEmp.name} dipindahkan ke ${section.name}.`,
+    };
+  } catch (error) {
+    console.error("Move employee section error:", error);
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memindahkan employee.",
+    };
+  }
+}
+
+export async function syncAllEmployeeDepartmentsAction(
+  _state: MoveEmployeeState,
+  _formData: FormData
+): Promise<MoveEmployeeState> {
+  try {
+    // Ambil semua employee aktif yg punya sectionId
+    const employeesWithSection = await db
+      .select({
+        empId: employees.id,
+        empName: employees.name,
+        empDeptId: employees.departmentId,
+        sectionId: employees.sectionId,
+        sectionDeptId: masterSections.departmentId,
+      })
+      .from(employees)
+      .innerJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .where(eq(employees.isActive, true));
+
+    let updatedCount = 0;
+    for (const emp of employeesWithSection) {
+      if (emp.sectionDeptId && emp.sectionDeptId !== emp.empDeptId) {
+        // Ambil nama department baru
+        const [dept] = await db
+          .select({ name: masterDepartments.name })
+          .from(masterDepartments)
+          .where(eq(masterDepartments.id, emp.sectionDeptId))
+          .limit(1);
+
+        // Update legacy employees
+        await db
+          .update(employees)
+          .set({ departmentId: emp.sectionDeptId, department: dept?.name ?? '' })
+          .where(eq(employees.id, emp.empId));
+
+        // Update hrEmployees via SN/email
+        const [empSn] = await db
+          .select({ employeeSn: employees.employeeSn, email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, emp.empId))
+          .limit(1);
+
+        if (empSn?.employeeSn || empSn?.email) {
+          const [hrEmp] = await db
+            .select({ id: hrEmployees.id })
+            .from(hrEmployees)
+            .where(
+              empSn.email
+                ? sql`${hrEmployees.employeeId} = ${empSn.employeeSn} OR ${hrEmployees.email} = ${empSn.email}`
+                : sql`${hrEmployees.employeeId} = ${empSn.employeeSn}`
+            )
+            .limit(1);
+
+          if (hrEmp) {
+            await db
+              .update(hrEmployees)
+              .set({ departmentId: emp.sectionDeptId, updatedAt: new Date() })
+              .where(eq(hrEmployees.id, hrEmp.id));
+          }
+        }
+
+        updatedCount++;
+      }
+    }
+
+    revalidatePath("/dashboard/master-data");
+    revalidatePath("/dashboard/security/users");
+
+    return {
+      status: "success",
+      message: `Selesai. ${updatedCount} employee di-sync department-nya berdasarkan section.`,
+    };
+  } catch (error) {
+    console.error("Sync employee departments error:", error);
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal sync employee departments.",
+    };
+  }
+}
+
+export async function moveEmployeeDepartmentAction(
+  _state: MoveEmployeeState,
+  formData: FormData
+): Promise<MoveEmployeeState> {
+  try {
+    const employeeId = Number(formData.get("employeeId"));
+    const departmentId = Number(formData.get("departmentId"));
+    const departmentName = (formData.get("departmentName") as string) || "";
+
+    if (!employeeId) {
+      return { status: "error", message: "Employee ID harus diisi." };
+    }
+    if (!departmentId) {
+      return { status: "error", message: "Department tujuan harus dipilih." };
+    }
+
+    const [dept] = await db
+      .select({ id: masterDepartments.id, name: masterDepartments.name })
+      .from(masterDepartments)
+      .where(eq(masterDepartments.id, departmentId))
+      .limit(1);
+
+    if (!dept) {
+      return { status: "error", message: "Department tujuan tidak ditemukan." };
+    }
+
+    // Cari employee dulu di legacy employees (ID yg dipake di dialog)
+    const [legacyEmp] = await db
+      .select({ employeeSn: employees.employeeSn, email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, employeeId))
+      .limit(1);
+
+    if (!legacyEmp) {
+      return { status: "error", message: "Employee tidak ditemukan." };
+    }
+
+    // Update legacy employees table langsung by ID
+    await db
+      .update(employees)
+      .set({ departmentId, department: dept.name, sectionId: null, section: '' })
+      .where(eq(employees.id, employeeId));
+
+    // Update hrEmployees via SN/email match
+    if (legacyEmp.employeeSn || legacyEmp.email) {
+      const [hrEmp] = await db
+        .select({ id: hrEmployees.id, fullName: hrEmployees.fullName })
+        .from(hrEmployees)
+        .where(
+          legacyEmp.email
+            ? sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn} OR ${hrEmployees.email} = ${legacyEmp.email}`
+            : sql`${hrEmployees.employeeId} = ${legacyEmp.employeeSn}`
+        )
+        .limit(1);
+
+      if (hrEmp) {
+        await db
+          .update(hrEmployees)
+          .set({ departmentId, sectionId: null, updatedAt: new Date() })
+          .where(eq(hrEmployees.id, hrEmp.id));
+      }
+    }
+
+    revalidatePath("/dashboard/master-data");
+
+    return {
+      status: "success",
+      message: `${legacyEmp.name} dipindahkan ke ${dept.name}.`,
+    };
+  } catch (error) {
+    console.error("Move employee department error:", error);
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal memindahkan employee ke department lain.",
     };
   }
 }

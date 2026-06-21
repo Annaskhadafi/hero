@@ -1,12 +1,15 @@
 'use client'
 
 import { Fragment, useActionState, useEffect, useMemo, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   BriefcaseBusiness,
+  Building2,
   Check,
   EyeOff,
   Filter,
+  Layers,
   MapPin,
   RefreshCw,
   Search,
@@ -287,6 +290,7 @@ export function SecurityUserManagement({
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [selectedStatusTypes, setSelectedStatusTypes] = useState<string[]>([])
   const [selectedSites, setSelectedSites] = useState<string[]>([])
+  const [showUnlinkedLokasi, setShowUnlinkedLokasi] = useState(false)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
@@ -397,8 +401,9 @@ export function SecurityUserManagement({
         selectedStatusTypes.length === 0 || selectedStatusTypes.includes(user.employeeStatusType)
       const matchesSite =
         selectedSites.length === 0 || selectedSites.includes(getSiteDisplayName(user))
+      const matchesUnlinkedLokasi = !showUnlinkedLokasi || !user.siteId
 
-      return matchesKeyword && matchesDepartment && matchesSection && matchesRole && matchesStatusType && matchesSite
+      return matchesKeyword && matchesDepartment && matchesSection && matchesRole && matchesStatusType && matchesSite && matchesUnlinkedLokasi
     })
 
     if (!sortKey) return filtered
@@ -435,7 +440,7 @@ export function SecurityUserManagement({
       const cmp = va.localeCompare(vb)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [searchQuery, selectedDepartments, selectedSections, selectedRoles, selectedStatusTypes, selectedSites, users, sortKey, sortDir])
+  }, [searchQuery, selectedDepartments, selectedSections, selectedRoles, selectedStatusTypes, selectedSites, showUnlinkedLokasi, users, sortKey, sortDir])
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
   const safePage = Math.min(page, totalPages - 1)
@@ -454,7 +459,8 @@ export function SecurityUserManagement({
     selectedSections.length > 0 ||
     selectedRoles.length > 0 ||
     selectedStatusTypes.length > 0 ||
-    selectedSites.length > 0
+    selectedSites.length > 0 ||
+    showUnlinkedLokasi
   const missingRequiredMappings = USER_IMPORT_FIELDS.filter(
     (field) => field.required && !mapping[field.key]
   )
@@ -466,6 +472,7 @@ export function SecurityUserManagement({
     setSelectedRoles([])
     setSelectedStatusTypes([])
     setSelectedSites([])
+    setShowUnlinkedLokasi(false)
   }
 
   function exportVisibleUsers() {
@@ -876,6 +883,11 @@ export function SecurityUserManagement({
                     Status: {statusType}
                   </FilterChip>
                 ))}
+                {showUnlinkedLokasi ? (
+                  <FilterChip onRemove={() => setShowUnlinkedLokasi(false)}>
+                    Tanpa Lokasi
+                  </FilterChip>
+                ) : null}
                 {selectedSites.map((site) => (
                   <FilterChip
                     key={site}
@@ -961,6 +973,21 @@ export function SecurityUserManagement({
                     placeholder="Semua site"
                     label="Site"
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowUnlinkedLokasi(!showUnlinkedLokasi)}
+                    className={cn(
+                      "h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]",
+                      showUnlinkedLokasi
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-surface-container-lowest text-muted-foreground"
+                    )}
+                  >
+                    <MapPin className="mr-1.5 size-3.5" />
+                    {showUnlinkedLokasi ? 'Filter: Tanpa Lokasi' : 'Tanpa Lokasi'}
+                  </Button>
                 </>
               }
               actions={
@@ -1109,13 +1136,37 @@ export function SecurityUserManagement({
                           ) : null}
                           {columnVisibility.department ? (
                             <TableCell className="py-3.5">
-                              <Badge variant="secondary" className="bg-surface-container-lowest text-muted-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-                                {user.department}
-                              </Badge>
+                              {user.departmentId ? (
+                                <Link
+                                  href="/dashboard/master-data?tab=departments"
+                                  className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.2)] transition-colors hover:bg-blue-100"
+                                >
+                                  <Building2 className="size-3" />
+                                  {user.department}
+                                </Link>
+                              ) : (
+                                <span className="text-muted-foreground rounded-full px-3 py-1 text-[11px]">
+                                  {user.department || '-'}
+                                </span>
+                              )}
                             </TableCell>
                           ) : null}
                           {columnVisibility.section ? (
-                            <TableCell className="text-foreground/85 py-3.5 text-sm">{user.section || '-'}</TableCell>
+                            <TableCell className="py-3.5">
+                              {user.sectionId ? (
+                                <Link
+                                  href="/dashboard/master-data?tab=sections"
+                                  className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-3 py-1 text-[11px] font-semibold text-violet-700 shadow-[inset_0_0_0_1px_rgba(139,92,246,0.2)] transition-colors hover:bg-violet-100"
+                                >
+                                  <Layers className="size-3" />
+                                  {user.section}
+                                </Link>
+                              ) : (
+                                <span className="text-muted-foreground rounded-full px-3 py-1 text-[11px]">
+                                  {user.section || '-'}
+                                </span>
+                              )}
+                            </TableCell>
                           ) : null}
                           {columnVisibility.jobTitle ? (
                             <TableCell className="text-foreground/85 py-3.5 text-sm">
@@ -1131,7 +1182,21 @@ export function SecurityUserManagement({
                             <TableCell className="text-foreground/85 py-3.5 text-sm">{user.accessRole}</TableCell>
                           ) : null}
                           {columnVisibility.lokasiSite ? (
-                            <TableCell className="text-foreground/85 py-3.5 text-sm">{getSiteDisplayName(user)}</TableCell>
+                            <TableCell className="py-3.5">
+                              {user.siteId ? (
+                                <Link
+                                  href="/dashboard/master-data?tab=sites"
+                                  className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.2)] transition-colors hover:bg-amber-100"
+                                >
+                                  <MapPin className="size-3" />
+                                  {getSiteDisplayName(user)}
+                                </Link>
+                              ) : (
+                                <span className="text-muted-foreground rounded-full px-3 py-1 text-[11px]">
+                                  {getSiteDisplayName(user)}
+                                </span>
+                              )}
+                            </TableCell>
                           ) : null}
                           {columnVisibility.tipeStatus ? (
                             <TableCell className="py-3.5">

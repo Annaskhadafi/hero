@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3, Tags, Eye, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
@@ -15,7 +15,11 @@ import {
   manageSiteAction,
   managePositionAction,
   manageOrgStructureAction,
+  moveEmployeeSectionAction,
+  moveEmployeeDepartmentAction,
+  syncAllEmployeeDepartmentsAction,
   type MasterDataActionState,
+  type MoveEmployeeState,
 } from "@/app/dashboard/master-data/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -68,6 +72,7 @@ interface MasterDataManagementProps {
   approvalMatrices: ApprovalMatrix[];
   employees: any[];
   levelStaff: MasterLevelStaff[];
+  defaultTab?: string;
 }
 
 const INITIAL_ACTION_STATE: MasterDataActionState = {
@@ -176,8 +181,9 @@ export function MasterDataManagement({
   approvalMatrices,
   employees,
   levelStaff,
+  defaultTab,
 }: MasterDataManagementProps) {
-  const [activeTab, setActiveTab] = useState("sections");
+  const [activeTab, setActiveTab] = useState(defaultTab || "sections");
 
   return (
     <div className="space-y-5 p-5">
@@ -283,7 +289,7 @@ export function MasterDataManagement({
         </TabsContent>
 
         <TabsContent value="departments" className="space-y-4">
-          <DepartmentManagement departments={departments} employees={employees} />
+          <DepartmentManagement departments={departments} sections={sections} employees={employees} />
         </TabsContent>
 
         <TabsContent value="positions" className="space-y-4">
@@ -926,28 +932,417 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
 function EmployeeListDialog({
   employees,
   entityId,
+  entityIds,
   entityLabel,
   filterKey,
+  sections,
+  departments,
   open,
   onOpenChange,
 }: {
   employees: any[];
-  entityId: number | null;
+  entityId?: number | null;
+  entityIds?: number[];
   entityLabel: string;
   filterKey: "sectionId" | "departmentId" | "siteId";
+  sections?: MasterSection[];
+  departments?: MasterDepartment[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const filtered = employees.filter((e) => e[filterKey] === entityId);
+  const router = useRouter();
+  const [moveSectionState, moveSectionFormAction, isMovingSection] = useActionState(moveEmployeeSectionAction, { status: "idle" as const, message: "" });
+  const [moveDeptState, moveDeptFormAction, isMovingDept] = useActionState(moveEmployeeDepartmentAction, { status: "idle" as const, message: "" });
+  const [moveTargetMap, setMoveTargetMap] = useState<Record<number, string>>({});
+
+  const idSet = entityIds && entityIds.length > 0 ? new Set(entityIds) : null;
+  const filtered = useMemo(() => {
+    return employees.filter((e) => {
+      const matchesId = idSet ? idSet.has(e[filterKey]) : e[filterKey] === entityId;
+      if (!matchesId) return false;
+      // Strict: for department view, also check section's parent dept matches
+      if (filterKey === "departmentId" && sections && e.sectionId) {
+        const section = sections.find((s) => s.id === e.sectionId);
+        if (section && section.departmentId && section.departmentId !== entityId) return false;
+      }
+      return true;
+    });
+  }, [employees, idSet, entityId, filterKey, sections, moveSectionState, moveDeptState]);
+
+  // Build section hierarchy tree
+  const sectionTree = useMemo(() => {
+    if (!sections) return null;
+    const childrenMap = new Map<number, MasterSection[]>();
+    const rootSections: MasterSection[] = [];
+    const sectionMap = new Map(sections.map((s) => [s.id, s]));
+
+    for (const s of sections) {
+      if (s.parentId != null) {
+        const list = childrenMap.get(s.parentId) ?? [];
+        list.push(s);
+        childrenMap.set(s.parentId, list);
+      } else {
+        rootSections.push(s);
+      }
+    }
+
+    rootSections.sort((a, b) => a.name.localeCompare(b.name));
+    for (const [, children] of childrenMap) {
+      children.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return { childrenMap, rootSections, sectionMap };
+  }, [sections]);
+
+  // Group employees by parent section → child sections (for department view)
+  const deptGrouped = useMemo(() => {
+    if (filterKey !== "departmentId" || !sectionTree || filtered.length === 0) return null;
+    const { sectionMap, childrenMap } = sectionTree;
+    const bySection = new Map<number, any[]>();
+    for (const emp of filtered) {
+      const sid = emp.sectionId;
+      if (sid) {
+        const list = bySection.get(sid) ?? [];
+        list.push(emp);
+        bySection.set(sid, list);
+      }
+    }
+
+    // Build parent groups with child sections nested
+    const parentGroups: {
+      section: MasterSection;
+      directEmployees: any[];
+      children: { section: MasterSection; employees: any[] }[];
+    }[] = [];
+
+    for (const parent of sectionTree.rootSections) {
+      const directEmps = bySection.get(parent.id) ?? [];
+      const childSections = childrenMap.get(parent.id) ?? [];
+      const children = childSections.map((cs) => ({
+        section: cs,
+        employees: bySection.get(cs.id) ?? [],
+      })).filter((c) => c.employees.length > 0);
+
+      if (directEmps.length > 0 || children.length > 0) {
+        parentGroups.push({ section: parent, directEmployees: directEmps, children });
+      }
+    }
+
+    // Ungrouped (sections not in any parent group)
+    const sectionIdsInTree = new Set<number>();
+    for (const parent of sectionTree.rootSections) {
+      sectionIdsInTree.add(parent.id);
+      for (const child of childrenMap.get(parent.id) ?? []) {
+        sectionIdsInTree.add(child.id);
+      }
+    }
+    const ungroupedEmps = filtered.filter((e) => {
+      const sid = e.sectionId;
+      return !sid || !sectionIdsInTree.has(sid);
+    });
+
+    return { parentGroups, ungroupedEmps, bySection, sectionMap };
+  }, [filterKey, sectionTree, filtered]);
+
+  // Group employees by section (for section view - existing behavior)
+  const sectionGrouped = useMemo(() => {
+    if (filterKey !== "sectionId" || !sections || filtered.length === 0) return null;
+    const sectionMap = new Map(sections.map((s) => [s.id, s]));
+    const groups: { sectionName: string; sectionId: number; employees: any[] }[] = [];
+    const bySection = new Map<number, any[]>();
+    for (const emp of filtered) {
+      const sid = emp.sectionId;
+      const list = bySection.get(sid) ?? [];
+      list.push(emp);
+      bySection.set(sid, list);
+    }
+    for (const [sid, emps] of bySection) {
+      const sec = sectionMap.get(sid);
+      groups.push({
+        sectionName: sec?.name ?? `Section #${sid}`,
+        sectionId: sid,
+        employees: emps,
+      });
+    }
+    groups.sort((a, b) => a.sectionName.localeCompare(b.sectionName));
+    return groups;
+  }, [sections, filterKey, filtered, moveSectionState]);
+
+  useEffect(() => {
+    if (moveSectionState.status === "success") {
+      toast.success(moveSectionState.message);
+      setMoveTargetMap({});
+      router.refresh();
+    } else if (moveSectionState.status === "error" && moveSectionState.message) {
+      toast.error(moveSectionState.message);
+    }
+  }, [moveSectionState, router]);
+
+  useEffect(() => {
+    if (moveDeptState.status === "success") {
+      toast.success(moveDeptState.message);
+      setMoveTargetMap({});
+      router.refresh();
+    } else if (moveDeptState.status === "error" && moveDeptState.message) {
+      toast.error(moveDeptState.message);
+    }
+  }, [moveDeptState, router]);
+
+  const activeSections = sections?.filter((s) => s.isActive) ?? [];
+  const activeDepartments = departments?.filter((d) => d.isActive) ?? [];
+
+  const departmentHeadId = filterKey === "departmentId" && entityId && departments
+    ? departments.find((d) => d.id === entityId)?.headEmployeeId
+    : null;
+  const sectionHeadIds = new Set(
+    sections?.filter((s) => s.headEmployeeId != null).map((s) => s.headEmployeeId!) ?? []
+  );
+
+  function getHeadRole(empId: number) {
+    if (departmentHeadId === empId) return "Head Department";
+    if (sectionHeadIds.has(empId)) return "Head Section";
+    return null;
+  }
+
+  function renderHeadBadge(empId: number) {
+    const role = getHeadRole(empId);
+    if (!role) return null;
+    return (
+      <Badge variant="outline" className="ml-2 border-amber-300 bg-amber-50 text-amber-700 text-[10px]">
+        {role}
+      </Badge>
+    );
+  }
+
+  function renderSectionMoveCell(emp: any) {
+    const moveTarget = moveTargetMap[emp.id] ?? "";
+    const currentSectionId = String(emp.sectionId ?? "");
+    return (
+      <TableCell>
+        <form action={moveSectionFormAction} className="flex items-center gap-1.5">
+          <input type="hidden" name="employeeId" value={emp.id} />
+          <input type="hidden" name="sectionId" value={moveTarget || currentSectionId} />
+          <input type="hidden" name="sectionName" value={activeSections.find((s) => s.id === Number(moveTarget))?.name ?? ""} />
+          <Select
+            value={moveTarget || currentSectionId}
+            onValueChange={(v) => setMoveTargetMap((prev) => ({ ...prev, [emp.id]: v }))}
+          >
+            <SelectTrigger className="h-8 w-[160px] text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {activeSections.map((s) => (
+                <SelectItem key={s.id} value={String(s.id)} disabled={String(s.id) === currentSectionId}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {moveTarget && moveTarget !== currentSectionId && (
+            <Button type="submit" size="sm" variant="outline" className="h-8 text-[11px]" disabled={isMovingSection}>
+              {isMovingSection ? "..." : "Pindah"}
+            </Button>
+          )}
+        </form>
+      </TableCell>
+    );
+  }
+
+  function renderDeptMoveCell(emp: any) {
+    const moveTarget = moveTargetMap[emp.id] ?? "";
+    const currentDeptId = String(emp.departmentId ?? "");
+    return (
+      <TableCell>
+        <form action={moveDeptFormAction} className="flex items-center gap-1.5">
+          <input type="hidden" name="employeeId" value={emp.id} />
+          <input type="hidden" name="departmentId" value={moveTarget || currentDeptId} />
+          <input type="hidden" name="departmentName" value={activeDepartments.find((d) => d.id === Number(moveTarget))?.name ?? ""} />
+          <Select
+            value={moveTarget || currentDeptId}
+            onValueChange={(v) => setMoveTargetMap((prev) => ({ ...prev, [emp.id]: v }))}
+          >
+            <SelectTrigger className="h-8 w-[160px] text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {activeDepartments.map((d) => (
+                <SelectItem key={d.id} value={String(d.id)} disabled={String(d.id) === currentDeptId}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {moveTarget && moveTarget !== currentDeptId && (
+            <Button type="submit" size="sm" variant="outline" className="h-8 text-[11px]" disabled={isMovingDept}>
+              {isMovingDept ? "..." : "Pindah"}
+            </Button>
+          )}
+        </form>
+      </TableCell>
+    );
+  }
+
+  function renderSectionPath(emp: any) {
+    if (!sectionTree) return <span className="text-muted-foreground text-[11px]">-</span>;
+    const sid = emp.sectionId;
+    if (!sid) return <span className="text-muted-foreground text-[11px]">-</span>;
+    const sec = sectionTree.sectionMap.get(sid);
+    if (!sec) return <span className="text-muted-foreground text-[11px]">-</span>;
+    if (sec.parentId) {
+      const parent = sectionTree.sectionMap.get(sec.parentId);
+      return (
+        <span className="text-[11px] text-muted-foreground">
+          {parent?.name ?? '-'} <ChevronRight className="inline size-3" /> {sec.name}
+        </span>
+      );
+    }
+    return <span className="text-[11px]">{sec.name}</span>;
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Karyawan: {entityLabel}</DialogTitle>
           <DialogDescription>{filtered.length} orang</DialogDescription>
         </DialogHeader>
         {filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada karyawan.</p>
+        ) : filterKey === "departmentId" && deptGrouped ? (
+          <div className="space-y-4">
+            {deptGrouped.parentGroups.map((parent) => (
+              <div key={parent.section.id}>
+                <div className="flex items-center gap-2 border-b pb-1.5 mb-2">
+                  <span className="size-2 shrink-0 rounded-full bg-blue-500" />
+                  <p className="text-sm font-semibold">{parent.section.name}</p>
+                  <Badge variant="outline" className="ml-auto text-[10px]">
+                    {parent.directEmployees.length + parent.children.reduce((s, c) => s + c.employees.length, 0)}
+                  </Badge>
+                </div>
+                {/* Direct employees of parent section */}
+                {parent.directEmployees.length > 0 && (
+                  <div className="mb-2 rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>Nama</TableHead>
+                          <TableHead className="w-[140px]">Section</TableHead>
+                          <TableHead>Job Title</TableHead>
+                          <TableHead className="w-[220px]">Pindah Department</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {parent.directEmployees.map((emp: any) => (
+                          <TableRow key={emp.id}>
+                            <TableCell className="font-medium">{emp.name}{renderHeadBadge(emp.id)}</TableCell>
+                            <TableCell>{renderSectionPath(emp)}</TableCell>
+                            <TableCell className="text-muted-foreground">{emp.jobTitle || "-"}</TableCell>
+                            {renderDeptMoveCell(emp)}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                {/* Child sections */}
+                {parent.children.map((child) => (
+                  <div key={child.section.id} className="ml-4 mb-2">
+                    <div className="flex items-center gap-1.5 border-b pb-1 mb-1.5">
+                      <span className="size-1.5 shrink-0 rounded-full bg-violet-400" />
+                      <ChevronRight className="size-3 text-muted-foreground" />
+                      <p className="text-xs font-medium text-muted-foreground">{child.section.name}</p>
+                      <Badge variant="outline" className="ml-auto text-[10px]">{child.employees.length}</Badge>
+                    </div>
+                    <div className="rounded-lg border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/50">
+                            <TableHead>Nama</TableHead>
+                            <TableHead className="w-[140px]">Section</TableHead>
+                            <TableHead>Job Title</TableHead>
+                            <TableHead className="w-[220px]">Pindah Department</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {child.employees.map((emp: any) => (
+                            <TableRow key={emp.id}>
+                              <TableCell className="font-medium">{emp.name}{renderHeadBadge(emp.id)}</TableCell>
+                              <TableCell>{renderSectionPath(emp)}</TableCell>
+                              <TableCell className="text-muted-foreground">{emp.jobTitle || "-"}</TableCell>
+                              {renderDeptMoveCell(emp)}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+                {deptGrouped.ungroupedEmps.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 border-b pb-1.5 mb-2">
+                  <span className="size-2 shrink-0 rounded-full bg-amber-500" />
+                  <p className="text-sm font-semibold">Head Department / Direct</p>
+                  <Badge variant="outline" className="ml-auto text-[10px]">{deptGrouped.ungroupedEmps.length}</Badge>
+                </div>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Nama</TableHead>
+                        <TableHead className="w-[140px]">Section</TableHead>
+                        <TableHead>Job Title</TableHead>
+                        <TableHead className="w-[220px]">Pindah Department</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deptGrouped.ungroupedEmps.map((emp: any) => (
+                        <TableRow key={emp.id}>
+                          <TableCell className="font-medium">{emp.name}{renderHeadBadge(emp.id)}</TableCell>
+                          <TableCell>{renderSectionPath(emp)}</TableCell>
+                          <TableCell className="text-muted-foreground">{emp.jobTitle || "-"}</TableCell>
+                          {renderDeptMoveCell(emp)}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : sectionGrouped ? (
+          <div className="space-y-4">
+            {sectionGrouped.map((group) => (
+              <div key={group.sectionId}>
+                <div className="flex items-center gap-2 border-b pb-1.5 mb-2">
+                  <span className="size-2 shrink-0 rounded-full bg-primary" />
+                  <p className="text-sm font-semibold">{group.sectionName}</p>
+                  <Badge variant="outline" className="ml-auto text-[10px]">{group.employees.length}</Badge>
+                </div>
+                <div className="rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Nama</TableHead>
+                        <TableHead>Job Title</TableHead>
+                        <TableHead className="w-[220px]">Pindah Section</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.employees.map((emp: any) => (
+                          <TableRow key={emp.id}>
+                            <TableCell className="font-medium">{emp.name}{renderHeadBadge(emp.id)}</TableCell>
+                            <TableCell className="text-muted-foreground">{emp.jobTitle || "-"}</TableCell>
+                            {renderSectionMoveCell(emp)}
+                          </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="rounded-lg border">
             <Table>
@@ -955,13 +1350,15 @@ function EmployeeListDialog({
                 <TableRow className="bg-muted/50">
                   <TableHead>Nama</TableHead>
                   <TableHead>Job Title</TableHead>
+                  {filterKey === "sectionId" && <TableHead className="w-[220px]">Pindah Section</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((emp) => (
+                {filtered.map((emp: any) => (
                   <TableRow key={emp.id}>
-                    <TableCell className="font-medium">{emp.name}</TableCell>
+                    <TableCell className="font-medium">{emp.name}{renderHeadBadge(emp.id)}</TableCell>
                     <TableCell className="text-muted-foreground">{emp.jobTitle || "-"}</TableCell>
+                    {filterKey === "sectionId" && renderSectionMoveCell(emp)}
                   </TableRow>
                 ))}
               </TableBody>
@@ -1661,6 +2058,28 @@ function SectionManagement({
   const [employeeDialogSection, setEmployeeDialogSection] = useState<MasterSection | null>(null);
   const [expandedSectionIds, setExpandedSectionIds] = useState<Set<number>>(new Set());
 
+  // Map sectionId → all descendant IDs (including self)
+  const descendantMap = useMemo(() => {
+    const childrenMap = new Map<number, number[]>();
+    for (const s of sections) {
+      if (s.parentId == null) continue;
+      const list = childrenMap.get(s.parentId) ?? [];
+      list.push(s.id);
+      childrenMap.set(s.parentId, list);
+    }
+    const result = new Map<number, number[]>();
+    function collect(id: number): number[] {
+      const kids = childrenMap.get(id) ?? [];
+      const all = [id];
+      for (const kid of kids) all.push(...collect(kid));
+      return all;
+    }
+    for (const s of sections) {
+      result.set(s.id, collect(s.id));
+    }
+    return result;
+  }, [sections]);
+
   const filteredSections = sections.filter(
     (section) =>
       section.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1852,9 +2271,15 @@ function SectionManagement({
                           size="sm"
                           onClick={() => setEmployeeDialogSection(section)}
                           className="gap-1 text-xs font-medium text-[#64748b] hover:text-[#3b82f6]"
+                          title={section.childEmployeeCount > 0 ? `${section.directEmployeeCount} langsung + ${section.childEmployeeCount} dari sub section` : undefined}
                         >
                           <Users className="size-3.5" />
                           {section.employeeCount}
+                          {section.childEmployeeCount > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              ({section.directEmployeeCount}+{section.childEmployeeCount})
+                            </span>
+                          )}
                         </Button>
                       </TableCell>
                       <TableCell>
@@ -2055,9 +2480,10 @@ function SectionManagement({
 
       <EmployeeListDialog
         employees={employees}
-        entityId={employeeDialogSection?.id ?? null}
+        entityIds={employeeDialogSection ? (descendantMap.get(employeeDialogSection.id) ?? [employeeDialogSection.id]) : []}
         entityLabel={employeeDialogSection?.name ?? ""}
         filterKey="sectionId"
+        sections={sections}
         open={employeeDialogSection !== null}
         onOpenChange={(open) => { if (!open) setEmployeeDialogSection(null); }}
       />
@@ -2537,9 +2963,11 @@ function LevelStaffManagement({
 // DEPARTMENT MANAGEMENT COMPONENT
 function DepartmentManagement({
   departments,
+  sections,
   employees,
 }: {
   departments: MasterDepartment[];
+  sections: MasterSection[];
   employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
 }) {
   const router = useRouter();
@@ -2555,6 +2983,16 @@ function DepartmentManagement({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [employeeDialogDept, setEmployeeDialogDept] = useState<MasterDepartment | null>(null);
+  const [syncState, syncFormAction, isSyncing] = useActionState(syncAllEmployeeDepartmentsAction, { status: "idle" as const, message: "" });
+
+  useEffect(() => {
+    if (syncState.status === "success") {
+      toast.success(syncState.message);
+      router.refresh();
+    } else if (syncState.status === "error" && syncState.message) {
+      toast.error(syncState.message);
+    }
+  }, [syncState, router]);
 
   const filteredDepartments = departments.filter(
     (dept) =>
@@ -2636,13 +3074,27 @@ function DepartmentManagement({
             Unit kerja dalam organisasi
           </CardDescription>
         </div>
-        <Button
-          onClick={() => handleOpenDialog()}
-          className="bg-[#3b82f6] hover:bg-[#2563eb]"
-        >
-          <Plus className="mr-2 size-4" />
-          Tambah Department
-        </Button>
+        <div className="flex items-center gap-2">
+          <form action={syncFormAction}>
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              disabled={isSyncing}
+              className="gap-1.5 text-xs"
+            >
+              <Clock3 className={`size-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync Department dari Section'}
+            </Button>
+          </form>
+          <Button
+            onClick={() => handleOpenDialog()}
+            className="bg-[#3b82f6] hover:bg-[#2563eb]"
+          >
+            <Plus className="mr-2 size-4" />
+            Tambah Department
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="mb-4">
@@ -2828,6 +3280,8 @@ function DepartmentManagement({
           entityId={employeeDialogDept?.id ?? null}
           entityLabel={employeeDialogDept?.name ?? ""}
           filterKey="departmentId"
+          sections={sections}
+          departments={departments}
           open={employeeDialogDept !== null}
           onOpenChange={(open) => { if (!open) setEmployeeDialogDept(null); }}
         />
