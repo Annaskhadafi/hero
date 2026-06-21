@@ -398,7 +398,7 @@ export function EmployeeClientPage({
               : d
           )
         );
-        toast.success(`Data ${updated.fullName ?? formData.fullName} berhasil diperbarui.`);
+        toast.success(`Data ${updated.name ?? formData.fullName} berhasil diperbarui.`);
       } else {
         const created = await createEmployee(payload);
         if (created) {
