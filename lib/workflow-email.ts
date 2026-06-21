@@ -83,6 +83,12 @@ async function getActiveTemplate(templateCode?: string | null) {
   return template ?? null
 }
 
+
+export async function getTemplateRecipientScopeEmails(templateCode?: string | null) {
+  const template = await getActiveTemplate(templateCode)
+  return splitEmails(template?.recipientScope).filter((email) => email.includes('@'))
+}
+
 async function getActiveTransportSettings() {
   const settings = await getEmailSmtpSettingsData()
   if (!settings?.isActive || !settings.host.trim() || !settings.fromEmail.trim()) {
@@ -179,21 +185,17 @@ export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
 
   const { template, ccList, subject, html, text } = await resolveWorkflowTemplateContent(request)
 
-  await Promise.all(
-    recipients.map((to) =>
-      sendEmailViaSmtp(settings, {
-        to,
-        cc: ccList,
-        subject,
-        html: html || undefined,
-        text,
-        actorEmail: request.actorEmail,
-        templateCode: request.templateCode ?? template?.templateCode ?? null,
-        templateName: request.templateName ?? template?.name ?? null,
-        attachments: request.attachments,
-      })
-    )
-  )
+  await sendEmailViaSmtp(settings, {
+    to: recipients.join(", "),
+    cc: ccList,
+    subject,
+    html: html || undefined,
+    text,
+    actorEmail: request.actorEmail,
+    templateCode: request.templateCode ?? template?.templateCode ?? null,
+    templateName: request.templateName ?? template?.name ?? null,
+    attachments: request.attachments,
+  })
 
   return {
     status: 'sent' as const,

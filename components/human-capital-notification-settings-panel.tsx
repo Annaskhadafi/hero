@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Users } from "lucide-react";
+import { EmployeeMultiSelect } from "@/components/employee-multi-select";
 import {
   saveHumanCapitalNotificationConfigAction,
   type EmailSettingsActionState,
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+
 import { toast } from "sonner";
 
 const INITIAL_STATE: EmailSettingsActionState = {
@@ -20,12 +21,14 @@ const INITIAL_STATE: EmailSettingsActionState = {
 
 export function HumanCapitalNotificationSettingsPanel({
   config,
+  employees,
 }: {
   config: {
     recipientEmails: string;
     ccEmails: string;
     isActive: boolean;
   };
+  employees: Array<{ id: number; name: string; email: string }>;
 }) {
   const [formData, setFormData] = useState(config);
   const [isSaving, setIsSaving] = useState(false);
@@ -68,33 +71,33 @@ export function HumanCapitalNotificationSettingsPanel({
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="hc-to">Primary recipients</Label>
-            <Textarea
-              id="hc-to"
-              value={formData.recipientEmails}
-              onChange={(event) =>
-                setFormData((current) => ({ ...current, recipientEmails: event.target.value }))
+            <EmployeeMultiSelect
+              label="penerima"
+              selectedEmails={formData.recipientEmails ? formData.recipientEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []}
+              onChange={(emails: string[]) =>
+                setFormData((current) => ({ ...current, recipientEmails: emails.join(", ") }))
               }
-              placeholder="hc@company.com, hr.manager@company.com"
-              className="min-h-32"
+              employees={employees}
+              placeholder="Pilih penerima utama..."
             />
             <p className="text-xs text-muted-foreground">
-              Jika kosong, sistem fallback ke resolver Human Capital internal yang sudah ada.
+              Pilih karyawan yang akan menerima notifikasi Human Capital.
             </p>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="hc-cc">CC recipients</Label>
-            <Textarea
-              id="hc-cc"
-              value={formData.ccEmails}
-              onChange={(event) =>
-                setFormData((current) => ({ ...current, ccEmails: event.target.value }))
+            <EmployeeMultiSelect
+              label="CC"
+              selectedEmails={formData.ccEmails ? formData.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []}
+              onChange={(emails: string[]) =>
+                setFormData((current) => ({ ...current, ccEmails: emails.join(", ") }))
               }
-              placeholder="site.manager@company.com"
-              className="min-h-32"
+              employees={employees}
+              placeholder="Pilih penerima CC..."
             />
             <p className="text-xs text-muted-foreground">
-              Dipakai sebagai CC global untuk notifikasi Human Capital.
+              Pilih karyawan yang akan di-CC pada notifikasi Human Capital.
             </p>
           </div>
         </div>
@@ -131,3 +134,4 @@ export function HumanCapitalNotificationSettingsPanel({
     </Card>
   );
 }
+

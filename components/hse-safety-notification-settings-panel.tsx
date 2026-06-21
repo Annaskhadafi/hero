@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
+import { EmployeeMultiSelect } from "@/components/employee-multi-select";
 import {
   saveHseSafetyNotificationConfigAction,
   type EmailSettingsActionState,
 } from "@/app/dashboard/settings/email/actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+
 import { toast } from "sonner";
 
 const INITIAL_STATE: EmailSettingsActionState = {
@@ -20,12 +21,14 @@ const INITIAL_STATE: EmailSettingsActionState = {
 
 export function HseSafetyNotificationSettingsPanel({
   config,
+  employees,
 }: {
   config: {
     recipientEmails: string;
     ccEmails: string;
     isActive: boolean;
   };
+  employees: Array<{ id: number; name: string; email: string }>;
 }) {
   const [formData, setFormData] = useState(config);
   const [isSaving, setIsSaving] = useState(false);
@@ -69,33 +72,32 @@ export function HseSafetyNotificationSettingsPanel({
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="hse-to">Primary recipients</Label>
-            <Textarea
-              id="hse-to"
-              value={formData.recipientEmails}
-              onChange={(event) =>
-                setFormData((current) => ({ ...current, recipientEmails: event.target.value }))
+            <EmployeeMultiSelect
+              label="penerima"
+              selectedEmails={formData.recipientEmails ? formData.recipientEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []}
+              onChange={(emails: string[]) =>
+                setFormData((current) => ({ ...current, recipientEmails: emails.join(", ") }))
               }
-              placeholder="hse@company.com, safety.supervisor@company.com"
-              className="min-h-32"
+              employees={employees}
+              placeholder="Pilih penerima utama..."
             />
             <p className="text-xs text-muted-foreground">
-              Pisahkan banyak email dengan koma. Semua notif HSE akan dikirim ke daftar ini.
+              Pilih karyawan yang akan menerima notifikasi HSE Safety.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="hse-cc">CC recipients</Label>
-            <Textarea
-              id="hse-cc"
-              value={formData.ccEmails}
-              onChange={(event) =>
-                setFormData((current) => ({ ...current, ccEmails: event.target.value }))
+            <EmployeeMultiSelect
+              label="CC"
+              selectedEmails={formData.ccEmails ? formData.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []}
+              onChange={(emails: string[]) =>
+                setFormData((current) => ({ ...current, ccEmails: emails.join(", ") }))
               }
-              placeholder="site.manager@company.com"
-              className="min-h-32"
+              employees={employees}
+              placeholder="Pilih penerima CC..."
             />
             <p className="text-xs text-muted-foreground">
-              Dipakai sebagai CC global untuk notifikasi HSE Safety.
+              Pilih karyawan yang akan di-CC pada notifikasi HSE Safety.
             </p>
           </div>
         </div>
@@ -117,10 +119,10 @@ export function HseSafetyNotificationSettingsPanel({
           </label>
         </div>
 
-        <div className="rounded-lg bg-surface-container-low p-3 text-sm text-muted-foreground">
-          Covered events: `observation created`, `observation status update`, `incident created`,
-          `incident status update`, `incident report created`, `incident report update`,
-          `safety inspection`, `safety induction`, `inventory expiry reminder`.
+                <div className="rounded-lg bg-surface-container-low p-3 text-sm text-muted-foreground">
+          Covered events: observation created, observation status update, incident created,
+          incident status update, incident report created, incident report update,
+          safety inspection, safety induction, inventory expiry reminder.
         </div>
 
         <div className="flex justify-end">
@@ -132,3 +134,5 @@ export function HseSafetyNotificationSettingsPanel({
     </Card>
   );
 }
+
+

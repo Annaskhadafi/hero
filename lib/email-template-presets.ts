@@ -13,7 +13,7 @@ export type EmailTemplatePreset = {
   sampleValues: Record<string, string>
 }
 
-export const EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
+const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   {
     name: 'Approval Assignment',
     templateCode: 'approval_assignment',
@@ -2409,6 +2409,111 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
     },
   },
 ]
+function escapeEmailHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function formatEmailBody(value: string) {
+  return escapeEmailHtml(value.trim())
+    .replace(/\n{3,}/g, '\n\n')
+    .split('\n\n')
+    .map((paragraph) => {
+      const lines = paragraph.split('\n').filter(Boolean)
+      return `<p style="margin:0 0 14px;color:#334155;font-size:14px;line-height:1.75">${lines.join('<br />')}</p>`
+    })
+    .join('')
+}
+
+function inferTemplateFeature(templateCode: string) {
+  const prefixes: [string, string][] = [
+    ['hc_leader_performance_', 'HC Management'],
+    ['approval_', 'Approval'],
+    ['attendance_permission_', 'Attendance / Permission'],
+    ['daily_report_', 'Daily Report'],
+    ['leave_request_', 'Leave'],
+    ['overtime_', 'Overtime'],
+    ['daily_activity_', 'Daily Activity'],
+    ['offboarding_', 'Offboarding'],
+    ['hse_', 'HSE Safety'],
+    ['hc_employee_', 'HC Management'],
+    ['hc_disciplinary_', 'HC Management'],
+    ['hc_performance_review_', 'HC Management'],
+    ['contract_review_', 'Contract Review'],
+    ['user_invitation', 'User Management'],
+    ['onboarding_link', 'Onboarding'],
+    ['hc_onboarding_', 'HC Recruitment'],
+    ['application_received', 'HC Recruitment'],
+    ['interview_invitation', 'HC Recruitment'],
+    ['test_assigned', 'HC Recruitment'],
+    ['offering_letter', 'HC Recruitment'],
+    ['hired_email', 'HC Recruitment'],
+    ['start_date_email', 'HC Recruitment'],
+    ['custom_bulk', 'HC Recruitment'],
+    ['mcu_', 'HC Recruitment'],
+    ['hr_counseling_', 'HR Counseling'],
+  ]
+  return prefixes.find(([prefix]) => templateCode.startsWith(prefix))?.[1] ?? 'Custom'
+}
+function buildUnifiedEmailHtml(preset: EmailTemplatePreset) {
+  const feature = inferTemplateFeature(preset.templateCode)
+  const body = formatEmailBody(preset.textContent || preset.description || preset.subject)
+  return `<div style="margin:0;padding:0;background:#e5e7eb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e5e7eb;padding:28px 12px">
+<tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;border-collapse:separate;border-spacing:0;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 22px 70px rgba(15,23,42,.16);border:1px solid #cbd5e1">
+<tr><td style="background:#0f172a;padding:0">
+<div style="padding:26px 28px;background:linear-gradient(135deg,#020617 0%,#0f172a 52%,#1e3a8a 100%)">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="vertical-align:top">
+<p style="margin:0;color:#93c5fd;font-size:11px;letter-spacing:.28em;text-transform:uppercase;font-weight:700">PT Chitra Paratama</p>
+<h1 style="margin:7px 0 0;color:#ffffff;font-size:28px;line-height:1.12;font-weight:800;letter-spacing:-.03em">HERO Notification</h1>
+<p style="margin:8px 0 0;color:#cbd5e1;font-size:13px;line-height:1.5">Hub for Employee Reporting & Operations</p>
+</td>
+<td align="right" style="vertical-align:top">
+<div style="display:inline-block;border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:8px 12px;color:#dbeafe;background:rgba(255,255,255,.08);font-size:12px;font-weight:700">${escapeEmailHtml(preset.templateType)}</div>
+</td>
+</tr></table>
+</div>
+</td></tr>
+<tr><td style="padding:28px 28px 10px">
+<div style="display:inline-block;margin-bottom:14px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:6px 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">${escapeEmailHtml(feature)}</div>
+<h2 style="margin:0 0 10px;color:#0f172a;font-size:22px;line-height:1.28;font-weight:800;letter-spacing:-.02em">${escapeEmailHtml(preset.subject)}</h2>
+<p style="margin:0 0 20px;color:#64748b;font-size:13px;line-height:1.6">${escapeEmailHtml(preset.description)}</p>
+<div style="height:1px;background:linear-gradient(90deg,#1d4ed8,#e2e8f0);margin:0 0 22px"></div>
+${body}
+</td></tr>
+<tr><td style="padding:8px 28px 30px">
+<div style="border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;padding:16px 18px">
+<p style="margin:0;color:#0f172a;font-size:13px;font-weight:800">PT Chitra Paratama</p>
+<p style="margin:5px 0 0;color:#64748b;font-size:12px;line-height:1.6">Email ini dikirim otomatis oleh sistem HERO. Mohon tidak membalas langsung email ini.</p>
+<p style="margin:10px 0 0;color:#94a3b8;font-size:11px;line-height:1.5">© 2026 PT Chitra Paratama. All rights reserved.</p>
+</div>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</div>`
+}
+
+function buildUnifiedEmailText(preset: EmailTemplatePreset) {
+  return `PT Chitra Paratama — HERO Notification\n${preset.subject}\n\n${preset.textContent.trim()}\n\nEmail ini dikirim otomatis oleh sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.`
+}
+
+function applyUnifiedEmailDesign(preset: EmailTemplatePreset): EmailTemplatePreset {
+  return {
+    ...preset,
+    htmlContent: buildUnifiedEmailHtml(preset),
+    textContent: buildUnifiedEmailText(preset),
+  }
+}
+
+export const EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = RAW_EMAIL_TEMPLATE_PRESETS.map(applyUnifiedEmailDesign)
+
 
 export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
   EMAIL_TEMPLATE_PRESETS.map((preset) => [preset.templateCode, preset])

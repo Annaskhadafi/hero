@@ -38,10 +38,12 @@ import {
   getEmailTemplatesData,
   getHseSafetyNotificationConfigData,
   getHumanCapitalNotificationConfigData,
+  getActiveEmployeesForSelect,
   getPwaPushSettingsData,
 } from "@/lib/hero-admin";
 
 const bellRules = [
+
   {
     label: "Approval assignment",
     event: "approval_assignment",
@@ -105,7 +107,7 @@ function CompactMetric({
 }
 
 export default async function EmailSettingsPage() {
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -113,12 +115,13 @@ export default async function EmailSettingsPage() {
     getPwaPushSettingsData(),
     getHseSafetyNotificationConfigData(),
     getHumanCapitalNotificationConfigData(),
+    getActiveEmployeesForSelect(),
     getServerSession(),
   ]);
 
-  const sent = logs.filter((log) => log.status === "sent").length;
   const pending = logs.filter((log) => log.status === "pending").length;
   const failed = logs.filter((log) => log.status === "failed").length;
+  const sent = logs.filter((log) => log.status === "sent" || log.status === "delivered").length;
   const bellDeliveries = notifications.deliveries.filter(
     (delivery) => delivery.deliveryChannel === "in_app",
   );
@@ -198,15 +201,16 @@ export default async function EmailSettingsPage() {
             hseCcEmails={hseSafetyConfig.ccEmails}
             hcRecipientEmails={humanCapitalConfig.recipientEmails}
             hcCcEmails={humanCapitalConfig.ccEmails}
+            employees={employees}
           />
         </TabsContent>
 
         <TabsContent value="hse">
-          <HseSafetyNotificationSettingsPanel config={hseSafetyConfig} />
+          <HseSafetyNotificationSettingsPanel config={hseSafetyConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="hc">
-          <HumanCapitalNotificationSettingsPanel config={humanCapitalConfig} />
+          <HumanCapitalNotificationSettingsPanel config={humanCapitalConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="bell">

@@ -3,7 +3,6 @@ import { db } from '@/db'
 import { hcNotificationConfig } from '@/db/schema/hero'
 import {
   buildWorkflowEmailContent,
-  getHumanCapitalRecipientEmails,
   sendWorkflowEmailToMany,
 } from '@/lib/workflow-email'
 
@@ -49,7 +48,7 @@ export async function getHumanCapitalConfiguredRecipients() {
   const config = await getHumanCapitalEmailConfig()
   const configuredTo = config.isActive ? parseEmailList(config.recipientEmails) : []
   const configuredCc = config.isActive ? parseEmailList(config.ccEmails) : []
-  const fallbackTeam = config.isActive && configuredTo.length === 0 ? await getHumanCapitalRecipientEmails() : []
+  const fallbackTeam: string[] = []
 
   return {
     to: uniqueEmails([...configuredTo, ...fallbackTeam]),
@@ -126,3 +125,5 @@ export function buildHumanCapitalEmail(input: {
     outro: 'Mohon tindak lanjuti sesuai proses Human Capital yang berlaku.',
   })
 }
+
+

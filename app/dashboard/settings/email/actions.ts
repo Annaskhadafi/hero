@@ -82,7 +82,7 @@ const emailTemplateSchema = z.object({
     .regex(/^[a-z0-9_]+$/, "Kode template hanya boleh huruf kecil, angka, dan underscore."),
   templateType: z.string().trim().min(1, "Template type is required.").max(50),
   deliveryChannel: z.string().trim().min(1, "Delivery channel is required.").max(120),
-  recipientScope: z.string().trim().min(1, "Recipient scope is required.").max(120),
+  recipientScope: z.string().trim().min(1, "Recipient scope is required.").max(1000),
   ccEmail: z.string().trim().max(500).default(""),
   subject: z.string().trim().min(1, "Email subject is required.").max(200),
   htmlContent: z.string().default(""),
