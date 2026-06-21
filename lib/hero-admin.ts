@@ -789,30 +789,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
-  {
-    menuArea: 'main',
-    section: 'Human Capital',
-    groupLabel: 'Performance & Development',
-    title: 'Technical Engineer',
-    url: '/dashboard/hc/technical-engineer',
-    iconName: 'wrench',
-    resource: 'hc_technical_engineer',
-    sortOrder: 14,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Human Capital',
-    groupLabel: 'Performance & Development',
-    title: 'Certificates',
-    url: '/dashboard/hc/certificate',
-    iconName: 'address-card',
-    resource: 'hc_certificate',
-    sortOrder: 15,
-    isVisible: true,
-    openInNewTab: false,
-  },
+
   {
     menuArea: 'main',
     section: 'Human Capital',
@@ -1330,8 +1307,8 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
   return firstResourceIndex === index && firstUrlIndex === index
 }).map((item) => ({ ...item, menuArea: item.menuArea ?? 'main', section: item.section ?? 'Menu' }))
 
-const DEPRECATED_MENU_RESOURCES = ['slow_moving', 'hc_surat_keterangan']
-const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving', '/dashboard/hc/surat-keterangan']
+const DEPRECATED_MENU_RESOURCES = ['slow_moving', 'hc_surat_keterangan', 'hc_technical_engineer', 'hc_certificate']
+const DEPRECATED_MENU_URLS = ['/dashboard/slow-moving', '/dashboard/hc/surat-keterangan', '/dashboard/hc/technical-engineer', '/dashboard/hc/certificate']
 
 const PORTAL_CHITRA_APP_SEEDS = [
   {
