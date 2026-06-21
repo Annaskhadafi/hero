@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, hrDepartments, hrOrgNodes, hrPositions, hrSections, masterLevelStaff, sites, masterDepartments, masterSections } from "@/db/schema/hero";
+import { employees, hrDepartments, hrOrgNodes, hrPositions, hrSections, hrWorkLocations, masterLevelStaff, sites, masterDepartments, masterSections } from "@/db/schema/hero";
 import { user } from "@/db/schema/auth";
 import { asc, eq, inArray, or, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -51,7 +51,7 @@ export async function getOrgChartData() {
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       siteId: employees.siteId,
-      workLocationId: sql<string | null>`null`.as('work_location_id'),
+      workLocationId: sql<number | null>`null`.as('work_location_id'),
       positionId: employees.positionId,
       siteName: sites.name,
       workLocationName: sql<string | null>`null`.as('work_location_name'),
@@ -360,7 +360,7 @@ export async function materializeOrgVirtualNode(data: {
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
           siteId: employees.siteId,
-          workLocationId: sql<string | null>`null`.as('work_location_id'),
+          workLocationId: sql<number | null>`null`.as('work_location_id'),
           positionId: employees.positionId,
           orgNodeId: employees.orgNodeId,
         });
@@ -747,7 +747,7 @@ export async function updateOrgNode(
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
           siteId: employees.siteId,
-          workLocationId: sql<string | null>`null`.as('work_location_id'),
+          workLocationId: sql<number | null>`null`.as('work_location_id'),
           positionId: employees.positionId,
           orgNodeId: employees.orgNodeId,
         });
@@ -1158,7 +1158,7 @@ async function syncExistingOrgChartEmployeesToOperational(nodeIds: number[]) {
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       siteId: employees.siteId,
-      workLocationId: sql<string | null>`null`.as('work_location_id'),
+      workLocationId: sql<number | null>`null`.as('work_location_id'),
       positionId: employees.positionId,
       orgNodeId: employees.orgNodeId,
     })
@@ -1299,10 +1299,11 @@ export async function updateOrgChartEmployeeProfile(
 
 // Get departments, sections, sites for dropdowns
 export async function getOrgNodeReferenceData() {
-  const [departments, sections, sitesData, rawPositions, levelStaffs] = await Promise.all([
+  const [departments, sections, sitesData, workLocations, rawPositions, levelStaffs] = await Promise.all([
     db.select({ id: hrDepartments.id, name: hrDepartments.name }).from(hrDepartments).where(eq(hrDepartments.isActive, true)).orderBy(asc(hrDepartments.name)),
     db.select({ id: hrSections.id, name: hrSections.name, departmentId: hrSections.departmentId }).from(hrSections).where(eq(hrSections.isActive, true)).orderBy(asc(hrSections.name)),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
+    db.select({ id: hrWorkLocations.id, name: hrWorkLocations.name }).from(hrWorkLocations).where(eq(hrWorkLocations.isActive, true)).orderBy(asc(hrWorkLocations.name)),
     db.select({ id: hrPositions.id, rankName: hrPositions.rankName, levelName: hrPositions.levelName }).from(hrPositions).where(eq(hrPositions.isActive, true)).orderBy(asc(hrPositions.levelName), asc(hrPositions.rankName)),
     db.select({ name: masterLevelStaff.name, sortOrder: masterLevelStaff.sortOrder }).from(masterLevelStaff).where(eq(masterLevelStaff.isActive, true)).orderBy(asc(masterLevelStaff.sortOrder)),
   ]);
@@ -1340,5 +1341,5 @@ export async function getOrgNodeReferenceData() {
       return a.rankName.localeCompare(b.rankName, "id-ID");
     });
 
-  return { departments, sections, sites: sitesData, positions, levelStaffs };
+  return { departments, sections, sites: sitesData, workLocations, positions, levelStaffs };
 }

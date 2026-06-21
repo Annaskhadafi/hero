@@ -14,6 +14,7 @@ export async function getTechnicalEngineers() {
       section: masterSections.name,
       site: sites.name,
       position: hrPositions.rankName,
+      workLocation: employees.workLocation,
       joinDate: employees.joinDate,
       isActive: employees.isActive,
     })
