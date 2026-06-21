@@ -40,6 +40,18 @@ export type MasterSection = {
   description: string;
   isActive: boolean;
   employeeCount: number;
+  subSections: MasterSubSection[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type MasterSubSection = {
+  id: number;
+  code: string;
+  name: string;
+  sectionId: number | null;
+  description: string;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -269,6 +281,7 @@ export async function getMasterDataPageData() {
           jobTitle: employees.jobTitle,
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
+          siteId: employees.siteId,
           positionId: employees.positionId,
           orgNodeId: employees.orgNodeId,
         })
@@ -488,7 +501,7 @@ export async function getMasterDepartments(): Promise<MasterDepartment[]> {
 export async function getMasterSections(): Promise<MasterSection[]> {
   await ensureHeroGovernanceSeedData();
 
-  const [sectionRows, employeeCounts] = await Promise.all([
+  const [sectionRows, employeeCounts, subSectionRows] = await Promise.all([
     db
       .select({
         id: masterSections.id,
@@ -515,6 +528,10 @@ export async function getMasterSections(): Promise<MasterSection[]> {
       .from(employees)
       .where(eq(employees.isActive, true))
       .groupBy(employees.sectionId),
+    db
+      .select()
+      .from(masterSubSections)
+      .orderBy(asc(masterSubSections.name)),
   ]);
 
   const countMap = new Map(
@@ -523,11 +540,20 @@ export async function getMasterSections(): Promise<MasterSection[]> {
       .map((row) => [row.sectionId as number, row.count]),
   );
 
+  const subSectionsBySection = new Map<number, MasterSubSection[]>();
+  for (const sub of subSectionRows) {
+    if (sub.sectionId == null) continue;
+    const list = subSectionsBySection.get(sub.sectionId) ?? [];
+    list.push(sub);
+    subSectionsBySection.set(sub.sectionId, list);
+  }
+
   return sectionRows.map((section) => ({
     ...section,
     departmentName: section.departmentName ?? null,
     headEmployeeName: section.headEmployeeName ?? null,
     employeeCount: countMap.get(section.id) ?? 0,
+    subSections: subSectionsBySection.get(section.id) ?? [],
   }));
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3, Tags } from "lucide-react";
+import { Layers, Building2, Users, GitBranch, GitPullRequest, Plus, Search, Pencil, Trash2, X, AlertCircle, MapPin, Clock3, Tags, Eye, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import type { ApprovalMatrix, MasterSection, MasterJobTitle, MasterLevelStaff, MasterDepartment, MasterPosition, OrgStructure, MasterSite, MasterAttendanceShift, MasterCategoryOption } from "@/lib/master-data";
 import {
@@ -923,6 +923,56 @@ function AttendanceShiftManagement({ attendanceShifts }: { attendanceShifts: Mas
   );
 }
 
+function EmployeeListDialog({
+  employees,
+  entityId,
+  entityLabel,
+  filterKey,
+  open,
+  onOpenChange,
+}: {
+  employees: any[];
+  entityId: number | null;
+  entityLabel: string;
+  filterKey: "sectionId" | "departmentId" | "siteId";
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const filtered = employees.filter((e) => e[filterKey] === entityId);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Karyawan: {entityLabel}</DialogTitle>
+          <DialogDescription>{filtered.length} orang</DialogDescription>
+        </DialogHeader>
+        {filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Tidak ada karyawan.</p>
+        ) : (
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead>Nama</TableHead>
+                  <TableHead>Job Title</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((emp) => (
+                  <TableRow key={emp.id}>
+                    <TableCell className="font-medium">{emp.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{emp.jobTitle || "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SiteManagement({
   sites,
   employees,
@@ -945,6 +995,7 @@ function SiteManagement({
   const [isLoadingDistricts, setIsLoadingDistricts] = useState(false);
   const [isLoadingVillages, setIsLoadingVillages] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [employeeDialogSite, setEmployeeDialogSite] = useState<MasterSite | null>(null);
 
   const filteredSites = sites.filter(
     (site) =>
@@ -1245,6 +1296,7 @@ function SiteManagement({
                 <TableHead>Customer</TableHead>
                 <TableHead>No. Kontrak</TableHead>
                 <TableHead>Head Area</TableHead>
+                <TableHead className="w-[90px] text-center">Jml Karyawan</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
@@ -1263,6 +1315,17 @@ function SiteManagement({
                       ) : (
                         <span className="text-[#94a3b8]">-</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEmployeeDialogSite(site)}
+                        className="gap-1 text-xs font-medium text-[#64748b] hover:text-[#3b82f6]"
+                      >
+                        <Users className="size-3.5" />
+                        {site.employeeCount}
+                      </Button>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -1286,7 +1349,7 @@ function SiteManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={8} className="h-24 text-center text-[#64748b]">
                     Tidak ada data site
                   </TableCell>
                 </TableRow>
@@ -1558,6 +1621,15 @@ function SiteManagement({
           </form>
         </DialogContent>
       </Dialog>
+
+      <EmployeeListDialog
+        employees={employees}
+        entityId={employeeDialogSite?.id ?? null}
+        entityLabel={employeeDialogSite?.name ?? ""}
+        filterKey="siteId"
+        open={employeeDialogSite !== null}
+        onOpenChange={(open) => { if (!open) setEmployeeDialogSite(null); }}
+      />
     </Card>
   );
 }
@@ -1585,6 +1657,8 @@ function SectionManagement({
     isActive: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [employeeDialogSection, setEmployeeDialogSection] = useState<MasterSection | null>(null);
+  const [expandedSectionIds, setExpandedSectionIds] = useState<Set<number>>(new Set());
 
   const filteredSections = sections.filter(
     (section) =>
@@ -1699,74 +1773,136 @@ function SectionManagement({
                 <TableHead>Department</TableHead>
                 <TableHead>Head Section</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead className="w-[90px] text-center">Jml Karyawan</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredSections.length > 0 ? (
-                filteredSections.map((section) => (
-                  <TableRow key={section.id}>
-                    <TableCell className="font-mono text-sm font-medium">
-                      {section.code}
-                    </TableCell>
-                    <TableCell className="font-medium">{section.name}</TableCell>
-                    <TableCell>
-                      {section.departmentName ? (
-                        <Badge variant="outline" className="bg-[#f1f5f9]">
-                          {section.departmentName}
+                filteredSections.flatMap((section) => {
+                  const hasSubSections = section.subSections && section.subSections.length > 0;
+                  const isExpanded = expandedSectionIds.has(section.id);
+                  const rows = [
+                    <TableRow key={section.id}>
+                      <TableCell className="font-mono text-sm font-medium">
+                        <div className="flex items-center gap-1">
+                          {hasSubSections ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedSectionIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(section.id)) next.delete(section.id);
+                                  else next.add(section.id);
+                                  return next;
+                                });
+                              }}
+                              className="size-5 shrink-0 rounded hover:bg-muted flex items-center justify-center"
+                            >
+                              <ChevronRight className={`size-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                            </button>
+                          ) : (
+                            <span className="size-5 shrink-0" />
+                          )}
+                          <span>{section.code}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="size-2 shrink-0 rounded-full bg-primary" />
+                          {section.name}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {section.departmentName ? (
+                          <Badge variant="outline" className="bg-[#f1f5f9]">
+                            {section.departmentName}
+                          </Badge>
+                        ) : (
+                          <span className="text-[#94a3b8]">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {section.headEmployeeName ? (
+                          <span className="font-medium text-[#1e293b]">{section.headEmployeeName}</span>
+                        ) : (
+                          <span className="text-[#94a3b8]">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-[#64748b]">
+                        {section.description || "-"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEmployeeDialogSection(section)}
+                          className="gap-1 text-xs font-medium text-[#64748b] hover:text-[#3b82f6]"
+                        >
+                          <Users className="size-3.5" />
+                          {section.employeeCount}
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={section.isActive ? "default" : "secondary"}
+                          className={section.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
+                        >
+                          {section.isActive ? "Aktif" : "Nonaktif"}
                         </Badge>
-                      ) : (
-                        <span className="text-[#94a3b8]">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {section.headEmployeeName ? (
-                        <span className="font-medium text-[#1e293b]">{section.headEmployeeName}</span>
-                      ) : (
-                        <span className="text-[#94a3b8]">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-[#64748b]">
-                      {section.description || "-"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={section.isActive ? "default" : "secondary"}
-                        className={
-                          section.isActive
-                            ? "bg-[#10b981] text-white"
-                            : "bg-[#cbd5e1] text-[#64748b]"
-                        }
-                      >
-                        {section.isActive ? "Aktif" : "Nonaktif"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(section)}
-                          className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(section)}
-                          className="size-8 text-[#ef4444] hover:bg-[#fef2f2]"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(section)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(section)} className="size-8 text-[#ef4444] hover:bg-[#fef2f2]">
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>,
+                  ];
+                  if (isExpanded && hasSubSections) {
+                    section.subSections.forEach((sub) => {
+                      rows.push(
+                        <TableRow key={`sub-${sub.id}`} className="bg-muted/20">
+                          <TableCell className="font-mono text-xs text-muted-foreground pl-8">
+                            {sub.code}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 pl-4 text-sm text-muted-foreground">
+                              <span className="size-1.5 shrink-0 rounded-full border border-muted-foreground/40" />
+                              {sub.name}
+                            </div>
+                          </TableCell>
+                          <TableCell>-</TableCell>
+                          <TableCell>-</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {sub.description || "-"}
+                          </TableCell>
+                          <TableCell className="text-center text-xs text-muted-foreground">
+                            Sub
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={sub.isActive ? "default" : "secondary"}
+                              className={sub.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
+                            >
+                              {sub.isActive ? "Aktif" : "Nonaktif"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>-</TableCell>
+                        </TableRow>
+                      );
+                    });
+                  }
+                  return rows;
+                })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={8} className="h-24 text-center text-[#64748b]">
                     Tidak ada data section
                   </TableCell>
                 </TableRow>
@@ -1879,6 +2015,15 @@ function SectionManagement({
           </form>
         </DialogContent>
       </Dialog>
+
+      <EmployeeListDialog
+        employees={employees}
+        entityId={employeeDialogSection?.id ?? null}
+        entityLabel={employeeDialogSection?.name ?? ""}
+        filterKey="sectionId"
+        open={employeeDialogSection !== null}
+        onOpenChange={(open) => { if (!open) setEmployeeDialogSection(null); }}
+      />
     </Card>
   );
 }
@@ -2372,6 +2517,7 @@ function DepartmentManagement({
     isActive: true,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [employeeDialogDept, setEmployeeDialogDept] = useState<MasterDepartment | null>(null);
 
   const filteredDepartments = departments.filter(
     (dept) =>
@@ -2482,6 +2628,7 @@ function DepartmentManagement({
                 <TableHead>Nama Department</TableHead>
                 <TableHead>Head Department</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead className="w-[90px] text-center">Jml Karyawan</TableHead>
                 <TableHead className="w-[100px]">Status</TableHead>
                 <TableHead className="w-[100px]">Aksi</TableHead>
               </TableRow>
@@ -2501,6 +2648,17 @@ function DepartmentManagement({
                     </TableCell>
                     <TableCell className="text-[#64748b]">
                       {dept.description || "-"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEmployeeDialogDept(dept)}
+                        className="gap-1 text-xs font-medium text-[#64748b] hover:text-[#3b82f6]"
+                      >
+                        <Users className="size-3.5" />
+                        {dept.employeeCount}
+                      </Button>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -2538,7 +2696,7 @@ function DepartmentManagement({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-[#64748b]">
+                  <TableCell colSpan={7} className="h-24 text-center text-[#64748b]">
                     Tidak ada data department
                   </TableCell>
                 </TableRow>
@@ -2627,8 +2785,16 @@ function DepartmentManagement({
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
-    </Card>
+        </Dialog>
+        <EmployeeListDialog
+          employees={employees}
+          entityId={employeeDialogDept?.id ?? null}
+          entityLabel={employeeDialogDept?.name ?? ""}
+          filterKey="departmentId"
+          open={employeeDialogDept !== null}
+          onOpenChange={(open) => { if (!open) setEmployeeDialogDept(null); }}
+        />
+      </Card>
   );
 }
 
