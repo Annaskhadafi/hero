@@ -32,6 +32,7 @@ import {
   SidebarHeader,
   SidebarRail,
   SidebarSeparator,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 const iconMap = {
@@ -129,6 +130,23 @@ export function AppSidebar({
   documents: readonly SidebarDocumentItem[]
   groupLabelColor?: string
 }) {
+  const { state, setOpen } = useSidebar()
+  const wasHoverExpanded = React.useRef(false)
+
+  const handleMouseEnter = React.useCallback(() => {
+    if (state === "collapsed") {
+      wasHoverExpanded.current = true
+      setOpen(true)
+    }
+  }, [state, setOpen])
+
+  const handleMouseLeave = React.useCallback(() => {
+    if (wasHoverExpanded.current) {
+      wasHoverExpanded.current = false
+      setOpen(false)
+    }
+  }, [setOpen])
+
   const desktopItems = [...navMain, ...navSecondary].map((item) => ({
     section: sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu",
     title: item.title,
@@ -170,6 +188,8 @@ export function AppSidebar({
       {...props}
       collapsible="icon"
       suppressHydrationWarning
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       style={{
         ...props.style,
         fontFamily: "var(--font-inter), sans-serif",
