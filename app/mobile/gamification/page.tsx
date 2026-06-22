@@ -1,9 +1,14 @@
 import { redirect } from "next/navigation";
+import { Metadata } from "next";
 import { MobileGamificationLive } from "@/components/mobile/mobile-gamification-live";
 import { getServerSession } from "@/lib/auth-session";
 import { getMobileGamification } from "@/lib/mobile-data";
 
-export default async function MobileGamificationPage() {
+export const metadata: Metadata = {
+  title: "Leaderboard - HERO Mobile",
+};
+
+export default async function MobileLeaderboardPage() {
   const session = await getServerSession();
   if (!session?.user?.email) {
     redirect("/sign-in");

@@ -7,11 +7,12 @@ import {
 
 import { ExpandableList } from "@/components/expandable-list";
 import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settings";
+import { CollapsibleSection } from "@/components/mobile/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
 import {
   employees, pointEvents, trainingRecords, sioCertifications,
-  hrEmployees, hcLeaveRequests, hcLeaveTypes, hcCandidateMcu,
+  hrEmployees, hcLeaveRequests, hcLeaveTypes, employeeMcu,
 } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -33,15 +34,6 @@ function daysLeft(v: Date | string | null | undefined) {
   const d = new Date(v)
   const now = new Date()
   return Math.ceil((d.getTime() - now.getTime()) / 86400000)
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h2 className="text-[11px] font-medium uppercase tracking-wider text-gray-500 mb-2">{title}</h2>
-      {children}
-    </section>
-  )
 }
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -147,12 +139,12 @@ export default async function MobileProfilePage() {
       .orderBy(desc(hcLeaveRequests.startDate))
       .limit(10) : [],
 
-    // MCU Records
-    hrFkId ? db
+    // MCU Records (post-hire employee annual MCU)
+    empId ? db
       .select()
-      .from(hcCandidateMcu)
-      .where(eq(hcCandidateMcu.candidateId, hrFkId))
-      .orderBy(desc(hcCandidateMcu.scheduledDate))
+      .from(employeeMcu)
+      .where(eq(employeeMcu.employeeId, empId))
+      .orderBy(desc(employeeMcu.mcuDate))
       .limit(5) : [],
   ])
 
@@ -190,7 +182,7 @@ export default async function MobileProfilePage() {
       </div>
 
       {/* ── Work Identity ────────────────────────── */}
-      <Section title="Identitas Pekerjaan">
+      <CollapsibleSection title="Identitas Pekerjaan">
         <Card>
           <Row icon={<BriefcaseBusiness className="size-4" />} label="Role" value={data.employee.role} />
           <div className="border-t border-gray-50" />
@@ -202,11 +194,11 @@ export default async function MobileProfilePage() {
             <Badge className="rounded-md border-0 bg-orange-50 text-orange-700">{data.employee.employeeStatusType}</Badge>
           </div>
         </Card>
-      </Section>
+      </CollapsibleSection>
 
       {/* ── Contract Info ─────────────────────────── */}
       {hrEmp ? (
-        <Section title="Kontrak">
+        <CollapsibleSection title="Kontrak">
           <Card>
             <Row icon={<Calendar className="size-4" />} label="Tanggal Mulai" value={fd(hrEmp.contractDurationStart)} />
             <div className="border-t border-gray-50" />
@@ -220,11 +212,11 @@ export default async function MobileProfilePage() {
             <div className="border-t border-gray-50" />
             <Row icon={<Clock className="size-4" />} label="Tanggal Masuk" value={fd(hrEmp.joinDate)} />
           </Card>
-        </Section>
+        </CollapsibleSection>
       ) : null}
 
       {/* ── Training ──────────────────────────────── */}
-      <Section title="Pelatihan">
+      <CollapsibleSection title="Pelatihan">
         <Card>
           {trainings.length === 0 ? (
             <div className="p-6 text-center">
@@ -248,10 +240,10 @@ export default async function MobileProfilePage() {
             </ExpandableList>
           )}
         </Card>
-      </Section>
+      </CollapsibleSection>
 
       {/* ── Sertifikasi ───────────────────────────── */}
-      <Section title="Sertifikasi">
+      <CollapsibleSection title="Sertifikasi">
         <Card>
           {certifications.length === 0 ? (
             <div className="p-6 text-center">
@@ -290,10 +282,10 @@ export default async function MobileProfilePage() {
             </ExpandableList>
           )}
         </Card>
-      </Section>
+      </CollapsibleSection>
 
       {/* ── Izin Sakit ────────────────────────────── */}
-      <Section title="Izin Sakit">
+      <CollapsibleSection title="Izin Sakit">
         <Card>
           {sickLeaves.length === 0 ? (
             <div className="p-6 text-center">
@@ -320,10 +312,10 @@ export default async function MobileProfilePage() {
             </ExpandableList>
           )}
         </Card>
-      </Section>
+      </CollapsibleSection>
 
       {/* ── MCU ───────────────────────────────────── */}
-      <Section title="Medical Check Up">
+      <CollapsibleSection title="Medical Check Up">
         <Card>
           {mcuRecords.length === 0 ? (
             <div className="p-6 text-center">
@@ -335,25 +327,28 @@ export default async function MobileProfilePage() {
               {mcuRecords.map((mcu) => (
                 <div key={mcu.id} className="px-4 py-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{mcu.klinikName}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{fd(mcu.scheduledDate)}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{mcu.clinicName || "Klinik MCU"}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        MCU: {fd(mcu.mcuDate) || fd(mcu.scheduledDate) || "-"}
+                      </p>
                     </div>
                     <StatusBadge value={mcu.status} />
                   </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
-                    <span>{mcu.paketMcu}</span>
+                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
+                    {mcu.paketMcu ? <span>{mcu.paketMcu}</span> : null}
                     {mcu.resultDate ? <span>Hasil: {fd(mcu.resultDate)}</span> : null}
+                    {mcu.aiKategori ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{mcu.aiKategori}</span> : null}
                   </div>
                 </div>
               ))}
             </ExpandableList>
           )}
         </Card>
-      </Section>
+      </CollapsibleSection>
 
       {/* ── Point Transactions ────────────────────── */}
-      <Section title="Riwayat Poin">
+      <CollapsibleSection title="Riwayat Poin">
         <Card>
           {pointTransactions.length === 0 ? (
             <div className="p-6 text-center">
@@ -376,7 +371,7 @@ export default async function MobileProfilePage() {
             </ExpandableList>
           )}
         </Card>
-      </Section>
+      </CollapsibleSection>
 
       {/* ── Settings ──────────────────────────────── */}
       <MobileProfileSettings

@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { sendMessage, closeSession } from "@/app/actions/hr-counseling";
-import { uploadFile } from "@/app/actions/upload";
+import { sendMessage, closeSession, getMessages } from "@/app/actions/hr-counseling";
+import { uploadCurhatAttachment } from "@/app/actions/upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, ArrowLeft, CheckCircle2, Paperclip, Loader2 } from "lucide-react";
+import { Send, ArrowLeft, CheckCircle2, Paperclip, Loader2, FileText, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 type Message = {
   id: number;
@@ -19,6 +19,7 @@ type Message = {
   message: string;
   attachmentUrl?: string | null;
   readableUrl?: string | null;
+  fileName?: string | null;
   createdAt: Date;
 };
 
@@ -45,47 +46,93 @@ export default function ChatClient({
   isHrView?: boolean;
   backPath?: string;
 }) {
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{ url: string; fileName: string; readableUrl: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  const isNearBottom = () => {
+    const container = chatContainerRef.current;
+    if (!container) return true;
+    const threshold = 120;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
   };
 
   useEffect(() => {
-    scrollToBottom();
+    scrollToBottom("auto");
+  }, []);
+
+  // Auto-scroll when own messages arrive or when user is already near bottom.
+  useEffect(() => {
+    if (isNearBottom()) {
+      scrollToBottom("smooth");
+    }
   }, [messages]);
+
+  // Realtime polling: fetch new messages every 3 seconds while session is open.
+  useEffect(() => {
+    if (session.status !== "open") return;
+
+    const poll = async () => {
+      try {
+        const fresh = await getMessages(session.id);
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMessages = fresh.filter((m) => !existingIds.has(m.id));
+          if (newMessages.length === 0) return prev;
+          return [...prev, ...newMessages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        });
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    };
+
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [session.id, session.status]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isSending || session.status === "closed") return;
+    const text = input.trim();
+    if ((!text && !pendingAttachment) || isSending || session.status === "closed") return;
 
     setIsSending(true);
-    const text = input.trim();
     setInput("");
 
     try {
-      const newMsg = await sendMessage(session.id, text);
+      const newMsg = await sendMessage(
+        session.id,
+        text,
+        pendingAttachment?.url || null,
+        pendingAttachment?.fileName || null
+      );
       if (newMsg) {
         setMessages((prev) => [
           ...prev,
           {
             ...newMsg,
-            senderName: isHrView ? session.hrName : session.userName, // Optimistic name
+            senderName: isHrView ? session.hrName : session.userName,
+            readableUrl: pendingAttachment?.readableUrl || null,
+            fileName: pendingAttachment?.fileName || newMsg.attachmentFileName || null,
           },
         ]);
-        router.refresh(); // Refresh server state
+        setPendingAttachment(null);
+        router.refresh();
       }
     } catch (err) {
       console.error(err);
-      // Revert or show error
+      toast.error("Gagal mengirim pesan");
     } finally {
       setIsSending(false);
     }
@@ -108,8 +155,8 @@ export default function ChatClient({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Ukuran file maksimal 5MB");
+    if (session.status === "closed") {
+      toast.error("Sesi telah ditutup, tidak bisa mengunggah file.");
       return;
     }
 
@@ -117,30 +164,22 @@ export default function ChatClient({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("uploadTarget", "hero-hr-counseling");
 
-      const result = await uploadFile(formData);
+      const result = await uploadCurhatAttachment(formData);
       if (!result.success || !result.url) {
-        alert(result.error || "Gagal mengunggah file");
+        toast.error(result.error || "Gagal mengunggah file");
         return;
       }
 
-      const newMsg = await sendMessage(session.id, "", result.url);
-      if (newMsg) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            ...newMsg,
-            senderName: isHrView ? session.hrName : session.userName,
-            readableUrl: result.readableUrl,
-            attachmentUrl: result.url,
-          },
-        ]);
-        router.refresh();
-      }
+      setPendingAttachment({
+        url: result.url,
+        readableUrl: result.readableUrl || result.url,
+        fileName: result.fileName || file.name,
+      });
+      toast.success("File siap dikirim");
     } catch (err) {
       console.error(err);
-      alert("Gagal mengunggah file");
+      toast.error("Gagal mengunggah file");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -182,7 +221,7 @@ export default function ChatClient({
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/40 dark:bg-background">
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/40 dark:bg-background">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               Belum ada pesan. Mulai sapa {chatPartnerName}.
@@ -201,15 +240,23 @@ export default function ChatClient({
                     {msg.readableUrl && (
                       <div className="mt-1">
                         {msg.attachmentUrl?.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                          <img 
-                            src={msg.readableUrl} 
-                            alt="Attachment" 
-                            className="max-w-full max-h-48 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity" 
+                          <img
+                            src={msg.readableUrl}
+                            alt="Attachment"
+                            className="max-w-full max-h-48 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => setPreviewImage(msg.readableUrl || null)}
                           />
                         ) : (
-                          <a href={msg.readableUrl} target="_blank" rel="noreferrer" className="underline text-xs flex items-center gap-1">
-                            <Paperclip className="w-3 h-3" /> Lihat Lampiran
+                          <a
+                            href={msg.readableUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline text-xs flex items-center gap-1.5 bg-background/20 rounded px-2 py-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[200px]">
+                              {msg.fileName || "Lihat Lampiran"}
+                            </span>
                           </a>
                         )}
                       </div>
@@ -226,23 +273,43 @@ export default function ChatClient({
         </div>
 
         {/* Input Area */}
-        <div className="p-3 border-t bg-card">
+        <div className="p-3 border-t bg-card space-y-2">
+          {pendingAttachment && (
+            <div className="flex items-center gap-2 text-xs bg-muted/60 rounded-full pl-3 pr-1.5 py-1.5 w-fit max-w-full">
+              {pendingAttachment.readableUrl.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                <img src={pendingAttachment.readableUrl} alt="" className="w-5 h-5 rounded object-cover" />
+              ) : (
+                <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+              )}
+              <span className="truncate max-w-[180px] md:max-w-xs">{pendingAttachment.fileName}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 rounded-full ml-1"
+                onClick={() => setPendingAttachment(null)}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
           <form onSubmit={handleSend} className="flex gap-2 items-center">
-            <input 
-              type="file" 
-              accept="image/*,application/pdf" 
-              className="hidden" 
-              ref={fileInputRef} 
-              onChange={handleFileChange} 
-              disabled={session.status === "closed" || isUploading}
+            <input
+              type="file"
+              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              disabled={session.status === "closed" || isUploading || isSending}
             />
-            <Button 
-              type="button" 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               className="text-muted-foreground shrink-0 rounded-full"
               onClick={() => fileInputRef.current?.click()}
-              disabled={session.status === "closed" || isUploading}
+              disabled={session.status === "closed" || isUploading || isSending}
+              title="Lampirkan file / dokumen"
             >
               {isUploading ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : <Paperclip className="w-5 h-5" />}
             </Button>
@@ -250,14 +317,14 @@ export default function ChatClient({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={session.status === "closed" ? "Sesi telah ditutup" : "Ketik pesan..."}
-              disabled={session.status === "closed" || isSending}
+              disabled={session.status === "closed" || isSending || isUploading}
               className="flex-1 bg-muted/60 border-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-full px-4"
             />
-            <Button 
-              type="submit" 
-              size="icon" 
+            <Button
+              type="submit"
+              size="icon"
               className="shrink-0 rounded-full shadow-sm"
-              disabled={!input.trim() || session.status === "closed" || isSending}
+              disabled={(!input.trim() && !pendingAttachment) || session.status === "closed" || isSending || isUploading}
             >
               <Send className="w-4 h-4 ml-0.5" />
               <span className="sr-only">Kirim</span>

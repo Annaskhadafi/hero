@@ -94,7 +94,15 @@ function getObjectKeyFromUrl(objectUrl: string) {
   }
 }
 
-function getObjectExtension(contentType: string) {
+function getObjectExtension(contentType: string, fileName?: string) {
+  // Preserve original extension when available so PDFs/documents keep their type.
+  if (fileName) {
+    const originalExt = fileName.split(".").pop()?.toLowerCase();
+    if (originalExt && /^[a-z0-9]{1,10}$/.test(originalExt)) {
+      return originalExt;
+    }
+  }
+
   switch (contentType) {
     case "image/jpeg":
       return "jpg";
@@ -104,6 +112,8 @@ function getObjectExtension(contentType: string) {
       return "webp";
     case "image/gif":
       return "gif";
+    case "application/pdf":
+      return "pdf";
     default:
       return "bin";
   }
@@ -169,7 +179,7 @@ function buildS3PublicUrl(key: string) {
 
 export async function uploadProfilePhotoToS3(file: File) {
   const contentType = file.type || "application/octet-stream";
-  const extension = getObjectExtension(contentType);
+  const extension = getObjectExtension(contentType, file.name);
   const key = `${PROFILE_PHOTO_PREFIX}/${randomUUID()}.${extension}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -193,7 +203,7 @@ export async function uploadProfilePhotoToS3(file: File) {
 
 export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
   const contentType = file.type || "application/octet-stream";
-  const extension = getObjectExtension(contentType);
+  const extension = getObjectExtension(contentType, file.name);
   const prefix = prefixOverride || serverEnv.s3UploadPrefix || "upload";
   const key = `${prefix}/${randomUUID()}.${extension}`;
   const buffer = Buffer.from(await file.arrayBuffer());

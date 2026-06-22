@@ -29,11 +29,22 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     redirect("/sign-in");
   }
 
-  const notificationCount = session.user.email
-    ? await getMobileNotificationCount(session.user.email)
-    : 0;
+  let notificationCount = 0;
+  let eligibleBroadcasts: Awaited<ReturnType<typeof getEligibleBroadcastsForMobile>> = [];
 
-  const eligibleBroadcasts = await getEligibleBroadcastsForMobile();
+  try {
+    notificationCount = session.user.email
+      ? await getMobileNotificationCount(session.user.email)
+      : 0;
+  } catch (err) {
+    console.error("[mobile/layout] getMobileNotificationCount failed:", err);
+  }
+
+  try {
+    eligibleBroadcasts = await getEligibleBroadcastsForMobile();
+  } catch (err) {
+    console.error("[mobile/layout] getEligibleBroadcastsForMobile failed:", err);
+  }
 
   return (
     <MobileAppShell

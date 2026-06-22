@@ -14,7 +14,9 @@ import {
   FileText,
   CalendarRange,
   Bell,
-  User
+  User,
+  Dumbbell,
+  Trophy
 } from "lucide-react";
 import {
   IconBook,
@@ -69,7 +71,13 @@ type DashboardServicesProps = {
 export function MobileDashboardServices({ isHR, sidebarItems }: DashboardServicesProps) {
   const [open, setOpen] = useState(false);
 
-  const mainServices = [
+  const mainServices: Array<{
+    title: string;
+    href: string;
+    icon: typeof MapPin;
+    bg: string;
+    target?: string;
+  }> = [
     {
       title: "Check-In",
       href: "/mobile/attendance",
@@ -107,6 +115,18 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
       icon: Bell,
       bg: "bg-amber-500/10 text-amber-600",
     },
+    {
+      title: "Wellness",
+      href: "/mobile/wellness",
+      icon: Dumbbell,
+      bg: "bg-teal-500/10 text-teal-600",
+    },
+    {
+      title: "Leaderboard",
+      href: "/mobile/gamification",
+      icon: Trophy,
+      bg: "bg-yellow-500/10 text-yellow-600",
+    },
     ...(isHR ? [{
       title: "Inbox HR",
       href: "/mobile/hr-counseling",
@@ -121,7 +141,7 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
     },
   ];
 
-  const visibleServices = mainServices.slice(0, 7);
+  const visibleServices = mainServices;
 
   const extraServices = [
     {

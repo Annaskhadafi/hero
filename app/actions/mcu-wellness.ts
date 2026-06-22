@@ -341,6 +341,8 @@ export async function uploadMcuResultFile(
     .where(eq(employeeMcu.id, mcuId));
 
   revalidatePath("/dashboard/hc/mcu-wellness");
+  revalidatePath("/mobile/wellness");
+  revalidatePath("/mobile/profile");
   return result.url;
 }
 
@@ -411,6 +413,8 @@ export async function saveMcuAiResult(
 
   revalidatePath("/dashboard/hc/mcu-wellness");
   revalidatePath(`/dashboard/hc/employee/${mcu.employeeId}`);
+  revalidatePath("/mobile/wellness");
+  revalidatePath("/mobile/profile");
 
   // Send result email + bell notification
   if (newStatus === "fit" || newStatus === "unfit") {

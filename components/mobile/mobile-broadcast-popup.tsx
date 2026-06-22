@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   X,
   ThumbsUp,
@@ -11,10 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  getEligibleBroadcastsForMobile,
-  interactWithBroadcast,
-} from "@/app/actions/broadcast";
+import { interactWithBroadcast } from "@/app/actions/broadcast";
 
 interface BroadcastMobileItem {
   id: number;
@@ -65,50 +61,34 @@ export function MobileBroadcastPopup({
 }: {
   initialBroadcasts?: BroadcastMobileItem[];
 }) {
-  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
   const [activeBroadcast, setActiveBroadcast] = useState<BroadcastMobileItem | null>(null);
   const [show, setShow] = useState(false);
   const [likedState, setLikedState] = useState<boolean | null>(null);
+  const trackedRef = useRef<number | null>(null);
 
-  // Initialize from server-side props
   useEffect(() => {
-    if (initialBroadcasts && initialBroadcasts.length > 0 && !activeBroadcast) {
-      const top = initialBroadcasts[0];
-      setActiveBroadcast(top);
-      setLikedState(top.liked);
-      setShow(true);
+    setMounted(true);
+  }, []);
 
-      // Track view
-      interactWithBroadcast(top.id, "view").catch(console.error);
-    }
-  }, [initialBroadcasts, activeBroadcast]);
-
-  // Fallback client-side fetch on pathname changes
   useEffect(() => {
-    if (!pathname?.startsWith("/mobile")) return;
-    if (pathname === "/sign-in" || pathname === "/sign-up") return;
-    
-    // If already showing, do not query again to prevent flashing/resetting
-    if (show && activeBroadcast) return;
+    if (!mounted) return;
+    if (activeBroadcast || show) return;
+    if (!initialBroadcasts || initialBroadcasts.length === 0) return;
 
-    async function checkPopup() {
-      try {
-        const list = await getEligibleBroadcastsForMobile();
-        if (list && list.length > 0) {
-          const top = list[0] as BroadcastMobileItem;
-          setActiveBroadcast(top);
-          setLikedState(top.liked);
-          setShow(true);
+    const top = initialBroadcasts[0];
+    setActiveBroadcast(top);
+    setLikedState(top.liked);
+    setShow(true);
+  }, [mounted, initialBroadcasts, activeBroadcast, show]);
 
-          await interactWithBroadcast(top.id, "view");
-        }
-      } catch (err) {
-        console.error("Failed to load broadcast popups:", err);
-      }
-    }
+  useEffect(() => {
+    if (!activeBroadcast) return;
+    if (trackedRef.current === activeBroadcast.id) return;
 
-    checkPopup();
-  }, [pathname, show, activeBroadcast]);
+    trackedRef.current = activeBroadcast.id;
+    interactWithBroadcast(activeBroadcast.id, "view").catch(console.error);
+  }, [activeBroadcast]);
 
   const handleClose = async () => {
     if (!activeBroadcast) return;
@@ -137,19 +117,17 @@ export function MobileBroadcastPopup({
 
     try {
       await interactWithBroadcast(activeBroadcast.id, targetReaction);
-      // If they reacted, close the popup and do not show it again
       setShow(false);
     } catch (err) {
       console.error(err);
     }
   };
 
-  if (!show || !activeBroadcast) return null;
+  if (!mounted || !show || !activeBroadcast) return null;
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-5 animate-in fade-in duration-200">
       <div className="relative w-full max-w-[340px] max-h-[85vh] rounded-[1.5rem] bg-white shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-muted/80">
-        
         {/* Header Ribbon - Fixed */}
         <div className="bg-[#003f78] px-4 py-2.5 flex items-center justify-between text-white shrink-0">
           <div className="flex items-center gap-1.5">

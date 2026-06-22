@@ -10,6 +10,7 @@ import {
   MapPin,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   TriangleAlert,
   Trophy,
   MessageSquare,
@@ -23,6 +24,7 @@ import { getApprovalCenterData } from "@/lib/approval-workspace";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { getSidebarDataForUser } from "@/lib/hero-admin";
+import { getMobileHc } from "@/lib/mobile-data";
 import { cn } from "@/lib/utils";
 
 function getGreeting() {
@@ -179,11 +181,29 @@ export default async function MobileDashboardPage() {
     redirect("/sign-in");
   }
 
-  const [data, approvalData, sidebarData] = await Promise.all([
-    getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }),
-    getApprovalCenterData(session.user.email),
-    getSidebarDataForUser(session.user.email),
-  ]);
+  let data: Awaited<ReturnType<typeof getDailyActivityEmployeeData>> = null;
+  let approvalData: Awaited<ReturnType<typeof getApprovalCenterData>> | null = null;
+  let sidebarData: Awaited<ReturnType<typeof getSidebarDataForUser>> | null = null;
+  let wellnessData: Awaited<ReturnType<typeof getMobileHc>> | null = null;
+
+  try {
+    [data, approvalData, sidebarData, wellnessData] = await Promise.all([
+      getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }),
+      getApprovalCenterData(session.user.email),
+      getSidebarDataForUser(session.user.email),
+      getMobileHc(session.user.email),
+    ]);
+  } catch (err) {
+    console.error("[mobile/dashboard] data fetch failed:", err);
+    return (
+      <div className="space-y-4 rounded-[1.25rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+        <p>Gagal memuat dashboard.</p>
+        <p className="text-xs font-normal text-slate-400">
+          {err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data."}
+        </p>
+      </div>
+    );
+  }
 
   if (!data) {
     return (
@@ -194,8 +214,8 @@ export default async function MobileDashboardPage() {
   }
   
   const isHR = data.employee.section === "HRGA" || data.employee.section === "HR-GA";
-  
-  const rawSidebarItems = [...sidebarData.navMain, ...sidebarData.navSecondary];
+
+  const rawSidebarItems = [...(sidebarData?.navMain ?? []), ...(sidebarData?.navSecondary ?? [])];
   const seenUrls = new Set<string>();
   const sidebarItems = rawSidebarItems
     .map((item) => {
@@ -264,7 +284,7 @@ export default async function MobileDashboardPage() {
           <div>
             <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#f4a78d]">Approval Center</p>
             <h2 className="mt-1 text-base font-black leading-tight text-[#082033]">
-              {approvalData.inboxMetrics.pendingActivities > 0
+              {(approvalData?.inboxMetrics.pendingActivities ?? 0) > 0
                 ? `${approvalData.inboxMetrics.pendingActivities} Item Menunggu`
                 : "Inbox Approval Bersih"}
             </h2>
@@ -282,22 +302,22 @@ export default async function MobileDashboardPage() {
         {/* Sleek inline metrics */}
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-center gap-2">
           <div className="flex-1">
-            <span className="block text-xs font-black text-[#082033]">{approvalData.inboxMetrics.pendingGroups}</span>
+            <span className="block text-xs font-black text-[#082033]">{approvalData?.inboxMetrics.pendingGroups ?? 0}</span>
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Group</span>
           </div>
           <div className="h-6 w-[1px] bg-slate-100" />
           <div className="flex-1">
-            <span className="block text-xs font-black text-[#082033]">{approvalData.inboxMetrics.pendingActivities}</span>
+            <span className="block text-xs font-black text-[#082033]">{approvalData?.inboxMetrics.pendingActivities ?? 0}</span>
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
           </div>
           <div className="h-6 w-[1px] bg-slate-100" />
           <div className="flex-1">
-            <span className="block text-xs font-black text-amber-600">{approvalData.inboxMetrics.dueSoon}</span>
+            <span className="block text-xs font-black text-amber-600">{approvalData?.inboxMetrics.dueSoon ?? 0}</span>
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Soon</span>
           </div>
           <div className="h-6 w-[1px] bg-slate-100" />
           <div className="flex-1">
-            <span className="block text-xs font-black text-rose-600">{approvalData.inboxMetrics.overdue}</span>
+            <span className="block text-xs font-black text-rose-600">{approvalData?.inboxMetrics.overdue ?? 0}</span>
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Late</span>
           </div>
         </div>
@@ -402,6 +422,41 @@ export default async function MobileDashboardPage() {
         </div>
       </section>
 
+      {/* MCU Wellness shortcut */}
+      {wellnessData?.mcuHistory && wellnessData.mcuHistory.length > 0 && (
+        <section className="space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Medical Check Up</p>
+          <Link
+            prefetch={false}
+            href="/mobile/wellness"
+            className="flex items-center justify-between rounded-[1.25rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)] active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-center gap-3">
+              <span className={cn(
+                "flex size-11 items-center justify-center rounded-2xl",
+                wellnessData.mcuHistory[0].status === "fit"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : wellnessData.mcuHistory[0].status === "unfit"
+                  ? "bg-rose-50 text-rose-600"
+                  : "bg-amber-50 text-amber-600"
+              )}>
+                <Stethoscope className="size-5" />
+              </span>
+              <div>
+                <p className="text-sm font-black text-[#082033]">
+                  MCU {wellnessData.mcuHistory[0].mcuDate
+                    ? new Date(wellnessData.mcuHistory[0].mcuDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                    : "-"}
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-[#486275]">
+                  {wellnessData.mcuHistory[0].aiKategori || wellnessData.mcuHistory[0].status || "Lihat detail"}
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="size-4 text-[#486275]" />
+          </Link>
+        </section>
+      )}
 
     </div>
   );

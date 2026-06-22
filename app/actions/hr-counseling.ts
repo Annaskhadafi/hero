@@ -229,6 +229,7 @@ export async function getMessages(sessionId: number) {
       senderName: employees.name,
       message: hrCounselingMessages.message,
       attachmentUrl: hrCounselingMessages.attachmentUrl,
+      fileName: hrCounselingMessages.attachmentFileName,
       isRead: hrCounselingMessages.isRead,
       createdAt: hrCounselingMessages.createdAt,
     })
@@ -254,7 +255,12 @@ export async function getMessages(sessionId: number) {
   return resolvedMessages;
 }
 
-export async function sendMessage(sessionId: number, message: string, attachmentUrl?: string | null) {
+export async function sendMessage(
+  sessionId: number,
+  message: string,
+  attachmentUrl?: string | null,
+  attachmentFileName?: string | null
+) {
   const employee = await getCurrentEmployee();
   if (!employee) throw new Error("Unauthorized");
 
@@ -270,6 +276,7 @@ export async function sendMessage(sessionId: number, message: string, attachment
       senderId: employee.id,
       message,
       attachmentUrl,
+      attachmentFileName,
     })
     .returning();
 

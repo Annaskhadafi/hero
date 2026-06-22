@@ -61,7 +61,7 @@ const drawerItems = [
   { label: 'LMS Chitra Learning', href: '/mobile/lms', icon: BookOpen },
   { label: 'Training', href: '/mobile/training', icon: ShieldAlert },
   { label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
-  { label: 'Gamification', href: '/mobile/gamification', icon: Trophy },
+  { label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy },
   { label: 'Executive', href: '/mobile/executive', icon: BarChart3 },
   { label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package },
   { label: 'Profile', href: '/mobile/profile', icon: UserRound },
@@ -206,6 +206,7 @@ export function MobileAppShell({
               </SheetTrigger>
               <SheetContent
                 side="left"
+                hideCloseButton
                 className="flex w-[min(320px,88vw)] flex-col border-0 bg-[#f6fbff] p-0"
               >
                 <SheetHeader className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(233,246,253,0.88))] px-5 py-5 text-left shadow-[0_14px_30px_rgba(8,32,51,0.08)]">

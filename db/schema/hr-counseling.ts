@@ -33,6 +33,7 @@ export const hrCounselingMessages = pgTable("hero_hr_counseling_messages", {
     .references(() => employees.id, { onDelete: "cascade" }),
   message: text("message").notNull().default(""),
   attachmentUrl: text("attachment_url"),
+  attachmentFileName: text("attachment_file_name"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

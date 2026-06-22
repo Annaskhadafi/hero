@@ -23,6 +23,8 @@ async function main() {
       session_id INTEGER NOT NULL REFERENCES hero_hr_counseling_sessions(id) ON DELETE CASCADE,
       sender_id INTEGER NOT NULL REFERENCES hero_employees(id) ON DELETE CASCADE,
       message TEXT NOT NULL,
+      attachment_url TEXT,
+      attachment_file_name TEXT,
       is_read BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );

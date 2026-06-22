@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -324,7 +324,7 @@ export async function getMobileHc(email?: string | null) {
     const allMetrics = await db
       .select()
       .from(employeeMcuMetrics)
-      .where(sql`${employeeMcuMetrics.mcuId} = any(${mcuIds})`);
+      .where(inArray(employeeMcuMetrics.mcuId, mcuIds));
     mcuWithMetrics = mcuRecords.map((m) => ({
       ...m,
       metrics: allMetrics.filter((met) => met.mcuId === m.id),
@@ -353,6 +353,17 @@ export async function getMobileGamification(email?: string | null) {
     return null;
   }
 
+  const leaderboardWhere = context.employee.sectionId
+    ? and(
+        eq(employees.isActive, true),
+        eq(employees.siteId, context.employee.siteId),
+        eq(employees.sectionId, context.employee.sectionId)
+      )
+    : and(
+        eq(employees.isActive, true),
+        eq(employees.siteId, context.employee.siteId)
+      );
+
   const [leaderboard, events] = await Promise.all([
     db
       .select({
@@ -360,11 +371,13 @@ export async function getMobileGamification(email?: string | null) {
         name: employees.name,
         role: employees.role,
         department: employees.department,
+        section: employees.section,
+        workLocation: employees.workLocation,
         levelName: employees.levelName,
         totalPoints: employees.totalPoints,
       })
       .from(employees)
-      .where(eq(employees.isActive, true))
+      .where(leaderboardWhere)
       .orderBy(desc(employees.totalPoints))
       .limit(20),
     db

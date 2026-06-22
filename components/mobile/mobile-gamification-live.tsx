@@ -12,6 +12,8 @@ type GamificationPayload = {
       id: number;
       name: string;
       department: string;
+      section: string;
+      workLocation: string;
       levelName: string;
       totalPoints: number;
     };
@@ -21,6 +23,8 @@ type GamificationPayload = {
     name: string;
     role: string;
     department: string;
+    section: string;
+    workLocation: string;
     levelName: string;
     totalPoints: number;
   }>;
@@ -95,8 +99,11 @@ export function MobileGamificationLive({
   return (
     <div className="space-y-5">
       <section>
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Gamification</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Point Arena</h1>
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">Leaderboard</p>
+        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Section & Site Rank</h1>
+        <p className="mt-1 text-xs font-semibold text-[#486275]">
+          {data.context.employee.section || "Section"} · {data.context.employee.workLocation || "Site"}
+        </p>
       </section>
 
       <section className="rounded-[1.35rem] bg-[#003f78] p-5 text-white shadow-[0_20px_42px_rgba(0,63,120,0.24)]">
@@ -172,7 +179,7 @@ export function MobileGamificationLive({
       </section>
 
       <section className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Site Leaderboard</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Section Leaderboard</p>
         {data.leaderboard.slice(0, 10).map((employee, index) => (
           <article
             key={employee.id}
@@ -184,7 +191,7 @@ export function MobileGamificationLive({
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-sm font-black text-[#082033]">{employee.name}</h2>
               <p className="text-xs font-semibold text-[#486275]">
-                {employee.levelName} · {employee.department}
+                {employee.levelName} · {employee.workLocation || "Site"}
               </p>
             </div>
             <p className="text-sm font-black text-[#003f78]">{employee.totalPoints}</p>

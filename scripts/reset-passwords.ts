@@ -27,7 +27,7 @@ async function main() {
     if (!emp.authUserId) continue;
     
     // Create dynamic password based on employee SN
-    const normalizedSn = (emp.employeeSn || '').trim().replace(/^EMP-/i, '');
+    const normalizedSn = (emp.employeeSn || '').trim().replace(/^emp[-]?/i, '');
     const newPassword = `Chitra#${normalizedSn}`;
     
     const hashedPassword = await hashPassword(newPassword);

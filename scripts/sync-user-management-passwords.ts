@@ -6,14 +6,14 @@ import { account, user } from '@/db/schema/auth'
 import { employees } from '@/db/schema/hero'
 
 const EXCLUDED_EMAIL = 'mochamad.khadafi@chitraparatama.co.id'
-const BATCH_SIZE = 1
+const BATCH_SIZE = 5
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
 function normalizeEmployeeSnForPassword(employeeSn: string) {
-  return employeeSn.trim().replace(/^EMP-/i, '')
+  return employeeSn.trim().replace(/^emp[-]?/i, '')
 }
 
 function defaultPassword(employeeSn: string) {

@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, Wand2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -41,14 +41,15 @@ function SignInContent() {
     const displayEmail = resolvedEmail || email;
     const [message, setMessage] = useState("");
     const { data: session, isPending } = useSession();
-    const router = useRouter();
     const searchParams = useSearchParams();
 
     useEffect(() => {
         if (session?.user) {
-            router.replace(getClientPostLoginPath());
+            // Full page navigation to guarantee the fresh session cookie
+            // is present on the next server render.
+            window.location.href = getClientPostLoginPath();
         }
-    }, [router, session]);
+    }, [session]);
 
     useEffect(() => {
         if (searchParams.get("reset") === "success") {
@@ -96,7 +97,9 @@ function SignInContent() {
                 return;
             }
 
-            router.replace(callbackURL);
+            // Use full page navigation so the new session cookie is guaranteed
+            // to be present on the next server render.
+            window.location.href = callbackURL;
         } catch {
             setError("An unexpected error occurred");
         } finally {

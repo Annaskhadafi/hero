@@ -1,6 +1,6 @@
 # Project Memory
 
-## Last Updated: 2026-06-18
+## Last Updated: 2026-06-22
 
 ## Key Decisions
 - Using Next.js with App Router
@@ -16,7 +16,15 @@
 - RBAC for all admin features
 
 ## History
-- 2026-06-14: Initial memory system setup
+- 2026-06-22: Mobile dashboard Layanan Chitra updated: added Wellness and Leaderboard icons without replacing existing services (grid now shows all items across multiple rows); renamed Gamification to Leaderboard; mobile leaderboard filtered by same site and same section as logged-in employee
+- 2026-06-22: SheetContent UI component now supports hideCloseButton prop to avoid duplicate close buttons when a custom close button is provided; mobile sidebar uses hideCloseButton to keep only the header close button
+- 2026-06-22: Fixed post-login mobile dashboard "Rendered more hooks than during the previous render" by deferring MobileBroadcastPopup rendering until client mount, replacing sign-in router.replace with full page navigation, adding mobile segment error boundary, and making dashboard data fetching non-throwing with fallback UI
+- 2026-06-22: Mobile dashboard now shows MCU shortcut card linking to /mobile/wellness with latest MCU date and status
+- 2026-06-22: MCU Wellness dashboard table Doc MCU column changed to Eye/Download icon buttons; mobile revalidation added after MCU upload/AI save; mobile wellness scorecards kept as MCU records + MCU status with progress bar to next due
+- 2026-06-22: Mobile wellness page converted to client component with collapsible MCU and Wellness Log sections, plus PDF popup viewer with download button for MCU documents
+- 2026-06-22: Mobile profile sections made collapsible and fixed mobile wellness malformed array literal by replacing sql ANY with inArray for employeeMcuMetrics query
+- 2026-06-22: Mobile profile MCU query switched from pre-hire hcCandidateMcu to post-hire employeeMcu (hero_employee_mcu)
+- 2026-06-22: Curhat HR chat upload fixed with local fallback storage, original extension preservation, and realtime 3-second polling; added attachment_file_name column to hero_hr_counseling_messages
 - 2026-06-18: Stage 2 email workflow completed for resend invitation, workflow template seeds, and source-inspection coverage
 - 2026-06-18: Stage 3 email settings UI adds workflow preset registry, placeholder metadata, and live preview for template editing
 - 2026-06-18: Stage 4 email settings adds restore-default and sync-all preset actions from admin UI

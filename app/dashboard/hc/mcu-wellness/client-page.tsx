@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronRight,
+  Download,
   Eye,
   FileText,
   HeartPulse,
@@ -433,16 +434,25 @@ function McuKaryawanTab({
                   <TableCell>{getReminderBadge(row)}</TableCell>
                   <TableCell>
                     {row.resultFileUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDocUrl(row.resultFileUrl);
-                          setDocName(row.resultFileName || "Dokumen MCU");
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-[#0f172a] hover:bg-slate-100"
-                      >
-                        <FileText className="size-4" /> Lihat
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          onClick={() => {
+                            setDocUrl(row.resultFileUrl);
+                            setDocName(row.resultFileName || "Dokumen MCU");
+                          }}
+                          title="Lihat dokumen MCU"
+                        >
+                          <Eye className="size-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="size-7" asChild title="Download dokumen MCU">
+                          <a href={row.resultFileUrl} download={row.resultFileName || true}>
+                            <Download className="size-4" />
+                          </a>
+                        </Button>
+                      </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>
                     )}
