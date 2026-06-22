@@ -266,6 +266,7 @@ export async function sendMessage(
   if (!employee) throw new Error("Unauthorized");
 
   const session = await getSessionDetail(sessionId);
+  if (!session) throw new Error("Session not found");
   if (session.status === "closed") {
     throw new Error("Cannot send message to a closed session");
   }
