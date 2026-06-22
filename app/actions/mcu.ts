@@ -176,7 +176,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
           companyName: "PT Chitra Paratama",
           letterNumber: `MCU/${candidate.id}/${Date.now()}`,
           signatoryName: data.signatoryName || "Muhammad Iqbal",
-          signatoryTitle: data.signatoryTitle || "HR-GA Admin",
+          signatoryTitle: data.signatoryTitle || "HR-GA Supervisor",
           signatureUrl: data.signatureUrl,
         });
         pdfBuffer = Buffer.from(pdfBytes);
@@ -451,7 +451,7 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
             companyName: "PT Chitra Paratama",
             letterNumber: `MCU/${candidate.id}/${Date.now()}`,
             signatoryName: data.signatoryName || "Muhammad Iqbal",
-            signatoryTitle: data.signatoryTitle || "HR-GA Admin",
+            signatoryTitle: data.signatoryTitle || "HR-GA Supervisor",
             signatureUrl: data.signatureUrl,
           });
           pdfBuffer = Buffer.from(pdfBytes);

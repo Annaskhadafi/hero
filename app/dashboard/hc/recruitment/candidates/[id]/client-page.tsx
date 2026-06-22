@@ -121,8 +121,8 @@ import { saveOffering, sendOfferingEmail, respondToOffering } from "@/app/action
 
 const MCU_SIGNERS = [
   { name: "Muhammad Iqbal", title: "HR-GA Supervisor", signatureUrl: "/ttd Muhammad Iqbal.png" },
-  { name: "Adila Tri Arizona", title: "HR-GA Admin", signatureUrl: "/ttd Adila Tri Arizona.png" },
-  { name: "Kesuma Bagaskara", title: "HR-GA Admin", signatureUrl: "/ttd Kesuma Bagaskara.png" },
+  { name: "Adila Tri Arizona", title: "HR Recruitment & GA", signatureUrl: "/ttd Adila Tri Arizona.png" },
+  { name: "Kesuma Bagaskara", title: "HR Operation & IR", signatureUrl: "/ttd Kesuma Bagaskara.png" },
   { name: "Rendra Rachman", title: "Human Capital Manager", signatureUrl: "" },
 ];
 

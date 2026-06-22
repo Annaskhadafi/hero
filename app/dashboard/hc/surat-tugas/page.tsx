@@ -9,7 +9,7 @@ export const metadata = {
 
 const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: string }> = {
   'Adila Tri Arizona': {
-    jobTitle: 'HR Recruitement & GA',
+    jobTitle: 'HR Recruitment & GA',
     signatureUrl: '/ttd Adila Tri Arizona.png',
   },
   'Kesuma Bagaskara': {
@@ -20,11 +20,8 @@ const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: str
     jobTitle: 'HR-GA Supervisor',
     signatureUrl: '/ttd Muhammad Iqbal.png',
   },
-  'Putri Rezky Fitriana': {
-    jobTitle: 'HR Development & COMBEN',
-  },
-  'Putri Rezky Putriana': {
-    jobTitle: 'HR Development & COMBEN',
+  'Putri R. Fitriana': {
+    jobTitle: 'HR Development & Comben',
   },
   'Rendra Rachman': {
     jobTitle: 'Human Capital Manager',
@@ -56,12 +53,17 @@ export default async function SuratTugasPage() {
       })
       .from(employees)
       .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
       .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
       .leftJoin(hrOrgNodes, eq(employees.orgNodeId, hrOrgNodes.id))
       .where(
         and(
           eq(employees.isActive, true),
           or(
+            ilike(masterSections.name, '%Human Resources%GA%'),
+            ilike(masterSections.name, '%HR%GA%'),
+            ilike(employees.section, '%Human Resources%GA%'),
+            ilike(employees.section, '%HR%GA%'),
             ilike(hrOrgNodes.name, '%HR-GA%'),
             ilike(hrOrgNodes.name, '%HR GA%'),
             ilike(hrOrgNodes.pathText, '%HR-GA%'),
