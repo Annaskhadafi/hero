@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   ThumbsUp,
   ThumbsDown,
@@ -11,6 +12,7 @@ import {
   FileText,
   ImageIcon,
   Video as VideoIcon,
+  PlusCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,7 @@ interface BroadcastHistoryItem {
 
 interface InformationClientProps {
   initialHistory: BroadcastHistoryItem[];
+  canCreate?: boolean;
 }
 
 function VideoPlayer({ url }: { url: string }) {
@@ -64,7 +67,7 @@ function VideoPlayer({ url }: { url: string }) {
   );
 }
 
-export function InformationClient({ initialHistory }: InformationClientProps) {
+export function InformationClient({ initialHistory, canCreate = false }: InformationClientProps) {
   const [historyList, setHistoryList] = useState<BroadcastHistoryItem[]>(initialHistory);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
@@ -109,6 +112,16 @@ export function InformationClient({ initialHistory }: InformationClientProps) {
 
   return (
     <div className="space-y-4">
+      {canCreate && (
+        <Link
+          href="/mobile/information/create"
+          className="flex items-center justify-center gap-2 w-full rounded-2xl bg-[#003f78] py-3.5 text-sm font-bold text-white shadow-lg active:scale-[0.98] transition-transform"
+        >
+          <PlusCircle className="size-5" />
+          Buat Informasi Baru
+        </Link>
+      )}
+
       {historyList.length === 0 ? (
         <div className="rounded-[1.5rem] bg-white p-8 text-center text-sm font-semibold text-[#486275] shadow-sm border">
           Belum ada informasi dari Head Office / Section Head.

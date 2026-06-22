@@ -54,7 +54,8 @@ async function getCreatorPermissions(email: string) {
       role === "HR Admin" ||
       role === "Admin" ||
       role === "Site Admin" ||
-      role === "HO Admin"
+      role === "HO Admin" ||
+      role === "HC Manager"
     ) {
       isSuperOrHrAdmin = true;
     }
