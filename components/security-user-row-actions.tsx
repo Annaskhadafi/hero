@@ -139,7 +139,7 @@ export function SecurityUserRowActions({
   const selectedSectionName =
     sections.find((section) => section.id.toString() === selectedSectionId)?.name || user.section
   const resolvedWorkLocation =
-    user.workLocation || selectedSite?.name || ''
+    selectedSite?.name || user.workLocation || ''
 
   useEffect(() => {
     if (state.status === 'success') {

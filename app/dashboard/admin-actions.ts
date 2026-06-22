@@ -4310,7 +4310,7 @@ export async function manageSecurityUserAction(
           contractDurationStart,
           contractDurationEnd,
           permanentDate,
-          workLocation: payload.workLocation || selectedSite?.name || '',
+          workLocation: selectedSite?.name || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,
           employmentStatus: normalizedStatus.status,

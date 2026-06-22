@@ -5,6 +5,7 @@ import {
   Building2,
   Crown,
   GitBranch,
+  MapPin,
   Search,
   UserRound,
   Users,
@@ -19,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { EnterpriseScorecards } from "@/components/ui/enterprise-table-kit";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type OrgNode = {
   id: number;
@@ -112,6 +114,26 @@ type ExecutiveNode = {
   title: string;
   employee: OrgEmployee | null;
   children: ExecutiveNode[];
+};
+
+type SiteSectionNode = {
+  id: number | string;
+  name: string;
+  headEmployee: OrgEmployee | null;
+  members: OrgEmployee[];
+};
+
+type SiteDepartmentNode = {
+  id: number | string;
+  name: string;
+  sections: SiteSectionNode[];
+  headEmployee: OrgEmployee | null;
+};
+
+type SiteNode = {
+  id: number | string;
+  name: string;
+  departments: SiteDepartmentNode[];
 };
 
 // Executive hierarchy: Director > Board Secretary + General Manager
@@ -359,6 +381,94 @@ function buildOrgData(nodes: OrgNode[], referenceData: ReferenceData, allEmploye
   }
 
   return { executiveTree, departments };
+}
+
+// --- Build Site Structure ---
+
+function buildSiteStructure(allEmployees: OrgEmployee[], referenceData: ReferenceData): SiteNode[] {
+  const seen = new Set<number>();
+  const unique = allEmployees.filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
+
+  // Build head maps from reference data
+  const deptHeadMap = new Map<number, OrgEmployee | null>();
+  for (const d of referenceData.departments) {
+    if (d.headEmployeeId) {
+      const head = unique.find((e) => e.id === d.headEmployeeId) ?? null;
+      deptHeadMap.set(d.id, head);
+    }
+  }
+  const sectHeadMap = new Map<number, OrgEmployee | null>();
+  for (const s of referenceData.sections) {
+    if (s.headEmployeeId) {
+      const head = unique.find((e) => e.id === s.headEmployeeId) ?? null;
+      sectHeadMap.set(s.id, head);
+    }
+  }
+
+  // siteKey → deptId → sectId → OrgEmployee[]
+  const raw = new Map<string, Map<number, Map<number, OrgEmployee[]>>>();
+  const siteMeta = new Map<string, { id: number | string; name: string }>();
+  const deptMeta = new Map<string, { id: number; name: string }>();
+  const sectMeta = new Map<string, { id: number; name: string }>();
+
+  for (const emp of unique) {
+    const sk = emp.siteId ? `s${emp.siteId}` : "__none__";
+    if (!siteMeta.has(sk)) siteMeta.set(sk, { id: emp.siteId ?? "__none__", name: emp.siteName ?? "Tanpa Lokasi" });
+    if (!raw.has(sk)) raw.set(sk, new Map());
+
+    const did = emp.departmentId ?? 0;
+    const depts = raw.get(sk)!;
+    if (!depts.has(did)) depts.set(did, new Map());
+    if (!deptMeta.has(`${sk}:${did}`)) deptMeta.set(`${sk}:${did}`, { id: did, name: emp.departmentName ?? "Tanpa Department" });
+
+    const sid = emp.sectionId ?? 0;
+    const sects = depts.get(did)!;
+    if (!sects.has(sid)) sects.set(sid, []);
+    if (!sectMeta.has(`${sk}:${did}:${sid}`)) sectMeta.set(`${sk}:${did}:${sid}`, { id: sid, name: emp.sectionName ?? "Tanpa Section" });
+
+    sects.get(sid)!.push(emp);
+  }
+
+  const result: SiteNode[] = [];
+
+  for (const [sk, depts] of raw) {
+    const departments: SiteDepartmentNode[] = [];
+
+    for (const [did, sects] of depts) {
+      const sections: SiteSectionNode[] = [];
+
+      for (const [sectId, emps] of sects) {
+        let head: OrgEmployee | null = null;
+        if (sectId && sectHeadMap.has(sectId)) head = sectHeadMap.get(sectId) ?? null;
+        sections.push({
+          id: sectId,
+          name: sectMeta.get(`${sk}:${did}:${sectId}`)?.name ?? "Unknown",
+          headEmployee: head,
+          members: emps.filter((e) => e.id !== head?.id),
+        });
+      }
+
+      sections.sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+
+      const deptName = deptMeta.get(`${sk}:${did}`)?.name ?? "Unknown";
+      let deptHead: OrgEmployee | null = null;
+      if (did && deptHeadMap.has(did)) deptHead = deptHeadMap.get(did) ?? null;
+
+      departments.push({ id: did, name: deptName, sections, headEmployee: deptHead });
+    }
+
+    departments.sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+
+    const meta = siteMeta.get(sk)!;
+    result.push({ id: meta.id, name: meta.name, departments });
+  }
+
+  result.sort((a, b) => a.name.localeCompare(b.name, "id-ID"));
+  return result;
 }
 
 // Build location-based grouping per Section for Central Services
@@ -670,6 +780,142 @@ function DepartmentCardComponent({
   );
 }
 
+// --- Site Structure Components ---
+
+function SiteSectionCard({ section }: { section: SiteSectionNode }) {
+  const hasContent = !!(section.headEmployee || section.members.length > 0);
+  if (!hasContent) return null;
+
+  const roleGroups = groupEmployeesByRole(section.members);
+
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+      <p className="text-balance text-sm font-bold leading-tight">{section.name}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-800 ring-1 ring-emerald-200">
+          SECTION
+        </span>
+      </div>
+
+      {section.headEmployee && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-2">
+          <Crown className="size-3.5 shrink-0 text-amber-500" />
+          <div className="min-w-0 text-left">
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[7px] font-bold uppercase text-amber-700 ring-1 ring-amber-200">HEAD</span>
+            <p className="truncate text-xs font-bold">{section.headEmployee.fullName}</p>
+            <p className="truncate text-[9px] text-slate-500">{section.headEmployee.positionName ?? section.headEmployee.levelName ?? "-"}</p>
+          </div>
+        </div>
+      )}
+
+      {roleGroups.length > 0 && (
+        <div className="mt-2 grid gap-1 text-left">
+          {roleGroups.map((group) => (
+            <div key={group.label} className="grid gap-1">
+              <div className="flex items-center justify-between">
+                <span className={"rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase ring-1 " + group.className}>{group.label}</span>
+                <span className="text-[8px] text-slate-400">{group.employees.length}</span>
+              </div>
+              {group.employees.map((emp) => (
+                <EmployeeCard key={`${group.label}-${emp.id}`} employee={emp} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SiteDeptCard({ dept }: { dept: SiteDepartmentNode }) {
+  const total = dept.sections.reduce((sum, s) => sum + s.members.length + (s.headEmployee ? 1 : 0), 0);
+
+  return (
+    <div className="flex flex-col items-center text-center">
+      <div className="w-[360px] rounded-2xl border border-sky-200 bg-sky-50 p-3 shadow-sm">
+        <p className="text-balance pt-2 text-base font-bold leading-tight">{dept.name}</p>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-800 ring-1 ring-sky-200">
+            <Building2 className="mr-0.5 inline size-2.5" /> DEPARTMENT
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200/80">
+            <Users className="size-3" /> Total {total}
+          </span>
+        </div>
+
+        {dept.headEmployee && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border-2 border-amber-300/50 bg-amber-50/60 p-2.5 shadow-md">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+              <Crown className="size-4 text-amber-600" />
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[7px] font-bold uppercase text-amber-700 ring-1 ring-amber-200">DEPT HEAD</span>
+              <p className="truncate text-sm font-bold">{dept.headEmployee.fullName}</p>
+              <p className="truncate text-[10px] text-slate-500">{dept.headEmployee.positionName ?? dept.headEmployee.levelName ?? "-"}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {dept.sections.length > 0 && (
+        <div className="flex flex-col items-center">
+          <div className="h-6 w-px bg-sky-300" />
+          <div className="relative flex items-start justify-start gap-6 px-6 pt-6">
+            <div className="absolute left-3 right-3 top-0 h-px bg-sky-300" />
+            {dept.sections.map((section, idx) => (
+              <div key={`${section.id}-${idx}`} className="relative flex flex-col items-center">
+                <div className="absolute -top-6 h-6 w-px bg-sky-300" />
+                <SiteSectionCard section={section} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SiteCardComponent({ site }: { site: SiteNode }) {
+  const totalEmps = site.departments.reduce((sum, d) => sum + d.sections.reduce((s, sec) => s + sec.members.length + (sec.headEmployee ? 1 : 0), 0) + (d.headEmployee ? 1 : 0), 0);
+
+  return (
+    <div className="flex flex-col items-center text-center">
+      <div className="w-[420px] rounded-2xl border-2 border-violet-300 bg-violet-50 p-4 shadow-sm">
+        <div className="flex items-center justify-center gap-2">
+          <MapPin className="size-5 text-violet-600" />
+          <p className="text-balance text-lg font-bold leading-tight text-violet-900">{site.name}</p>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-800 ring-1 ring-violet-200">
+            <MapPin className="mr-0.5 inline size-2.5" /> SITE
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200/80">
+            <Users className="size-3" /> Total {totalEmps}
+          </span>
+          <span className="rounded-full bg-violet-100/60 px-2 py-0.5 text-[9px] font-bold text-violet-700 ring-1 ring-violet-200">
+            {site.departments.length} departemen
+          </span>
+        </div>
+      </div>
+
+      {site.departments.length > 0 && (
+        <div className="flex flex-col items-center">
+          <div className="h-8 w-px bg-violet-300" />
+          <div className="relative flex items-start justify-start gap-10 px-8 pt-8">
+            <div className="absolute left-4 right-4 top-0 h-px bg-violet-300" />
+            {site.departments.map((dept, idx) => (
+              <div key={`${dept.id}-${idx}`} className="relative flex flex-col items-center">
+                <div className="absolute -top-8 h-8 w-px bg-violet-300" />
+                <SiteDeptCard dept={dept} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Main Page ---
 
 export function OrgChartV2ClientPage({
@@ -686,11 +932,19 @@ export function OrgChartV2ClientPage({
   const [query, setQuery] = useState("");
   const [departmentFilterId, setDepartmentFilterId] = useState("all");
   const [sectionFilterId, setSectionFilterId] = useState("all");
+  const [activeTab, setActiveTab] = useState("org-chart");
+  const [siteFilterId, setSiteFilterId] = useState("all");
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
 
   const orgData = useMemo(() => buildOrgData(nodes, referenceData, allEmployees), [nodes, referenceData, allEmployees]);
+  const siteStructure = useMemo(() => buildSiteStructure(allEmployees, referenceData), [allEmployees, referenceData]);
+
+  const filteredSites = useMemo(() => {
+    if (siteFilterId === "all") return siteStructure;
+    return siteStructure.filter((s) => s.id.toString() === siteFilterId);
+  }, [siteStructure, siteFilterId]);
 
   const filteredDepts = useMemo(() => {
     let depts = orgData.departments;
@@ -795,82 +1049,141 @@ export function OrgChartV2ClientPage({
       />
       <div className="space-y-6">
         <EnterpriseScorecards items={scorecards} />
-        <Card className="overflow-hidden border-slate-200/60 shadow-sm">
-          <CardHeader className="gap-4 border-b bg-white pb-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle className="text-lg">Struktur Organisasi (Dept {">"} Section {">"} Sub)</CardTitle>
-              <CardDescription>Department Head dan Section Head dari master data. Yang sudah tampil di atas tidak diulang.</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-              <Select value={departmentFilterId} onValueChange={(v) => { setDepartmentFilterId(v); setSectionFilterId("all"); }}>
-                <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter department" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Department</SelectItem>
-                  {referenceData.departments.map((d) => <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={sectionFilterId} onValueChange={setSectionFilterId}>
-                <SelectTrigger className="h-9 w-[180px] bg-white"><SelectValue placeholder="Filter section" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Section</SelectItem>
-                  {referenceData.sections.filter((s) => departmentFilterId === "all" || s.departmentId?.toString() === departmentFilterId).map((s) => (
-                    <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
-                <Input placeholder="Cari..." value={query} onChange={(e) => setQuery(e.target.value)} className="h-9 w-[160px] bg-white pl-8 text-xs" />
-              </div>
-              <button type="button" onClick={handleExpandAll} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
-                <ChevronDown className="size-3" /> Expand
-              </button>
-              <button type="button" onClick={handleCollapseAll} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
-                <ChevronRight className="size-3" /> Collapse
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div ref={canvasRef} className={"relative min-h-[600px] overflow-auto bg-slate-50/50 " + (isCanvasPanning ? "cursor-grabbing" : "cursor-grab")} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} onPointerUp={stopCanvasPan} onPointerLeave={stopCanvasPan}>
-              <div className="p-6">
-                <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm">
-                  <span className="font-semibold text-slate-900">Level:</span>
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">BOD</span>
-                  <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">DEPARTMENT</span>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SECTION</span>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">SUB-SECTION</span>
-                  <span className="ml-auto hidden text-slate-500 lg:inline">
-                    <Crown className="mr-1 inline size-3 text-amber-500" /> Head dari Master Data
-                  </span>
-                </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="mb-0">
+            <TabsTrigger value="org-chart"><Building2 className="size-4" /> Struktur Organisasi</TabsTrigger>
+            <TabsTrigger value="site-structure"><MapPin className="size-4" /> Site Structure</TabsTrigger>
+          </TabsList>
 
-                {/* Executive Tree */}
-                <div className="mb-10 flex justify-center">
-                  <ExecutiveCard node={orgData.executiveTree} />
+          <TabsContent value="org-chart" className="mt-0">
+            <Card className="overflow-hidden border-slate-200/60 shadow-sm">
+              <CardHeader className="gap-4 border-b bg-white pb-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="text-lg">Struktur Organisasi (Dept {">"} Section {">"} Sub)</CardTitle>
+                  <CardDescription>Department Head dan Section Head dari master data. Yang sudah tampil di atas tidak diulang.</CardDescription>
                 </div>
-
-                {/* Departments under GM */}
-                <div className="mb-4 text-center">
-                  <span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-800 ring-1 ring-sky-200">
-                    <Building2 className="mr-1 inline size-3" /> Departments under General Manager
-                  </span>
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                  <Select value={departmentFilterId} onValueChange={(v) => { setDepartmentFilterId(v); setSectionFilterId("all"); }}>
+                    <SelectTrigger className="h-9 w-[210px] bg-white"><SelectValue placeholder="Filter department" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Department</SelectItem>
+                      {referenceData.departments.map((d) => <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={sectionFilterId} onValueChange={setSectionFilterId}>
+                    <SelectTrigger className="h-9 w-[180px] bg-white"><SelectValue placeholder="Filter section" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Section</SelectItem>
+                      {referenceData.sections.filter((s) => departmentFilterId === "all" || s.departmentId?.toString() === departmentFilterId).map((s) => (
+                        <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+                    <Input placeholder="Cari..." value={query} onChange={(e) => setQuery(e.target.value)} className="h-9 w-[160px] bg-white pl-8 text-xs" />
+                  </div>
+                  <button type="button" onClick={handleExpandAll} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                    <ChevronDown className="size-3" /> Expand
+                  </button>
+                  <button type="button" onClick={handleCollapseAll} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+                    <ChevronRight className="size-3" /> Collapse
+                  </button>
                 </div>
-                <div className="inline-flex min-w-full flex-wrap items-start justify-center gap-10 rounded-2xl p-4">
-                  {searchFilteredDepts.length === 0 ? (
-                    <div className="flex w-full flex-col items-center justify-center gap-3 py-24 text-slate-400">
-                      <GitBranch className="size-10 opacity-30" />
-                      <p className="text-sm font-medium">Tidak ada data</p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div ref={canvasRef} className={"relative min-h-[600px] overflow-auto bg-slate-50/50 " + (isCanvasPanning ? "cursor-grabbing" : "cursor-grab")} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} onPointerUp={stopCanvasPan} onPointerLeave={stopCanvasPan}>
+                  <div className="p-6">
+                    <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm">
+                      <span className="font-semibold text-slate-900">Level:</span>
+                      <span className="rounded-full bg-slate-900 px-2.5 py-1 font-semibold text-white">BOD</span>
+                      <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">DEPARTMENT</span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SECTION</span>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">SUB-SECTION</span>
+                      <span className="ml-auto hidden text-slate-500 lg:inline">
+                        <Crown className="mr-1 inline size-3 text-amber-500" /> Head dari Master Data
+                      </span>
                     </div>
-                  ) : (
-                    searchFilteredDepts.map((dept) => (
-                      <DepartmentCardComponent key={dept.id} dept={dept} expanded={expanded} onToggle={handleToggle} seenHeadIds={new Set()} />
-                    ))
-                  )}
+
+                    {/* Executive Tree */}
+                    <div className="mb-10 flex justify-center">
+                      <ExecutiveCard node={orgData.executiveTree} />
+                    </div>
+
+                    {/* Departments under GM */}
+                    <div className="mb-4 text-center">
+                      <span className="rounded-full bg-sky-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-sky-800 ring-1 ring-sky-200">
+                        <Building2 className="mr-1 inline size-3" /> Departments under General Manager
+                      </span>
+                    </div>
+                    <div className="inline-flex min-w-full flex-wrap items-start justify-center gap-10 rounded-2xl p-4">
+                      {searchFilteredDepts.length === 0 ? (
+                        <div className="flex w-full flex-col items-center justify-center gap-3 py-24 text-slate-400">
+                          <GitBranch className="size-10 opacity-30" />
+                          <p className="text-sm font-medium">Tidak ada data</p>
+                        </div>
+                      ) : (
+                        searchFilteredDepts.map((dept) => (
+                          <DepartmentCardComponent key={dept.id} dept={dept} expanded={expanded} onToggle={handleToggle} seenHeadIds={new Set()} />
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="site-structure" className="mt-0">
+            <Card className="overflow-hidden border-slate-200/60 shadow-sm">
+              <CardHeader className="gap-4 border-b bg-white pb-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="text-lg">Site Structure (Site {">"} Department {">"} Section)</CardTitle>
+                  <CardDescription>Struktur organisasi berdasarkan site/location. Filter berdasarkan lokasi untuk melihat detail tim.</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                  <Select value={siteFilterId} onValueChange={setSiteFilterId}>
+                    <SelectTrigger className="h-9 w-[220px] bg-white"><SelectValue placeholder="Filter site" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Site</SelectItem>
+                      {siteStructure.map((s) => (
+                        <SelectItem key={s.id.toString()} value={s.id.toString()}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="relative min-h-[600px] overflow-auto bg-slate-50/50">
+                  <div className="p-6">
+                    <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-xs text-slate-600 shadow-sm">
+                      <span className="font-semibold text-slate-900">Level:</span>
+                      <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-800"><MapPin className="mr-0.5 inline size-3" /> SITE</span>
+                      <span className="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-800">DEPARTMENT</span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">SECTION</span>
+                      <span className="ml-auto hidden text-slate-500 lg:inline">
+                        <Crown className="mr-1 inline size-3 text-amber-500" /> Head dari Master Data
+                      </span>
+                    </div>
+
+                    <div className="inline-flex min-w-full flex-wrap items-start justify-center gap-10 rounded-2xl p-4">
+                      {filteredSites.length === 0 ? (
+                        <div className="flex w-full flex-col items-center justify-center gap-3 py-24 text-slate-400">
+                          <MapPin className="size-10 opacity-30" />
+                          <p className="text-sm font-medium">Tidak ada data site</p>
+                        </div>
+                      ) : (
+                        filteredSites.map((site) => (
+                          <SiteCardComponent key={site.id.toString()} site={site} />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminPageShell>
   );
