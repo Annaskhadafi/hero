@@ -121,9 +121,11 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <IconUserCircle />
-                Akun
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/profile" className="flex items-center gap-2">
+                  <IconUserCircle />
+                  Akun
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconCreditCard />

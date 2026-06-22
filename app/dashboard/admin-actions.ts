@@ -2974,7 +2974,7 @@ function normalizeAuthEmail(email: string) {
 }
 
 function buildDefaultUserManagementPassword(employeeSn: string | null | undefined) {
-  const normalizedSn = (employeeSn ?? '').trim().replace(/^EMP-/i, '')
+  const normalizedSn = (employeeSn ?? '').trim().replace(/^emp[-]?/i, '')
   return `Chitra#${normalizedSn}`
 }
 
