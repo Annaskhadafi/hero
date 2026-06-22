@@ -52,6 +52,7 @@ const iconMap = {
   report: IconReport,
   settings: IconSettings,
   shield: IconShieldHalfFilled,
+  "shield-alert": IconShieldHalfFilled,
   users: IconUsers,
 } as const;
 
@@ -97,6 +98,12 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
       bg: "bg-amber-500/10 text-amber-600",
     },
     {
+      title: "Izin & Terlambat",
+      href: "/mobile/attendance/permission",
+      icon: ShieldCheck,
+      bg: "bg-rose-500/10 text-rose-600",
+    },
+    {
       title: "Chitra LMS",
       href: "/api/lms/sso",
       target: "_blank",
@@ -120,6 +127,12 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
       href: "/mobile/wellness",
       icon: Dumbbell,
       bg: "bg-teal-500/10 text-teal-600",
+    },
+    {
+      title: "Roster",
+      href: "/mobile/timesheet",
+      icon: CalendarRange,
+      bg: "bg-blue-500/10 text-blue-600",
     },
     {
       title: "Leaderboard",

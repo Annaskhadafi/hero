@@ -40,6 +40,20 @@ type NotificationCountResponse = {
   count: number
 }
 
+type DrawerLinkItem = {
+  type: 'link'
+  label: string
+  href: string
+  icon: typeof Home
+}
+
+type DrawerSectionItem = {
+  type: 'section'
+  label: string
+}
+
+type DrawerItem = DrawerLinkItem | DrawerSectionItem
+
 const bottomNavItems = [
   { label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
   { label: 'Activity', href: '/mobile/activity', icon: ClipboardList },
@@ -47,24 +61,34 @@ const bottomNavItems = [
   { label: 'Profile', href: '/mobile/profile', icon: UserRound },
 ]
 
-const drawerItems = [
-  { label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
-  { label: 'Informasi HO', href: '/mobile/information', icon: Bell },
-  { label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },
-  { ...mobileActivityDrawerItem, icon: ClipboardList },
-  { label: 'Absensi Wajah', href: '/mobile/attendance/face', icon: ScanFace },
-  { label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
-  { label: 'Overtime', href: '/mobile/overtime', icon: FileSignature },
-  { label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
-  { label: 'Daily Report', href: '/mobile/reports', icon: FileText },
-  { label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },
-  { label: 'LMS Chitra Learning', href: '/mobile/lms', icon: BookOpen },
-  { label: 'Training', href: '/mobile/training', icon: ShieldAlert },
-  { label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
-  { label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy },
-  { label: 'Executive', href: '/mobile/executive', icon: BarChart3 },
-  { label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package },
-  { label: 'Profile', href: '/mobile/profile', icon: UserRound },
+const drawerItems: DrawerItem[] = [
+  { type: 'section', label: 'HOME' },
+  { type: 'link', label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
+  { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
+  { type: 'section', label: 'AKTIVITAS' },
+  { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList },
+  { type: 'link', label: mobileActivityDrawerItem.label, href: mobileActivityDrawerItem.href, icon: ClipboardList },
+  { type: 'section', label: 'IZIN & ROSTER' },
+  { type: 'link', label: 'Izin Sakit & Terlambat', href: '/mobile/attendance/permission', icon: ShieldAlert },
+  { type: 'link', label: 'Overtime', href: '/mobile/overtime', icon: FileSignature },
+  { type: 'link', label: 'Roster', href: '/mobile/timesheet', icon: Timer },
+  { type: 'link', label: 'Timesheet', href: '/mobile/timesheet', icon: Timer },
+  { type: 'section', label: 'SAFETY & HSE' },
+  { type: 'link', label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
+  { type: 'link', label: 'HSE Checklist', href: '/mobile/hse/checklist', icon: ShieldCheck },
+  { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck },
+  { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck },
+  { type: 'section', label: 'LAINNYA' },
+  { type: 'link', label: 'Absensi Wajah', href: '/mobile/attendance/face', icon: ScanFace },
+  { type: 'link', label: 'Approval', href: '/mobile/approval', icon: CheckCircle2 },
+  { type: 'link', label: 'Daily Report', href: '/mobile/reports', icon: FileText },
+  { type: 'link', label: 'LMS Chitra Learning', href: '/mobile/lms', icon: BookOpen },
+  { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert },
+  { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell },
+  { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy },
+  { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3 },
+  { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package },
+  { type: 'link', label: 'Profile', href: '/mobile/profile', icon: UserRound },
 ]
 
 export function MobileAppShell({
@@ -230,8 +254,22 @@ export function MobileAppShell({
                     </SheetClose>
                   </div>
                 </SheetHeader>
-                <nav className="flex-1 space-y-2 overflow-y-auto px-4 py-5">
-                  {drawerItems.map((item) => {
+                <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
+                  {drawerItems.map((item, index) => {
+                    if (item.type === 'section') {
+                      return (
+                        <div
+                          key={`section-${index}`}
+                          className="flex items-center gap-2 px-3 pt-4 pb-1"
+                        >
+                          <span className="text-[9px] font-black tracking-[0.22em] text-[#6b8ba3] uppercase">
+                            {item.label}
+                          </span>
+                          <div className="flex-1 h-px bg-[#d8e8f3]" />
+                        </div>
+                      )
+                    }
+
                     const Icon = item.icon
                     const itemPath = item.href.split('?')[0]
                     const isActive = pathname === itemPath || pathname.startsWith(`${itemPath}/`)

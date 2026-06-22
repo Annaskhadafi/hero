@@ -145,6 +145,9 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
   if (cleanUrl === "/dashboard/approval") return "/mobile/approval";
   if (cleanUrl === "/dashboard/curhat") return "/mobile/curhat";
   if (cleanUrl === "/dashboard/hr-counseling") return "/mobile/hr-counseling";
+  if (cleanUrl === "/dashboard/hse/checklist-generator") return "/mobile/hse/checklist";
+  if (cleanUrl === "/dashboard/hse/jsa") return "/mobile/hse/jsa";
+  if (cleanUrl === "/dashboard/hse/izin-kerja-ptw") return "/mobile/hse/ptw";
   if (cleanUrl === "/dashboard/hse" || cleanUrl.startsWith("/dashboard/hse/")) return "/mobile/hse";
   if (cleanUrl === "/dashboard/gamification") return "/mobile/gamification";
   if (cleanUrl === "/dashboard/wellness") return "/mobile/wellness";
@@ -153,6 +156,7 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
   if (cleanUrl === "/dashboard/security/roles") return "/mobile/security/roles";
   if (cleanUrl === "/dashboard/reports") return "/mobile/reports";
   if (cleanUrl === "/dashboard/training") return "/mobile/training";
+  if (cleanUrl === "/dashboard/hc/permission") return "/mobile/attendance/permission";
   if (cleanUrl === "/dashboard/attendance" || cleanUrl.startsWith("/dashboard/attendance/")) return "/mobile/attendance";
   if (cleanUrl === "/dashboard/lms" || cleanUrl.startsWith("/api/lms")) return "/mobile/lms";
   if (cleanUrl === "/dashboard/hc/leader-performance" || cleanUrl.startsWith("/dashboard/hc/leader-performance")) return "/mobile/leader-performance";
@@ -164,7 +168,8 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
     "activity", "approval", "attendance", "cargo-manifest", "curhat",
     "executive", "gamification", "hr-counseling", "hse", "lms",
     "notifications", "overtime", "profile", "reports", "timesheet",
-    "training", "wellness", "leader-performance"
+    "training", "wellness", "leader-performance", "permission",
+    "checklist", "jsa", "ptw"
   ];
 
   if (knownMobilePages.includes(lastSegment)) {
