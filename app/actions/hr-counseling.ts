@@ -136,7 +136,7 @@ export async function getSessionDetail(sessionId: number) {
     .where(eq(hrCounselingSessions.id, sessionId))
     .limit(1);
 
-  if (!session) throw new Error("Session not found");
+  if (!session) return null;
   
   // Make sure only the HR or the User can access it
   if (session.userId !== employee.id && session.hrId !== employee.id) {
