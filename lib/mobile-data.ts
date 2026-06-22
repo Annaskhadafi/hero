@@ -7,6 +7,8 @@ import {
   attendanceRecords,
   dailyReports,
   employees,
+  employeeMcu,
+  employeeMcuMetrics,
   hseIncidents,
   hseObservations,
   notificationPushSubscriptions,
@@ -282,7 +284,7 @@ export async function getMobileHc(email?: string | null) {
   const monthStart = startOfMonth();
   const monthEnd = endOfMonth();
 
-  const [attendance, trainings, wellness] = await Promise.all([
+  const [attendance, trainings, wellness, mcuRecords] = await Promise.all([
     db
       .select()
       .from(attendanceRecords)
@@ -307,7 +309,27 @@ export async function getMobileHc(email?: string | null) {
       .where(eq(wellnessRecords.employeeId, context.employee.id))
       .orderBy(desc(wellnessRecords.recordedAt))
       .limit(12),
+    db
+      .select()
+      .from(employeeMcu)
+      .where(eq(employeeMcu.employeeId, context.employee.id))
+      .orderBy(desc(employeeMcu.mcuDate))
+      .limit(5),
   ]);
+
+  // Fetch metrics for latest MCU records
+  let mcuWithMetrics: Array<typeof mcuRecords[number] & { metrics: typeof employeeMcuMetrics.$inferSelect[] }> = [];
+  if (mcuRecords.length > 0) {
+    const mcuIds = mcuRecords.map((m) => m.id);
+    const allMetrics = await db
+      .select()
+      .from(employeeMcuMetrics)
+      .where(sql`${employeeMcuMetrics.mcuId} = any(${mcuIds})`);
+    mcuWithMetrics = mcuRecords.map((m) => ({
+      ...m,
+      metrics: allMetrics.filter((met) => met.mcuId === m.id),
+    }));
+  }
 
   const presentDays = new Set(
     attendance
@@ -320,6 +342,7 @@ export async function getMobileHc(email?: string | null) {
     attendance,
     trainings,
     wellness,
+    mcuHistory: mcuWithMetrics,
     reliability: Math.min(100, Math.round((presentDays / Math.max(1, new Date().getDate())) * 100)),
   };
 }

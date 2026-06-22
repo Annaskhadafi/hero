@@ -3109,4 +3109,59 @@ export const hcLeaderPerformance = pgTable('hero_hc_leader_performance', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+// ─── MCU Wellness Advance (annual employee MCU + AI extraction) ───────────
+// Source of truth for employee annual MCU records (post-hire), separate from
+// hero_hc_candidate_mcu (pre-hire recruitment MCU). Each record holds the AI
+// extracted summary/conclusion/recommendation plus per-metric breakdown stored
+// in hero_employee_mcu_metrics (flat table for trend querying).
+
+export const employeeMcu = pgTable('hero_employee_mcu', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  clinicId: integer('clinic_id').references(() => hcMcuClinics.id, { onDelete: 'set null' }),
+  clinicName: text('clinic_name').notNull().default(''),
+  clinicEmail: text('clinic_email').notNull().default(''),
+  paketMcu: text('paket_mcu').notNull().default(''),
+  scheduledDate: date('scheduled_date'),
+  mcuDate: date('mcu_date'), // actual examination date
+  status: text('status').notNull().default('scheduled'), // scheduled | done | fit | unfit | pending_review | cancelled
+  resultFileUrl: text('result_file_url').notNull().default(''),
+  resultFileName: text('result_file_name').notNull().default(''),
+  resultDate: date('result_date'),
+  examinedBy: text('examined_by').notNull().default(''),
+  uploadedBy: text('uploaded_by').notNull().default(''),
+  uploadedAt: timestamp('uploaded_at'),
+  // AI extracted fields
+  aiKesimpulan: text('ai_kesimpulan').notNull().default(''),
+  aiSaran: text('ai_saran').notNull().default(''),
+  aiKategori: text('ai_kategori').notNull().default(''), // Fit | Unfit | Perlu Review
+  aiRawJson: jsonb('ai_raw_json').$type<Record<string, unknown>>(),
+  aiModel: text('ai_model').notNull().default(''),
+  aiRunAt: timestamp('ai_run_at'),
+  // Reminder & scheduling helpers
+  nextMcuDue: date('next_mcu_due'), // mcuDate + 1 year
+  reminderSentAt: timestamp('reminder_sent_at'),
+  reminderThresholdDays: integer('reminder_threshold_days').notNull().default(30),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const employeeMcuMetrics = pgTable('hero_employee_mcu_metrics', {
+  id: serial('id').primaryKey(),
+  mcuId: integer('mcu_id')
+    .notNull()
+    .references(() => employeeMcu.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(), // hipertensi | kolesterol | asam_urat | jantung | diabetes | liver
+  metricKey: text('metric_key').notNull(), // tensi_sistolik | chol_total | ldl | hdl | trigliserida | asam_urat | ekg | treadmill | glukosa_puasa | gd2pp | hba1c | sgot | sgpt | gamma_gt | usg_abdomen
+  metricValue: text('metric_value').notNull().default(''),
+  metricUnit: text('metric_unit').notNull().default(''),
+  flag: text('flag').notNull().default('normal'), // normal | tinggi | rendah | abnormal
+  notes: text('notes').notNull().default(''),
+  recordedAt: timestamp('recorded_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
 

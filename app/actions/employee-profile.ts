@@ -23,6 +23,8 @@ import {
   hcLeaveTypes,
   wellnessRecords,
   hcCandidateMcu,
+  employeeMcu,
+  employeeMcuMetrics,
   streakRecords,
 } from "@/db/schema/hero";
 import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
@@ -425,6 +427,27 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
     }
   }
 
+  // ─── Annual MCU Wellness (post-hire) ────────────────────────────────
+  const annualMcuRecords = await db
+    .select()
+    .from(employeeMcu)
+    .where(eq(employeeMcu.employeeId, hrEmployeeId))
+    .orderBy(desc(employeeMcu.mcuDate))
+    .limit(10);
+
+  let annualMcu: Array<typeof employeeMcu.$inferSelect & { metrics: typeof employeeMcuMetrics.$inferSelect[] }> = [];
+  if (annualMcuRecords.length > 0) {
+    const mcuIds = annualMcuRecords.map((m) => m.id);
+    const allMetrics = await db
+      .select()
+      .from(employeeMcuMetrics)
+      .where(inArray(employeeMcuMetrics.mcuId, mcuIds));
+    annualMcu = annualMcuRecords.map((m) => ({
+      ...m,
+      metrics: allMetrics.filter((met) => met.mcuId === m.id),
+    }));
+  }
+
   return {
     hrEmployee: hrEmp,
     gamifiedEmployee: activeGamifiedEmp,
@@ -441,6 +464,7 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
     leaveRequests,
     wellness: healthWellness,
     recruitmentMcu,
+    annualMcu,
     streak,
     managerName,
   };

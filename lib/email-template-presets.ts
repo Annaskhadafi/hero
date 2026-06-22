@@ -2408,6 +2408,161 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
       period: '2026 Q1',
     },
   },
+  {
+    name: 'HC MCU Annual Reminder',
+    templateCode: 'mcu_annual_reminder',
+    templateType: 'Reminder',
+    deliveryChannel: 'email',
+    recipientScope: 'employee,hc',
+    ccEmail: '',
+    subject: '[HERO] Pengingat Medical Check Up Tahunan - {{employeeName}}',
+    htmlContent:
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#93c5fd;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital · Wellness</p></td>
+<td align="right"><span style="color:#60a5fa;font-size:22px">&#9670;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Ini adalah pengingat bahwa Medical Check Up (MCU) tahunan Anda akan jatuh tempo pada <strong>{{dueDate}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail MCU</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Departemen</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{departmentName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Jatuh Tempo</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{dueDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Hari Lagi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{daysUntilDue}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:12px 0 0">Mohon segera koordinasi dengan HC untuk penjadwalan MCU tahunan Anda.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent:
+      `Halo {{employeeName}},
+
+Ini pengingat bahwa Medical Check Up (MCU) tahunan Anda akan jatuh tempo pada {{dueDate}}.
+
+Detail MCU:
+Nama: {{employeeName}}
+SN: {{employeeSn}}
+Departemen: {{departmentName}}
+Jatuh Tempo: {{dueDate}}
+Hari Lagi: {{daysUntilDue}}
+
+Mohon segera koordinasi dengan HC untuk penjadwalan MCU tahunan Anda.
+
+Salam,
+Tim Human Capital`,
+    description: 'Pengingat MCU tahunan untuk karyawan aktif (setahun sekali).',
+    variables: ['employeeName', 'employeeSn', 'departmentName', 'dueDate', 'daysUntilDue'],
+    sampleValues: {
+      employeeName: 'Dina Pertiwi',
+      employeeSn: 'CP-2024-001',
+      departmentName: 'Service',
+      dueDate: '25 Juli 2026',
+      daysUntilDue: '30',
+    },
+  },
+  {
+    name: 'HC MCU Result Fit',
+    templateCode: 'mcu_result_fit',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'employee,hc',
+    ccEmail: '',
+    subject: '[HERO] Hasil MCU Fit - {{employeeName}}',
+    htmlContent:
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#065f46,#10b981);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#a7f3d0;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Hasil MCU · Fit</p></td>
+<td align="right"><span style="color:#6ee7b7;font-size:22px">&#10003;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Hasil Medical Check Up Anda telah diterima dan dikategorikan <strong style="color:#059669">Fit</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Ringkasan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Tanggal MCU</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{mcuDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#059669;font-size:13px;font-weight:600">Fit</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:12px 0 0"><strong>Kesimpulan:</strong> {{kesimpulan}}</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:8px 0 0"><strong>Saran:</strong> {{saran}}</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent:
+      `Halo {{employeeName}},
+
+Hasil Medical Check Up Anda telah diterima dan dikategorikan Fit.
+
+Ringkasan:
+Nama: {{employeeName}}
+Tanggal MCU: {{mcuDate}}
+Kategori: Fit
+
+Kesimpulan: {{kesimpulan}}
+Saran: {{saran}}
+
+Salam,
+Tim Human Capital`,
+    description: 'Notifikasi hasil MCU Fit ke karyawan + HC.',
+    variables: ['employeeName', 'mcuDate', 'kesimpulan', 'saran'],
+    sampleValues: {
+      employeeName: 'Dina Pertiwi',
+      mcuDate: '25 Juni 2026',
+      kesimpulan: 'Hasil MCU dalam batas normal.',
+      saran: 'Pertahankan pola hidup sehat dan rutin kontrol tahunan.',
+    },
+  },
+  {
+    name: 'HC MCU Result Unfit',
+    templateCode: 'mcu_result_unfit',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'employee,hc',
+    ccEmail: '',
+    subject: '[HERO] Hasil MCU Perlu Tindak Lanjut - {{employeeName}}',
+    htmlContent:
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#991b1b,#ef4444);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#fecaca;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Hasil MCU · Perlu Tindak Lanjut</p></td>
+<td align="right"><span style="color:#fca5a5;font-size:22px">&#9888;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Hasil Medical Check Up Anda telah diterima dan dikategorikan <strong style="color:#dc2626">{{kategori}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Ringkasan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Tanggal MCU</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{mcuDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:140px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#dc2626;font-size:13px;font-weight:600">{{kategori}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:12px 0 0"><strong>Kesimpulan:</strong> {{kesimpulan}}</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:8px 0 0"><strong>Saran:</strong> {{saran}}</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:12px 0 0">Mohon segera koordinasi dengan HC untuk tindak lanjut sesuai saran medis.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent:
+      `Halo {{employeeName}},
+
+Hasil Medical Check Up Anda telah diterima dan dikategorikan {{kategori}}.
+
+Ringkasan:
+Nama: {{employeeName}}
+Tanggal MCU: {{mcuDate}}
+Kategori: {{kategori}}
+
+Kesimpulan: {{kesimpulan}}
+Saran: {{saran}}
+
+Mohon segera koordinasi dengan HC untuk tindak lanjut sesuai saran medis.
+
+Salam,
+Tim Human Capital`,
+    description: 'Notifikasi hasil MCU Unfit/Perlu Review ke karyawan + HC.',
+    variables: ['employeeName', 'mcuDate', 'kategori', 'kesimpulan', 'saran'],
+    sampleValues: {
+      employeeName: 'Dina Pertiwi',
+      mcuDate: '25 Juni 2026',
+      kategori: 'Unfit',
+      kesimpulan: 'Ditemukan indikasi hipertensi dan kolesterol tinggi.',
+      saran: 'Konsultasi dokter spesialis dalam 2 minggu dan kontrol tekanan darah secara berkala.',
+    },
+  },
 ]
 function escapeEmailHtml(value: string) {
   return value

@@ -106,6 +106,7 @@ interface EmployeeProfileClientPageProps {
     leaveRequests: any[];
     wellness: any[];
     recruitmentMcu: any[];
+    annualMcu?: any[];
     streak: {
       currentStreakDays: number;
       longestStreakDays: number;
@@ -136,6 +137,7 @@ export function EmployeeProfileClientPage({
     leaveRequests,
     wellness,
     recruitmentMcu,
+    annualMcu,
     streak,
     managerName,
   } = profile;
@@ -1046,6 +1048,68 @@ export function EmployeeProfileClientPage({
 
           {/* 7. Kesehatan (MCU & Wellness) */}
           <TabsContent value="health" className="space-y-6 tabs-content-print">
+            {/* Annual MCU Wellness (post-hire) */}
+            {annualMcu && annualMcu.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base font-bold">Riwayat MCU Tahunan (Wellness Advance)</CardTitle>
+                  <CardDescription className="text-xs">Medical Check Up tahunan karyawan + AI extraction</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-xs">
+                    {annualMcu.map((mcu: any) => (
+                      <div key={mcu.id} className="p-3 border border-slate-200 rounded-xl bg-slate-50/40 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-slate-800">MCU {formatDate(mcu.mcuDate)}</span>
+                          <Badge
+                            className={
+                              mcu.status === "fit"
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                : mcu.status === "unfit"
+                                ? "bg-rose-600 hover:bg-rose-700 text-white"
+                                : "bg-amber-500 hover:bg-amber-600 text-white"
+                            }
+                          >
+                            {mcu.aiKategori || mcu.status}
+                          </Badge>
+                        </div>
+                        <div className="text-slate-600 space-y-1">
+                          <div className="flex justify-between">
+                            <span>Klinik</span>
+                            <span className="font-medium">{mcu.clinicName || "-"}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Paket</span>
+                            <span className="font-medium">{mcu.paketMcu || "-"}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>MCU Berikutnya</span>
+                            <span className="font-medium">{formatDate(mcu.nextMcuDue)}</span>
+                          </div>
+                        </div>
+                        {mcu.aiKesimpulan && (
+                          <p className="text-slate-700"><span className="font-semibold">Kesimpulan AI:</span> {mcu.aiKesimpulan}</p>
+                        )}
+                        {mcu.aiSaran && (
+                          <p className="text-slate-600"><span className="font-semibold">Saran:</span> {mcu.aiSaran}</p>
+                        )}
+                        {mcu.resultFileUrl && (
+                          <a
+                            href={mcu.resultFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[#003461] font-semibold underline"
+                          >
+                            <IconReportMedical className="size-3.5" /> Lihat Dokumen
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid gap-6 md:grid-cols-3">
               <Card className="md:col-span-1">
                 <CardHeader>
