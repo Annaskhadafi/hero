@@ -3,11 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { PlusCircle, MessageSquare, ArrowLeft, ArrowRight, Inbox } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MessageSquare, ArrowLeft, ArrowRight, Inbox } from "lucide-react";
 import { redirect } from "next/navigation";
+import { CurhatCreateForm } from "@/components/mobile/curhat-create-form";
 
 export default async function MobileCurhatPage() {
   const employee = await getCurrentEmployee();
@@ -21,13 +19,10 @@ export default async function MobileCurhatPage() {
     "use server";
     const hrId = parseInt(formData.get("hrId") as string);
     const category = formData.get("category") as string;
-    
     if (!hrId || !category) return;
-    
     const session = await createSession(hrId, category);
-    if (session) {
-      redirect(`/mobile/curhat/${session.id}`);
-    }
+    if (!session) return;
+    redirect(`/mobile/curhat/${session.id}`);
   }
 
   return (
@@ -98,56 +93,7 @@ export default async function MobileCurhatPage() {
           </p>
         )}
 
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="w-full h-14 rounded-2xl text-md font-bold shadow-lg" size="lg">
-              <PlusCircle className="mr-2 h-5 w-5" />
-              Mulai Konsultasi Baru
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md mx-4 rounded-3xl p-6">
-            <DialogHeader>
-              <DialogTitle className="text-xl">Mulai Sesi Curhat Baru</DialogTitle>
-            </DialogHeader>
-            <form action={handleCreateSession}>
-              <div className="grid gap-5 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="hrId" className="text-sm font-semibold text-[#486275]">Pilih HR</Label>
-                  <Select name="hrId" required>
-                    <SelectTrigger className="h-12 rounded-xl">
-                      <SelectValue placeholder="Pilih HR..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {hrList.map((hr) => (
-                        <SelectItem key={hr.id} value={hr.id.toString()}>
-                          {hr.name} ({hr.jobTitle})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category" className="text-sm font-semibold text-[#486275]">Kategori Masalah</Label>
-                  <Select name="category" required>
-                    <SelectTrigger className="h-12 rounded-xl">
-                      <SelectValue placeholder="Pilih Kategori..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Karir">Karir</SelectItem>
-                      <SelectItem value="Masalah Pribadi">Masalah Pribadi</SelectItem>
-                      <SelectItem value="Konflik Pekerjaan">Konflik Pekerjaan</SelectItem>
-                      <SelectItem value="Pelecehan/Kekerasan">Pelecehan/Kekerasan</SelectItem>
-                      <SelectItem value="Lainnya">Lainnya</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit" className="w-full h-12 rounded-xl text-base font-bold">Mulai Chat</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <CurhatCreateForm hrList={hrList} createSessionAction={handleCreateSession} />
 
         <div className="space-y-3">
           {sessions.length === 0 ? (

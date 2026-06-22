@@ -185,6 +185,7 @@ export async function createSession(hrId: number, category: string) {
   }
 
   revalidatePath("/dashboard/curhat");
+  revalidatePath("/mobile/curhat");
   return session;
 }
 
