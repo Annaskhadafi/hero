@@ -14,8 +14,10 @@ import {
   employees, pointEvents, trainingRecords, sioCertifications,
   hrEmployees, hcLeaveRequests, hcLeaveTypes, employeeMcu,
 } from "@/db/schema/hero";
+import { attendancePermissionRequests } from "@/db/schema/timesheet";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
+import { ensureSchedulingTimesheetTables } from "@/lib/timesheet/scheduling-infrastructure";
 import { cn } from "@/lib/utils";
 
 function getDateInputValue(value: string | null | undefined) {
@@ -116,7 +118,7 @@ export default async function MobileProfilePage() {
   const hrFkId = hrFk?.id ?? hrEmp?.id
 
   // ── Queries ────────────────────────────────────────────────
-  const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords] = await Promise.all([
+  const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords, permissionRequests] = await Promise.all([
     // Points
     empId ? db.select().from(pointEvents).where(inArray(pointEvents.employeeId, employeeIds)).orderBy(desc(pointEvents.createdAt)).limit(50) : [],
 
@@ -146,10 +148,30 @@ export default async function MobileProfilePage() {
       .where(eq(employeeMcu.employeeId, empId))
       .orderBy(desc(employeeMcu.mcuDate))
       .limit(5) : [],
+
+    // Attendance Permissions (izin sakit & terlambat)
+    empId ? (async () => {
+      try {
+        await ensureSchedulingTimesheetTables()
+        return db
+          .select()
+          .from(attendancePermissionRequests)
+          .where(eq(attendancePermissionRequests.employeeId, empId))
+          .orderBy(desc(attendancePermissionRequests.createdAt))
+          .limit(20)
+      } catch { return [] }
+    })() : [],
   ])
 
   // Contract info
   const contractDaysLeft = hrEmp?.contractDurationEnd ? daysLeft(hrEmp.contractDurationEnd) : null
+
+  // Attendance permission stats
+  const permSick = permissionRequests.filter((p) => p.permissionType === 'sick')
+  const permLate = permissionRequests.filter((p) => p.permissionType === 'late')
+  const permApprovedSick = permSick.filter((p) => p.status === 'approved')
+  const permApprovedLate = permLate.filter((p) => p.status === 'approved')
+  const permPending = permissionRequests.filter((p) => p.status === 'pending')
 
   return (
     <div className="space-y-4 pb-6">
@@ -307,6 +329,57 @@ export default async function MobileProfilePage() {
                     />
                   </div>
                   {sl.reason ? <p className="text-xs text-gray-500 mt-1 line-clamp-2">{sl.reason}</p> : null}
+                </div>
+              ))}
+            </ExpandableList>
+          )}
+        </Card>
+      </CollapsibleSection>
+
+      {/* ── Izin & Terlambat ───────────────────────── */}
+      <CollapsibleSection title="Izin & Terlambat">
+        <Card>
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-2 p-4">
+            <div className="rounded-lg bg-blue-50 p-3 text-center">
+              <p className="text-lg font-bold text-blue-700">{permApprovedSick.length}</p>
+              <p className="text-[9px] font-medium uppercase tracking-wider text-blue-500">Sakit</p>
+            </div>
+            <div className="rounded-lg bg-orange-50 p-3 text-center">
+              <p className="text-lg font-bold text-orange-700">{permApprovedLate.length}</p>
+              <p className="text-[9px] font-medium uppercase tracking-wider text-orange-500">Terlambat</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 text-center">
+              <p className="text-lg font-bold text-gray-700">{permPending.length}</p>
+              <p className="text-[9px] font-medium uppercase tracking-wider text-gray-500">Pending</p>
+            </div>
+          </div>
+
+          {permissionRequests.length === 0 ? (
+            <div className="p-6 text-center border-t border-gray-50">
+              <Clock className="mx-auto size-8 text-gray-300" />
+              <p className="mt-2 text-sm text-gray-500">Belum ada riwayat izin atau keterlambatan</p>
+            </div>
+          ) : (
+            <ExpandableList limit={5}>
+              {permissionRequests.map((p) => (
+                <div key={p.id} className="px-4 py-3 border-t border-gray-50">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {p.permissionType === 'sick' ? 'Izin Sakit' : 'Terlambat'}
+                        {p.permissionType === 'sick' && p.sickCategory ? ` - ${p.sickCategory}` : ''}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {fd(p.startDate)}{p.endDate !== p.startDate ? ` - ${fd(p.endDate)}` : ''}
+                      </p>
+                    </div>
+                    <StatusBadge value={p.status}
+                      good={['approved']}
+                      bad={['rejected']}
+                    />
+                  </div>
+                  {p.reason ? <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.reason}</p> : null}
                 </div>
               ))}
             </ExpandableList>

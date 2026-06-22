@@ -275,7 +275,7 @@ export function MobileAppShell({
                     const isActive = pathname === itemPath || pathname.startsWith(`${itemPath}/`)
 
                     return (
-                      <SheetClose asChild key={item.href}>
+                      <SheetClose asChild key={`link-${index}`}>
                         <Link
                           prefetch={false}
                           href={item.href}
