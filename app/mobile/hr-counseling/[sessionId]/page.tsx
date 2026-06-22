@@ -10,9 +10,9 @@ export default async function MobileHrCounselingSessionPage({ params }: { params
   const currentEmployee = await getCurrentEmployee();
   if (!currentEmployee) redirect("/");
 
-  try {
-    const session = await getSessionDetail(sessionId);
-    const messages = await getMessages(sessionId);
+  const session = await getSessionDetail(sessionId);
+  if (!session) redirect("/mobile/hr-counseling");
+  const messages = await getMessages(sessionId);
 
     return (
       <ChatClient
@@ -23,7 +23,4 @@ export default async function MobileHrCounselingSessionPage({ params }: { params
         backPath="/mobile/hr-counseling"
       />
     );
-  } catch (error) {
-    redirect("/mobile/hr-counseling");
   }
-}

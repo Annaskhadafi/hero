@@ -10,9 +10,9 @@ export default async function CurhatSessionPage({ params }: { params: Promise<{ 
   const currentEmployee = await getCurrentEmployee();
   if (!currentEmployee) redirect("/");
 
-  try {
-    const session = await getSessionDetail(sessionId);
-    const messages = await getMessages(sessionId);
+  const session = await getSessionDetail(sessionId);
+  if (!session) redirect("/dashboard/curhat");
+  const messages = await getMessages(sessionId);
 
     return (
       <ChatClient
@@ -21,7 +21,4 @@ export default async function CurhatSessionPage({ params }: { params: Promise<{ 
         currentUserId={currentEmployee.id}
       />
     );
-  } catch (error) {
-    redirect("/dashboard/curhat");
   }
-}

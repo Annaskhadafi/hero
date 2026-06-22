@@ -10,9 +10,9 @@ export default async function HrCounselingSessionPage({ params }: { params: Prom
   const currentEmployee = await getCurrentEmployee();
   if (!currentEmployee) redirect("/");
 
-  try {
-    const session = await getSessionDetail(sessionId);
-    const messages = await getMessages(sessionId);
+  const session = await getSessionDetail(sessionId);
+  if (!session) redirect("/dashboard/hr-counseling");
+  const messages = await getMessages(sessionId);
 
     return (
       <ChatClient
@@ -22,7 +22,4 @@ export default async function HrCounselingSessionPage({ params }: { params: Prom
         isHrView={true}
       />
     );
-  } catch (error) {
-    redirect("/dashboard/hr-counseling");
   }
-}
