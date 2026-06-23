@@ -263,7 +263,7 @@ export default async function MyDayPage() {
                 <details
                   key={group.id}
                   className="rounded-[1.1rem] bg-surface-container-low px-4 py-3"
-                  open={group.sortOrder === 1}
+
                 >
                   <summary className="cursor-pointer list-none">
                     <div className="flex flex-wrap items-start justify-between gap-3">

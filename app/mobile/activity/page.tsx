@@ -22,6 +22,7 @@ function statusBadgeClass(status: string) {
   const n = status.toLowerCase();
   if (n.includes("approved")) return "bg-emerald-50 text-emerald-700";
   if (n.includes("pending")) return "bg-amber-50 text-amber-700";
+  if (n.includes("reject")) return "bg-rose-50 text-rose-700";
   return "bg-blue-50 text-blue-700";
 }
 
@@ -63,7 +64,7 @@ export default async function MobileActivityPage() {
           </Link>
         </div>
 
-        {/* Productivity Card */}
+        {/* Productivity Card with Combined Stats */}
         <div className="mt-4 rounded-xl bg-white/10 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -72,7 +73,7 @@ export default async function MobileActivityPage() {
               </span>
               <p className="mt-3 text-3xl font-bold leading-none">{productivityPercent}%</p>
               <p className="mt-2 text-sm text-blue-200">
-                {data.summary.jobsCompleted}/{data.summary.jobsAssigned} job tercapai hari ini
+                {data.summary.jobsCompleted}/{data.summary.jobsAssigned} job selesai hari ini
               </p>
             </div>
             <Link
@@ -85,40 +86,21 @@ export default async function MobileActivityPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-lg bg-white/10 px-3 py-2.5 text-center">
+            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
               <p className="text-[10px] font-medium text-blue-200">Points</p>
-              <p className="mt-1 text-lg font-bold">{data.summary.pointsToday}</p>
+              <p className="mt-0.5 text-base font-bold">{data.summary.pointsToday}</p>
             </div>
-            <div className="rounded-lg bg-white/10 px-3 py-2.5 text-center">
+            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
               <p className="text-[10px] font-medium text-blue-200">Streak</p>
-              <p className="mt-1 text-lg font-bold">{data.summary.streakDays}</p>
+              <p className="mt-0.5 text-base font-bold">{data.summary.streakDays}d</p>
             </div>
-            <div className="rounded-lg bg-white/10 px-3 py-2.5 text-center">
-              <p className="text-[10px] font-medium text-blue-200">Sync</p>
-              <p className="mt-1 text-lg font-bold">{data.summary.syncAt}</p>
+            <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
+              <p className="text-[10px] font-medium text-blue-200">Queue</p>
+              <p className="mt-0.5 text-base font-bold">{data.summary.jobsAssigned}</p>
             </div>
           </div>
         </div>
       </section>
-
-      {/* Stats Row */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
-          <ClipboardList className="size-5 text-blue-600" />
-          <p className="mt-3 text-xl font-bold text-gray-900">{data.summary.jobsAssigned}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Queue</p>
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
-          <CheckCircle2 className="size-5 text-emerald-600" />
-          <p className="mt-3 text-xl font-bold text-gray-900">{data.summary.jobsCompleted}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Done</p>
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
-          <Target className="size-5 text-orange-600" />
-          <p className="mt-3 text-xl font-bold text-gray-900">{data.activities.length}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Log</p>
-        </div>
-      </div>
 
       {/* Job List */}
       <section>
@@ -141,11 +123,11 @@ export default async function MobileActivityPage() {
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
                     <p className="text-[10px] font-medium text-gray-500">Deadline</p>
                     <p className="mt-0.5 text-sm font-semibold text-gray-900">{formatTime(assignment.deadline)}</p>
                   </div>
-                  <div className="rounded-lg bg-gray-50 px-3 py-2.5">
+                  <div className="rounded-lg bg-gray-50 px-3 py-2">
                     <p className="text-[10px] font-medium text-gray-500">Priority</p>
                     <p className="mt-0.5 text-sm font-semibold text-gray-900">{assignment.priority}</p>
                   </div>
@@ -175,7 +157,7 @@ export default async function MobileActivityPage() {
                 <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold leading-tight text-gray-900">
                   <ListChecks className="size-4 text-blue-600" /> {data.routeChecklist.routeName}
                 </h2>
-                <p className="mt-1 text-xs text-gray-500">{data.routeChecklist.sectionName ?? "Semua section"} &bull; {data.routeChecklist.positionName ?? "Semua jabatan"}</p>
+                <p className="mt-1 text-xs text-gray-500">{data.routeChecklist.sectionName ?? "Semua section"}</p>
               </div>
               <span className="shrink-0 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">{data.routeChecklist.shiftCode}</span>
             </div>
@@ -189,29 +171,10 @@ export default async function MobileActivityPage() {
               ) : null}
               {data.routeChecklist.sessionId ? (
                 <Link prefetch={false} href={`/mobile/activity/document/${data.routeChecklist.sessionId}`}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-medium text-white">
-                  <FileSignature className="size-4" /> Dokumen User
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-medium text-white w-full justify-center">
+                  <FileSignature className="size-4" /> Lihat Dokumen & Signoff
                 </Link>
               ) : null}
-              {data.routeChecklist.groups.map((group) => (
-                <div key={group.id} className="rounded-lg bg-gray-50 px-4 py-3">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{group.groupKey}</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">{group.groupName}</p>
-                  <div className="mt-3 space-y-2">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="rounded-lg bg-white px-3 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{item.itemLabel}</p>
-                            <p className="mt-1 text-xs leading-relaxed text-gray-500">{item.itemDescription || item.libraryName || "Checklist item"}</p>
-                          </div>
-                          <span className="shrink-0 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{item.pointOverride ?? item.libraryPoints ?? 0} pts</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           </article>
         </section>
@@ -238,28 +201,17 @@ export default async function MobileActivityPage() {
             </div>
 
             <div className="mt-4 space-y-3">
-              <Link prefetch={false} href="/mobile/activity/input"
-                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-medium text-white">
-                <FileSignature className="size-4" /> Isi Evidence SPL
-              </Link>
-              {data.standaloneOvertimeChecklist.sessionId ? (
-                <Link prefetch={false} href={`/mobile/activity/document/${data.standaloneOvertimeChecklist.sessionId}`}
-                  className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-xs font-medium text-blue-700">
-                  <FileSignature className="size-4" /> Dokumen User
+              <div className="flex gap-2">
+                <Link prefetch={false} href="/mobile/activity/input"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-medium text-white flex-1 justify-center">
+                  <FileSignature className="size-4" /> Isi Evidence SPL
                 </Link>
-              ) : null}
-              <div className="space-y-2">
-                {data.standaloneOvertimeChecklist.items.map((item) => (
-                  <div key={item.id} className="rounded-lg bg-gray-50 px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{item.lineLabel}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-gray-500">{item.lineDescription || item.targetUnit || "Checklist SPL"}</p>
-                      </div>
-                      <span className="shrink-0 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{item.plannedPoints} pts</span>
-                    </div>
-                  </div>
-                ))}
+                {data.standaloneOvertimeChecklist.sessionId ? (
+                  <Link prefetch={false} href={`/mobile/activity/document/${data.standaloneOvertimeChecklist.sessionId}`}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 text-xs font-medium text-blue-700 flex-1 justify-center">
+                    <FileSignature className="size-4" /> Dokumen User
+                  </Link>
+                ) : null}
               </div>
             </div>
           </article>

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Gauge, ShieldCheck, Sparkles } from "lucide-react";
+import { Gauge, ShieldCheck, Sparkles, Edit2, Trash2 } from "lucide-react";
 import {
   manageActivityModifierAction,
   resolvePointDisputeAction,
@@ -13,6 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityConfigurationData } from "@/lib/daily-activity";
@@ -75,8 +83,9 @@ export default async function DailyActivityConfigurationPage() {
                 <TableRow>
                   <TableHead>Key</TableHead>
                   <TableHead>Nilai</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Keterangan</TableHead>
-                  <TableHead>Update</TableHead>
+                  <TableHead className="w-[100px] text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -89,7 +98,12 @@ export default async function DailyActivityConfigurationPage() {
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
-                      <Badge variant="secondary">{setting.configValue}</Badge>
+                      <div className="flex flex-col gap-1 items-start">
+                        <Badge variant="secondary">{setting.configValue}</Badge>
+                        <Badge variant={setting.isActive ? "outline" : "secondary"}>
+                          {setting.isActive ? "Aktif" : "Nonaktif"}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1 text-sm">
@@ -99,18 +113,38 @@ export default async function DailyActivityConfigurationPage() {
                         </p>
                       </div>
                     </TableCell>
-                    <TableCell className="align-top">
-                      <form action={updateDailyActivityConfigAction} className="grid min-w-[220px] gap-2">
-                        <input type="hidden" name="id" value={setting.id} />
-                        <Input name="configValue" defaultValue={setting.configValue} />
-                        <Label className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <input type="checkbox" name="isActive" defaultChecked={setting.isActive} />
-                          Aktif
-                        </Label>
-                        <Button size="sm" type="submit">
-                          Simpan
-                        </Button>
-                      </form>
+                    <TableCell className="align-top text-right">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="rounded-full">
+                            <Edit2 className="mr-1.5 size-3.5" /> Edit
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Edit Rule Global</DialogTitle>
+                            <DialogDescription>
+                              Sesuaikan konfigurasi rule harian {setting.configLabel}.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form action={updateDailyActivityConfigAction} className="grid gap-4 py-2">
+                            <input type="hidden" name="id" value={setting.id} />
+                            <div className="grid gap-2 text-left">
+                              <Label htmlFor="configValue">Nilai Konfigurasi</Label>
+                              <Input id="configValue" name="configValue" defaultValue={setting.configValue} required />
+                            </div>
+                            <Label className="flex items-center gap-2 text-sm font-medium text-left">
+                              <input type="checkbox" name="isActive" defaultChecked={setting.isActive} className="size-4 rounded border-gray-300" />
+                              Rule Aktif
+                            </Label>
+                            <div className="flex justify-end gap-2 pt-2">
+                              <Button size="sm" type="submit">
+                                Simpan Perubahan
+                              </Button>
+                            </div>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -197,32 +231,61 @@ export default async function DailyActivityConfigurationPage() {
                     {modifier.endDate ? modifier.endDate.toLocaleString("id-ID") : "tanpa batas"}
                   </p>
                   <div className="mt-3 flex gap-2">
-                    <details className="rounded-lg border border-border/70 bg-background p-3">
-                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                        Edit
-                      </summary>
-                      <form action={manageActivityModifierAction} className="mt-3 grid gap-3">
-                        <input type="hidden" name="intent" value="update" />
-                        <input type="hidden" name="id" value={modifier.id} />
-                        <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
-                        <input type="hidden" name="siteId" value={modifier.siteId ?? ""} />
-                        <input type="hidden" name="startDate" value={dateTimeLocalValue(modifier.startDate)} />
-                        <input type="hidden" name="endDate" value={modifier.endDate ? dateTimeLocalValue(modifier.endDate) : ""} />
-                        <Input name="eventName" defaultValue={modifier.eventName} />
-                        <Input name="multiplier" type="number" defaultValue={modifier.multiplier} />
-                        <Textarea name="description" defaultValue={modifier.description} rows={3} />
-                        <Label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" name="isActive" defaultChecked={modifier.isActive} />
-                          Aktif
-                        </Label>
-                        <Button type="submit" size="sm">Save</Button>
-                      </form>
-                    </details>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline" className="rounded-full">
+                          <Edit2 className="mr-1.5 size-3.5" /> Edit
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                          <DialogTitle>Edit Modifier</DialogTitle>
+                          <DialogDescription>
+                            Ubah pengaturan untuk campaign/modifier {modifier.eventName}.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <form action={manageActivityModifierAction} className="grid gap-4 py-2">
+                          <input type="hidden" name="intent" value="update" />
+                          <input type="hidden" name="id" value={modifier.id} />
+                          <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
+                          <input type="hidden" name="siteId" value={modifier.siteId ?? ""} />
+                          <input type="hidden" name="startDate" value={dateTimeLocalValue(modifier.startDate)} />
+                          <input type="hidden" name="endDate" value={modifier.endDate ? dateTimeLocalValue(modifier.endDate) : ""} />
+                          
+                          <div className="grid gap-2 text-left">
+                            <Label htmlFor="editEventName">Nama Event</Label>
+                            <Input id="editEventName" name="eventName" defaultValue={modifier.eventName} required />
+                          </div>
+
+                          <div className="grid gap-2 text-left">
+                            <Label htmlFor="editMultiplier">Multiplier (%)</Label>
+                            <Input id="editMultiplier" name="multiplier" type="number" defaultValue={modifier.multiplier} required />
+                          </div>
+
+                          <div className="grid gap-2 text-left">
+                            <Label htmlFor="editDescription">Deskripsi</Label>
+                            <Textarea id="editDescription" name="description" defaultValue={modifier.description} rows={3} required />
+                          </div>
+
+                          <Label className="flex items-center gap-2 text-sm font-medium text-left">
+                            <input type="checkbox" name="isActive" defaultChecked={modifier.isActive} className="size-4 rounded border-gray-300" />
+                            Aktif
+                          </Label>
+
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button size="sm" type="submit">
+                              Simpan Perubahan
+                            </Button>
+                          </div>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
+
                     <form action={manageActivityModifierAction}>
                       <input type="hidden" name="intent" value="delete" />
                       <input type="hidden" name="id" value={modifier.id} />
-                      <Button type="submit" variant="outline" size="sm" className="text-rose-700">
-                        Hapus
+                      <Button type="submit" variant="outline" size="sm" className="rounded-full text-rose-700 hover:bg-rose-50">
+                        <Trash2 className="mr-1.5 size-3.5" /> Hapus
                       </Button>
                     </form>
                   </div>

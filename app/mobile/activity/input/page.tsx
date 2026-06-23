@@ -43,19 +43,7 @@ export default async function MobileActivityInputPage() {
         <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900">{pagePurpose.title}</h1>
       </div>
 
-      {/* Info cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
-          <Clock3 className="size-5 text-blue-600" />
-          <p className="mt-3 text-lg font-bold text-gray-900">{data.summary.shift}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Shift aktif</p>
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
-          <UserRound className="size-5 text-blue-600" />
-          <p className="mt-3 text-lg font-bold text-gray-900">{data.employee.id}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Employee ID</p>
-        </div>
-      </div>
+
 
       {/* Current Context */}
       <section className="rounded-xl border border-gray-100 bg-white p-4">
