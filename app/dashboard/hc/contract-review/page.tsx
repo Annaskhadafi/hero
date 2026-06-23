@@ -1,7 +1,7 @@
 import { getContractReviewSettings, getContractReviews } from "@/app/actions/contract-review"
 import { ContractReviewClientPage } from "./client-page"
 import { db } from "@/db"
-import { employees } from "@/db/schema/hero"
+import { employees, hrPositions, masterDepartments } from "@/db/schema/hero"
 import { eq } from "drizzle-orm"
 
 export const metadata = {
@@ -32,24 +32,23 @@ export default async function ContractReviewPage() {
   const [reviewsResult, settings] = await Promise.all([getContractReviews(), getContractReviewSettings()])
   const reviews = reviewsResult.success ? reviewsResult.data : []
   
-  const [hrEmps, umEmps] = await Promise.all([
-    db
-      .select({
-        id: employees.id,
-        name: employees.name,
-        employeeId: employees.employeeSn,
-        department: employees.departmentId,
-      })
-      .from(employees)
-      .where(eq(employees.isActive, true)),
-    db
-      .select({ name: employees.name, email: employees.email })
-      .from(employees)
-      .where(eq(employees.isActive, true)),
-  ])
+  const employeeList = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeId: employees.employeeSn,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+      position: hrPositions.levelName,
+      rank: hrPositions.rankName,
+      department: masterDepartments.name,
+    })
+    .from(employees)
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .where(eq(employees.isActive, true))
 
-  const employeeList = hrEmps.map((emp) => ({ ...emp }))
-  const enrichedSettings = populateEmailsFromEmployees(settings, umEmps)
+  const enrichedSettings = populateEmailsFromEmployees(settings, employeeList)
 
   return (
     <ContractReviewClientPage

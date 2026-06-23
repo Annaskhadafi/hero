@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
 import {
   employees, pointEvents, trainingRecords, sioCertifications,
-  hrEmployees, hcLeaveRequests, hcLeaveTypes, employeeMcu,
+  hcLeaveRequests, hcLeaveTypes, employeeMcu,
 } from "@/db/schema/hero";
 import { attendancePermissionRequests } from "@/db/schema/timesheet";
 import { getServerSession } from "@/lib/auth-session";
@@ -108,14 +108,7 @@ export default async function MobileProfilePage() {
     .where(eq(employees.email, emp.email))
     .limit(1) : []
 
-  // Get hrEmployees ID for FK joins (hcLeaveRequests, hcCandidateMcu reference hrEmployees.id)
-  const [hrFk] = emp?.email ? await db
-    .select({ id: hrEmployees.id })
-    .from(hrEmployees)
-    .where(eq(hrEmployees.email, emp.email))
-    .limit(1) : []
-
-  const hrFkId = hrFk?.id ?? hrEmp?.id
+  const hrFkId = hrEmp?.id
 
   // ── Queries ────────────────────────────────────────────────
   const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords, permissionRequests] = await Promise.all([

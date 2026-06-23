@@ -23,11 +23,13 @@ import {
   ChevronLeft,
   FileText,
   MoreVertical,
+  Bell,
 } from 'lucide-react'
 
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { getManpowerComposition, updateManpowerTarget, type ManpowerSiteComposition } from '@/app/actions/central-service-manpower'
+import { sendDueContractReviewReminders } from '@/app/actions/contract-review'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -308,6 +310,7 @@ export default function CentralServicePage() {
   const [compositionData, setCompositionData] = useState<ManpowerSiteComposition[]>([])
   const [loadingComposition, setLoadingComposition] = useState(false)
   const [expandedCompositionSites, setExpandedCompositionSites] = useState<Set<string>>(new Set())
+  const [isSendingReminders, setIsSendingReminders] = useState(false)
 
   const fetchComposition = async () => {
     setLoadingComposition(true)
@@ -475,7 +478,19 @@ export default function CentralServicePage() {
       {} as Record<string, number>
     )
     const topSite = Object.entries(sitesCount).sort((a, b) => b[1] - a[1])[0] || ['-', 0]
-    return { total, active, synced, unsynced, topSite }
+
+    let contractExpired = 0
+    let contractEndingSoon = 0
+    const now = new Date()
+    for (const emp of filteredEmployees) {
+      if (!emp.contractDurationEnd) continue
+      const days = getContractLeftDays(emp.contractDurationEnd)
+      if (days === null) continue
+      if (days <= 0) contractExpired++
+      else if (days <= 30) contractEndingSoon++
+    }
+
+    return { total, active, synced, unsynced, topSite, contractExpired, contractEndingSoon }
   }, [filteredEmployees])
 
   const hasActiveFilters =
@@ -524,6 +539,22 @@ export default function CentralServicePage() {
       toast.error('Gagal menyimpan')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSendReminders = async () => {
+    setIsSendingReminders(true)
+    try {
+      const result = await sendDueContractReviewReminders()
+      if (result.success) {
+        toast.success(`Reminder terkirim: ${result.sent}, dilewati: ${result.skipped}`)
+      } else {
+        toast.error(result.error || 'Gagal mengirim reminder')
+      }
+    } catch {
+      toast.error('Gagal mengirim reminder')
+    } finally {
+      setIsSendingReminders(false)
     }
   }
 
@@ -639,6 +670,15 @@ export default function CentralServicePage() {
           </Button>
           <Button
             variant="outline"
+            className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+            onClick={handleSendReminders}
+            disabled={isSendingReminders}
+          >
+            <Bell className="size-4" />
+            {isSendingReminders ? 'Mengirim...' : 'Send Reminder'}
+          </Button>
+          <Button
+            variant="outline"
             className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-3 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
             onClick={() => startRefreshTransition(() => router.refresh())}
             disabled={isRefreshing}
@@ -676,6 +716,16 @@ export default function CentralServicePage() {
             label: 'Top Site',
             value: String(dynamicStats.topSite[0]),
             meta: `${dynamicStats.topSite[1]} karyawan`,
+          },
+          {
+            label: 'Kontrak Berakhir',
+            value: String(dynamicStats.contractExpired),
+            meta: 'Karyawan dengan kontrak sudah lewat.',
+          },
+          {
+            label: 'Kontrak < 30 Hari',
+            value: String(dynamicStats.contractEndingSoon),
+            meta: 'Karyawan dengan kontrak akan berakhir dalam 30 hari.',
           },
         ]}
       />

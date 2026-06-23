@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { employees } from "@/db/schema/hero";
+import { employees, masterSections } from "@/db/schema/hero";
 import { hrCounselingSessions, hrCounselingMessages } from "@/db/schema/hr-counseling";
 import { eq, desc, asc, and, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -38,18 +38,13 @@ export async function getHrPersonnel() {
       jobTitle: employees.jobTitle,
     })
     .from(employees)
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .where(
       and(
         eq(employees.isActive, true),
         or(
           sql`regexp_replace(lower(${employees.section}), '[^a-z0-9]+', '', 'g') = 'hrga'`,
-          sql`exists (
-            select 1
-            from hero_hr_employees he
-            left join hero_hr_sections hs on he.section_id = hs.id
-            where (he.employee_id = ${employees.employeeSn} or he.email = ${employees.email})
-              and regexp_replace(lower(coalesce(hs.name, '')), '[^a-z0-9]+', '', 'g') = 'humancapital'
-          )`
+          sql`regexp_replace(lower(${masterSections.name}), '[^a-z0-9]+', '', 'g') = 'humancapital'`
         )
       )
     )

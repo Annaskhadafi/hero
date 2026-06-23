@@ -38,7 +38,7 @@ async function main() {
     );
 
     DO $$ BEGIN
-     ALTER TABLE "hero_hc_employee_contract_reviews" ADD CONSTRAINT "hero_hc_employee_contract_reviews_employee_id_hero_hr_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "hero_hr_employees"("id") ON DELETE cascade ON UPDATE no action;
+     ALTER TABLE "hero_hc_employee_contract_reviews" ADD CONSTRAINT "hero_hc_employee_contract_reviews_employee_id_hero_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "hero_employees"("id") ON DELETE cascade ON UPDATE no action;
     EXCEPTION
      WHEN duplicate_object THEN null;
     END $$;

@@ -2437,7 +2437,7 @@ export const hcLeaveTypes = pgTable('hero_hc_leave_types', {
 
 export const hcLeaveBalances = pgTable('hero_hc_leave_balances', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   leaveTypeId: integer('leave_type_id').notNull().references(() => hcLeaveTypes.id, { onDelete: 'cascade' }),
   year: integer('year').notNull(),
   totalDays: integer('total_days').notNull().default(0),
@@ -2451,7 +2451,7 @@ export const hcLeaveBalances = pgTable('hero_hc_leave_balances', {
 
 export const hcLeaveRequests = pgTable('hero_hc_leave_requests', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   approvalSubmissionId: integer('approval_submission_id').references(() => formSubmissions.id, {
     onDelete: 'set null',
   }),
@@ -2495,7 +2495,7 @@ export const hcOnboardingTemplateTasks = pgTable('hero_hc_onboarding_template_ta
 
 export const hcOnboardingRecords = pgTable('hero_hc_onboarding_records', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   templateId: integer('template_id').references(() => hcOnboardingTemplates.id, { onDelete: 'set null' }),
   startDate: date('start_date').notNull(),
   probationEndDate: date('probation_end_date'),
@@ -2677,7 +2677,7 @@ export const hcCandidateOfferings = pgTable('hero_hc_candidate_offerings', {
 
 export const hcOffboardingRequests = pgTable('hero_hc_offboarding_requests', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   approvalSubmissionId: integer('approval_submission_id').references(() => formSubmissions.id, {
     onDelete: 'set null',
   }),
@@ -2716,7 +2716,7 @@ export const hcLetters = pgTable('hero_hc_letters', {
   id: serial('id').primaryKey(),
   letterType: text('letter_type').notNull(), // surat_keterangan, surat_tugas, surat_peringatan, surat_kontrak
   letterNumber: text('letter_number').notNull().unique(),
-  employeeId: integer('employee_id').references(() => hrEmployees.id, { onDelete: 'set null' }),
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'set null' }),
   employeeName: text('employee_name').notNull().default(''),
   subject: text('subject').notNull().default(''),
   content: text('content').notNull().default(''), // HTML content
@@ -2766,8 +2766,8 @@ export const hcPerformanceCycles = pgTable('hero_hc_performance_cycles', {
 export const hcPerformanceReviews = pgTable('hero_hc_performance_reviews', {
   id: serial('id').primaryKey(),
   cycleId: integer('cycle_id').notNull().references(() => hcPerformanceCycles.id, { onDelete: 'cascade' }),
-  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
-  reviewerId: integer('reviewer_id').references(() => hrEmployees.id, { onDelete: 'set null' }),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  reviewerId: integer('reviewer_id').references(() => employees.id, { onDelete: 'set null' }),
   overallScore: decimal('overall_score', { precision: 5, scale: 2 }),
   overallRating: text('overall_rating').notNull().default(''), // Exceeds, Meets, Below, Unsatisfactory
   strengths: text('strengths').notNull().default(''),
@@ -2815,7 +2815,7 @@ export const hcViolationCategories = pgTable('hero_hc_violation_categories', {
 
 export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').notNull().references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   violationCategoryId: integer('violation_category_id').references(() => hcViolationCategories.id, { onDelete: 'set null' }),
   spLevel: integer('sp_level').notNull().default(1), // 1=SP1, 2=SP2, 3=SP3
   letterNumber: text('letter_number').notNull().default(''),
@@ -2836,7 +2836,7 @@ export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
 
 export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_reviews', {
   id: serial('id').primaryKey(),
-  employeeId: integer('employee_id').references(() => hrEmployees.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'cascade' }),
   reviewType: text('review_type').notNull().default('probation'), // 'probation', 'contract'
   contractLength: text('contract_length').notNull().default(''),
   todayDate: date('today_date').notNull(),
@@ -3096,6 +3096,8 @@ export const broadcastInteractions = pgTable('hero_broadcast_interactions', {
 
 export const hcLeaderPerformance = pgTable('hero_hc_leader_performance', {
   id: serial('id').primaryKey(),
+  leaderId: integer('leader_id').references(() => employees.id, { onDelete: 'set null' }),
+  reviewerId: integer('reviewer_id').references(() => employees.id, { onDelete: 'set null' }),
   leaderSn: text('leader_sn').notNull(),
   reviewerSn: text('reviewer_sn'),
   period: text('period').notNull(), // e.g., '2026 Q1', '2026 Annual'

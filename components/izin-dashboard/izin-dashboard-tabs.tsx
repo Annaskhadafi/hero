@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useActionState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AdminTableCard } from "@/components/admin-table-card"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { IzinKpiGrid } from "@/components/izin-dashboard/izin-kpi-grid"
 import { IzinFilterBar } from "@/components/izin-dashboard/izin-filter-bar"
 import { IzinBulkDeleteBar, BulkCheckbox } from "@/components/izin-dashboard/izin-bulk-actions"
 import { EvidenceCell } from "@/components/izin-dashboard/izin-evidence-dialog"
+import { toast } from "sonner"
 
 import {
   SickByCategoryPie,
@@ -32,12 +33,14 @@ import {
 } from "lucide-react"
 import type { AttendancePermissionRow, IzinDashboardKpis, IzinDashboardCharts } from "@/lib/attendance-permission-dashboard"
 
-async function handleApprove(formData: FormData) {
-  await approveAttendancePermissionRequest(formData)
+type ActionResult = { success: boolean; error?: string; message?: string } | null
+
+async function approveAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  return approveAttendancePermissionRequest(formData)
 }
 
-async function handleReject(formData: FormData) {
-  await rejectAttendancePermissionRequest(formData)
+async function rejectAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  return rejectAttendancePermissionRequest(formData)
 }
 
 type Site = { id: number; name: string }
@@ -75,6 +78,22 @@ function SectionHeader({
 
 export function IzinDashboardTabs({ data }: { data: DashboardData }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [approveState, approveFormAction, approvePending] = useActionState(approveAction, null)
+  const [rejectState, rejectFormAction, rejectPending] = useActionState(rejectAction, null)
+
+  useEffect(() => {
+    if (approveState) {
+      if (approveState.success) toast.success(approveState.message || 'Izin disetujui')
+      else toast.error(approveState.error || 'Gagal approve')
+    }
+  }, [approveState])
+
+  useEffect(() => {
+    if (rejectState) {
+      if (rejectState.success) toast.success(rejectState.message || 'Izin ditolak')
+      else toast.error(rejectState.error || 'Gagal reject')
+    }
+  }, [rejectState])
 
   const typeOptions = ["Sakit", "Terlambat"]
   const departmentOptions = Array.from(new Set(data.rows.map((row) => row.department))).filter(Boolean).sort()
@@ -252,15 +271,15 @@ export function IzinDashboardTabs({ data }: { data: DashboardData }) {
             <EvidenceCell key={`ev-${row.id}`} attachment={row.attachment} />,
             row.status === 'pending' && row.requestId ? (
               <div className="flex flex-wrap gap-2" key={`${row.requestId}-actions`}>
-                <form action={handleApprove} className="flex gap-2">
+                <form action={approveFormAction} className="flex gap-2">
                   <input type="hidden" name="id" value={row.requestId} />
                   <input type="hidden" name="approverNote" value="Approved by HC" />
-                  <Button size="sm" className="h-7 text-xs">Approve</Button>
+                  <Button size="sm" className="h-7 text-xs" disabled={approvePending}>Approve</Button>
                 </form>
-                <form action={handleReject}>
+                <form action={rejectFormAction}>
                   <input type="hidden" name="id" value={row.requestId} />
                   <input type="hidden" name="approverNote" value="Rejected by HC" />
-                  <Button size="sm" variant="outline" className="h-7 text-xs">Reject</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={rejectPending}>Reject</Button>
                 </form>
               </div>
             ) : '-',

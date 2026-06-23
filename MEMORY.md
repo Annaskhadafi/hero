@@ -1,6 +1,6 @@
 # Project Memory
 
-## Last Updated: 2026-06-22
+## Last Updated: 2026-06-23
 
 ## Key Decisions
 - Using Next.js with App Router
@@ -16,6 +16,8 @@
 - RBAC for all admin features
 
 ## History
+- 2026-06-23: All HC tables migrated from hrEmployees → employees FKs: hcLeaveBalances, hcLeaveRequests, hcOnboardingRecords, hcOffboardingRequests, hcPerformanceReviews (employeeId+reviewerId), hcDisciplinaryActions, hcLeaderPerformance (leaderId+reviewerId) — 9 FKs total across 8 tables. Schema files updated. hr-counseling.ts raw SQL replaced with masterSections join. Mobile profile page hrEmployees query removed. No orphan data found — all IDs already exist in hero_employees with same values.
+- 2026-06-23: Contract Review fully connected to User Management: FK on hcEmployeeContractReviews.employeeId changed from hrEmployees(id) → employees(id); all server actions query hero_employees (not hero_hr_employees); list page (page.tsx) query consolidated with proper joins for rank/position/email; legacy script FK reference updated; employee-profile.ts already correct
 - 2026-06-23: Reminder + mobile bell notification fixed: added protected /api/cron/reminders route, scoped bell feed/count/actions to in_app deliveries, emitted before_due reminder bell events alongside email, required reminder recipients to use employee email, marked legacy in-app notifications delivered, hard-deleted expired push subscriptions, preserved decision/group notifications across activity workflow sync, added manual Run Reminder Tick button and delivery status visibility, plus source smoke test coverage
 - 2026-06-22: Mobile dashboard Layanan Chitra updated: added Wellness and Leaderboard icons without replacing existing services (grid now shows all items across multiple rows); renamed Gamification to Leaderboard; mobile leaderboard filtered by same site and same section as logged-in employee
 - 2026-06-22: SheetContent UI component now supports hideCloseButton prop to avoid duplicate close buttons when a custom close button is provided; mobile sidebar uses hideCloseButton to keep only the header close button

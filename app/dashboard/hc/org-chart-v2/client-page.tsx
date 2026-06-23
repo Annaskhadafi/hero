@@ -137,7 +137,7 @@ type SiteNode = {
 };
 
 // Executive hierarchy: Director > Board Secretary + General Manager
-// Employee matching by ID from hrEmployees
+// Executive hierarchy by employees.id
 const EXECUTIVE_HIERARCHY = {
   director: { title: "DIRECTOR", employeeId: 1 },       // Hidayat Rahman
   boardSecretary: { title: "BOARD SECRETARY", employeeId: 37 }, // Freshya Ochtovita
