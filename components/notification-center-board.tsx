@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { runApprovalAutomationAction } from "@/app/dashboard/admin-actions";
 import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -65,9 +66,16 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
                   <CardTitle>Riwayat Pengiriman</CardTitle>
                   <CardDescription>Daftar pesan dan status pengiriman per kanal.</CardDescription>
                 </div>
-                <Button asChild variant="outline" className="rounded-full">
-                  <Link href="/dashboard/settings/email">Email Settings</Link>
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <form action={runApprovalAutomationAction}>
+                    <Button type="submit" variant="outline" className="rounded-full">
+                      Run Reminder Tick
+                    </Button>
+                  </form>
+                  <Button asChild variant="outline" className="rounded-full">
+                    <Link href="/dashboard/settings/email">Email Settings</Link>
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
@@ -117,6 +125,49 @@ export function NotificationCenterBoard({ data }: { data: NotificationCenterData
                   </TableBody>
                 </Table>
               </MinimalTableShell>
+              <div className="mt-6">
+                <MinimalTableShell
+                  label="delivery rows"
+                  fileName="notification-delivery-status"
+                  searchPlaceholder="Cari penerima, kanal, status, atau error..."
+                  summaryClassName="bg-transparent px-1 py-0 shadow-none"
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Penerima</TableHead>
+                        <TableHead>Kanal</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Error</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.deliveries.length > 0 ? (
+                        data.deliveries.map((delivery) => (
+                          <TableRow key={delivery.id} data-date-value={delivery.createdAt.toISOString()}>
+                            <TableCell className="align-top text-sm text-[#0f172a]">{delivery.recipient}</TableCell>
+                            <TableCell className="align-top">
+                              <AdminStatusBadge value={delivery.deliveryChannel} />
+                            </TableCell>
+                            <TableCell className="align-top">
+                              <AdminStatusBadge value={delivery.status} />
+                            </TableCell>
+                            <TableCell className="align-top text-xs text-muted-foreground">
+                              {delivery.errorMessage || "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                            Belum ada delivery row tercatat.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </MinimalTableShell>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

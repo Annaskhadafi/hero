@@ -67,6 +67,7 @@ export async function getRecipientNotifications(email: string, limit = 20): Prom
     .where(
       and(
         buildRecipientFilter(email),
+        eq(notificationDeliveries.deliveryChannel, "in_app"),
         isNull(notificationDeliveries.clearedAt),
       ),
     )
@@ -101,6 +102,7 @@ export async function getRecipientUnreadNotificationCount(email: string) {
     .where(
       and(
         buildRecipientFilter(email),
+        eq(notificationDeliveries.deliveryChannel, "in_app"),
         ne(notificationDeliveries.status, "failed"),
         isNull(notificationDeliveries.clearedAt),
         isNull(notificationDeliveries.readAt),
@@ -113,6 +115,7 @@ export async function getRecipientUnreadNotificationCount(email: string) {
 function buildNotificationScope(email: string, ids?: number[]) {
   return and(
     buildRecipientFilter(email),
+    eq(notificationDeliveries.deliveryChannel, "in_app"),
     isNull(notificationDeliveries.clearedAt),
     ids && ids.length > 0 ? inArray(notificationDeliveries.id, ids) : undefined,
   );

@@ -16,6 +16,7 @@
 - RBAC for all admin features
 
 ## History
+- 2026-06-23: Reminder + mobile bell notification fixed: added protected /api/cron/reminders route, scoped bell feed/count/actions to in_app deliveries, emitted before_due reminder bell events alongside email, required reminder recipients to use employee email, marked legacy in-app notifications delivered, hard-deleted expired push subscriptions, preserved decision/group notifications across activity workflow sync, added manual Run Reminder Tick button and delivery status visibility, plus source smoke test coverage
 - 2026-06-22: Mobile dashboard Layanan Chitra updated: added Wellness and Leaderboard icons without replacing existing services (grid now shows all items across multiple rows); renamed Gamification to Leaderboard; mobile leaderboard filtered by same site and same section as logged-in employee
 - 2026-06-22: SheetContent UI component now supports hideCloseButton prop to avoid duplicate close buttons when a custom close button is provided; mobile sidebar uses hideCloseButton to keep only the header close button
 - 2026-06-22: Fixed post-login mobile dashboard "Rendered more hooks than during the previous render" by deferring MobileBroadcastPopup rendering until client mount, replacing sign-in router.replace with full page navigation, adding mobile segment error boundary, and making dashboard data fetching non-throwing with fallback UI

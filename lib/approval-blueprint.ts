@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, lte, sql, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, lt, lte, sql, isNull } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   activities,
@@ -1614,11 +1614,16 @@ export async function syncActivityWorkflowArtifacts(
       .where(eq(approvals.activityId, activityId))
 
     const approvalIds = approvalRows.map((row) => row.id)
-    const existingNotificationEventIds = (
+    const existingInboxNotificationEventIds = (
       await tx
         .select({ id: notificationEvents.id })
         .from(notificationEvents)
-        .where(eq(notificationEvents.submissionId, submission.id))
+        .where(
+          and(
+            eq(notificationEvents.submissionId, submission.id),
+            isNotNull(notificationEvents.inboxItemId)
+          )
+        )
     ).map((row) => row.id)
     const existingInboxIds = (
       await tx
@@ -1637,12 +1642,14 @@ export async function syncActivityWorkflowArtifacts(
       await tx.delete(approvalComments).where(inArray(approvalComments.approvalId, approvalIds))
     }
     await tx.delete(inboxItems).where(eq(inboxItems.submissionId, submission.id))
-    if (existingNotificationEventIds.length > 0) {
+    if (existingInboxNotificationEventIds.length > 0) {
       await tx
         .delete(notificationDeliveries)
-        .where(inArray(notificationDeliveries.notificationEventId, existingNotificationEventIds))
+        .where(inArray(notificationDeliveries.notificationEventId, existingInboxNotificationEventIds))
     }
-    await tx.delete(notificationEvents).where(eq(notificationEvents.submissionId, submission.id))
+    if (existingInboxNotificationEventIds.length > 0) {
+      await tx.delete(notificationEvents).where(inArray(notificationEvents.id, existingInboxNotificationEventIds))
+    }
     if (existingInboxIds.length > 0) {
       await tx.delete(reminderJobs).where(inArray(reminderJobs.inboxItemId, existingInboxIds))
     }
@@ -1970,67 +1977,81 @@ export async function syncActivityWorkflowArtifacts(
             },
           ])
         } else {
-          const [decisionEvent] = await tx
-            .insert(notificationEvents)
-            .values({
-              submissionId: submission.id,
-              approvalId: approval.id,
-              channel: 'in_app',
-              eventType: 'step_decision',
-              recipient: activity.requesterEmail || activity.requesterName,
-              payloadSnapshot: JSON.stringify({
-                requestNumber: submission.requestNumber,
-                activityTitle: activity.title,
-                decision: normalizeStatus(approval.status),
-              }),
-              deliveryStatus: 'delivered',
-              deliveredAt: approval.reviewedAt ?? new Date(),
-            })
-            .returning()
+          const [existingDecisionEvent] = await tx
+            .select({ id: notificationEvents.id })
+            .from(notificationEvents)
+            .where(
+              and(
+                eq(notificationEvents.submissionId, submission.id),
+                eq(notificationEvents.approvalId, approval.id),
+                eq(notificationEvents.eventType, 'step_decision')
+              )
+            )
+            .limit(1)
 
-          await tx.insert(notificationDeliveries).values([
-            {
-              notificationEventId: decisionEvent.id,
-              deliveryChannel: 'in_app',
-              recipient: activity.requesterEmail || activity.requesterName,
-              status: 'delivered',
-              sentAt: approval.reviewedAt ?? new Date(),
-            },
-            {
-              notificationEventId: decisionEvent.id,
-              deliveryChannel: 'email',
-              recipient: activity.requesterEmail,
-              status: 'queued',
-              sentAt: null,
-            },
-          ])
+          if (!existingDecisionEvent) {
+            const [decisionEvent] = await tx
+              .insert(notificationEvents)
+              .values({
+                submissionId: submission.id,
+                approvalId: approval.id,
+                channel: 'in_app',
+                eventType: 'step_decision',
+                recipient: activity.requesterEmail || activity.requesterName,
+                payloadSnapshot: JSON.stringify({
+                  requestNumber: submission.requestNumber,
+                  activityTitle: activity.title,
+                  decision: normalizeStatus(approval.status),
+                }),
+                deliveryStatus: 'delivered',
+                deliveredAt: approval.reviewedAt ?? new Date(),
+              })
+              .returning()
 
-          if (activity.requesterEmail) {
-            const decisionLabel = normalizeStatus(approval.status) === 'approved' ? 'disetujui' : 'ditolak'
-            const decisionEmail = buildWorkflowEmailContent({
-              title: `Request ${submission.requestNumber} ${decisionLabel}`,
-              greeting: `Halo ${activity.requesterName},`,
-              intro: `${activity.title} telah ${decisionLabel} oleh approver.`,
-              details: [
-                `Request: ${submission.requestNumber}`,
-                `Aktivitas: ${activity.title}`,
-                `Status: ${approval.status}`,
-              ],
-              ctaLabel: 'Buka Approval Center',
-              ctaUrl: getAppUrl('/dashboard/approval'),
-            })
-
-            emailDispatchQueue.push({
-              notificationEventId: decisionEvent.id,
-              recipient: activity.requesterEmail,
-              updateEventStatus: false,
-              request: {
-                to: activity.requesterEmail,
-                fallbackSubject: `Request ${submission.requestNumber} ${decisionLabel}`,
-                fallbackHtml: decisionEmail.html,
-                fallbackText: decisionEmail.text,
+            await tx.insert(notificationDeliveries).values([
+              {
+                notificationEventId: decisionEvent.id,
+                deliveryChannel: 'in_app',
+                recipient: activity.requesterEmail || activity.requesterName,
+                status: 'delivered',
+                sentAt: approval.reviewedAt ?? new Date(),
               },
-            })
+              {
+                notificationEventId: decisionEvent.id,
+                deliveryChannel: 'email',
+                recipient: activity.requesterEmail,
+                status: 'queued',
+                sentAt: null,
+              },
+            ])
+
+            if (activity.requesterEmail) {
+              const decisionLabel = normalizeStatus(approval.status) === 'approved' ? 'disetujui' : 'ditolak'
+              const decisionEmail = buildWorkflowEmailContent({
+                title: `Request ${submission.requestNumber} ${decisionLabel}`,
+                greeting: `Halo ${activity.requesterName},`,
+                intro: `${activity.title} telah ${decisionLabel} oleh approver.`,
+                details: [
+                  `Request: ${submission.requestNumber}`,
+                  `Aktivitas: ${activity.title}`,
+                  `Status: ${approval.status}`,
+                ],
+                ctaLabel: 'Buka Approval Center',
+                ctaUrl: getAppUrl('/dashboard/approval'),
+              })
+
+              emailDispatchQueue.push({
+                notificationEventId: decisionEvent.id,
+                recipient: activity.requesterEmail,
+                updateEventStatus: false,
+                request: {
+                  to: activity.requesterEmail,
+                  fallbackSubject: `Request ${submission.requestNumber} ${decisionLabel}`,
+                  fallbackHtml: decisionEmail.html,
+                  fallbackText: decisionEmail.text,
+                },
+              })
+            }
           }
         }
       }
@@ -2059,34 +2080,52 @@ export async function syncActivityWorkflowArtifacts(
         groupMode
       )
 
-      const [groupEvent] = await tx
-        .insert(notificationEvents)
-        .values({
-          submissionId: submission.id,
-          approvalId: group[0]?.id ?? null,
-          channel: 'in_app',
-          eventType:
-            groupMode === 'parallel_any' || groupMode === 'any_one'
-              ? 'parallel_any_status'
-              : 'approval_group_status',
-          recipient: activity.requesterEmail || activity.requesterName,
-          payloadSnapshot: JSON.stringify({
-            stepLevel: group[0]?.level ?? 0,
-            mode: groupMode,
-            groupStatus,
-          }),
-          deliveryStatus: 'delivered',
-          deliveredAt: new Date(),
-        })
-        .returning()
+      const groupEventType =
+        groupMode === 'parallel_any' || groupMode === 'any_one'
+          ? 'parallel_any_status'
+          : 'approval_group_status'
+      const groupApprovalId = group[0]?.id ?? null
+      const [existingGroupEvent] = groupApprovalId
+        ? await tx
+            .select({ id: notificationEvents.id })
+            .from(notificationEvents)
+            .where(
+              and(
+                eq(notificationEvents.submissionId, submission.id),
+                eq(notificationEvents.approvalId, groupApprovalId),
+                eq(notificationEvents.eventType, groupEventType)
+              )
+            )
+            .limit(1)
+        : []
 
-      await tx.insert(notificationDeliveries).values({
-        notificationEventId: groupEvent.id,
-        deliveryChannel: 'in_app',
-        recipient: activity.requesterEmail || activity.requesterName,
-        status: 'delivered',
-        sentAt: new Date(),
-      })
+      if (!existingGroupEvent) {
+        const [groupEvent] = await tx
+          .insert(notificationEvents)
+          .values({
+            submissionId: submission.id,
+            approvalId: groupApprovalId,
+            channel: 'in_app',
+            eventType: groupEventType,
+            recipient: activity.requesterEmail || activity.requesterName,
+            payloadSnapshot: JSON.stringify({
+              stepLevel: group[0]?.level ?? 0,
+              mode: groupMode,
+              groupStatus,
+            }),
+            deliveryStatus: 'delivered',
+            deliveredAt: new Date(),
+          })
+          .returning()
+
+        await tx.insert(notificationDeliveries).values({
+          notificationEventId: groupEvent.id,
+          deliveryChannel: 'in_app',
+          recipient: activity.requesterEmail || activity.requesterName,
+          status: 'delivered',
+          sentAt: new Date(),
+        })
+      }
     }
   })
 
@@ -2722,36 +2761,87 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
         continue
       }
 
-      const recipient =
-        job.assigneeEmail || job.assigneeName || `employee-${job.assigneeEmployeeId ?? 'unknown'}`
-      const [event] = await tx
+      const recipient = job.assigneeEmail?.trim().toLowerCase()
+      if (!recipient) {
+        await tx
+          .update(reminderJobs)
+          .set({
+            status: 'skipped',
+            executionLog: 'Skipped because assignee email is missing.',
+            updatedAt: referenceDate,
+          })
+          .where(eq(reminderJobs.id, job.id))
+        continue
+      }
+
+      const reminderTitle =
+        job.reminderType === 'overdue'
+          ? `Approval overdue ${job.requestNumber}`
+          : `Approval reminder ${job.requestNumber}`
+      const reminderBody =
+        job.reminderType === 'overdue'
+          ? 'Approval melewati SLA. Buka inbox untuk tindak lanjut.'
+          : 'Approval mendekati SLA. Review sebelum jatuh tempo.'
+
+      const [bellEvent] = await tx
         .insert(notificationEvents)
         .values({
           submissionId: job.submissionId,
           inboxItemId: job.inboxItemId,
           approvalId: job.approvalId,
-          channel: job.reminderType === 'overdue' ? 'in_app' : 'email',
+          channel: 'in_app',
           eventType: `reminder_${job.reminderType}`,
           recipient,
           payloadSnapshot: JSON.stringify({
+            title: reminderTitle,
+            body: reminderBody,
+            url: '/mobile/notifications',
             requestNumber: job.requestNumber,
             reminderAt: job.reminderAt.toISOString(),
             reminderType: job.reminderType,
           }),
-          deliveryStatus: job.reminderType === 'overdue' ? 'delivered' : 'queued',
-          deliveredAt: job.reminderType === 'overdue' ? referenceDate : null,
+          deliveryStatus: 'delivered',
+          deliveredAt: referenceDate,
         })
         .returning()
 
       await tx.insert(notificationDeliveries).values({
-        notificationEventId: event.id,
-        deliveryChannel: job.reminderType === 'overdue' ? 'in_app' : 'email',
+        notificationEventId: bellEvent.id,
+        deliveryChannel: 'in_app',
         recipient,
-        status: job.reminderType === 'overdue' ? 'delivered' : 'queued',
-        sentAt: job.reminderType === 'overdue' ? referenceDate : null,
+        status: 'delivered',
+        sentAt: referenceDate,
       })
 
-      if (job.reminderType !== 'overdue' && job.assigneeEmail) {
+      if (job.reminderType !== 'overdue') {
+        const [emailEvent] = await tx
+          .insert(notificationEvents)
+          .values({
+            submissionId: job.submissionId,
+            inboxItemId: job.inboxItemId,
+            approvalId: job.approvalId,
+            channel: 'email',
+            eventType: `reminder_${job.reminderType}`,
+            recipient,
+            payloadSnapshot: JSON.stringify({
+              title: reminderTitle,
+              body: reminderBody,
+              url: '/dashboard/approval',
+              requestNumber: job.requestNumber,
+              reminderAt: job.reminderAt.toISOString(),
+              reminderType: job.reminderType,
+            }),
+            deliveryStatus: 'queued',
+          })
+          .returning()
+
+        await tx.insert(notificationDeliveries).values({
+          notificationEventId: emailEvent.id,
+          deliveryChannel: 'email',
+          recipient,
+          status: 'queued',
+        })
+
         const reminderEmail = buildWorkflowEmailContent({
           title: `Reminder approval ${job.requestNumber}`,
           greeting: `Halo ${job.assigneeName || 'Approver'},`,
@@ -2769,11 +2859,11 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
         })
 
         emailDispatchQueue.push({
-          notificationEventId: event.id,
-          recipient: job.assigneeEmail,
+          notificationEventId: emailEvent.id,
+          recipient,
           updateEventStatus: true,
           request: {
-            to: job.assigneeEmail,
+            to: recipient,
             templateCode: 'approval_sla_reminder',
             templateName: 'Approval SLA Reminder',
             variables: {
@@ -2793,17 +2883,11 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
         pushDispatchQueue.push({
           employeeId: job.assigneeEmployeeId,
           category: 'approval_requests',
-          title:
-            job.reminderType === 'overdue'
-              ? `Approval overdue ${job.requestNumber}`
-              : `Approval reminder ${job.requestNumber}`,
-          body:
-            job.reminderType === 'overdue'
-              ? 'Approval melewati SLA. Buka inbox untuk tindak lanjut.'
-              : 'Approval mendekati SLA. Review sebelum jatuh tempo.',
+          title: reminderTitle,
+          body: reminderBody,
           url: '/mobile/notifications',
           tag: `approval-reminder-${job.id}`,
-          notificationEventId: event.id,
+          notificationEventId: bellEvent.id,
           metadata: {
             requestNumber: job.requestNumber,
             reminderType: job.reminderType,

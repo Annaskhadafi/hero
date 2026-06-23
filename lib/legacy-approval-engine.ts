@@ -287,53 +287,72 @@ async function createPendingArtifactsForSubmission(params: {
         })
         .returning({ id: inboxItems.id });
 
-      const [emailEvent] = await tx
-        .insert(notificationEvents)
-        .values({
-          submissionId: params.submissionId,
-          inboxItemId: inboxItem.id,
-          approvalId: approval.id,
-          channel: "email",
-          eventType: "approval_assignment",
-          recipient: step.approverName,
-          payloadSnapshot: JSON.stringify({
-            requestTitle: params.requestTitle,
-            currentStepLabel,
-          }),
-          deliveryStatus: "queued",
-        })
-        .returning({ id: notificationEvents.id });
+      const [approverContact] = step.approverEmployeeId
+        ? await tx
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, step.approverEmployeeId))
+            .limit(1)
+        : [];
+      const approverEmail = approverContact?.email?.trim().toLowerCase() ?? "";
 
-      await tx.insert(notificationDeliveries).values({
-        notificationEventId: emailEvent.id,
-        deliveryChannel: "email",
-        recipient: step.approverName,
-        status: "queued",
-      });
+      if (approverEmail) {
+        const [emailEvent] = await tx
+          .insert(notificationEvents)
+          .values({
+            submissionId: params.submissionId,
+            inboxItemId: inboxItem.id,
+            approvalId: approval.id,
+            channel: "email",
+            eventType: "approval_assignment",
+            recipient: approverEmail,
+            payloadSnapshot: JSON.stringify({
+              title: `${params.requestTitle} menunggu approval`,
+              body: currentStepLabel,
+              url: "/dashboard/approval",
+              requestTitle: params.requestTitle,
+              currentStepLabel,
+            }),
+            deliveryStatus: "queued",
+          })
+          .returning({ id: notificationEvents.id });
 
-      const [inAppEvent] = await tx
-        .insert(notificationEvents)
-        .values({
-          submissionId: params.submissionId,
-          inboxItemId: inboxItem.id,
-          approvalId: approval.id,
-          channel: "in_app",
-          eventType: "approval_assignment",
-          recipient: step.approverName,
-          payloadSnapshot: JSON.stringify({
-            requestTitle: params.requestTitle,
-            currentStepLabel,
-          }),
-          deliveryStatus: "queued",
-        })
-        .returning({ id: notificationEvents.id });
+        await tx.insert(notificationDeliveries).values({
+          notificationEventId: emailEvent.id,
+          deliveryChannel: "email",
+          recipient: approverEmail,
+          status: "queued",
+        });
 
-      await tx.insert(notificationDeliveries).values({
-        notificationEventId: inAppEvent.id,
-        deliveryChannel: "in_app",
-        recipient: step.approverName,
-        status: "queued",
-      });
+        const [inAppEvent] = await tx
+          .insert(notificationEvents)
+          .values({
+            submissionId: params.submissionId,
+            inboxItemId: inboxItem.id,
+            approvalId: approval.id,
+            channel: "in_app",
+            eventType: "approval_assignment",
+            recipient: approverEmail,
+            payloadSnapshot: JSON.stringify({
+              title: `${params.requestTitle} menunggu approval`,
+              body: currentStepLabel,
+              url: "/dashboard/approval",
+              requestTitle: params.requestTitle,
+              currentStepLabel,
+            }),
+            deliveryStatus: "delivered",
+            deliveredAt: params.submittedAt,
+          })
+          .returning({ id: notificationEvents.id });
+
+        await tx.insert(notificationDeliveries).values({
+          notificationEventId: inAppEvent.id,
+          deliveryChannel: "in_app",
+          recipient: approverEmail,
+          status: "delivered",
+          sentAt: params.submittedAt,
+        });
+      }
 
       const beforeDueReminderAt = new Date(dueAt.getTime() - 4 * 60 * 60 * 1000);
       if (beforeDueReminderAt > params.submittedAt) {
@@ -354,7 +373,7 @@ async function createPendingArtifactsForSubmission(params: {
 
       notificationsToSend.push({
         approvalId: approval.id,
-        approverEmail: "",
+        approverEmail,
         approverName: step.approverName || "Approver",
         approverEmployeeId: step.approverEmployeeId ?? null,
         dueAt,

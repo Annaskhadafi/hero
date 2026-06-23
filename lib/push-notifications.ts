@@ -470,11 +470,7 @@ export async function sendPushNotification(input: PushDispatchInput) {
 
         if (statusCode === 404 || statusCode === 410) {
           await db
-            .update(notificationPushSubscriptions)
-            .set({
-              isActive: false,
-              updatedAt: new Date(),
-            })
+            .delete(notificationPushSubscriptions)
             .where(eq(notificationPushSubscriptions.id, subscriptionRow.id));
         }
       }
