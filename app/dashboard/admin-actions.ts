@@ -6231,6 +6231,7 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
           category: payload.category,
           label: payload.label,
           points: payload.points,
+          sourceType: 'hr_adjustment',
           createdAt: new Date(),
         })
         const [updatedEmployee] = await tx
@@ -6551,17 +6552,9 @@ const resolveDisputeSchema = z.object({
   resolutionNotes: z.string().trim().max(1000).optional().default(''),
 })
 
-export async function createPenaltyEvent(
-  _previousState: AdminMutationState,
-  formData: FormData
-): Promise<AdminMutationState> {
+export async function createPenaltyEvent(formData: FormData): Promise<AdminMutationState> {
   try {
-    const payload = managePenaltyEventSchema.parse({
-      employeeId: formData.get('employeeId'),
-      penaltyCode: formData.get('penaltyCode'),
-      description: formData.get('description'),
-      pointsDeducted: formData.get('pointsDeducted'),
-    })
+    const payload = managePenaltyEventSchema.parse(Object.fromEntries(formData))
 
     await db.transaction(async (tx) => {
       const [employee] = await tx

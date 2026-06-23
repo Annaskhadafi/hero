@@ -49,6 +49,7 @@ export default async function LeaderboardPage() {
     getCurrentEmployeeAccessRole(),
   ]);
   const { analytics, analyticsLeaderboard, disputes, allLevels, allBadges } = data;
+  const { hrManualHistory } = analytics;
   const topPerformer = analyticsLeaderboard[0];
   const reviewQueue = analyticsLeaderboard.filter((row) => row.needsReview).slice(0, 25);
   const interactiveTimeline = analytics.unifiedTimeline.map((row) => ({
@@ -174,7 +175,9 @@ export default async function LeaderboardPage() {
             showImport={false}
             rows={analytics.unifiedTimeline.map((row) => [
               row.employeeName,
-              row.type,
+              row.points > 0
+                ? <Badge key={`type-${row.id}`} className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{row.type}</Badge>
+                : <Badge key={`type-${row.id}`} className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{row.type}</Badge>,
               row.category,
               row.label,
               formatPoint(row.points),
@@ -231,6 +234,22 @@ export default async function LeaderboardPage() {
               row.status === "pending" ? <DisputeReviewActions key={row.id} disputeId={row.id} /> : statusBadge(row.status, "neutral"),
             ])}
             rowAttributes={disputes.map((row) => ({ "data-date-value": row.createdAt.toISOString() }))}
+          />
+
+          <AdminTableCard
+            title="HR Manual History"
+            description="Riwayat penambahan/pengurangan poin secara manual oleh HR."
+            columns={["Date", "Employee", "Action", "Detail", "Points"]}
+            dateFilter
+            showImport={false}
+            rows={hrManualHistory.map((row) => [
+              new Date(row.createdAt).toLocaleDateString("id-ID"),
+              row.employeeName,
+              <Badge key={`act-${row.id}`} className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${row.points < 0 ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"}`}>{row.action}</Badge>,
+              row.detail,
+              <span key={`pts-${row.id}`} className={`font-semibold tabular-nums ${row.points < 0 ? "text-amber-600" : "text-emerald-600"}`}>{row.points > 0 ? "+" : ""}{row.points.toLocaleString("id-ID")}</span>,
+            ])}
+            rowAttributes={hrManualHistory.map((row) => ({ "data-date-value": new Date(row.createdAt).toISOString() }))}
           />
 
           <div className="flex flex-wrap items-center gap-2 rounded-[1.2rem] bg-surface-container-low p-4">

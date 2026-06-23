@@ -207,7 +207,7 @@ export function PointsHrInteractiveDashboard({ leaderboard, departments, timelin
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-foreground">{row.employeeName}</p>
-                  <Badge className={`rounded-full px-2.5 py-1 text-[11px] ${row.points < 0 ? toneClass("bad") : toneClass("good")}`}>{row.type}</Badge>
+                  <Badge className={`rounded-full px-2.5 py-1 text-[11px] ${row.points < 0 ? toneClass("warn") : toneClass("good")}`}>{row.type}</Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{row.category} • {row.label}</p>
               </div>

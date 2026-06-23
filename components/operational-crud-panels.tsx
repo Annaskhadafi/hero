@@ -1,3 +1,7 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -299,10 +303,26 @@ function CrudFormCard({
   children: React.ReactNode;
   triggerLabel?: string;
 }) {
-  const formAction = action as unknown as NativeFormAction;
+  const [open, setOpen] = useState(false);
+
+  const [state, formAction, isPending] = useActionState(
+    async (_prevState: AdminMutationState, formData: FormData) => {
+      return action(formData);
+    },
+    { status: 'idle', message: '' },
+  );
+
+  useEffect(() => {
+    if (state.status === 'success') {
+      toast.success(state.message);
+      setOpen(false);
+    } else if (state.status === 'error') {
+      toast.error(state.message);
+    }
+  }, [state]);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="dense" className="rounded-lg px-3">
           <Plus className="size-4" aria-hidden="true" />
@@ -330,8 +350,8 @@ function CrudFormCard({
             <input type="hidden" name="intent" value="create" />
             {children}
             <div className="flex justify-end">
-              <Button type="submit" className="rounded-xl px-5">
-                Simpan data
+              <Button type="submit" className="rounded-xl px-5" disabled={isPending}>
+                {isPending ? "Menyimpan..." : "Simpan data"}
               </Button>
             </div>
           </form>
@@ -1291,7 +1311,7 @@ export function PenaltyEventCrudForm({
     <CrudFormCard
       title="Manual Penalty"
       description="Tambahkan catatan penalti manual untuk karyawan (mengurangi poin)."
-      action={createPenaltyEvent as unknown as CrudAction}
+      action={createPenaltyEvent}
     >
       <div className="space-y-4">
         <SearchableEmployeeSelect

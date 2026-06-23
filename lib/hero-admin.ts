@@ -4973,6 +4973,7 @@ export async function getPointsPageData() {
       category: pointEvents.category,
       label: pointEvents.label,
       points: pointEvents.points,
+      sourceType: pointEvents.sourceType,
       createdAt: pointEvents.createdAt,
     })
     .from(pointEvents)
@@ -4986,6 +4987,7 @@ export async function getPointsPageData() {
       employeeId: penaltyEvents.employeeId,
       employeeName: employees.name,
       penaltyCode: penaltyEvents.penaltyCode,
+      penaltyType: penaltyEvents.penaltyType,
       description: penaltyEvents.description,
       pointsDeducted: penaltyEvents.pointsDeducted,
       isDisputed: penaltyEvents.isDisputed,
@@ -5121,6 +5123,29 @@ export async function getPointsAnalyticsPageData() {
     })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80)
 
+  const hrManualHistory = [
+    ...base.recentPointEvents
+      .filter((event) => event.sourceType === 'hr_adjustment')
+      .map((event) => ({
+        id: `point-${event.id}`,
+        employeeName: event.employeeName,
+        action: event.points > 0 ? 'Reward' : 'Adjustment',
+        detail: `${event.label} (${event.category})`,
+        points: event.points,
+        createdAt: event.createdAt,
+      })),
+    ...base.recentPenaltyEvents
+      .filter((event) => event.penaltyType === 'manual')
+      .map((event) => ({
+        id: `penalty-${event.id}`,
+        employeeName: event.employeeName,
+        action: 'Penalty',
+        detail: `${event.penaltyCode}${event.description ? ` — ${event.description}` : ''}`,
+        points: -event.pointsDeducted,
+        createdAt: event.createdAt,
+      })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80)
+
   return {
     ...base,
     analytics: {
@@ -5135,6 +5160,7 @@ export async function getPointsAnalyticsPageData() {
       biggestDrop,
       departmentPerformance,
       unifiedTimeline,
+      hrManualHistory,
       hrWorkflow: [
         { title: 'Section Head', body: 'List pekerjaan harian, input output kerja, sistem hitung poin dasar.' },
         { title: 'PJO / Atasan', body: 'Review pekerjaan dan approve. Poin masuk setelah approval.' },
