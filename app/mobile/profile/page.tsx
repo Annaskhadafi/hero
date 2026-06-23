@@ -10,6 +10,7 @@ import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settin
 import { CollapsibleSection } from "@/components/mobile/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
+import { user } from "@/db/schema/auth";
 import {
   employees, pointEvents, trainingRecords, sioCertifications,
   hcLeaveRequests, hcLeaveTypes, employeeMcu,
@@ -84,18 +85,22 @@ export default async function MobileProfilePage() {
   }
 
   // Get employee IDs for related queries
-  const [emp] = await db
-    .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
-    .from(employees)
-    .where(eq(employees.email, session.user.email))
+  const [authUser] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.email, session.user.email.toLowerCase().trim()))
     .limit(1)
+
+  const [emp] = authUser?.id
+    ? await db
+        .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
+        .from(employees)
+        .where(eq(employees.authUserId, authUser.id))
+        .limit(1)
+    : []
 
   const empId = emp?.id
   const employeeIds: number[] = empId ? [empId] : []
-  if (emp?.authUserId) {
-    const uid = Number(emp.authUserId)
-    if (!Number.isNaN(uid) && uid !== empId) employeeIds.push(uid)
-  }
 
   // Get employee record for contract dates & MCU matching
   const [hrEmp] = emp?.email ? await db

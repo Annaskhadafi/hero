@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
+import { user } from '@/db/schema/auth'
 import {
   activities,
   activityLibraries,
@@ -878,7 +879,74 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
   const normalizedEmail = email?.trim().toLowerCase()
 
   if (normalizedEmail) {
-    const [matchedEmployee] = await db
+    // Resolve via better-auth user table (email matches session, not employees.email)
+    const [authUser] = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(sql`lower(${user.email}) = ${normalizedEmail}`)
+      .limit(1)
+
+    if (authUser?.id) {
+      const [matchedEmployee] = await db
+        .select({
+          id: employees.id,
+          authUserId: employees.authUserId,
+          siteId: employees.siteId,
+          name: employees.name,
+          email: employees.email,
+          employeeSn: employees.employeeSn,
+          joinYear: employees.joinYear,
+          birthPlaceDate: employees.birthPlaceDate,
+          domicile: employees.domicile,
+          directManagerId: employees.directManagerId,
+          departmentId: employees.departmentId,
+          sectionId: employees.sectionId,
+          positionId: employees.positionId,
+          orgNodeId: employees.orgNodeId,
+          section: employees.section,
+          role: employees.role,
+          department: employees.department,
+          jobTitle: employees.jobTitle,
+          workLocation: employees.workLocation,
+          phoneNumber: employees.phoneNumber,
+          employmentStatus: employees.employmentStatus,
+          employeeStatusType: employees.employeeStatusType,
+          accessRole: employees.accessRole,
+          levelName: employees.levelName,
+          totalPoints: employees.totalPoints,
+          fitStatus: employees.fitStatus,
+          isActive: employees.isActive,
+          invitationToken: employees.invitationToken,
+          invitationExpiresAt: employees.invitationExpiresAt,
+          invitationAcceptedAt: employees.invitationAcceptedAt,
+          emailVerificationToken: employees.emailVerificationToken,
+          emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
+          emailVerified: employees.emailVerified,
+          faceEmbedding: employees.faceEmbedding,
+          faceRegisteredAt: employees.faceRegisteredAt,
+          createdAt: employees.createdAt,
+          joinDate: employees.joinDate,
+          contractDurationStart: employees.contractDurationStart,
+          contractDurationEnd: employees.contractDurationEnd,
+          permanentDate: employees.permanentDate,
+          pointOfHire: employees.pointOfHire,
+          birthDate: employees.birthDate,
+          gender: employees.gender,
+          maritalStatus: employees.maritalStatus,
+          religion: employees.religion,
+          education: employees.education,
+        })
+        .from(employees)
+        .where(eq(employees.authUserId, authUser.id))
+        .limit(1)
+
+      if (matchedEmployee) {
+        return matchedEmployee
+      }
+    }
+
+    // Fallback: direct email match (for legacy records where corp email = auth email)
+    const [matchedByEmail] = await db
       .select({
         id: employees.id,
         authUserId: employees.authUserId,
@@ -931,66 +999,12 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
       .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
       .limit(1)
 
-    if (matchedEmployee) {
-      return matchedEmployee
+    if (matchedByEmail) {
+      return matchedByEmail
     }
   }
 
-  const [fallbackEmployee] = await db
-    .select({
-      id: employees.id,
-      authUserId: employees.authUserId,
-      siteId: employees.siteId,
-      name: employees.name,
-      email: employees.email,
-      employeeSn: employees.employeeSn,
-      joinYear: employees.joinYear,
-      birthPlaceDate: employees.birthPlaceDate,
-      domicile: employees.domicile,
-      directManagerId: employees.directManagerId,
-      departmentId: employees.departmentId,
-      sectionId: employees.sectionId,
-      positionId: employees.positionId,
-      orgNodeId: employees.orgNodeId,
-      section: employees.section,
-      role: employees.role,
-      department: employees.department,
-      jobTitle: employees.jobTitle,
-      workLocation: employees.workLocation,
-      phoneNumber: employees.phoneNumber,
-      employmentStatus: employees.employmentStatus,
-      employeeStatusType: employees.employeeStatusType,
-      accessRole: employees.accessRole,
-      levelName: employees.levelName,
-      totalPoints: employees.totalPoints,
-      fitStatus: employees.fitStatus,
-      isActive: employees.isActive,
-      invitationToken: employees.invitationToken,
-      invitationExpiresAt: employees.invitationExpiresAt,
-      invitationAcceptedAt: employees.invitationAcceptedAt,
-      emailVerificationToken: employees.emailVerificationToken,
-      emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
-      emailVerified: employees.emailVerified,
-      faceEmbedding: employees.faceEmbedding,
-      faceRegisteredAt: employees.faceRegisteredAt,
-      createdAt: employees.createdAt,
-      joinDate: employees.joinDate,
-      contractDurationStart: employees.contractDurationStart,
-      contractDurationEnd: employees.contractDurationEnd,
-      permanentDate: employees.permanentDate,
-      pointOfHire: employees.pointOfHire,
-      birthDate: employees.birthDate,
-      gender: employees.gender,
-      maritalStatus: employees.maritalStatus,
-      religion: employees.religion,
-      education: employees.education,
-    })
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .orderBy(asc(employees.id))
-    .limit(1)
-
-  return fallbackEmployee ?? null
+  return null
 }
 
 async function getManagedEmployeesForLead(currentEmployee: typeof employees.$inferSelect) {

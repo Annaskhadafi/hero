@@ -9,6 +9,7 @@ import {
   masterSections,
   employees,
 } from "@/db/schema/hero";
+import { user } from "@/db/schema/auth";
 import { getServerSession } from "@/lib/auth-session";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { eq, and, or, sql, desc, SQL } from "drizzle-orm";
@@ -31,17 +32,22 @@ export interface BroadcastDataInput {
 
 // Helper: Check user role and permissions
 async function getCreatorPermissions(email: string) {
-  const [employee] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.email, email))
+  // Resolve employee via user table (email matches better-auth, not employees.email)
+  const [authUser] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.email, email.toLowerCase().trim()))
     .limit(1);
 
-  const [emp] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.email, email))
-    .limit(1);
+  const authUserId = authUser?.id;
+
+  const [emp] = authUserId
+    ? await db.select().from(employees).where(eq(employees.authUserId, authUserId)).limit(1)
+    : await db.select().from(employees).where(eq(employees.email, email)).limit(1);
+
+  const [employee] = authUserId
+    ? await db.select().from(employees).where(eq(employees.authUserId, authUserId)).limit(1)
+    : await db.select().from(employees).where(eq(employees.email, email)).limit(1);
 
   let isSuperOrHrAdmin = false;
   let isSectionHead = false;
