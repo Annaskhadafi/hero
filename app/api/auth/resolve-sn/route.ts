@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { centralServiceEmployees } from '@/db/schema/central-service'
 import { employees } from '@/db/schema/hero'
-import { eq, or, sql } from 'drizzle-orm'
+import { user } from '@/db/schema/auth'
+import { and, eq, or, sql } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
 
 function buildSnLookupVariants(sn: string) {
@@ -34,23 +35,19 @@ export async function POST(req: NextRequest) {
 
     const snVariants = buildSnLookupVariants(sn)
 
-    const [hrEmp] = await db
-      .select({ email: employees.email, fullName: employees.name })
+    // 1. Cari via employees → user (authUserId) untuk dapet email login yg cocok better-auth
+    const [matched] = await db
+      .select({ email: user.email, fullName: employees.name })
       .from(employees)
-      .where(snMatches(employees.employeeSn, snVariants))
+      .leftJoin(user, eq(employees.authUserId, user.id))
+      .where(and(snMatches(employees.employeeSn, snVariants), sql`${user.email} is not null`))
       .limit(1)
 
-    if (hrEmp?.email) {
-      return NextResponse.json({ email: hrEmp.email, name: hrEmp.fullName })
+    if (matched?.email) {
+      return NextResponse.json({ email: matched.email, name: matched.fullName })
     }
 
-    if (hrEmp && !hrEmp.email) {
-      return NextResponse.json(
-        { error: 'SN ditemukan tapi belum terdaftar email. Hubungi admin untuk aktivasi akun.' },
-        { status: 404 }
-      )
-    }
-
+    // 2. Fallback ke centralServiceEmployees
     const [centralServiceEmp] = await db
       .select({ email: centralServiceEmployees.email, fullName: centralServiceEmployees.fullName })
       .from(centralServiceEmployees)
@@ -68,21 +65,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const [legacyEmp] = await db
+    // 3. Final fallback — employees.email (mungkin ga cocok better-auth)
+    const [empEmail] = await db
       .select({ email: employees.email, name: employees.name })
       .from(employees)
-      .where(snMatches(employees.employeeSn, snVariants))
+      .where(and(snMatches(employees.employeeSn, snVariants), sql`${employees.email} is not null`))
       .limit(1)
 
-    if (legacyEmp?.email) {
-      return NextResponse.json({ email: legacyEmp.email, name: legacyEmp.name })
-    }
-
-    if (legacyEmp && !legacyEmp.email) {
-      return NextResponse.json(
-        { error: 'SN ditemukan tapi belum terdaftar email. Hubungi admin untuk aktivasi akun.' },
-        { status: 404 }
-      )
+    if (empEmail?.email) {
+      return NextResponse.json({ email: empEmail.email, name: empEmail.name })
     }
 
     return NextResponse.json({ error: 'Employee not found' }, { status: 404 })

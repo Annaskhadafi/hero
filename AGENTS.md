@@ -1,5 +1,12 @@
 # Codex Task Management Guide
 
+### Ponytail (YAGNI Minimalism) — Auto-load
+
+- Setiap session baru, baca otomatis `D:\[01] PROJECT\ponytail\AGENTS.md` sebagai aturan YAGNI/minimalism.
+- Terapkan decision ladder sebelum tulis kode: YAGNI → stdlib → native platform → installed dependency → one line → minimum viable.
+- Tandai setiap shortcut dengan komentar `ponytail:` + nama upgrade path.
+- Trust-boundary validation, data-loss handling, security, accessibility — jangan pernah skip.
+
 ## Documentation Available
 
 📚 **Project Documentation**: Check the documentation files in this directory for project-specific setup instructions and guides.
