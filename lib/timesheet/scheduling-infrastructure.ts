@@ -257,6 +257,7 @@ export async function ensureSchedulingTimesheetTables() {
         updated_at timestamp not null default now()
       );
     `);
+    await tx.execute(sql`alter table hero_attendance_permission_requests add column if not exists approval_submission_id integer references hero_form_submissions(id) on delete set null;`);
     await tx.execute(sql`create unique index if not exists hero_attendance_permission_requests_employee_date_uidx on hero_attendance_permission_requests(employee_id, start_date, permission_type);`);
     await tx.execute(sql`create index if not exists hero_attendance_permission_requests_status_idx on hero_attendance_permission_requests(status, created_at);`);
   }).catch((error) => {
