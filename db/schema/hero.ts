@@ -5,6 +5,7 @@ import {
   doublePrecision,
   integer,
   date,
+  index,
   jsonb,
   pgTable,
   serial,
@@ -3166,4 +3167,215 @@ export const employeeMcuMetrics = pgTable('hero_employee_mcu_metrics', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+// ─── Smart Site Condition (AI-assisted mining tire site analysis) ──────────
+
+export const smartSiteConditionVisits = pgTable(
+  'hero_smart_site_condition_visits',
+  {
+    id: serial('id').primaryKey(),
+    siteId: integer('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    createdByEmployeeId: integer('created_by_employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    inspectedAt: timestamp('inspected_at').notNull().defaultNow(),
+    locationName: text('location_name').notNull(),
+    locationCode: text('location_code').notNull().default(''),
+    gpsLat: doublePrecision('gps_lat'),
+    gpsLng: doublePrecision('gps_lng'),
+    weather: text('weather').notNull().default(''),
+    shiftLabel: text('shift_label').notNull().default(''),
+    tireSpecSnapshot: jsonb('tire_spec_snapshot').$type<Record<string, unknown>>(),
+    checklistSnapshot: jsonb('checklist_snapshot').$type<Record<string, unknown>>(),
+    notes: text('notes').notNull().default(''),
+    status: text('status').notNull().default('draft'), // draft | generating | ready | submitted | approved | rejected
+    approvalSubmissionId: integer('approval_submission_id'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    visitSiteInspectedIdx: index('hero_smart_site_condition_visits_site_inspected_idx').on(
+      table.siteId,
+      table.inspectedAt
+    ),
+    visitCreatorCreatedIdx: index('hero_smart_site_condition_visits_creator_created_idx').on(
+      table.createdByEmployeeId,
+      table.createdAt
+    ),
+  })
+)
+
+export const smartSiteConditionObservations = pgTable(
+  'hero_smart_site_condition_observations',
+  {
+    id: serial('id').primaryKey(),
+    visitId: integer('visit_id')
+      .notNull()
+      .references(() => smartSiteConditionVisits.id, { onDelete: 'cascade' }),
+    aspectType: text('aspect_type').notNull().default('other'),
+    title: text('title').notNull(),
+    gpsLat: doublePrecision('gps_lat'),
+    gpsLng: doublePrecision('gps_lng'),
+    score: integer('score').notNull().default(3),
+    notes: text('notes').notNull().default(''),
+    soilType: text('soil_type').notNull().default(''),
+    tireUsed: text('tire_used').notNull().default(''),
+    metadataSnapshot: jsonb('metadata_snapshot').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    observationVisitIdx: index('hero_smart_site_condition_observations_visit_idx').on(table.visitId),
+  })
+)
+
+export const smartSiteConditionPhotos = pgTable(
+  'hero_smart_site_condition_photos',
+  {
+    id: serial('id').primaryKey(),
+    observationId: integer('observation_id')
+      .notNull()
+      .references(() => smartSiteConditionObservations.id, { onDelete: 'cascade' }),
+    photoUrl: text('photo_url').notNull(),
+    photoKey: text('photo_key').notNull().default(''),
+    photoName: text('photo_name').notNull().default(''),
+    caption: text('caption').notNull().default(''),
+    takenAt: timestamp('taken_at'),
+    gpsLat: doublePrecision('gps_lat'),
+    gpsLng: doublePrecision('gps_lng'),
+    tags: jsonb('tags').$type<{ labels?: string[]; aiHints?: string[] }>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    photoObservationIdx: index('hero_smart_site_condition_photos_observation_idx').on(table.observationId),
+  })
+)
+
+export const smartSiteConditionMatrixTemplates = pgTable(
+  'hero_smart_site_condition_matrix_templates',
+  {
+    id: serial('id').primaryKey(),
+    ownerEmployeeId: integer('owner_employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    isShared: boolean('is_shared').notNull().default(false),
+    sharedScope: text('shared_scope').notNull().default('private'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    templateOwnerCreatedIdx: index('hero_smart_site_condition_templates_owner_created_idx').on(
+      table.ownerEmployeeId,
+      table.createdAt
+    ),
+  })
+)
+
+export const smartSiteConditionMatrixTemplateVersions = pgTable(
+  'hero_smart_site_condition_matrix_template_versions',
+  {
+    id: serial('id').primaryKey(),
+    templateId: integer('template_id')
+      .notNull()
+      .references(() => smartSiteConditionMatrixTemplates.id, { onDelete: 'cascade' }),
+    versionNumber: integer('version_number').notNull().default(1),
+    schemaSnapshot: jsonb('schema_snapshot').$type<Record<string, unknown>>().notNull().default({}),
+    promptSystem: text('prompt_system').notNull().default(''),
+    promptRubric: jsonb('prompt_rubric').$type<Record<string, unknown>>().notNull().default({}),
+    slideLayoutSnapshot: jsonb('slide_layout_snapshot').$type<Record<string, unknown>>().notNull().default({}),
+    createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    templateVersionUnique: uniqueIndex('hero_smart_site_condition_template_versions_uq').on(
+      table.templateId,
+      table.versionNumber
+    ),
+    templateVersionIdx: index('hero_smart_site_condition_template_versions_template_idx').on(table.templateId),
+  })
+)
+
+export const smartSiteConditionReports = pgTable(
+  'hero_smart_site_condition_reports',
+  {
+    id: serial('id').primaryKey(),
+    visitId: integer('visit_id')
+      .notNull()
+      .references(() => smartSiteConditionVisits.id, { onDelete: 'cascade' }),
+    templateVersionId: integer('template_version_id')
+      .notNull()
+      .references(() => smartSiteConditionMatrixTemplateVersions.id, { onDelete: 'restrict' }),
+    status: text('status').notNull().default('draft'), // draft | generated | final
+    aiModel: text('ai_model').notNull().default(''),
+    aiRaw: text('ai_raw').notNull().default(''),
+    aiJson: jsonb('ai_json').$type<Record<string, unknown>>(),
+    executiveSummary: text('executive_summary').notNull().default(''),
+    finalNarrative: text('final_narrative').notNull().default(''),
+    finalMatrix: jsonb('final_matrix').$type<Record<string, unknown>>(),
+    createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    updatedByEmployeeId: integer('updated_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    reportVisitTemplateUnique: uniqueIndex('hero_smart_site_condition_reports_visit_template_uq').on(
+      table.visitId,
+      table.templateVersionId
+    ),
+    reportVisitIdx: index('hero_smart_site_condition_reports_visit_idx').on(table.visitId),
+  })
+)
+
+export const smartSiteConditionReportExports = pgTable(
+  'hero_smart_site_condition_report_exports',
+  {
+    id: serial('id').primaryKey(),
+    reportId: integer('report_id')
+      .notNull()
+      .references(() => smartSiteConditionReports.id, { onDelete: 'cascade' }),
+    format: text('format').notNull(), // pptx | pdf
+    fileUrl: text('file_url').notNull(),
+    fileKey: text('file_key').notNull().default(''),
+    createdByEmployeeId: integer('created_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    reportExportUnique: uniqueIndex('hero_smart_site_condition_report_exports_uq').on(
+      table.reportId,
+      table.format
+    ),
+  })
+)
+
+export const smartSiteConditionAiJobs = pgTable(
+  'hero_smart_site_condition_ai_jobs',
+  {
+    id: serial('id').primaryKey(),
+    reportId: integer('report_id')
+      .notNull()
+      .references(() => smartSiteConditionReports.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('queued'), // queued | running | failed | done
+    inputHash: text('input_hash').notNull().default(''),
+    attempts: integer('attempts').notNull().default(0),
+    errorMessage: text('error_message').notNull().default(''),
+    startedAt: timestamp('started_at'),
+    finishedAt: timestamp('finished_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    aiJobReportIdx: index('hero_smart_site_condition_ai_jobs_report_idx').on(table.reportId),
+  })
+)
 
