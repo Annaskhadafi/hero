@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { IconSparkles, IconTemplate, IconMapPin, IconFileText } from '@tabler/icons-react'
 import {
@@ -286,14 +287,19 @@ export function SmartSiteConditionWorkspace(props: WorkspaceProps) {
                     <TableCell>{visit.weather || '-'}</TableCell>
                     <TableCell>{formatDateTime(visit.inspectedAt)}</TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isPending && busyVisitId === visit.id}
-                        onClick={() => handleBootstrapReport(visit.id)}
-                      >
-                        Draft report
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/dashboard/smart-site-condition/${visit.id}`}>Detail</Link>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isPending && busyVisitId === visit.id}
+                          onClick={() => handleBootstrapReport(visit.id)}
+                        >
+                          Draft report
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

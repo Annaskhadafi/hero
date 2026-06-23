@@ -195,6 +195,16 @@ export async function callSmartSiteConditionAiDraft(input: SmartSiteConditionAiI
     `Observations: ${JSON.stringify(safeInput.observations)}`,
   ].join('\n')
 
+  const photoContents = safeInput.observations
+    .flatMap((observation) => observation.photos)
+    .slice(0, 8)
+    .map((photo) => ({
+      type: 'image_url',
+      image_url: {
+        url: `data:${photo.mimeType};base64,${photo.base64}`,
+      },
+    }))
+
   // ponytail: queue-upgrade-path -> pindahkan ke background worker saat ukuran foto/report sudah besar.
   const response = await fetch(apiUrl, {
     method: 'POST',
@@ -213,7 +223,13 @@ export async function callSmartSiteConditionAiDraft(input: SmartSiteConditionAiI
         },
         {
           role: 'user',
-          content: prompt,
+          content: [
+            ...photoContents,
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
         },
       ],
       max_tokens: 4096,

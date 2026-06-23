@@ -1,13 +1,16 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   employees,
   sites,
   smartSiteConditionMatrixTemplates,
   smartSiteConditionMatrixTemplateVersions,
+  smartSiteConditionPhotos,
   smartSiteConditionReports,
+  smartSiteConditionObservations,
   smartSiteConditionVisits,
 } from '@/db/schema/hero'
+import { getS3ObjectForProxy, getS3ObjectReadUrl } from '@/lib/s3-storage'
 
 export const SMART_SITE_CONDITION_DEFAULT_SCHEMA_SNAPSHOT = {
   columns: [
@@ -155,6 +158,138 @@ export async function getSmartSiteConditionDashboardData(employeeId: number) {
       readyVisits: Number(statsRow.readyCount ?? 0),
       totalReports: reports.length,
       totalTemplates: templates.length,
+    },
+  }
+}
+
+export async function getSmartSiteConditionVisitDetail(visitId: number, employeeId: number) {
+  const [visit] = await db
+    .select({
+      id: smartSiteConditionVisits.id,
+      siteId: smartSiteConditionVisits.siteId,
+      locationName: smartSiteConditionVisits.locationName,
+      weather: smartSiteConditionVisits.weather,
+      shiftLabel: smartSiteConditionVisits.shiftLabel,
+      notes: smartSiteConditionVisits.notes,
+      status: smartSiteConditionVisits.status,
+      inspectedAt: smartSiteConditionVisits.inspectedAt,
+      gpsLat: smartSiteConditionVisits.gpsLat,
+      gpsLng: smartSiteConditionVisits.gpsLng,
+      siteName: sites.name,
+      createdByEmployeeId: smartSiteConditionVisits.createdByEmployeeId,
+      creatorName: employees.name,
+    })
+    .from(smartSiteConditionVisits)
+    .innerJoin(sites, eq(smartSiteConditionVisits.siteId, sites.id))
+    .innerJoin(employees, eq(smartSiteConditionVisits.createdByEmployeeId, employees.id))
+    .where(eq(smartSiteConditionVisits.id, visitId))
+    .limit(1)
+
+  if (!visit || visit.createdByEmployeeId !== employeeId) {
+    return null
+  }
+
+  const observations = await db
+    .select()
+    .from(smartSiteConditionObservations)
+    .where(eq(smartSiteConditionObservations.visitId, visitId))
+    .orderBy(desc(smartSiteConditionObservations.createdAt))
+
+  const observationIds = observations.map((item) => item.id)
+  const photos = observationIds.length
+    ? await db
+        .select()
+        .from(smartSiteConditionPhotos)
+        .where(inArray(smartSiteConditionPhotos.observationId, observationIds))
+        .orderBy(desc(smartSiteConditionPhotos.createdAt))
+    : []
+
+  const photosByObservationId = new Map<number, typeof photos>()
+  for (const photo of photos) {
+    const current = photosByObservationId.get(photo.observationId) ?? []
+    current.push(photo)
+    photosByObservationId.set(photo.observationId, current)
+  }
+
+  const [report] = await db
+    .select()
+    .from(smartSiteConditionReports)
+    .where(eq(smartSiteConditionReports.visitId, visitId))
+    .limit(1)
+
+  const hydratedObservations = await Promise.all(
+    observations.map(async (observation) => ({
+      ...observation,
+      photos: await Promise.all(
+        (photosByObservationId.get(observation.id) ?? []).map(async (photo) => ({
+          ...photo,
+          displayUrl: (await getS3ObjectReadUrl(photo.photoUrl)) || photo.photoUrl,
+        }))
+      ),
+    }))
+  )
+
+  return {
+    visit,
+    report,
+    observations: hydratedObservations,
+  }
+}
+
+export async function buildSmartSiteConditionAiPayload(visitId: number, employeeId: number) {
+  const detail = await getSmartSiteConditionVisitDetail(visitId, employeeId)
+
+  if (!detail) {
+    throw new Error('Visit tidak ditemukan.')
+  }
+
+  const { version } = await ensureSmartSiteConditionDefaultTemplate(employeeId)
+
+  const observations = await Promise.all(
+    detail.observations.map(async (observation) => {
+      const photos = await Promise.all(
+        observation.photos.map(async (photo) => {
+          const object = await getS3ObjectForProxy(photo.photoUrl)
+          if (!object) return null
+          return {
+            photoId: photo.id,
+            caption: photo.caption,
+            locationLabel: observation.title,
+            mimeType: object.contentType || 'image/jpeg',
+            base64: Buffer.from(object.body).toString('base64'),
+          }
+        })
+      )
+
+      return {
+        observationId: observation.id,
+        aspectType: observation.aspectType,
+        title: observation.title,
+        score: observation.score,
+        notes: observation.notes,
+        soilType: observation.soilType,
+        tireUsed: observation.tireUsed,
+        photos: photos.filter((photo): photo is NonNullable<typeof photo> => Boolean(photo)),
+      }
+    })
+  )
+
+  return {
+    visit: detail.visit,
+    report: detail.report,
+    payload: {
+      locationName: detail.visit.locationName,
+      weather: detail.visit.weather,
+      shiftLabel: detail.visit.shiftLabel,
+      notes: detail.visit.notes,
+      tireSpecSnapshot: {},
+      checklistSnapshot: {},
+      templateVersionId: version.id,
+      templateName: 'Default Smart Site Matrix',
+      templateSchemaSnapshot: version.schemaSnapshot as Record<string, unknown>,
+      templateRubricSnapshot: version.promptRubric as Record<string, unknown>,
+      slideLayoutSnapshot: version.slideLayoutSnapshot as Record<string, unknown>,
+      observations,
     },
   }
 }
