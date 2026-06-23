@@ -113,6 +113,30 @@ async function getCreatorPermissions(email: string) {
   };
 }
 
+async function getCurrentEmployeeForBroadcast(sessionUser: { id?: string; email?: string | null }) {
+  const normalizedEmail = sessionUser.email?.toLowerCase().trim();
+
+  if (sessionUser.id) {
+    const [employee] = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.authUserId, sessionUser.id))
+      .limit(1);
+
+    if (employee) return employee;
+  }
+
+  if (!normalizedEmail) return null;
+
+  const [employee] = await db
+    .select()
+    .from(employees)
+    .where(eq(sql`lower(${employees.email})`, normalizedEmail))
+    .limit(1);
+
+  return employee ?? null;
+}
+
 // 1. Create a new broadcast
 export async function createBroadcast(data: BroadcastDataInput) {
   const session = await getServerSession();
@@ -472,16 +496,11 @@ export async function updateBroadcast(id: number, data: BroadcastDataInput, rese
 // 5. Get active targeting popups for current mobile employee
 export async function getEligibleBroadcastsForMobile() {
   const session = await getServerSession();
-  if (!session?.user?.email) {
+  if (!session?.user?.id && !session?.user?.email) {
     return [];
   }
 
-  // Get employee details
-  const [employee] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.email, session.user.email))
-    .limit(1);
+  const employee = await getCurrentEmployeeForBroadcast(session.user);
 
   if (!employee) {
     return [];
@@ -556,16 +575,11 @@ export async function getEligibleBroadcastsForMobile() {
 // 6. Get all historical broadcasts (visible to the user)
 export async function getHistoricalBroadcastsForMobile() {
   const session = await getServerSession();
-  if (!session?.user?.email) {
+  if (!session?.user?.id && !session?.user?.email) {
     return [];
   }
 
-  // Get employee details
-  const [employee] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.email, session.user.email))
-    .limit(1);
+  const employee = await getCurrentEmployeeForBroadcast(session.user);
 
   if (!employee) {
     return [];
@@ -688,8 +702,6 @@ export async function interactWithBroadcast(
     await db.insert(broadcastInteractions).values(insertData);
   }
 
-  revalidatePath("/dashboard/command-center");
-  revalidatePath("/mobile/dashboard");
   return { success: true };
 }
 

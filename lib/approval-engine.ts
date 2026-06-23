@@ -4,16 +4,22 @@ import {
   approvalMatrices,
   approvalMatrixSteps,
   employees,
+  masterDepartments,
   orgChartNodes,
   orgChartStructures,
   orgNodeAssignments,
+  sites,
 } from "@/db/schema/hero";
 
 type ApprovalContext = {
   employeeId: number;
   employeeName: string;
   siteId: number;
+  siteName: string;
+  siteLocation: string;
+  siteHeadEmployeeId: number | null;
   departmentId: number | null;
+  departmentName: string | null;
   sectionId: number | null;
   positionId: number | null;
   directManagerId: number | null;
@@ -38,6 +44,7 @@ export type ResolvedApprovalStep = {
     | "fallback_node"
     | "escalation"
     | "legacy_manager"
+    | "legacy_site_pjo"
     | "legacy_site_foreman"
     | "vacant";
   canDelegate: boolean;
@@ -68,6 +75,15 @@ type ResolveApprovalRouteInput = {
 
 function normalizeValue(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
+}
+
+function isCentralServiceDepartment(departmentName: string | null) {
+  return normalizeValue(departmentName).replace(/s$/, "") === "central service";
+}
+
+function isJakartaOrBalikpapanSite(siteName: string, siteLocation: string) {
+  const source = `${siteName} ${siteLocation}`.toLowerCase();
+  return source.includes("jakarta") || source.includes("balikpapan");
 }
 
 function isBetweenWindow(target: Date, start: Date | null, end: Date | null) {
@@ -172,12 +188,18 @@ async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<App
       id: employees.id,
       name: employees.name,
       siteId: employees.siteId,
+      siteName: sites.name,
+      siteLocation: sites.location,
+      siteHeadEmployeeId: sites.headEmployeeId,
       departmentId: employees.departmentId,
+      departmentName: masterDepartments.name,
       sectionId: employees.sectionId,
       positionId: employees.positionId,
       directManagerId: employees.directManagerId,
     })
     .from(employees)
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .where(eq(employees.id, input.employeeId))
     .limit(1);
 
@@ -189,7 +211,11 @@ async function getApprovalContext(input: ResolveApprovalRouteInput): Promise<App
     employeeId: employee.id,
     employeeName: employee.name,
     siteId: employee.siteId,
+    siteName: employee.siteName ?? "",
+    siteLocation: employee.siteLocation ?? "",
+    siteHeadEmployeeId: employee.siteHeadEmployeeId ?? null,
     departmentId: employee.departmentId ?? null,
+    departmentName: employee.departmentName ?? null,
     sectionId: employee.sectionId ?? null,
     positionId: employee.positionId ?? null,
     directManagerId: employee.directManagerId ?? null,
@@ -207,6 +233,18 @@ async function resolveLegacyFallbackRoute(
   const warnings = [
     "Approval matrix aktif tidak ditemukan. Sistem memakai fallback legacy approver.",
   ];
+
+  const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, warnings);
+  if (centralServiceSitePjoRoute) {
+    return centralServiceSitePjoRoute;
+  }
+
+  if (
+    isCentralServiceDepartment(context.departmentName) &&
+    !isJakartaOrBalikpapanSite(context.siteName, context.siteLocation)
+  ) {
+    warnings.push("Head Area/PJO Site aktif belum diset di master Lokasi Site untuk Central Service site ini.");
+  }
 
   if (context.directManagerId) {
     const [manager] = await db
@@ -318,6 +356,67 @@ async function resolveLegacyFallbackRoute(
   };
 }
 
+async function resolveCentralServiceSitePjoRoute(
+  context: ApprovalContext,
+  warnings: string[],
+): Promise<ApprovalRouteResolution | null> {
+  const centralServiceOutsideMainSite =
+    isCentralServiceDepartment(context.departmentName) &&
+    !isJakartaOrBalikpapanSite(context.siteName, context.siteLocation);
+
+  if (!centralServiceOutsideMainSite) {
+    return null;
+  }
+
+  const siteApprovers = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+    })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.id, context.siteHeadEmployeeId ?? 0),
+        eq(employees.siteId, context.siteId),
+        eq(employees.isActive, true),
+      ),
+    )
+    .limit(1);
+  const pjo = siteApprovers[0] ?? null;
+
+  if (!pjo) {
+    return null;
+  }
+
+  return {
+    matrixId: null,
+    matrixName: null,
+    structureId: null,
+    structureName: null,
+    transactionType: context.transactionType,
+    warnings: [
+      ...warnings,
+      "Central Service di site luar Jakarta/Balikpapan diarahkan langsung ke Head Area/PJO Site dari master Lokasi Site.",
+    ],
+    steps: [
+      {
+        stepOrder: 1,
+        label: "PJO Site",
+        approverName: pjo.name,
+        approverEmployeeId: pjo.id,
+        approverNodeId: null,
+        approvalMatrixStepId: null,
+        approvalMode: "sequential",
+        resolutionSource: "legacy_site_pjo",
+        canDelegate: true,
+        slaHours: 24,
+        nodeLabel: null,
+        fallbackLabel: null,
+        escalationLabel: null,
+      },
+    ],
+  };
+}
 type NodeRow = {
   id: number;
   label: string;
@@ -530,6 +629,13 @@ export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput,
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input);
+  const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [
+    "Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.",
+  ]);
+
+  if (centralServiceSitePjoRoute) {
+    return centralServiceSitePjoRoute;
+  }
 
   const matrixCandidates = await db
     .select({
@@ -736,3 +842,5 @@ export function serializeApprovalRoute(route: ApprovalRouteResolution) {
     })),
   });
 }
+
+

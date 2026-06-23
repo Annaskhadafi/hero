@@ -385,6 +385,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Section Head - Input Pekerjaan',
     title: 'Input Aktivitas Harian',
     url: '/dashboard/activity-hub/my-day',
     iconName: 'dashboard',
@@ -396,6 +397,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Section Head - Input Pekerjaan',
     title: 'Monitoring Tim & SPL',
     url: '/dashboard/activity-hub/team-board',
     iconName: 'list-details',
@@ -407,6 +409,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Setup Pekerjaan & Poin',
     title: 'Kamus Aktivitas',
     url: '/dashboard/activity-hub/library',
     iconName: 'database',
@@ -418,6 +421,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Setup Pekerjaan & Poin',
     title: 'Route Template Harian',
     url: '/dashboard/activity-hub/routes',
     iconName: 'list-details',
@@ -429,6 +433,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Setup Pekerjaan & Poin',
     title: 'Rule Aktivitas Global',
     url: '/dashboard/activity-hub/configuration',
     iconName: 'settings',
@@ -440,6 +445,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Lembur & Timesheet',
     title: 'Pengajuan Lembur (Request)',
     url: '/dashboard/overtime-requests',
     iconName: 'checklist',
@@ -451,6 +457,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Lembur & Timesheet',
     title: 'Timesheet Realisasi',
     url: '/dashboard/timesheet',
     iconName: 'folder',
@@ -519,6 +526,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Approval',
+    groupLabel: 'PJO / Atasan Review',
     title: 'Approval Inbox',
     url: '/dashboard/approval',
     iconName: 'mail',
@@ -530,6 +538,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Approval',
+    groupLabel: 'PJO / Atasan Review',
     title: 'Request Center',
     url: '/dashboard/request-center',
     iconName: 'folder',
@@ -541,6 +550,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Approval',
+    groupLabel: 'Setup Approval',
     title: 'Approval Workflow Builder',
     url: '/dashboard/workflow-studio',
     iconName: 'list-details',
@@ -552,6 +562,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Approval',
+    groupLabel: 'Notification & Reminder',
     title: 'Notification Center',
     url: '/dashboard/notifications',
     iconName: 'mail',
@@ -1197,12 +1208,13 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
-    section: 'Laporan',
-    title: 'Points Overview',
+    section: 'Human Capital',
+    groupLabel: 'Point System',
+    title: 'Point Dashboard',
     url: '/dashboard/leaderboard',
-    iconName: 'settings',
+    iconName: 'chart-bar',
     resource: 'point_setting',
-    sortOrder: 3,
+    sortOrder: 17,
     isVisible: true,
     openInNewTab: false,
   },
@@ -5015,6 +5027,124 @@ export async function getPointsPageData() {
   }
 }
 
+export async function getPointsAnalyticsPageData() {
+  const base = await getPointsPageData()
+
+  const now = new Date()
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const previousPeriodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  const activeEmployees = base.leaderboard.filter((employee) => employee.totalPoints > 0)
+  const periodEvents = base.recentPointEvents.filter((event) => event.createdAt >= periodStart)
+  const previousEvents = base.recentPointEvents.filter(
+    (event) => event.createdAt >= previousPeriodStart && event.createdAt < periodStart
+  )
+  const periodPenalties = base.recentPenaltyEvents.filter((event) => event.createdAt >= periodStart)
+  const openDisputes = base.disputes.filter((dispute) => dispute.status === 'pending')
+
+  const sumByEmployee = (rows: typeof base.recentPointEvents) => {
+    const map = new Map<number, number>()
+    for (const row of rows) {
+      map.set(row.employeeId, (map.get(row.employeeId) ?? 0) + row.points)
+    }
+    return map
+  }
+
+  const periodByEmployee = sumByEmployee(periodEvents)
+  const previousByEmployee = sumByEmployee(previousEvents)
+  const penaltyByEmployee = new Map<number, number>()
+  for (const row of periodPenalties) {
+    penaltyByEmployee.set(row.employeeId, (penaltyByEmployee.get(row.employeeId) ?? 0) + row.pointsDeducted)
+  }
+
+  const leaderboard = base.leaderboard.map((employee, index) => {
+    const periodPoints = periodByEmployee.get(employee.id) ?? 0
+    const previousPoints = previousByEmployee.get(employee.id) ?? 0
+    const penaltyPoints = penaltyByEmployee.get(employee.id) ?? 0
+    const trend = periodPoints > previousPoints ? 'Naik' : periodPoints < previousPoints ? 'Turun' : 'Stabil'
+
+    return {
+      ...employee,
+      rank: index + 1,
+      periodPoints,
+      previousPoints,
+      penaltyPoints,
+      trend,
+      needsReview: penaltyPoints > 0 || periodPoints < 0 || openDisputes.some((dispute) => dispute.employeeId === employee.id),
+    }
+  })
+
+  const topImprover = [...leaderboard].sort((a, b) => b.periodPoints - a.periodPoints)[0]
+  const biggestDrop = [...leaderboard].sort((a, b) => a.periodPoints - b.periodPoints)[0]
+  const employeesWithoutActivity = base.leaderboard.filter((employee) => !periodByEmployee.has(employee.id)).length
+  const rewardPoints = periodEvents.filter((event) => event.points > 0).reduce((total, event) => total + event.points, 0)
+  const adjustmentPoints = periodEvents.filter((event) => event.points < 0).reduce((total, event) => total + Math.abs(event.points), 0)
+  const penaltyPoints = periodPenalties.reduce((total, event) => total + event.pointsDeducted, 0)
+  const averagePoints = activeEmployees.length
+    ? Math.round(activeEmployees.reduce((total, employee) => total + employee.totalPoints, 0) / activeEmployees.length)
+    : 0
+
+  const departmentMap = new Map<string, { department: string; employees: number; points: number; penalties: number }>()
+  for (const employee of leaderboard) {
+    const key = employee.department || 'Tanpa department'
+    const current = departmentMap.get(key) ?? { department: key, employees: 0, points: 0, penalties: 0 }
+    current.employees += 1
+    current.points += employee.periodPoints
+    current.penalties += employee.penaltyPoints
+    departmentMap.set(key, current)
+  }
+  const departmentPerformance = [...departmentMap.values()].sort((a, b) => b.points - a.points)
+
+  const unifiedTimeline = [
+    ...base.recentPointEvents.map((event) => ({
+      id: `point-${event.id}`,
+      eventId: event.id,
+      employeeId: event.employeeId,
+      eventType: 'point' as const,
+      employeeName: event.employeeName,
+      type: event.points >= 0 ? 'Reward' : 'Adjustment',
+      category: event.category,
+      label: event.label,
+      points: event.points,
+      createdAt: event.createdAt,
+    })),
+    ...base.recentPenaltyEvents.map((event) => ({
+      id: `penalty-${event.id}`,
+      eventId: event.id,
+      eventType: 'penalty' as const,
+      employeeName: event.employeeName,
+      type: 'Penalty',
+      category: event.penaltyCode,
+      label: event.description || event.penaltyCode,
+      points: -event.pointsDeducted,
+      createdAt: event.createdAt,
+    })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 80)
+
+  return {
+    ...base,
+    analytics: {
+      activeEmployees: activeEmployees.length,
+      averagePoints,
+      rewardPoints,
+      adjustmentPoints,
+      penaltyPoints,
+      openDisputes: openDisputes.length,
+      employeesWithoutActivity,
+      topImprover,
+      biggestDrop,
+      departmentPerformance,
+      unifiedTimeline,
+      hrWorkflow: [
+        { title: 'Section Head', body: 'List pekerjaan harian, input output kerja, sistem hitung poin dasar.' },
+        { title: 'PJO / Atasan', body: 'Review pekerjaan dan approve. Poin masuk setelah approval.' },
+        { title: 'HR', body: 'Analisa orang, tambah poin, buat badge, kelola penalty dan dispute.' },
+      ],
+    },
+    analyticsLeaderboard: leaderboard,
+  }
+}
+
 export async function evaluatePointThresholdBadges(
   tx: any,
   employeeId: number,
@@ -6272,4 +6402,6 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+
+
 

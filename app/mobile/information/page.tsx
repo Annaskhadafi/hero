@@ -3,7 +3,7 @@ import { InformationClient } from "./information-client";
 import { getServerSession } from "@/lib/auth-session";
 import { db } from "@/db";
 import { employees } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +12,16 @@ export default async function MobileInformationPage() {
   const history = await getHistoricalBroadcastsForMobile();
 
   let canCreate = false;
-  if (session?.user?.email) {
+  if (session?.user?.id || session?.user?.email) {
+    const normalizedEmail = session.user.email?.toLowerCase().trim();
     const [emp] = await db
       .select({ accessRole: employees.accessRole })
       .from(employees)
-      .where(eq(employees.email, session.user.email))
+      .where(
+        session.user.id
+          ? eq(employees.authUserId, session.user.id)
+          : eq(sql`lower(${employees.email})`, normalizedEmail)
+      )
       .limit(1);
     const role = emp?.accessRole;
     canCreate = role === "Super Admin" || role === "HC Manager";

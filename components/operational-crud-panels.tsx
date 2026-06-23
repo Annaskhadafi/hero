@@ -854,30 +854,76 @@ export function PointEventRowActions({
   categoryOptions?: MasterCategoryOptionMap;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-1">
       <RowEditShell id={row.id} action={managePointEventAction}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SelectField name="employeeId" label="Karyawan" defaultValue={`${row.employeeId}`}>
-            <EmployeeOptions employees={employees} />
-          </SelectField>
-          <CategorySelectField
-            name="category"
-            label="Kategori"
-            type="point_event_category"
-            defaultValue={row.category}
-            categoryOptions={categoryOptions}
-            fallback={[
-              { code: "Manual Adjustment", label: "Manual Adjustment" },
-              { code: "Bonus", label: "Bonus" },
-              { code: "Penalty", label: "Penalty" },
-            ]}
+        <div className="grid gap-4">
+          <SearchableEmployeeSelect
+            employees={employees}
+            name="employeeId"
+            label="Karyawan"
+            defaultValue={`${row.employeeId}`}
+            placeholder="Cari nama atau SN karyawan..."
           />
-          <TextField name="label" label="Label" defaultValue={row.label} />
-          <TextField name="points" label="Poin" type="number" defaultValue={row.points} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CategorySelectField
+              name="category"
+              label="Kategori"
+              type="point_event_category"
+              defaultValue={row.category}
+              categoryOptions={categoryOptions}
+              fallback={[
+                { code: "Manual Adjustment", label: "Manual Adjustment" },
+                { code: "Bonus", label: "Bonus" },
+                { code: "Penalty", label: "Penalty" },
+              ]}
+            />
+            <TextField name="label" label="Label" defaultValue={row.label} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField name="points" label="Poin" type="number" defaultValue={row.points} />
+          </div>
         </div>
       </RowEditShell>
+      <PointCancelAction id={row.id} label={row.label} />
       <PointDeleteAction id={row.id} />
     </div>
+  );
+}
+
+export function PointCancelAction({
+  id,
+  label = "point event",
+}: {
+  id: number;
+  label?: string;
+}) {
+  const formAction = managePointEventAction as unknown as NativeFormAction;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="text-amber-600" aria-label="Cancel">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Batalkan Point Event</DialogTitle>
+          <DialogDescription>
+            Poin "{label}" akan dibatalkan dan dikembalikan ke karyawan. Catatan tetap tersimpan untuk audit.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="mt-3 grid gap-3">
+          <input type="hidden" name="intent" value="cancel" />
+          <input type="hidden" name="id" value={id} />
+          <div className="flex justify-end gap-2">
+            <Button type="submit" size="sm" variant="outline" className="h-9 rounded-lg px-3 text-amber-600 border-amber-200 hover:bg-amber-50">
+              Ya, Batalkan
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1200,10 +1246,15 @@ export function PointEventCrudForm({
       description="Tambah adjustment poin, reward, penalty, atau bonus performa karyawan."
       action={managePointEventAction}
     >
-      <div className="grid gap-3 md:grid-cols-4">
-        <SelectField name="employeeId" label="Karyawan">
-          <EmployeeOptions employees={employees} />
-        </SelectField>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="md:col-span-2">
+          <SearchableEmployeeSelect
+            employees={employees}
+            name="employeeId"
+            label="Karyawan"
+            placeholder="Cari nama atau SN karyawan..."
+          />
+        </div>
         <CategorySelectField
           name="category"
           label="Kategori"
@@ -1242,14 +1293,19 @@ export function PenaltyEventCrudForm({
       description="Tambahkan catatan penalti manual untuk karyawan (mengurangi poin)."
       action={createPenaltyEvent as unknown as CrudAction}
     >
-      <div className="grid gap-3 md:grid-cols-3">
-        <SelectField name="employeeId" label="Karyawan">
-          <EmployeeOptions employees={employees} />
-        </SelectField>
-        <TextField name="penaltyCode" label="Kode Penalti" placeholder="Misal: ALPA" />
-        <TextField name="pointsDeducted" label="Potongan Poin" type="number" defaultValue={50} />
+      <div className="space-y-4">
+        <SearchableEmployeeSelect
+          employees={employees}
+          name="employeeId"
+          label="Karyawan"
+          placeholder="Cari nama atau SN karyawan..."
+        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <TextField name="penaltyCode" label="Kode Penalti" placeholder="Misal: ALPA" />
+          <TextField name="pointsDeducted" label="Potongan Poin" type="number" defaultValue={50} />
+        </div>
+        <Textarea name="description" placeholder="Deskripsi atau alasan penalti" rows={2} />
       </div>
-      <Textarea name="description" placeholder="Deskripsi atau alasan penalti" rows={2} className="mt-3" />
     </CrudFormCard>
   );
 }

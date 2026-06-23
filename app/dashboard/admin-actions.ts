@@ -18,6 +18,7 @@ import {
 } from '@/lib/workflow-email'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { issueUserInvitation } from '@/lib/user-invitation'
+import { getCurrentEmployeeAccessRole } from '@/lib/get-current-employee'
 
 async function getCurrentActorEmail(): Promise<string | undefined> {
   try {
@@ -1742,7 +1743,7 @@ const manageDailyReportSchema = z.object({
 })
 
 const managePointEventSchema = z.object({
-  intent: z.enum(['create', 'update', 'delete']),
+  intent: z.enum(['create', 'update', 'delete', 'cancel']),
   id: optionalRecordId,
   employeeId: z.coerce.number().int().positive().optional(),
   category: z.string().trim().max(120).optional().default('Manual Adjustment'),
@@ -6214,6 +6215,11 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
     const payload = managePointEventSchema.parse(Object.fromEntries(formData))
     await ensureHeroSeedData()
 
+    const role = await getCurrentEmployeeAccessRole()
+    if (!role || (role !== 'Super Admin' && role !== 'HC Manager')) {
+      return { status: 'error', message: 'Akses ditolak. Hanya Super Admin dan HC Manager yang dapat mengelola point.' }
+    }
+
     if (payload.intent === 'create') {
       if (!payload.employeeId || !payload.label || payload.points === 0) {
         return { status: 'error', message: 'Karyawan, label, dan poin selain 0 wajib diisi.' }
@@ -6263,6 +6269,10 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
         return { status: 'error', message: 'Point event tidak ditemukan.' }
       }
 
+      if (existingEvent.transactionType === 'cancelled') {
+        return { status: 'error', message: 'Tidak bisa mengedit point yang sudah dibatalkan.' }
+      }
+
       await db.transaction(async (tx) => {
         await tx
           .update(pointEvents)
@@ -6299,6 +6309,40 @@ export async function managePointEventAction(formData: FormData): Promise<AdminM
 
     if (!event) {
       return { status: 'error', message: 'Point event tidak ditemukan.' }
+    }
+
+    if (event.transactionType === 'cancelled') {
+      return { status: 'error', message: 'Point event sudah dibatalkan sebelumnya.' }
+    }
+
+    if (payload.intent === 'cancel') {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(pointEvents)
+          .set({
+            transactionType: 'cancelled',
+            metadata: JSON.stringify({
+              cancelledAt: new Date().toISOString(),
+              cancelledBy: await getCurrentActorEmail(),
+              originalPoints: event.points,
+            }),
+          })
+          .where(eq(pointEvents.id, id))
+
+        await tx
+          .update(employees)
+          .set({ totalPoints: sql`${employees.totalPoints} - ${event.points}` })
+          .where(eq(employees.id, event.employeeId))
+      })
+
+      await notifyEmployeeForPointUpdate({
+        employeeId: event.employeeId,
+        title: 'Points cancelled',
+        body: `${event.label} — ${event.points > 0 ? '+' : ''}${event.points} poin dibatalkan.`,
+      })
+
+      revalidateOperationalPages('/dashboard/leaderboard')
+      return { status: 'success', message: 'Point event dibatalkan dan poin karyawan dikembalikan.' }
     }
 
     await db.transaction(async (tx) => {
