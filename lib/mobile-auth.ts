@@ -39,14 +39,14 @@ export async function authenticateMobileRequest(
       headers: request.headers,
     })
 
-    if (session?.user?.email) {
-      // Lookup employee by email
+    if (session?.user?.id) {
+      // Lookup employee by authUserId FK (not email — employees.email has corp format)
       const [employee] = await db
         .select({ id: employees.id, email: employees.email })
         .from(employees)
         .where(
           and(
-            eq(employees.email, session.user.email.trim().toLowerCase()),
+            eq(employees.authUserId, session.user.id),
             eq(employees.isActive, true)
           )
         )
