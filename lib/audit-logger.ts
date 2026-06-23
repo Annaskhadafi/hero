@@ -13,6 +13,7 @@ export type AuditAction =
   | 'user.email_changed'
   | 'user.bulk_imported'
   | 'user.invited'
+  | 'user.bulk_updated'
   | 'user.bulk_activated'
   | 'user.bulk_deactivated'
   | 'user.bulk_deleted'

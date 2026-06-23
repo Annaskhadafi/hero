@@ -4019,6 +4019,305 @@ export async function importSecurityUsersAction(
   }
 }
 
+const importUpdateUsersSchema = z.object({
+  rawCsv: z.string().trim().min(1, 'CSV file is required.'),
+})
+
+const IMPORT_UPDATE_HEADERS = [
+  'Name', 'SN', 'Department', 'Section', 'Job Title', 'Level Staff', 'Peran',
+  'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status',
+  'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun',
+] as const
+
+function normalizeImportDate(value: string): string | null {
+  if (!value || value === '-' || value === '') return null
+  // already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  // DD/MM/YYYY or D/M/YYYY
+  const dmy = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    const [_, d, m, y] = dmy
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  // MM/DD/YYYY
+  const mdy = value.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (mdy) return value
+  // Excel serial number
+  const serial = Number(value)
+  if (!Number.isNaN(serial) && serial > 40000 && serial < 60000) {
+    const date = new Date((serial - 25569) * 86400000)
+    return date.toISOString().slice(0, 10)
+  }
+  return null
+}
+
+export async function importUpdateUsersAction(
+  _previousState: ImportUsersActionState,
+  formData: FormData
+): Promise<ImportUsersActionState> {
+  try {
+    const payload = importUpdateUsersSchema.parse({
+      rawCsv: formData.get('rawCsv'),
+    })
+
+    const { records, headers } = parseCsvToRecords(payload.rawCsv)
+
+    if (records.length === 0) {
+      return { status: 'error', message: 'CSV tidak memiliki data.' }
+    }
+
+    // Build header lookup (case-insensitive)
+    const headerIndex = new Map<string, number>()
+    for (const [i, h] of headers.entries()) {
+      headerIndex.set(h.trim().toLowerCase(), i)
+    }
+
+    // Check mandatory SN column exists
+    const snCol = headerIndex.get('sn')
+    if (snCol === undefined) {
+      return { status: 'error', message: 'Kolom "SN" wajib ada di file.' }
+    }
+
+    // Fetch all existing employees
+    const existingEmployees = await db
+      .select({
+        id: employees.id,
+        authUserId: employees.authUserId,
+        employeeSn: employees.employeeSn,
+        name: employees.name,
+        email: employees.email,
+        siteId: employees.siteId,
+        department: employees.department,
+        section: employees.section,
+        jobTitle: employees.jobTitle,
+        levelName: employees.levelName,
+        gender: employees.gender,
+        religion: employees.religion,
+        education: employees.education,
+        maritalStatus: employees.maritalStatus,
+        pointOfHire: employees.pointOfHire,
+        joinDate: employees.joinDate,
+        contractDurationStart: employees.contractDurationStart,
+        contractDurationEnd: employees.contractDurationEnd,
+        permanentDate: employees.permanentDate,
+        birthDate: employees.birthDate,
+        employeeStatusType: employees.employeeStatusType,
+        accessRole: employees.accessRole,
+        employmentStatus: employees.employmentStatus,
+        isActive: employees.isActive,
+        phoneNumber: employees.phoneNumber,
+        domicile: employees.domicile,
+        workLocation: employees.workLocation,
+        orgNodeId: employees.orgNodeId,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        positionId: employees.positionId,
+      })
+      .from(employees)
+    const employeeBySn = new Map(
+      existingEmployees.map((emp) => [normalizeLookupValue(emp.employeeSn), emp])
+    )
+
+    // Pre-resolve header indices for all known columns
+    const col = (name: string) => {
+      const lower = name.toLowerCase()
+      for (const [h, i] of headerIndex) {
+        if (h === lower) return i
+      }
+      return undefined
+    }
+
+    let updatedCount = 0
+    let skippedCount = 0
+    const errors: string[] = []
+
+    type RecordType = (typeof records)[number]
+    for (const record of records) {
+      const recordValues = Object.values(record)
+      const employeeSn = (recordValues[snCol] ?? '').trim()
+      if (!employeeSn) {
+        skippedCount++
+        continue
+      }
+
+      const existing = employeeBySn.get(normalizeLookupValue(employeeSn))
+      if (!existing) {
+        skippedCount++
+        continue
+      }
+
+      const nameIdx = col('name')
+      const deptIdx = col('department')
+      const sectionIdx = col('section')
+      const jobTitleIdx = col('job title')
+      const levelNameIdx = col('level staff')
+      const peranIdx = col('peran')
+      const lokasiSiteIdx = col('lokasi site')
+      const tipeStatusIdx = col('tipe status')
+      const genderIdx = col('gender')
+      const agamaIdx = col('agama')
+      const pendidikanIdx = col('pendidikan')
+      const maritalIdx = col('marital status')
+      const pohIdx = col('poh')
+      const joinDateIdx = col('join date')
+      const contractStartIdx = col('contract start')
+      const contractEndIdx = col('contract end')
+      const permanentDateIdx = col('permanent date')
+      const tglLahirIdx = col('tgl lahir')
+      const statusAkunIdx = col('status akun')
+      const emailIdx = col('email')
+      const phoneIdx = col('phone number')
+      const domicileIdx = col('domicile')
+
+      const getValue = (idx: number | undefined): string =>
+        idx !== undefined ? (recordValues[idx] ?? '').trim() : ''
+
+      const getDate = (idx: number | undefined): string | null =>
+        normalizeImportDate(getValue(idx))
+
+      const employeeUpdate: Record<string, unknown> = {}
+
+      if (nameIdx !== undefined) {
+        const v = getValue(nameIdx)
+        if (v) employeeUpdate.name = v
+      }
+      if (deptIdx !== undefined) {
+        const v = getValue(deptIdx)
+        if (v) employeeUpdate.department = v
+      }
+      if (sectionIdx !== undefined) {
+        const v = getValue(sectionIdx)
+        if (v) employeeUpdate.section = v
+      }
+      if (jobTitleIdx !== undefined) {
+        const v = getValue(jobTitleIdx)
+        if (v) employeeUpdate.jobTitle = v
+      }
+      if (levelNameIdx !== undefined) {
+        const v = getValue(levelNameIdx)
+        if (v) employeeUpdate.levelName = v
+      }
+      if (peranIdx !== undefined) {
+        const v = getValue(peranIdx)
+        if (v) employeeUpdate.accessRole = v
+      }
+      if (lokasiSiteIdx !== undefined) {
+        const v = getValue(lokasiSiteIdx)
+        if (v) employeeUpdate.workLocation = v
+      }
+      if (tipeStatusIdx !== undefined) {
+        const v = getValue(tipeStatusIdx)
+        if (v) employeeUpdate.employeeStatusType = v
+      }
+      if (genderIdx !== undefined) {
+        const v = getValue(genderIdx)
+        if (v && v !== '-') employeeUpdate.gender = v
+      }
+      if (agamaIdx !== undefined) {
+        const v = getValue(agamaIdx)
+        if (v && v !== '-') employeeUpdate.religion = v
+      }
+      if (pendidikanIdx !== undefined) {
+        const v = getValue(pendidikanIdx)
+        if (v && v !== '-') employeeUpdate.education = v
+      }
+      if (maritalIdx !== undefined) {
+        const v = getValue(maritalIdx)
+        employeeUpdate.maritalStatus = v && v !== '-' ? v : ''
+      }
+      if (pohIdx !== undefined) {
+        const v = getValue(pohIdx)
+        if (v && v !== '-') employeeUpdate.pointOfHire = v
+      }
+      if (joinDateIdx !== undefined) {
+        const d = getDate(joinDateIdx)
+        if (d) employeeUpdate.joinDate = d
+      }
+      if (contractStartIdx !== undefined) {
+        const d = getDate(contractStartIdx)
+        if (d) employeeUpdate.contractDurationStart = d
+      }
+      if (contractEndIdx !== undefined) {
+        const d = getDate(contractEndIdx)
+        if (d) employeeUpdate.contractDurationEnd = d
+      }
+      if (permanentDateIdx !== undefined) {
+        const d = getDate(permanentDateIdx)
+        if (d) employeeUpdate.permanentDate = d
+      }
+      if (tglLahirIdx !== undefined) {
+        const d = getDate(tglLahirIdx)
+        if (d) employeeUpdate.birthDate = d
+      }
+      if (emailIdx !== undefined) {
+        const v = getValue(emailIdx)
+        if (v && v !== '-') employeeUpdate.email = v
+      }
+      if (phoneIdx !== undefined) {
+        const v = getValue(phoneIdx)
+        if (v && v !== '-') employeeUpdate.phoneNumber = v
+      }
+      if (domicileIdx !== undefined) {
+        const v = getValue(domicileIdx)
+        if (v && v !== '-') employeeUpdate.domicile = v
+      }
+      if (statusAkunIdx !== undefined) {
+        const v = getValue(statusAkunIdx).toLowerCase()
+        if (v.includes('active') || v === 'aktif') {
+          employeeUpdate.isActive = true
+          employeeUpdate.employmentStatus = 'active'
+        } else if (v.includes('non') || v.includes('inactive')) {
+          employeeUpdate.isActive = false
+          employeeUpdate.employmentStatus = 'inactive'
+        }
+      }
+
+      if (Object.keys(employeeUpdate).length === 0) {
+        skippedCount++
+        continue
+      }
+
+      // Also update auth user name/email if changed
+      if (employeeUpdate.name || employeeUpdate.email) {
+        if (existing.authUserId) {
+          const authUpdate: Record<string, unknown> = {}
+          if (employeeUpdate.name) authUpdate.name = employeeUpdate.name
+          if (employeeUpdate.email) authUpdate.email = employeeUpdate.email
+          authUpdate.updatedAt = new Date()
+          await db.update(user).set(authUpdate).where(eq(user.id, existing.authUserId))
+        }
+      }
+
+      await db.update(employees).set(employeeUpdate).where(eq(employees.id, existing.id))
+      updatedCount++
+    }
+
+    const actorEmail = await getCurrentActorEmail()
+    await logAuditEvent({
+      actorEmail,
+      action: 'user.bulk_updated',
+      entityType: 'user_import',
+      entityLabel: 'import_update_users',
+      description: `Updated ${updatedCount} users from CSV import, skipped ${skippedCount}.`,
+    })
+
+    revalidateAdminSurfaces()
+
+    return {
+      status: 'success',
+      message: `Update selesai: ${updatedCount} diperbarui, ${skippedCount} dilewati.`,
+      importedCount: 0,
+      updatedCount,
+      skippedCount,
+    }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal mengupdate data pengguna.',
+    }
+  }
+}
+
 export async function manageSecurityUserAction(
   _previousState: AdminMutationState,
   formData: FormData
@@ -4048,6 +4347,17 @@ export async function manageSecurityUserAction(
       password: formData.get('password'),
       newPassword: formData.get('newPassword'),
       employeeStatusType: formData.get('employeeStatusType'),
+      levelName: formData.get('levelName'),
+      gender: formData.get('gender'),
+      religion: formData.get('religion'),
+      education: formData.get('education'),
+      maritalStatus: formData.get('maritalStatus'),
+      pointOfHire: formData.get('pointOfHire'),
+      joinDate: formData.get('joinDate'),
+      contractDurationStart: formData.get('contractDurationStart'),
+      contractDurationEnd: formData.get('contractDurationEnd'),
+      permanentDate: formData.get('permanentDate'),
+      birthDate: formData.get('birthDate'),
     })
 
     if (payload.intent === 'create-user') {
@@ -4246,10 +4556,10 @@ export async function manageSecurityUserAction(
       const section = payload.section || department
       const jobTitle = payload.jobTitle || 'Staff'
       const levelName = payload.levelName || 'Rookie'
-      const gender = payload.gender ?? ''
+      const gender = payload.gender === 'none' ? '' : (payload.gender ?? '')
       const religion = payload.religion ?? ''
       const education = payload.education ?? ''
-      const maritalStatus = payload.maritalStatus ?? ''
+      const maritalStatus = payload.maritalStatus === 'none' ? '' : (payload.maritalStatus ?? '')
       const pointOfHire = payload.pointOfHire ?? ''
       const joinDate = payload.joinDate || null
       const contractDurationStart = payload.contractDurationStart || null
@@ -4259,6 +4569,7 @@ export async function manageSecurityUserAction(
       const normalizedStatus = normalizeEmploymentStatus(payload.employmentStatus ?? 'active')
       const directManagerId = parseOptionalManagerId(payload.directManagerId)
       const profileImage = normalizeProfileImageValue(payload.profileImage)
+      const selectedAccessRole = payload.accessRole?.trim() || employee.accessRole
       const [selectedSite] = payload.siteId
         ? await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
         : []
@@ -4315,6 +4626,7 @@ export async function manageSecurityUserAction(
           email,
           employmentStatus: normalizedStatus.status,
           employeeStatusType: payload.employeeStatusType ?? 'Permanen | Staff',
+          accessRole: selectedAccessRole,
           isActive: normalizedStatus.isActive,
         })
         .where(eq(employees.id, employee.id))

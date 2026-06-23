@@ -32,7 +32,6 @@ import {
   hrOrgNodes,
   hrPositions,
   hrSections,
-  hrSites,
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   notificationChannelRules,
@@ -150,13 +149,13 @@ export async function getSecurityUserReferenceData() {
       .orderBy(asc(hrPositions.rankName), asc(hrPositions.levelName)),
     db
       .select({
-        id: hrSites.id,
-        name: hrSites.name,
-        location: hrSites.name,
+        id: sites.id,
+        name: sites.name,
+        location: sites.name,
       })
-      .from(hrSites)
-      .where(eq(hrSites.isActive, true))
-      .orderBy(asc(hrSites.name)),
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name)),
   ])
 
   return {

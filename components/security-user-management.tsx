@@ -7,6 +7,7 @@ import {
   BriefcaseBusiness,
   Building2,
   Check,
+  Download,
   EyeOff,
   Filter,
   Layers,
@@ -24,6 +25,7 @@ import {
 
 import {
   importSecurityUsersAction,
+  importUpdateUsersAction,
   type ImportUsersActionState,
 } from '@/app/dashboard/admin-actions'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
@@ -311,8 +313,15 @@ export function SecurityUserManagement({
     importSecurityUsersAction,
     INITIAL_IMPORT_STATE
   )
+  const [isImportUpdateOpen, setIsImportUpdateOpen] = useState(false)
+  const [importUpdateRawCsv, setImportUpdateRawCsv] = useState('')
+  const [importUpdateActionState, importUpdateFormAction] = useActionState(
+    importUpdateUsersAction,
+    INITIAL_IMPORT_STATE
+  )
 
   const parsedImport = useMemo(() => parseCsvToRecords(rawCsv), [rawCsv])
+  const parsedImportUpdate = useMemo(() => parseCsvToRecords(importUpdateRawCsv), [importUpdateRawCsv])
   const managerOptions = useMemo(
     () => users.map((user) => ({ id: user.id, name: user.name })),
     [users]
@@ -501,6 +510,38 @@ export function SecurityUserManagement({
         user.isActive ? 'Active' : 'Non Active',
       ]),
       fileName: 'security-users',
+    })
+  }
+
+  function exportAllUsers() {
+    exportRowsToFile({
+      columns: ['Nama', 'SN', 'Departemen', 'Section', 'Job Title', 'Level Staff', 'Peran', 'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status', 'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun', 'Email', 'Phone Number', 'Domisili'],
+      rows: users.map((user) => [
+        user.name,
+        user.employeeSn,
+        user.department,
+        user.section,
+        user.jobTitle,
+        user.levelName,
+        user.accessRole,
+        getSiteDisplayName(user),
+        user.employeeStatusType,
+        user.gender || '-',
+        user.religion || '-',
+        user.education || '-',
+        user.maritalStatus || '-',
+        user.pointOfHire || '-',
+        user.joinDate || '-',
+        user.contractDurationStart || '-',
+        user.contractDurationEnd || '-',
+        user.permanentDate || '-',
+        user.birthDate || '-',
+        user.isActive ? 'Active' : 'Non Active',
+        user.email || '-',
+        user.phoneNumber || '-',
+        user.domicile || '-',
+      ]),
+      fileName: 'all-security-users',
     })
   }
 
@@ -909,6 +950,146 @@ export function SecurityUserManagement({
               </div>
             </div>
           ) : null}
+
+          {/* Collapsible Import Update Data */}
+          <div className="surface-module-card rounded-[1.2rem] mb-5 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setIsImportUpdateOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-5 py-4 text-left cursor-pointer hover:bg-surface-container-low/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Upload className="text-muted-foreground size-4" />
+                <span className="text-foreground text-sm font-semibold">Import Update Data Pengguna</span>
+              </div>
+              <ChevronDown
+                className={cn(
+                  'text-muted-foreground size-4 transition-transform duration-200',
+                  isImportUpdateOpen && 'rotate-180'
+                )}
+              />
+            </button>
+
+            {isImportUpdateOpen ? (
+              <div className="border-border/50 border-t px-5 pb-5 pt-4">
+                <div className="mb-4 space-y-2">
+                  <p className="text-muted-foreground text-xs">
+                    Download semua data pengguna, edit di Excel, lalu upload kembali. Data akan
+                    dicocokkan berdasarkan <strong>SN</strong> dan diperbarui otomatis.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={exportAllUsers}
+                    className="bg-surface-container-lowest text-foreground h-9 rounded-xl border-0 px-4 text-xs font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                  >
+                    <Download className="mr-2 size-3.5" />
+                    Download All Users Excel
+                  </Button>
+                </div>
+
+                <form action={importUpdateFormAction} className="space-y-4">
+                  <input type="hidden" name="rawCsv" value={importUpdateRawCsv} />
+
+                  <div className="space-y-2">
+                    <p className="text-foreground text-xs font-semibold">Upload File Excel/CSV</p>
+                    <Input
+                      type="file"
+                      accept=".csv,.xls,.xlsx,text/csv"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0]
+                        if (!file) return
+                        const lowerName = file.name.toLowerCase()
+                        if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+                          const buffer = await file.arrayBuffer()
+                          const XLSX = await import('xlsx')
+                          const workbook = XLSX.read(buffer, { type: 'array' })
+                          const firstSheet = workbook.SheetNames[0]
+                          const worksheet = workbook.Sheets[firstSheet]
+                          const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(
+                            worksheet,
+                            { header: 1, raw: false, defval: '', blankrows: false }
+                          )
+                          const normalized = rows
+                            .map((r: any[]) => r.map((c: any) => `${c ?? ''}`.trim()))
+                            .filter((r: string[]) => r.some((c: string) => c.length > 0))
+                          const csv = normalized.map((r: string[]) => r.join(',')).join('\n')
+                          setImportUpdateRawCsv(csv)
+                        } else {
+                          setImportUpdateRawCsv(await file.text())
+                        }
+                      }}
+                      className="bg-surface-container-lowest h-9 rounded-xl border-0 text-xs shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-foreground text-xs font-semibold">Pratinjau ({parsedImportUpdate.records.length} baris)</p>
+                    {parsedImportUpdate.records.length > 0 ? (
+                      <div className="bg-surface-container-low overflow-x-auto rounded-[0.95rem] p-2">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                              {parsedImportUpdate.headers.map((header) => (
+                                <TableHead key={header} className="whitespace-nowrap text-[10px]">{header}</TableHead>
+                              ))}
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {parsedImportUpdate.records.slice(0, 5).map((record, idx) => (
+                              <TableRow key={idx} className="hover:bg-transparent">
+                                {parsedImportUpdate.headers.map((header) => (
+                                  <TableCell key={header} className="text-[11px]">{record[header] || '-'}</TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-xs">Upload file untuk melihat pratinjau.</p>
+                    )}
+                  </div>
+
+                  {importUpdateActionState.status !== 'idle' ? (
+                    <Alert
+                      className={
+                        importUpdateActionState.status === 'error'
+                          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                          : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600'
+                      }
+                    >
+                      <AlertDescription className="text-xs">{importUpdateActionState.message}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setImportUpdateRawCsv('')
+                        setIsImportUpdateOpen(false)
+                      }}
+                      className="h-9 rounded-xl px-4 text-xs"
+                    >
+                      Batal
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={parsedImportUpdate.records.length === 0}
+                      className="h-9 rounded-xl px-4 text-xs"
+                    >
+                      {importUpdateActionState.status === 'error' ? 'Coba Lagi' : 'Update Data'}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            ) : null}
+          </div>
 
           <div className="surface-module-card rounded-[1.2rem] p-4 sm:p-5">
             <SecurityUserBulkActions
