@@ -309,7 +309,7 @@ function CrudFormCard({
     async (_prevState: AdminMutationState, formData: FormData) => {
       return action(formData);
     },
-    { status: 'idle', message: '' },
+    { status: 'idle' as const, message: '' },
   );
 
   useEffect(() => {
