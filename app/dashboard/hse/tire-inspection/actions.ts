@@ -11,6 +11,7 @@ import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { eq, desc } from "drizzle-orm";
 import { callInspectionAiReport } from "@/lib/ai-inspection-report";
 import { revalidatePath } from "next/cache";
+import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 
 async function requirePermission() {
   const permission = await getCurrentMenuPermission("hse_tire_inspection");
@@ -46,7 +47,14 @@ export async function getInspectionDetail(id: string) {
     .where(eq(heroInspectionPhotos.inspectionId, id))
     .orderBy(heroInspectionPhotos.sortOrder);
 
-  return { inspection, checklists, photos };
+  const readablePhotos = await Promise.all(
+    photos.map(async (photo) => ({
+      ...photo,
+      readableImageUrl: (await getS3ObjectReadUrl(photo.imageUrl)) || photo.imageUrl,
+    }))
+  );
+
+  return { inspection, checklists, photos: readablePhotos };
 }
 
 export async function createInspection(data: {

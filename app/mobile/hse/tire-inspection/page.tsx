@@ -3,7 +3,6 @@ import { getServerSession } from "@/lib/auth-session"
 import { getInspectionList } from "@/app/dashboard/hse/tire-inspection/actions"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { TireInspectionClient } from "@/app/dashboard/hse/tire-inspection/client-page"
-import { MobileDashboardHeader } from "@/components/mobile/mobile-dashboard-header"
 
 export default async function MobileTireInspectionPage() {
   const session = await getServerSession()
@@ -23,7 +22,7 @@ export default async function MobileTireInspectionPage() {
       </div>
 
       <div className="px-5">
-        <TireInspectionClient data={inspections} access={access} basePath="/mobile/hse/tire-inspection" />
+        <TireInspectionClient data={inspections} access={access} basePath="/mobile/hse/tire-inspection" isMobile />
       </div>
     </div>
   )

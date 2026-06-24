@@ -1,23 +1,38 @@
 "use client"
 
-import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Eye, Pencil, Plus } from "lucide-react"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
 
-export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/tire-inspection" }: { data: any[], access: any, basePath?: string }) {
+function formatDate(value: unknown) {
+  const date = new Date(String(value ?? ""))
+  return Number.isNaN(date.getTime()) ? "-" : format(date, "dd MMM yyyy")
+}
+
+function formatStatus(value: unknown) {
+  return String(value || "draft").replace(/_/g, " ")
+}
+
+function scoreLabel(score: number) {
+  if (score >= 85) return "Excellent"
+  if (score >= 70) return "Good"
+  if (score >= 50) return "Moderate"
+  return "High Risk"
+}
+
+export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/tire-inspection", isMobile = false }: { data: any[], access: any, basePath?: string, isMobile?: boolean }) {
   const router = useRouter()
 
   const columns = [
     {
       accessorKey: "inspectionDate",
       header: "Tanggal",
-      cell: ({ row }: any) => format(new Date(row.original.inspectionDate), "dd MMM yyyy"),
+      cell: ({ row }: any) => formatDate(row.original.inspectionDate),
     },
     {
       accessorKey: "siteName",
@@ -35,10 +50,10 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       accessorKey: "totalScore",
       header: "Skor",
       cell: ({ row }: any) => {
-        const score = row.original.totalScore
+        const score = Number(row.original.totalScore || 0)
         let variant = "default" as any
-        let label = "Unknown"
-        if (score >= 85) { variant = "success"; label = "Excellent" }
+        let label = scoreLabel(score)
+        if (score >= 85) { variant = "success" }
         else if (score >= 70) { variant = "secondary"; label = "Good" }
         else if (score >= 50) { variant = "warning"; label = "Moderate" }
         else { variant = "destructive"; label = "High Risk" }
@@ -54,8 +69,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       accessorKey: "status",
       header: "Status",
       cell: ({ row }: any) => {
-        const status = row.original.status
-        return <Badge variant="outline">{status.replace("_", " ")}</Badge>
+        return <Badge variant="outline">{formatStatus(row.original.status)}</Badge>
       }
     },
     {
@@ -84,6 +98,71 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       icon: "activity",
     },
   ]
+
+  if (isMobile) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-[1.2rem] bg-[#003f78] p-4 text-white shadow-[0_16px_34px_rgba(0,63,120,0.22)]">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/60">Total</p>
+            <p className="mt-2 text-2xl font-black">{data.length}</p>
+            <p className="text-[11px] font-semibold text-white/70">Inspeksi</p>
+          </div>
+          <div className="rounded-[1.2rem] bg-white p-4 text-[#082033] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]/60">Avg Score</p>
+            <p className="mt-2 text-2xl font-black">{scorecards[1].value}</p>
+            <p className="text-[11px] font-semibold text-[#486275]">Site health</p>
+          </div>
+        </div>
+
+        {access.canEdit ? (
+          <Button className="h-12 w-full rounded-[1rem] bg-[#003f78] text-white shadow-[0_14px_28px_rgba(0,63,120,0.18)]" onClick={() => router.push(`${basePath}/create`)}>
+            <Plus className="size-4" /> Inspeksi Baru
+          </Button>
+        ) : null}
+
+        <section className="grid gap-3">
+          {data.map((row: any, index: number) => {
+            const score = Number(row.totalScore || 0)
+            return (
+              <article key={row.id || index} className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] ring-1 ring-slate-100/80">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-black text-[#082033]">{row.siteName || "-"}</p>
+                    <p className="mt-1 text-xs font-semibold text-[#486275]">{row.customerName || "-"} • {formatDate(row.inspectionDate)}</p>
+                  </div>
+                  <Badge variant="outline" className="shrink-0 rounded-full capitalize">{formatStatus(row.status)}</Badge>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-xs font-semibold text-[#486275]">
+                  <div className="rounded-[0.9rem] bg-[#f3faff] p-3">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-[#486275]/60">Score</p>
+                    <p className="mt-1 text-lg font-black text-[#082033]">{score.toFixed(1)}</p>
+                  </div>
+                  <div className="rounded-[0.9rem] bg-[#f3faff] p-3">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-[#486275]/60">Risk</p>
+                    <p className="mt-1 truncate text-sm font-black text-[#082033]">{scoreLabel(score)}</p>
+                  </div>
+                  <div className="rounded-[0.9rem] bg-[#f3faff] p-3">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-[#486275]/60">Shift</p>
+                    <p className="mt-1 truncate text-sm font-black text-[#082033]">{row.shift || "-"}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Button variant="outline" className="h-10 rounded-xl" onClick={() => router.push(`${basePath}/detail/${row.id}`)}><Eye className="size-4" /> Detail</Button>
+                  {access.canEdit ? <Button variant="outline" className="h-10 rounded-xl" onClick={() => router.push(`${basePath}/editor/${row.id}`)}><Pencil className="size-4" /> Edit</Button> : null}
+                </div>
+              </article>
+            )
+          })}
+          {data.length === 0 ? (
+            <div className="rounded-[1.2rem] bg-white p-6 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
+              Belum ada data inspeksi.
+            </div>
+          ) : null}
+        </section>
+      </div>
+    )
+  }
 
   return (
     <MinimalTableShell
