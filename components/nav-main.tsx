@@ -37,6 +37,7 @@ type NavItem = {
   url: string
   icon?: Icon
   groupLabel?: string | null
+  openInNewTab?: boolean
 }
 
 type NavGroup = {
@@ -111,7 +112,7 @@ export function NavMain({
             isActive={isMenuItemActive(pathname, item.url)}
             className="min-h-8 rounded-md px-2 text-[13px]"
           >
-            <Link href={item.url}>
+            <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
               <span>{item.title}</span>
             </Link>
           </SidebarMenuSubButton>
@@ -136,7 +137,7 @@ export function NavMain({
               isActive={isMenuItemActive(pathname, item.url)}
               className="min-h-8 rounded-md px-2 text-[13px]"
             >
-              <Link href={item.url}>
+              <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
                 <span>{item.title}</span>
               </Link>
             </SidebarMenuSubButton>

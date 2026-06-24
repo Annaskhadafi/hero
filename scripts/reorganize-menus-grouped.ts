@@ -12,6 +12,7 @@ type MenuSeed = {
   sortOrder: number;
   isVisible?: boolean;
   menuArea?: string;
+  openInNewTab?: boolean;
 };
 
 const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
@@ -57,6 +58,7 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "Training Enhancement", url: "/dashboard/hc/training", section: "Human Capital", groupLabel: "Training Center", iconName: "target", resource: "hc_training_enhanced", sortOrder: 10 },
     { title: "Training Records", url: "/dashboard/training-records", section: "Human Capital", groupLabel: "Training Center", iconName: "list-details", resource: "training_records", sortOrder: 11 },
     { title: "LMS Chitra Learning", url: "/dashboard/lms", section: "Human Capital", groupLabel: "Training Center", iconName: "book-open", resource: "lms_integration", sortOrder: 12 },
+    { title: "Mulai Belajar (SSO)", url: "/api/lms/sso", section: "Human Capital", groupLabel: "Training Center", iconName: "book-open", resource: "lms_integration", sortOrder: 13, openInNewTab: true },
     { title: "Performance", url: "/dashboard/hc/performance", section: "Human Capital", groupLabel: "Performance & Development", iconName: "trending-up", resource: "hc_performance", sortOrder: 13 },
     { title: "Technical Engineer", url: "/dashboard/hc/technical-engineer", section: "Human Capital", groupLabel: "Performance & Development", iconName: "wrench", resource: "hc_technical_engineer", sortOrder: 14 },
     { title: "Certificates", url: "/dashboard/hc/certificate", section: "Human Capital", groupLabel: "Performance & Development", iconName: "address-card", resource: "hc_certificate", sortOrder: 15 },
@@ -130,7 +132,7 @@ async function reorganizeMenus() {
         resource: item.resource,
         sortOrder: item.sortOrder,
         isVisible: item.isVisible ?? true,
-        openInNewTab: false,
+        openInNewTab: (item as any).openInNewTab ?? false,
         itemType: "menu",
         parentId: null,
         groupLabel: item.groupLabel ?? null,

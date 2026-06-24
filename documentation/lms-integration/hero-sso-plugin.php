@@ -148,13 +148,19 @@ function hero_lms_sso_login_handler($request) {
     wp_set_current_user($user->ID);
     wp_set_auth_cookie($user->ID, true);
 
-    // E. Redirect to MasterStudy LMS profile dashboard, or home page
-    // For MasterStudy LMS, the standard profile path is "/user-public-profile" or "/user-profile"
-    $redirect_url = home_url('/user-profile');
-    
-    // Fallback if that page doesn't exist:
-    if (!get_page_by_path('user-profile') && !get_page_by_path('user-public-profile')) {
-        $redirect_url = home_url('/');
+    // E. Redirect to MasterStudy LMS profile dashboard, or custom page if provided
+    $redirect_url = '';
+    if (isset($payload['redirect'])) {
+        $redirect_url = esc_url_raw($payload['redirect']);
+    }
+
+    if (empty($redirect_url)) {
+        $redirect_url = home_url('/user-profile');
+        
+        // Fallback if that page doesn't exist:
+        if (!get_page_by_path('user-profile') && !get_page_by_path('user-public-profile')) {
+            $redirect_url = home_url('/');
+        }
     }
 
     wp_safe_redirect($redirect_url);

@@ -21,6 +21,7 @@
     "check:focused": "npm run qa:attendance-import && npm run check:attendance-db && npm test -- --runInBand tests/scheduling-timesheet.test.ts && npm run type-check && npm run lint",
     "db:generate": "drizzle-kit generate",
     "db:push": "tsx scripts/db-push.ts",
+    "db:reorganize": "tsx scripts/reorganize-menus-grouped.ts",
     "db:pull": "drizzle-kit pull",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",

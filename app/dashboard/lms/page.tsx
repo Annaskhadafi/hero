@@ -67,8 +67,10 @@ export default async function LmsDashboardPage() {
   let connectionError = false;
 
   try {
-    // Sync currently logged in user's LMS records
-    await syncLmsToTrainingRecords(email);
+    // Sync currently logged in user's LMS records in background to avoid blocking render
+    syncLmsToTrainingRecords(email).catch((err) =>
+      console.error("[LMS DB] background sync error:", err)
+    );
 
     // Retrieve all progress records from LMS DB
     const rawRecords = await getAllLmsProgressFromDb();

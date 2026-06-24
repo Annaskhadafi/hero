@@ -100,8 +100,10 @@ export default async function MobileLmsDashboardPage({
   let connectionError = false;
 
   try {
-    // Sync LMS data to HERO training records table
-    await syncLmsToTrainingRecords(email);
+    // Sync LMS data to HERO training records table in background to avoid blocking render
+    syncLmsToTrainingRecords(email).catch((err) =>
+      console.error("[LMS Mobile DB] background sync error:", err)
+    );
 
     // Retrieve courses progress directly from LMS DB
     courses = await getLmsProgressFromDb(email, sn);

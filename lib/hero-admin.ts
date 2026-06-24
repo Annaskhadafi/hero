@@ -790,6 +790,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Human Capital',
+    groupLabel: 'Training Center',
+    title: 'Mulai Belajar (SSO)',
+    url: '/api/lms/sso',
+    iconName: 'book-open',
+    resource: 'lms_integration',
+    sortOrder: 13,
+    isVisible: true,
+    openInNewTab: true,
+  },
+  {
+    menuArea: 'main',
+    section: 'Human Capital',
     groupLabel: 'Performance & Development',
     title: 'Performance',
     url: '/dashboard/hc/performance',

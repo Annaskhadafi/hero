@@ -61,6 +61,7 @@ type SidebarMenuItem = {
   iconName: keyof typeof iconMap | string
   sortOrder?: number
   groupLabel?: string | null
+  openInNewTab?: boolean
 }
 
 type SidebarDocumentItem = {
@@ -154,6 +155,7 @@ export function AppSidebar({
     sortOrder: item.sortOrder ?? 999,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
     groupLabel: item.groupLabel ?? null,
+    openInNewTab: item.openInNewTab ?? false,
   }))
   const documentItems = documents.map((item) => ({
     section: item.section ?? "Dokumen",

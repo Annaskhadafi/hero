@@ -35,13 +35,16 @@ function signJwt(payload: any, secret: string): string {
   return `${signatureInput}.${signature}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession();
 
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { searchParams } = new URL(request.url);
+    const redirectParam = searchParams.get("redirect") || "";
 
     const email = session.user.email;
     const name = session.user.name || "User";
@@ -74,10 +77,11 @@ export async function GET() {
       sn,
       name: displayName,
       exp: Math.floor(Date.now() / 1000) + 60,
+      ...(redirectParam && { redirect: redirectParam }),
     };
 
     const token = signJwt(payload, secret);
-    const redirectUrl = `${lmsUrl}/wp-json/hero-sso/v1/login?token=${token}`;
+    let redirectUrl = `${lmsUrl}/wp-json/hero-sso/v1/login?token=${token}`;
 
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
