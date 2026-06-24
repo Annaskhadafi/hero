@@ -148,6 +148,7 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
   if (cleanUrl === "/dashboard/hse/checklist-generator") return "/mobile/hse/checklist";
   if (cleanUrl === "/dashboard/hse/jsa") return "/mobile/hse/jsa";
   if (cleanUrl === "/dashboard/hse/izin-kerja-ptw") return "/mobile/hse/ptw";
+  if (cleanUrl === "/dashboard/hse/tire-inspection") return "/mobile/hse/tire-inspection";
   if (cleanUrl === "/dashboard/hse" || cleanUrl.startsWith("/dashboard/hse/")) return "/mobile/hse";
   if (cleanUrl === "/dashboard/gamification") return "/mobile/gamification";
   if (cleanUrl === "/dashboard/wellness") return "/mobile/wellness";
@@ -169,7 +170,7 @@ function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefi
     "executive", "gamification", "hr-counseling", "hse", "lms",
     "notifications", "overtime", "profile", "reports", "timesheet",
     "training", "wellness", "leader-performance", "permission",
-    "checklist", "jsa", "ptw"
+    "checklist", "jsa", "ptw", "tire-inspection"
   ];
 
   if (knownMobilePages.includes(lastSegment)) {

@@ -918,6 +918,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+
   {
     menuArea: 'main',
     section: 'HSE',
@@ -1015,6 +1016,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   // Central Service
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Technical',
+    title: 'Tire Site Inspection',
+    url: '/dashboard/hse/tire-inspection',
+    iconName: 'camera',
+    resource: 'hse_tire_inspection',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
   {
     menuArea: 'main',
     section: 'Central Service',

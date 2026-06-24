@@ -76,6 +76,7 @@ const drawerItems: DrawerItem[] = [
   { type: 'section', label: 'SAFETY & HSE' },
   { type: 'link', label: 'HSE Report', href: '/mobile/hse', icon: ShieldCheck },
   { type: 'link', label: 'HSE Checklist', href: '/mobile/hse/checklist', icon: ShieldCheck },
+  { type: 'link', label: 'Tire Site Inspection', href: '/mobile/hse/tire-inspection', icon: ShieldCheck },
   { type: 'link', label: 'JSA', href: '/mobile/hse/jsa', icon: ShieldCheck },
   { type: 'link', label: 'Izin Kerja PTW', href: '/mobile/hse/ptw', icon: ShieldCheck },
   { type: 'section', label: 'LAINNYA' },
