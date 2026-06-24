@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { user } from "@/db/schema/auth";
@@ -22,6 +22,40 @@ const emptyState: MobileProfileActionState = {
 function formValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+
+async function getCurrentUserManagementEmployee(sessionUser: { id?: string; email?: string | null }) {
+  const normalizedEmail = sessionUser.email?.trim().toLowerCase() ?? "";
+
+  if (sessionUser.id) {
+    const [employee] = await db
+      .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
+      .from(employees)
+      .where(eq(employees.authUserId, sessionUser.id))
+      .limit(1);
+
+    if (employee) return employee;
+  }
+
+  if (!normalizedEmail) return null;
+
+  const [employee] = await db
+    .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
+    .from(employees)
+    .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
+    .limit(1);
+
+  return employee ?? null;
+}
+
+async function ensureEmailAvailableForEmployee(email: string, employeeId: number) {
+  const [existing] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(and(sql`lower(${employees.email}) = ${email}`, ne(employees.id, employeeId)))
+    .limit(1);
+
+  return !existing;
 }
 
 export async function updateMobileProfileAction(
@@ -53,12 +87,16 @@ export async function updateMobileProfileAction(
     };
   }
 
-  const normalizedEmail = session.user.email.trim().toLowerCase();
-  const employeeFilters = [sql`lower(${employees.email}) = ${normalizedEmail}`];
+  const currentEmployee = await getCurrentUserManagementEmployee(session.user);
 
-  if (session.user.id) {
-    employeeFilters.push(eq(employees.authUserId, session.user.id));
+  if (!currentEmployee) {
+    return {
+      ok: false,
+      message: "Data User Management tidak ditemukan untuk akun ini.",
+    };
   }
+
+  const normalizedEmail = currentEmployee.email.trim().toLowerCase();
 
   const userUpdate: { name: string; image: string | null; updatedAt: Date; email?: string; emailVerified?: boolean } = {
     name,
@@ -73,14 +111,21 @@ export async function updateMobileProfileAction(
   }
 
   if (email && email !== normalizedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    userUpdate.email = email.toLowerCase()
+    const nextEmail = email.toLowerCase();
+    const emailAvailable = await ensureEmailAvailableForEmployee(nextEmail, currentEmployee.id);
+
+    if (!emailAvailable) {
+      return { ok: false, message: "Email sudah dipakai user lain di User Management." };
+    }
+
+    userUpdate.email = nextEmail
     userUpdate.emailVerified = false
-    empUpdate.email = email.toLowerCase()
+    empUpdate.email = nextEmail
   }
 
   await Promise.all([
     db.update(user).set(userUpdate).where(eq(user.id, session.user.id)),
-    db.update(employees).set(empUpdate).where(or(...employeeFilters)),
+    db.update(employees).set(empUpdate).where(eq(employees.id, currentEmployee.id)),
   ]);
 
   revalidatePath("/mobile/profile");
@@ -111,6 +156,17 @@ export async function updateMobileEmailAction(
   }
 
   const normalizedEmail = newEmail.toLowerCase();
+  const currentEmployee = await getCurrentUserManagementEmployee(session.user);
+
+  if (!currentEmployee) {
+    return { ok: false, message: "Data User Management tidak ditemukan untuk akun ini." };
+  }
+
+  const emailAvailable = await ensureEmailAvailableForEmployee(normalizedEmail, currentEmployee.id);
+
+  if (!emailAvailable) {
+    return { ok: false, message: "Email sudah dipakai user lain di User Management." };
+  }
 
   await Promise.all([
     db
@@ -120,7 +176,7 @@ export async function updateMobileEmailAction(
     db
       .update(employees)
       .set({ email: normalizedEmail })
-      .where(eq(employees.authUserId, session.user.id)),
+      .where(eq(employees.id, currentEmployee.id)),
   ]);
 
   revalidatePath("/mobile/profile");

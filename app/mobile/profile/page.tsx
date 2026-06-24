@@ -10,7 +10,6 @@ import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settin
 import { CollapsibleSection } from "@/components/mobile/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
-import { user } from "@/db/schema/auth";
 import {
   employees, pointEvents, trainingRecords, sioCertifications,
   hcLeaveRequests, hcLeaveTypes, employeeMcu,
@@ -84,20 +83,8 @@ export default async function MobileProfilePage() {
     );
   }
 
-  // Get employee IDs for related queries
-  const [authUser] = await db
-    .select({ id: user.id })
-    .from(user)
-    .where(eq(user.email, session.user.email.toLowerCase().trim()))
-    .limit(1)
-
-  const [emp] = authUser?.id
-    ? await db
-        .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
-        .from(employees)
-        .where(eq(employees.authUserId, authUser.id))
-        .limit(1)
-    : []
+  const userManagementEmail = data.employee.email.trim().toLowerCase();
+  const emp = { id: data.employee.id, email: data.employee.email };
 
   const empId = emp?.id
   const employeeIds: number[] = empId ? [empId] : []
@@ -182,7 +169,7 @@ export default async function MobileProfilePage() {
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">Employee Profile</p>
             <h1 className="mt-1 truncate text-xl font-bold tracking-tight">{data.employee.name}</h1>
-            <p className="mt-1 text-sm text-blue-200">{data.employee.email}</p>
+            <p className="mt-1 text-sm text-blue-200">{userManagementEmail}</p>
           </div>
         </div>
       </section>
@@ -448,13 +435,13 @@ export default async function MobileProfilePage() {
       <MobileProfileSettings
         profile={{
           name: data.employee.name,
-          email: data.employee.email,
+          email: userManagementEmail,
           phoneNumber: data.employee.phoneNumber ?? "",
           domicile: data.employee.domicile ?? "",
           birthPlaceDate: getDateInputValue(data.employee.birthPlaceDate),
           profileImage: session.user.image ?? "",
         }}
-        showEmailPrompt={/^[a-zA-Z0-9]+@chitraparatama\.co\.id$/.test(data.employee.email)}
+        showEmailPrompt={/^[a-zA-Z0-9]+@chitraparatama\.co\.id$/.test(userManagementEmail)}
       />
     </div>
   );
