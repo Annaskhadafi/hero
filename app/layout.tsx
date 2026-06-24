@@ -62,8 +62,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         }} />
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
+          enableSystem={false}
           disableTransitionOnChange
         >
           <PwaRegistration />
