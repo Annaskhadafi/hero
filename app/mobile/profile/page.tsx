@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { desc, eq, inArray, and } from "drizzle-orm";
+import { desc, eq, inArray, and, or, sql } from "drizzle-orm";
 import {
   BriefcaseBusiness, Calendar, HeartPulse, MapPin, ShieldCheck,
   Stethoscope, Trophy, UserRound, GraduationCap, Award, Clock,
@@ -75,21 +75,16 @@ export default async function MobileProfilePage() {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
 
-  const data = await getDailyActivityEmployeeData(session.user.email, { ensureSeed: false });
-  if (!data) {
-    return (
-      <div className="rounded-lg bg-white p-5 text-sm leading-6 text-gray-500">
-        Data employee belum tersedia untuk akun ini.
-      </div>
-    );
-  }
-
-  // Get employee IDs for related queries
+  const normalizedSessionEmail = session.user.email.toLowerCase().trim();
   const [authUser] = await db
     .select({ id: user.id })
     .from(user)
-    .where(eq(user.email, session.user.email.toLowerCase().trim()))
-    .limit(1)
+    .where(
+      session.user.id
+        ? or(eq(user.id, session.user.id), sql`lower(${user.email}) = ${normalizedSessionEmail}`)
+        : sql`lower(${user.email}) = ${normalizedSessionEmail}`
+    )
+    .limit(1);
 
   const [emp] = authUser?.id
     ? await db
@@ -97,7 +92,21 @@ export default async function MobileProfilePage() {
         .from(employees)
         .where(eq(employees.authUserId, authUser.id))
         .limit(1)
-    : []
+    : await db
+        .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
+        .from(employees)
+        .where(sql`lower(${employees.email}) = ${normalizedSessionEmail}`)
+        .limit(1);
+
+  const userManagementEmail = emp?.email?.trim().toLowerCase() || normalizedSessionEmail;
+  const data = await getDailyActivityEmployeeData(userManagementEmail, { ensureSeed: false });
+  if (!data) {
+    return (
+      <div className="rounded-lg bg-white p-5 text-sm leading-6 text-gray-500">
+        Data employee belum tersedia untuk akun ini.
+      </div>
+    );
+  }
 
   const empId = emp?.id
   const employeeIds: number[] = empId ? [empId] : []
@@ -182,7 +191,7 @@ export default async function MobileProfilePage() {
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-wider text-blue-200">Employee Profile</p>
             <h1 className="mt-1 truncate text-xl font-bold tracking-tight">{data.employee.name}</h1>
-            <p className="mt-1 text-sm text-blue-200">{data.employee.email}</p>
+            <p className="mt-1 text-sm text-blue-200">{userManagementEmail}</p>
           </div>
         </div>
       </section>
@@ -448,13 +457,13 @@ export default async function MobileProfilePage() {
       <MobileProfileSettings
         profile={{
           name: data.employee.name,
-          email: data.employee.email,
+          email: userManagementEmail,
           phoneNumber: data.employee.phoneNumber ?? "",
           domicile: data.employee.domicile ?? "",
           birthPlaceDate: getDateInputValue(data.employee.birthPlaceDate),
           profileImage: session.user.image ?? "",
         }}
-        showEmailPrompt={/^[a-zA-Z0-9]+@chitraparatama\.co\.id$/.test(data.employee.email)}
+        showEmailPrompt={/^[a-zA-Z0-9]+@chitraparatama\.co\.id$/.test(userManagementEmail)}
       />
     </div>
   );

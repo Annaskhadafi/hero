@@ -93,7 +93,7 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
       })
 
       toast.success("Inspeksi berhasil disimpan. Memulai generasi laporan AI...")
-      router.push(`${basePath}/detail/${result.inspectionId}`)
+      router.push(`${basePath}/detail/${result.id}`)
     } catch (err: any) {
       toast.error(err.message || "Terjadi kesalahan")
     } finally {
