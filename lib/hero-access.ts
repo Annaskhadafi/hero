@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { employees, navbarMenuItems, roleMenuPermissions, securityRoles } from "@/db/schema/hero";
@@ -13,10 +13,11 @@ export type HeroMenuPermission = {
 };
 
 export async function getEmployeeAccessRoleByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
   const [employee] = await db
     .select({ accessRole: employees.accessRole })
     .from(employees)
-    .where(eq(employees.email, email))
+    .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
     .limit(1);
 
   return employee?.accessRole ?? null;
@@ -27,6 +28,18 @@ export async function getCurrentEmployeeAccessRole() {
 
   if (!session?.user?.email) {
     return null;
+  }
+
+  if (session.user.id) {
+    const [employee] = await db
+      .select({ accessRole: employees.accessRole })
+      .from(employees)
+      .where(eq(employees.authUserId, session.user.id))
+      .limit(1);
+
+    if (employee?.accessRole) {
+      return employee.accessRole;
+    }
   }
 
   return getEmployeeAccessRoleByEmail(session.user.email);

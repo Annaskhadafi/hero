@@ -3,16 +3,13 @@ import { getServerSession } from "@/lib/auth-session"
 import { getInspectionList } from "@/app/dashboard/hse/tire-inspection/actions"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { TireInspectionClient } from "@/app/dashboard/hse/tire-inspection/client-page"
-import { MobileDashboardHeader } from "@/components/mobile/mobile-dashboard-header"
 
 export default async function MobileTireInspectionPage() {
   const session = await getServerSession()
   if (!session?.user?.email) redirect("/sign-in")
 
-  const [inspections, access] = await Promise.all([
-    getInspectionList(),
-    getCurrentMenuPermission("hse_tire_inspection"),
-  ])
+  const access = await getCurrentMenuPermission("hse_tire_inspection")
+  const inspections = access.canView ? await getInspectionList() : []
 
   return (
     <div className="space-y-4 pb-24">
@@ -23,7 +20,13 @@ export default async function MobileTireInspectionPage() {
       </div>
 
       <div className="px-5">
-        <TireInspectionClient data={inspections} access={access} basePath="/mobile/hse/tire-inspection" />
+        {access.canView ? (
+          <TireInspectionClient data={inspections} access={access} basePath="/mobile/hse/tire-inspection" />
+        ) : (
+          <div className="rounded-xl border border-orange-100 bg-orange-50 p-4 text-xs font-semibold leading-5 text-orange-700">
+            Akses Tire Site Inspection belum aktif untuk role Anda. Hubungi admin untuk mengaktifkan permission hse_tire_inspection.
+          </div>
+        )}
       </div>
     </div>
   )

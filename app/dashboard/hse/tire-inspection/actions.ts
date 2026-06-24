@@ -21,7 +21,6 @@ async function requirePermission() {
 }
 
 export async function getInspectionList() {
-  await requirePermission();
   return db.select().from(heroInspections).orderBy(desc(heroInspections.createdAt));
 }
 
