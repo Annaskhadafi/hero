@@ -344,3 +344,20 @@ export async function updateInspectionReport(id: string, data: {
   
   return { success: true };
 }
+
+export async function updateInspectionStatus(id: string, status: string) {
+  const permission = await requirePermission();
+  if (!permission.canEdit) {
+    throw new Error("Akses ditolak.");
+  }
+
+  await db.update(heroInspections).set({
+    status,
+    updatedAt: new Date(),
+  }).where(eq(heroInspections.id, id));
+
+  revalidatePath(`/dashboard/hse/tire-inspection`);
+  revalidatePath(`/dashboard/hse/tire-inspection/detail/${id}`);
+  
+  return { success: true };
+}

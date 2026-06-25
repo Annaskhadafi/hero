@@ -7,9 +7,12 @@ import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Eye, Pencil, Plus } from "lucide-react"
+import { Eye, Pencil, Plus, Camera, Activity, ChevronDown } from "lucide-react"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { toast } from "sonner"
+import { updateInspectionStatus } from "./actions"
 
 function formatDate(value: unknown) {
   const date = new Date(String(value ?? ""))
@@ -71,7 +74,36 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       accessorKey: "status",
       header: "Status",
       cell: ({ row }: any) => {
-        return <Badge variant="outline">{formatStatus(row.original.status)}</Badge>
+        const handleStatusChange = async (newStatus: string) => {
+          try {
+            await updateInspectionStatus(row.original.id, newStatus)
+            toast.success("Status berhasil diubah")
+          } catch (err: any) {
+            toast.error(err.message || "Gagal mengubah status")
+          }
+        }
+        
+        if (!access.canEdit) {
+          return <Badge variant="outline">{formatStatus(row.original.status)}</Badge>
+        }
+        
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Badge variant="outline" className="cursor-pointer hover:bg-slate-50 transition-colors group">
+                {formatStatus(row.original.status)}
+                <ChevronDown className="ml-1 h-3 w-3 opacity-50 group-hover:opacity-100" />
+              </Badge>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {["draft", "in_review", "approved", "rejected", "report_generated"].map((s) => (
+                <DropdownMenuItem key={s} onClick={() => handleStatusChange(s)} className="capitalize">
+                  {formatStatus(s)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
       }
     },
     {
@@ -91,13 +123,13 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       label: "Total Inspeksi",
       value: data.length.toString(),
       description: "Semua laporan inspeksi",
-      icon: "camera",
+      icon: <Camera className="size-5 text-[#082033]" />,
     },
     {
       label: "Rata-rata Skor",
       value: (data.length ? (data.reduce((acc, curr) => acc + Number(curr.totalScore || 0), 0) / data.length).toFixed(1) : 0).toString(),
       description: "Skor kesehatan site",
-      icon: "activity",
+      icon: <Activity className="size-5 text-[#082033]" />,
     },
   ]
 
@@ -146,7 +178,36 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
                     <p className="truncate text-base font-black text-[#082033]">{row.siteName || "-"}</p>
                     <p className="mt-1 text-xs font-semibold text-[#486275]">{row.customerName || "-"} • {formatDate(row.inspectionDate)}</p>
                   </div>
-                  <Badge variant="outline" className="shrink-0 rounded-full capitalize">{formatStatus(row.status)}</Badge>
+                  {access.canEdit ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Badge variant="outline" className="shrink-0 rounded-full capitalize cursor-pointer hover:bg-slate-50 group">
+                          {formatStatus(row.status)}
+                          <ChevronDown className="ml-1 h-3 w-3 opacity-50 group-hover:opacity-100" />
+                        </Badge>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {["draft", "in_review", "approved", "rejected", "report_generated"].map((s) => (
+                          <DropdownMenuItem 
+                            key={s} 
+                            onClick={async () => {
+                              try {
+                                await updateInspectionStatus(row.id, s)
+                                toast.success("Status berhasil diubah")
+                              } catch (err: any) {
+                                toast.error(err.message || "Gagal mengubah status")
+                              }
+                            }} 
+                            className="capitalize"
+                          >
+                            {formatStatus(s)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0 rounded-full capitalize">{formatStatus(row.status)}</Badge>
+                  )}
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2 text-xs font-semibold text-[#486275]">
                   <div className="rounded-[0.9rem] bg-[#f3faff] p-3">
@@ -182,8 +243,6 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
   return (
     <MinimalTableShell
       label="inspeksi site"
-      title="Daftar Inspeksi Site"
-      description="Kelola laporan inspeksi kondisi area tambang secara efisien."
       fileName="tire-inspection-report"
       searchPlaceholder="Cari berdasarkan site atau customer..."
       scorecards={scorecards}
