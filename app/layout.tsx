@@ -52,14 +52,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" suppressHydrationWarning>
-      <head />
+      <head>
+        <script id="bis-cleanup" dangerouslySetInnerHTML={{
+          __html: `(function(){function r(n){if(1===n.nodeType){var e=n;e.hasAttribute("bis_skin_checked")&&e.removeAttribute("bis_skin_checked");for(var t=e.querySelectorAll("[bis_skin_checked]"),o=0;o<t.length;o++)t[o].removeAttribute("bis_skin_checked")}}var n=new MutationObserver(function(e){for(var t=0;t<e.length;t++)for(var o=e[t].addedNodes,u=0;u<o.length;u++)r(o[u])});n.observe(document.documentElement,{childList:!0,subtree:!0});r(document.documentElement)})();`,
+        }} />
+      </head>
       <body
         className={`${inter.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <Script id="bis-cleanup" strategy="beforeInteractive" dangerouslySetInnerHTML={{
-          __html: `(function(){function r(n){if(1===n.nodeType){var e=n;e.hasAttribute("bis_skin_checked")&&e.removeAttribute("bis_skin_checked");for(var t=e.querySelectorAll("[bis_skin_checked]"),o=0;o<t.length;o++)t[o].removeAttribute("bis_skin_checked")}}var n=new MutationObserver(function(e){for(var t=0;t<e.length;t++)for(var o=e[t].addedNodes,u=0;u<o.length;u++)r(o[u])});n.observe(document.documentElement,{childList:!0,subtree:!0});r(document.documentElement)})();`,
-        }} />
         <ThemeProvider
           attribute="class"
           defaultTheme="light"

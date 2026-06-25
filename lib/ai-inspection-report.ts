@@ -161,7 +161,7 @@ ${params.photos.map(p => `- ${p.id} (${p.section})`).join('\\n')}
     const aiData = await response.json();
     const rawContent =
       aiData.choices?.[0]?.message?.content || aiData.message?.content || "{}";
-    const cleaned = rawContent.replace(/\`\`\`json\\n?/g, "").replace(/\`\`\`\\n?/g, "").trim();
+    const cleaned = rawContent.replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim();
     let parsed: InspectionAiExtraction;
     try {
       parsed = JSON.parse(cleaned) as InspectionAiExtraction;
@@ -171,7 +171,7 @@ ${params.photos.map(p => `- ${p.id} (${p.section})`).join('\\n')}
       if (start >= 0 && end > start) {
         parsed = JSON.parse(cleaned.slice(start, end + 1)) as InspectionAiExtraction;
       } else {
-        throw new Error("AI response bukan JSON valid");
+        throw new Error("AI response bukan JSON valid: " + rawContent.slice(0, 100));
       }
     }
     return { content: parsed, rawContent, model };

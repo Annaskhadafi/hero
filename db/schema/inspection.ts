@@ -34,6 +34,9 @@ export const heroInspections = pgTable('hero_inspections', {
   haulRoadScore: doublePrecision('haul_road_score'),
   dumpingScore: doublePrecision('dumping_score'),
   totalScore: doublePrecision('total_score'),
+  
+  // Daftar Hadir (Attendees)
+  attendees: jsonb('attendees').$type<Array<{ sn: string, name: string, dept: string, section: string, signatureUrl: string }>>().default([]),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

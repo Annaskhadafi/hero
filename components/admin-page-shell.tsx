@@ -20,7 +20,7 @@ export function AdminPageShell({
   return (
     <div className="space-y-4 p-4 lg:p-5">
       {showHeader ? (
-        <header className="admin-daily-card overflow-hidden rounded-[1.1rem]">
+        <header className="admin-daily-card overflow-hidden rounded-[1.1rem] print:hidden no-print">
           {header ? (
             header
           ) : (

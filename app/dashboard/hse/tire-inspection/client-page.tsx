@@ -1,6 +1,8 @@
 "use client"
 
+import { useRef } from "react"
 import { useRouter } from "next/navigation"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -78,7 +80,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
         <EnterpriseActionButtons
           onView={() => router.push(`${basePath}/detail/${row.original.id}`)}
           access={access}
-          onEdit={() => router.push(`${basePath}/editor/${row.original.id}`)}
+          onEdit={() => router.push(`${basePath}/edit/${row.original.id}`)}
         />
       ),
     },
@@ -98,6 +100,19 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       icon: "activity",
     },
   ]
+
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: data.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 53, // Approx height of TableRow with standard padding
+    overscan: 5,
+  })
+
+  const items = virtualizer.getVirtualItems()
+  const before = items.length > 0 ? items[0].start : 0
+  const after = items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1].end : 0
 
   if (isMobile) {
     return (
@@ -125,7 +140,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
           {data.map((row: any, index: number) => {
             const score = Number(row.totalScore || 0)
             return (
-              <article key={row.id || index} className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] ring-1 ring-slate-100/80">
+              <article key={row.id || index} className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] ring-1 ring-slate-100/80 hover:shadow-lg transition-all duration-200">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-base font-black text-[#082033]">{row.siteName || "-"}</p>
@@ -148,8 +163,8 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="h-10 rounded-xl" onClick={() => router.push(`${basePath}/detail/${row.id}`)}><Eye className="size-4" /> Detail</Button>
-                  {access.canEdit ? <Button variant="outline" className="h-10 rounded-xl" onClick={() => router.push(`${basePath}/editor/${row.id}`)}><Pencil className="size-4" /> Edit</Button> : null}
+                  <Button variant="outline" className="h-10 rounded-xl hover:bg-slate-50" onClick={() => router.push(`${basePath}/detail/${row.id}`)}><Eye className="size-4" /> Detail</Button>
+                  {access.canEdit ? <Button variant="outline" className="h-10 rounded-xl hover:bg-slate-50" onClick={() => router.push(`${basePath}/edit/${row.id}`)}><Pencil className="size-4" /> Edit</Button> : null}
                 </div>
               </article>
             )
@@ -168,7 +183,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
     <MinimalTableShell
       label="inspeksi site"
       title="Daftar Inspeksi Site"
-      description="Kelola laporan inspeksi kondisi area tambang."
+      description="Kelola laporan inspeksi kondisi area tambang secara efisien."
       fileName="tire-inspection-report"
       searchPlaceholder="Cari berdasarkan site atau customer..."
       scorecards={scorecards}
@@ -183,28 +198,48 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       }
     >
       <div className="rounded-md border bg-card overflow-hidden">
-        <div className="h-[600px] overflow-auto scrollbar-thin scrollbar-thumb-accent relative">
+        <div ref={parentRef} className="h-[600px] overflow-auto scrollbar-thin scrollbar-thumb-accent relative">
           <Table>
             <TableHeader className="sticky top-0 bg-secondary/80 backdrop-blur-sm z-10">
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 {columns.map((col: any) => (
-                  <TableHead key={col.accessorKey || col.id}>{col.header || ""}</TableHead>
+                  <TableHead key={col.accessorKey || col.id} className="font-semibold text-slate-700">
+                    {col.header || ""}
+                  </TableHead>
                 ))}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((row: any, i: number) => (
-                <TableRow key={row.id || i}>
-                  {columns.map((col: any) => (
-                    <TableCell key={col.accessorKey || col.id}>
-                      {col.cell ? col.cell({ row: { original: row } }) : row[col.accessorKey]}
-                    </TableCell>
-                  ))}
+              {before > 0 && (
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableCell colSpan={columns.length} style={{ height: `${before}px` }} className="p-0 border-0" />
                 </TableRow>
-              ))}
+              )}
+              {items.map((virtualRow) => {
+                const row = data[virtualRow.index]
+                return (
+                  <TableRow 
+                    key={row.id || virtualRow.index} 
+                    data-index={virtualRow.index} 
+                    ref={virtualizer.measureElement}
+                    className="hover:bg-slate-50/50 transition-colors group"
+                  >
+                    {columns.map((col: any) => (
+                      <TableCell key={col.accessorKey || col.id} className="py-3">
+                        {col.cell ? col.cell({ row: { original: row } }) : row[col.accessorKey]}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })}
+              {after > 0 && (
+                <TableRow className="hover:bg-transparent border-0">
+                  <TableCell colSpan={columns.length} style={{ height: `${after}px` }} className="p-0 border-0" />
+                </TableRow>
+              )}
               {data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={columns.length} className="text-center py-12 text-muted-foreground">
                     Belum ada data inspeksi.
                   </TableCell>
                 </TableRow>

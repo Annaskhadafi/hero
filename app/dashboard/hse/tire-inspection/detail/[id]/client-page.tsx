@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -8,6 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner"
 import { Loader2, FileEdit, Wand2, FileText, Download, ImageOff } from "lucide-react"
 import { generateAiReport } from "../../actions"
+
+function getStarsData(score: number) {
+  if (score >= 91) return { count: 5, label: "Sangat Memuaskan" }
+  if (score >= 81) return { count: 4, label: "Memuaskan" }
+  if (score >= 61) return { count: 3, label: "Cukup Memuaskan" }
+  if (score >= 41) return { count: 2, label: "Kurang Memuaskan" }
+  return { count: 1, label: "Tidak Memuaskan" }
+}
 
 function formatDate(value: unknown) {
   const date = new Date(String(value ?? ""))
@@ -46,30 +54,115 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
     }
   }
 
-  const getScoreVariant = (score: number) => {
-    if (score >= 85) return "success"
-    if (score >= 70) return "secondary"
-    if (score >= 50) return "warning"
-    return "destructive"
+  const sectionTitles: any = {
+    loading_area: "Loading Areas (Daerah Loading)",
+    haul_road: "Jalan Angkutan (Haul Road)",
+    dumping_area: "Dumping Area (Daerah Buangan Material)"
   }
 
+  const sectionScores: any = {
+    loading_area: inspection.loadingScore,
+    haul_road: inspection.haulRoadScore,
+    dumping_area: inspection.dumpingScore
+  }
+
+  // Calculate max possible score (assuming 10 per question)
+  const maxPossibleScore = checklists.length * 10
+  const indexScore = maxPossibleScore > 0 ? (Number(inspection.totalScore || 0) / maxPossibleScore) * 100 : 0
+
   return (
-    <div className="mx-auto max-w-6xl space-y-4 pb-12 md:space-y-6 pdf-wrapper">
+    <div id="print-root" className="mx-auto max-w-5xl space-y-4 pb-12">
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          @page { size: A4; margin: 10mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .no-print { display: none !important; }
+          @page { size: A4 portrait; margin: 10mm; }
+          body { 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+            background: white !important;
+          }
+          
+          /* Sembunyikan elemen Sidebar, Header, dan Navigasi */
+          header, aside, [data-sidebar="sidebar"], nav, .admin-page-header, .no-print {
+            display: none !important;
+          }
+          
+          /* Mematikan flex/grid pada semua parent agar sidebar tidak menyisakan ruang putih */
+          html, body, main, [data-slot="sidebar-inset"], [data-admin-dashboard-shell],
+          div:has(#print-root) {
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            background: white !important;
+            position: static !important;
+            transform: none !important;
+          }
+          
+          /* Reset container component kita */
+          #print-root {
+            display: block !important;
+            max-width: none !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          
+          .pdf-wrapper {
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            overflow: visible !important;
+          }
+          
+          .pdf-document {
+            min-width: 0 !important;
+            width: 100% !important;
+            padding: 0 !important;
+          }
         }
+        .pdf-document {
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 11px;
+          color: #000;
+          background: #fff;
+          line-height: 1.4;
+        }
+        .pdf-document table {
+          width: 100%;
+          border-collapse: collapse;
+          border: 1px solid #000;
+        }
+        .pdf-document th, .pdf-document td {
+          border: 1px solid #000;
+          padding: 4px 6px;
+          vertical-align: middle;
+        }
+        .pdf-document .font-bold { font-weight: bold; }
+        .pdf-document .text-center { text-align: center; }
+        .pdf-document .bg-gray { background-color: #f3f4f6 !important; }
+        .pdf-document .bg-green { background-color: #bbf7d0 !important; }
+        .pdf-document .bg-yellow { background-color: #fef08a !important; }
+        .pdf-document .border-none { border: none !important; }
       `}} />
       
       {/* Header Actions */}
-      <div className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:flex md:flex-wrap md:items-center md:justify-between md:gap-4 md:rounded-xl no-print">
+      <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm md:flex md:flex-wrap md:items-center md:justify-between md:gap-4 no-print">
         <div>
-          <h2 className="text-lg font-black text-[#082033] md:text-xl">{inspection.siteName} - {inspection.customerName}</h2>
-          <p className="text-sm font-semibold text-[#486275]">Shift: {inspection.shift} | Unit: {inspection.unitName}</p>
+          <h2 className="text-lg font-black text-[#082033] md:text-xl">Tire Inspection Report</h2>
+          <p className="text-sm font-semibold text-[#486275]">{inspection.siteName} - {inspection.customerName}</p>
         </div>
         <div className="mt-4 grid gap-2 md:mt-0 md:flex md:items-center">
+          {access.canEdit && (
+            <Button variant="outline" onClick={() => router.push(`${basePath}/edit/${inspection.id}`)}>
+              <FileEdit className="mr-2 h-4 w-4" />
+              Edit Data
+            </Button>
+          )}
           {access.canEdit && (
             <Button variant="outline" onClick={handleGenerateAi} disabled={loadingAi}>
               {loadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
@@ -89,139 +182,290 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
         </div>
       </div>
 
-      {/* Scores */}
-      <div className="grid grid-cols-2 gap-4">
-        {[
-          { label: "Total Skor", score: inspection.totalScore },
-          { label: "Loading Area", score: inspection.loadingScore },
-          { label: "Haul Road", score: inspection.haulRoadScore },
-          { label: "Dumping Area", score: inspection.dumpingScore },
-        ].map((s, i) => {
-          const score = Number(s.score || 0)
-          return (
-          <div key={i} className={`min-h-[128px] rounded-[1.2rem] border p-4 text-center shadow-[0_14px_32px_rgba(8,32,51,0.08)] ${scoreCardClass(score)}`}>
-            <h3 className="min-h-8 text-[10px] font-black uppercase tracking-[0.12em] opacity-70 md:min-h-0 md:text-sm md:normal-case md:tracking-normal">{s.label}</h3>
-            <div className="mt-2 text-2xl font-black leading-none md:text-3xl">{score.toFixed(1)}</div>
-            <Badge variant={getScoreVariant(score) as any} className="mt-3 max-w-full truncate px-2 text-[10px] md:text-xs">
-              {score >= 85 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Moderate" : "High Risk"}
-            </Badge>
-          </div>
-          )
-        })}
-      </div>
-
-      <section className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:rounded-xl md:p-6">
-        <h3 className="text-lg font-black text-[#082033]">Detail Inspeksi</h3>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
-          {[
-            ["Site", inspection.siteName],
-            ["Customer", inspection.customerName],
-            ["Tanggal", formatDate(inspection.inspectionDate)],
-            ["Shift", inspection.shift],
-            ["Unit", inspection.unitName],
-            ["Status", inspection.status?.replace(/_/g, " ") || "draft"],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-[0.95rem] bg-[#f3faff] p-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]/60">{label}</p>
-              <p className="mt-1 break-words font-black text-[#082033]">{value || "-"}</p>
-            </div>
-          ))}
-        </div>
-        {inspection.notes ? (
-          <div className="mt-3 rounded-[0.95rem] bg-[#fff8e8] p-3 text-sm font-semibold leading-6 text-[#8a5a00]">
-            {inspection.notes}
-          </div>
-        ) : null}
-      </section>
-
-      {checklists.length > 0 ? (
-        <section className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:rounded-xl md:p-6">
-          <h3 className="text-lg font-black text-[#082033]">Checklist Lapangan</h3>
-          <div className="mt-4 space-y-4">
-            {["loading_area", "haul_road", "dumping_area"].map((section) => {
-              const rows = checklists.filter((item: any) => item.section === section)
-              if (!rows.length) return null
-              return (
-                <div key={section} className="space-y-2">
-                  <p className="rounded-xl bg-[#f3faff] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#082033]">{labelSection(section)}</p>
-                  {rows.map((item: any) => (
-                    <div key={item.id} className="rounded-xl border border-slate-100 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm font-semibold leading-5 text-[#082033]">{item.question}</p>
-                        <Badge variant={item.answer ? "secondary" : "destructive"} className="shrink-0">{item.answer ? "YA" : "TDK"}</Badge>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3 text-xs font-semibold text-[#486275]">
-                        <span>Skor {item.score ?? 0}/10</span>
-                        {item.remarks ? <span className="text-right">{item.remarks}</span> : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {/* AI Report Section */}
-      {inspection.status !== "draft" ? (
-        <div className="space-y-4">
-          <div className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:rounded-xl md:p-6">
-            <h3 className="text-lg font-bold flex items-center mb-4"><FileText className="mr-2" /> Executive Summary</h3>
-            <p className="whitespace-pre-wrap">{inspection.summary}</p>
-          </div>
-          <div className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:rounded-xl md:p-6">
-            <h3 className="text-lg font-bold flex items-center mb-4"><FileText className="mr-2" /> Findings (Temuan Lapangan)</h3>
-            <p className="whitespace-pre-wrap">{inspection.findings}</p>
-          </div>
-          <div className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:rounded-xl md:p-6">
-            <h3 className="text-lg font-bold flex items-center mb-4"><FileText className="mr-2" /> Recommendations (Rekomendasi)</h3>
-            <p className="whitespace-pre-wrap">{inspection.recommendations}</p>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-[1.2rem] border border-dashed bg-white p-6 text-center shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:p-12">
-          <Wand2 className="mx-auto h-8 w-8 text-muted-foreground mb-4 opacity-50" />
-          <h3 className="text-lg font-medium text-muted-foreground">Laporan AI belum di-generate</h3>
-          <p className="text-sm text-muted-foreground mb-4">Klik tombol "Generate AI Report" untuk mulai menyusun laporan otomatis.</p>
-          {access.canEdit && (
-            <Button onClick={handleGenerateAi} disabled={loadingAi}>
-              {loadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Generate Sekarang"}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Photos */}
-      {photos.length > 0 && (
-        <div className="rounded-[1.2rem] border border-slate-100 bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] md:rounded-xl md:p-6 pdf-wrapper">
-          <h3 className="text-lg font-bold mb-4">Dokumentasi Foto</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {photos.map((p: any) => (
-              <div key={p.id} className="overflow-hidden rounded-[1.1rem] border border-slate-100 bg-white shadow-[0_10px_24px_rgba(8,32,51,0.06)]">
-                {p.readableImageUrl || p.imageUrl ? (
-                  <button type="button" onClick={() => setPreviewPhoto(p)} className="block w-full bg-slate-100 text-left">
-                    <img src={p.readableImageUrl || p.imageUrl} alt={p.caption || "Foto inspeksi"} className="h-48 w-full object-cover md:h-56" />
-                  </button>
-                ) : (
-                  <div className="flex h-48 flex-col items-center justify-center gap-2 bg-slate-100 text-sm font-semibold text-slate-500 md:h-56">
-                    <ImageOff className="size-6" />
-                    Foto tidak tersedia
+      <div className="pdf-wrapper shadow-sm md:shadow-md border bg-white overflow-hidden overflow-x-auto w-full">
+        <div className="pdf-document min-w-[800px] p-4 md:p-8 space-y-4">
+          
+          {/* Main Table - Page 1 */}
+          <table>
+            <tbody>
+              {/* Header Row */}
+              <tr>
+                <td rowSpan={2} colSpan={1} className="w-[100px] text-center font-bold text-xl p-2 border-r-0">
+                  <div className="flex flex-col items-center justify-center space-y-1">
+                    <div className="w-12 h-8 bg-blue-900 text-white flex items-center justify-center font-bold italic text-xs tracking-tighter">CK</div>
+                    <div className="text-[7px] leading-tight text-center">Cipta Kridatama</div>
                   </div>
-                )}
-                <div className="p-3 bg-muted/30">
-                  <Badge variant="outline" className="mb-2">{p.section.replace("_", " ")}</Badge>
-                  {p.caption && <p className="text-sm font-medium">{p.caption}</p>}
-                  {p.aiCaption && <p className="text-sm text-muted-foreground mt-2 border-t pt-2 border-dashed"><strong>AI:</strong> {p.aiCaption}</p>}
+                </td>
+                <td colSpan={4} className="text-center font-bold text-base border-l-0">
+                  INSPEKSI AREA TAMBANG (IAT)<br/>UNTUK TYRE
+                </td>
+              </tr>
+              <tr>
+                <td colSpan={2} className="border-r-0 text-xs py-1">
+                  <div className="grid grid-cols-[80px_10px_1fr]">
+                    <span>Project/Site</span><span>:</span><span className="font-bold">{inspection.siteName}</span>
+                    <span>Lokasi PIT</span><span>:</span><span className="font-bold">{inspection.customerName}</span>
+                  </div>
+                </td>
+                <td colSpan={2} className="border-l-0 text-xs py-1">
+                  <div className="grid grid-cols-[80px_10px_1fr]">
+                    <span>Hari / TGL</span><span>:</span><span className="font-bold" suppressHydrationWarning>{formatDate(inspection.inspectionDate)}</span>
+                    <span>Jam / Shift</span><span>:</span><span className="font-bold">{inspection.shift} - {inspection.unitName}</span>
+                  </div>
+                </td>
+              </tr>
+              
+              {/* Scale Row */}
+              <tr>
+                <td colSpan={5} className="py-3">
+                  <div className="flex justify-center items-center space-x-4 mb-1">
+                    <div className="border border-black px-4 py-1 text-xs font-bold text-center w-36">MENGECEWAKAN</div>
+                    <div className="flex-1 flex items-center justify-center max-w-xs px-2">
+                      <div className="h-0.5 bg-black w-full"></div>
+                      <div className="-ml-1 w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-l-[8px] border-l-black"></div>
+                    </div>
+                    <div className="border border-black px-4 py-1 text-xs font-bold text-center w-36">MEMUASKAN</div>
+                  </div>
+                  <div className="text-center text-xs font-bold">SKOR : 1 ke 10</div>
+                </td>
+              </tr>
+              
+              {/* Columns Header */}
+              <tr className="font-bold text-center">
+                <td className="w-8">No</td>
+                <td>Tentang Tyre</td>
+                <td className="w-24"></td>
+                <td className="w-16">SKOR</td>
+                <td className="w-48">Keterangan</td>
+              </tr>
+
+              {/* Checklist Items Grouped */}
+              {["loading_area", "haul_road", "dumping_area"].map((sectionKey, secIndex) => {
+                const rows = checklists.filter((item: any) => item.section === sectionKey)
+                const isBgGreen = sectionKey === "loading_area" || sectionKey === "dumping_area"
+                const isBgYellow = sectionKey === "haul_road"
+                const bgClass = isBgGreen ? "bg-green" : isBgYellow ? "bg-yellow" : ""
+                
+                return (
+                  <React.Fragment key={sectionKey}>
+                    <tr className="font-bold bg-gray">
+                      <td colSpan={2}>{sectionTitles[sectionKey]} {rows.length > 0 ? `: ${rows[0].remarks?.split(" ")[0] || "-"}` : ""}</td>
+                      <td className="text-right border-r-0">Nilai Area</td>
+                      <td colSpan={2} className={`text-center ${bgClass} border-l-0 text-base`}>
+                        {Number(sectionScores[sectionKey] || 0).toFixed(1)}
+                      </td>
+                    </tr>
+                    {rows.map((item: any, idx: number) => (
+                      <tr key={item.id}>
+                        <td className="text-center">{idx + 1}</td>
+                        <td>{item.question}</td>
+                        <td className="text-center text-[10px] whitespace-nowrap">
+                          <span className={item.answer ? "font-bold border border-black rounded-full px-2" : "text-gray-500"}>YA</span> / <span className={!item.answer ? "font-bold border border-black rounded-full px-2" : "text-gray-500"}>TDK</span>
+                        </td>
+                        <td className={`text-center font-bold ${bgClass}`}>
+                          {item.score ?? 0}
+                        </td>
+                        <td className={bgClass}>{item.remarks}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                )
+              })}
+
+              {/* Totals */}
+              <tr>
+                <td colSpan={3} className="text-right font-bold bg-gray py-2">TOTAL NILAI INSPEKSI</td>
+                <td colSpan={2} className="text-center font-bold text-base bg-gray py-2">{Number(inspection.totalScore || 0).toFixed(1)}</td>
+              </tr>
+              <tr>
+                <td colSpan={3} className="text-right font-bold bg-gray py-2">INDEX TOTAL NILAI INSPEKSI</td>
+                <td colSpan={2} className="text-center font-bold text-base bg-gray py-2">
+                  <div className="flex items-center justify-center gap-2">
+                    <span>{indexScore.toFixed(0)}%</span>
+                    <div className="flex text-yellow-500 text-sm tracking-widest">
+                      {Array.from({ length: getStarsData(indexScore).count }).map((_, i) => "★").join("")}
+                    </div>
+                    <span className="text-[10px] uppercase font-bold text-gray-700">{getStarsData(indexScore).label}</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Recommendations Area */}
+          <table className="w-full mt-4 border-collapse border border-black text-xs">
+            <tbody>
+              <tr>
+                <td colSpan={4} className="border-b-0 border border-black border-b-transparent p-2">
+                  <div className="font-bold mb-1">Rekomendasi dari Hasil Inspeksi:</div>
+                  <div className="min-h-[60px] italic whitespace-pre-wrap">
+                    {inspection.recommendations || inspection.notes || "-"}
+                  </div>
+                </td>
+              </tr>
+              {/* Approval Area */}
+              <tr>
+                <td className="w-1/4 text-center border border-black border-t-0 align-top pt-4 h-24">
+                  <div className="mb-12">Inspeksi oleh,</div>
+                  <div className="border-b border-black w-4/5 mx-auto mb-1"></div>
+                  <div className="text-[10px]">Leader Tyre SSA / Section Head<br/>Tyre / Eng Tyre (CK)</div>
+                </td>
+                <td className="w-1/4 text-center border border-black border-t-0 align-top pt-4 h-24">
+                  <div className="mb-12">Inspeksi Ulang oleh,</div>
+                  <div className="border-b border-black w-4/5 mx-auto mb-1"></div>
+                  <div className="text-[10px]">Sec.Head Production</div>
+                </td>
+                <td className="w-1/4 text-center border border-black border-t-0 align-top pt-4 h-24">
+                  <div className="mb-12">Mengetahui,</div>
+                  <div className="border-b border-black w-4/5 mx-auto mb-1"></div>
+                  <div className="text-[10px]">Dept. Head EM</div>
+                </td>
+                <td className="w-1/4 text-center border border-black border-t-0 align-top pt-4 h-24">
+                  <div className="mb-12">Mengetahui,</div>
+                  <div className="border-b border-black w-4/5 mx-auto mb-1"></div>
+                  <div className="text-[10px]">Dept. Head Production</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Page Break for Photos */}
+          {photos.length > 0 && (
+            <div className="mt-8 pt-4 border-t-2 border-dashed border-gray-400 no-print"></div>
+          )}
+          {photos.length > 0 && (
+            <div className="mt-4" style={{ pageBreakBefore: "always" }}>
+              <div className="font-bold mb-2">Foto-Foto Temuan Kondisi Tambang Terhadap Tyre :</div>
+              <table>
+                <tbody>
+                  {["loading_area", "haul_road", "dumping_area"].map((sectionKey) => {
+                    const sectionPhotos = photos.filter((p: any) => p.section === sectionKey)
+                    const title = sectionKey === "loading_area" ? "LOADING AREA" : 
+                                  sectionKey === "haul_road" ? "HAULING AREA" : "DUMPING AREA"
+                    
+                    return (
+                      <tr key={sectionKey}>
+                        <td className="w-32 font-bold align-top text-xs pt-2">
+                          {title}
+                        </td>
+                        <td className="p-2">
+                          <div className="grid grid-cols-2 gap-4">
+                            {sectionPhotos.length > 0 ? sectionPhotos.map((p: any) => (
+                              <div key={p.id} className="border border-gray-300 bg-white">
+                                <img src={p.readableImageUrl || p.imageUrl} alt={p.caption || "-"} className="w-full h-[200px] object-cover" />
+                                <div className="text-xs text-center p-2 bg-gray-50 border-t border-gray-300 font-bold break-words">
+                                  {p.caption || "Foto Temuan"}
+                                </div>
+                              </div>
+                            )) : (
+                              <div className="text-gray-400 italic text-xs py-2">Tidak ada foto di area ini</div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              
+              <div className="mt-4 border border-black p-2 text-[9px] space-y-1">
+                <div className="font-bold underline">Petunjuk Pemberian Nilai : (1 ke 10)</div>
+                <div className="font-bold">1) LOADING AREA</div>
+                <div>7 ke 10 = BAIK, ban belakang truk tidak melindas batuan, tumpahan dibersihkan dengan segera</div>
+                <div>4 ke 6 = CUKUP, ban belakang kadang melindas batuan, sedikit tumpahan ditemui, dan kemudian dibersihkan</div>
+                <div>1 ke 3 = BURUK, ban belakang sering melindas batuan besar atau tumpahan, tumpahan tidak dibersihkan</div>
+                
+                <div className="font-bold mt-2">2) HAULING ROAD</div>
+                <div>7 ke 10 = BAIK, di grader dengan baik, tidak ada tumpahan, sangat sedikit bahkan tidak ada jalan bergelombang</div>
+                <div>4 ke 6 = CUKUP, perlu perbaikan, ada sedikit jalan bergelombang, sedikit tumpahan, sedikit genangan air</div>
+                <div>1 ke 3 = BURUK, perlu perbaikan segera, banyak jalan bergelombang dan tumpahan, truk sering melindas batuan, banyak genangan</div>
+                
+                <div className="font-bold mt-2">3) Dumping Area</div>
+                <div>7 ke 10 = BAIK, sedikit permukaan bergelombang, sedikit tumpahan, dozer bekerja terus mengantisipasi keadaan, ada safety berm</div>
+                <div>4 ke 6 = CUKUP, sering bergelombang, sering ada ceceran material, dozer kurang antisipatif, safety berm tidak tersedia</div>
+                <div className="mt-4 grid grid-cols-1 gap-1 w-2/3">
+                  <div className="flex items-center gap-2">9 ke 10 = 91% sampai 100% sesuai <div className="flex text-yellow-500 tracking-widest">{"★★★★★"}</div> <span className="font-bold">Sangat Memuaskan</span></div>
+                  <div className="flex items-center gap-2">8 ke 9 = 81% sampai 90% sesuai <div className="flex text-yellow-500 tracking-widest">{"★★★★"}</div> <span className="font-bold">Memuaskan</span></div>
+                  <div className="flex items-center gap-2">6 ke 8 = 61% sampai 80% sesuai <div className="flex text-yellow-500 tracking-widest">{"★★★"}</div> <span className="font-bold">Cukup Memuaskan</span></div>
+                  <div className="flex items-center gap-2">4 ke 6 = 41% sampai 60% sesuai <div className="flex text-yellow-500 tracking-widest">{"★★"}</div> <span className="font-bold">Kurang Memuaskan</span></div>
+                  <div className="flex items-center gap-2">1 ke 4 = 10% sampai 40% sesuai. <div className="flex text-yellow-500 tracking-widest">{"★"}</div> <span className="font-bold">Tidak Memuaskan</span></div>
+                </div>
+                
+                <div className="mt-4">
+                  <span className="font-bold underline">Catatan:</span><br/>
+                  Kolom keterangan dapat diisi dengan lokasi dimana penyimpangan / deviasi ditemukan.
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
 
+          {/* Daftar Hadir */}
+          {inspection.attendees && Array.isArray(inspection.attendees) && inspection.attendees.length > 0 && (
+            <div className="mt-8" style={{ pageBreakInside: "avoid" }}>
+              <div className="font-bold mb-2">Daftar Hadir Inspeksi:</div>
+              <table className="w-full border-collapse border border-black text-xs">
+                <thead>
+                  <tr className="bg-gray-100 font-bold text-center">
+                    <td className="border border-black p-1 w-12">No</td>
+                    <td className="border border-black p-1 w-24">SN / NRP</td>
+                    <td className="border border-black p-1">Nama Lengkap</td>
+                    <td className="border border-black p-1 w-48">Departemen / Seksi</td>
+                    <td className="border border-black p-1 w-32">TTD</td>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inspection.attendees.map((att: any, idx: number) => (
+                    <tr key={idx}>
+                      <td className="border border-black p-1 text-center">{idx + 1}</td>
+                      <td className="border border-black p-1 text-center">{att.sn || "-"}</td>
+                      <td className="border border-black p-1">{att.name || "-"}</td>
+                      <td className="border border-black p-1 text-center">{att.dept || "-"}</td>
+                      <td className="border border-black p-1 text-center align-middle h-24">
+                        {/* Space left blank intentionally for manual signing */}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* AI Report Section (No Print) */}
+          <div className="mt-8 pt-4 border-t-2 border-dashed border-gray-200 no-print">
+            <h3 className="font-bold text-sm mb-4">Laporan Analisis AI (Hanya Tampilan Layar)</h3>
+            {inspection.status !== "draft" ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg">
+                  <div className="font-bold flex items-center mb-2 text-blue-900"><FileText className="mr-2 w-4 h-4" /> Executive Summary</div>
+                  <div className="whitespace-pre-wrap text-blue-800 text-xs">{inspection.summary}</div>
+                </div>
+                <div className="bg-orange-50 border border-orange-100 p-3 rounded-lg">
+                  <div className="font-bold flex items-center mb-2 text-orange-900"><FileText className="mr-2 w-4 h-4" /> Findings</div>
+                  <div className="whitespace-pre-wrap text-orange-800 text-xs">{inspection.findings}</div>
+                </div>
+                <div className="bg-green-50 border border-green-100 p-3 rounded-lg">
+                  <div className="font-bold flex items-center mb-2 text-green-900"><FileText className="mr-2 w-4 h-4" /> Recommendations</div>
+                  <div className="whitespace-pre-wrap text-green-800 text-xs">{inspection.recommendations}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-dashed border-gray-300 p-6 text-center rounded-lg">
+                <div className="text-gray-500 italic text-xs mb-2">Laporan AI belum di-generate</div>
+                {access.canEdit && (
+                  <Button onClick={handleGenerateAi} disabled={loadingAi} size="sm" variant="outline">
+                    {loadingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Generate Sekarang"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+          
+        </div>
+      </div>
+      
+      {/* Lightbox for Photos (No Print) */}
       <Dialog open={!!previewPhoto} onOpenChange={(open) => !open && setPreviewPhoto(null)}>
-        <DialogContent className="max-w-3xl overflow-hidden rounded-[1.2rem] p-0">
+        <DialogContent className="max-w-3xl overflow-hidden rounded-[1.2rem] p-0 no-print">
           {previewPhoto ? (
             <div className="bg-white">
               <DialogHeader className="p-4 pb-2 text-left">
@@ -229,7 +473,7 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
               </DialogHeader>
               <img src={previewPhoto.readableImageUrl || previewPhoto.imageUrl} alt={previewPhoto.caption || "Foto inspeksi"} className="max-h-[72vh] w-full object-contain bg-slate-100" />
               <div className="space-y-2 p-4">
-                <Badge variant="outline">{labelSection(previewPhoto.section || "-")}</Badge>
+                <Badge variant="outline">{previewPhoto.section?.replace("_", " ") || "-"}</Badge>
                 {previewPhoto.caption ? <p className="text-sm font-semibold text-[#082033]">{previewPhoto.caption}</p> : null}
                 {previewPhoto.aiCaption ? <p className="rounded-xl bg-[#f3faff] p-3 text-sm font-semibold text-[#486275]">AI: {previewPhoto.aiCaption}</p> : null}
               </div>

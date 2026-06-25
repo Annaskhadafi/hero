@@ -64,6 +64,13 @@ export async function createInspection(data: {
   shift: string;
   unitName: string;
   notes: string;
+  attendees?: Array<{
+    sn: string;
+    name: string;
+    dept: string;
+    section: string;
+    signatureUrl: string;
+  }>;
   checklists: Array<{
     section: string;
     question: string;
@@ -109,6 +116,7 @@ export async function createInspection(data: {
     shift: data.shift,
     unitName: data.unitName,
     notes: data.notes,
+    attendees: data.attendees || [],
     loadingScore,
     haulRoadScore,
     dumpingScore,
@@ -143,6 +151,107 @@ export async function createInspection(data: {
 
   revalidatePath("/dashboard/hse/tire-inspection");
   return { success: true, id: inspection.id };
+}
+
+export async function updateInspectionFull(id: string, data: {
+  siteName: string;
+  customerName: string;
+  inspectionDate: Date;
+  shift: string;
+  unitName: string;
+  notes: string;
+  attendees?: Array<{
+    sn: string;
+    name: string;
+    dept: string;
+    section: string;
+    signatureUrl: string;
+  }>;
+  checklists: Array<{
+    section: string;
+    question: string;
+    answer: boolean;
+    score: number;
+    remarks?: string;
+  }>;
+  photos: Array<{
+    id?: string;
+    section: string;
+    imageUrl: string;
+    caption?: string;
+    sortOrder: number;
+  }>;
+}) {
+  const permission = await requirePermission();
+  if (!permission.canEdit) {
+    throw new Error("Akses ditolak. Anda tidak dapat mengedit inspeksi ini.");
+  }
+
+  const employee = await getCurrentEmployee();
+  if (!employee) {
+    throw new Error("Session tidak valid atau tidak ditemukan data karyawan.");
+  }
+
+  // Calculate scores
+  const loadingScoreList = data.checklists.filter(c => c.section === "loading_area").map(c => c.score);
+  const haulRoadScoreList = data.checklists.filter(c => c.section === "haul_road").map(c => c.score);
+  const dumpingScoreList = data.checklists.filter(c => c.section === "dumping_area").map(c => c.score);
+
+  const calculateAvg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  
+  const loadingScore = calculateAvg(loadingScoreList) * 10;
+  const haulRoadScore = calculateAvg(haulRoadScoreList) * 10;
+  const dumpingScore = calculateAvg(dumpingScoreList) * 10;
+  const totalScore = (loadingScore + haulRoadScore + dumpingScore) / 3;
+
+  await db.update(heroInspections).set({
+    siteName: data.siteName,
+    customerName: data.customerName,
+    inspectionDate: data.inspectionDate,
+    shift: data.shift,
+    unitName: data.unitName,
+    notes: data.notes,
+    attendees: data.attendees || [],
+    loadingScore,
+    haulRoadScore,
+    dumpingScore,
+    totalScore,
+    updatedAt: new Date(),
+  }).where(eq(heroInspections.id, id));
+
+  // Re-insert checklists
+  await db.delete(heroInspectionChecklists).where(eq(heroInspectionChecklists.inspectionId, id));
+  if (data.checklists.length > 0) {
+    await db.insert(heroInspectionChecklists).values(
+      data.checklists.map(c => ({
+        inspectionId: id,
+        section: c.section,
+        question: c.question,
+        answer: c.answer,
+        score: c.score,
+        remarks: c.remarks,
+      }))
+    );
+  }
+
+  // Re-insert photos
+  await db.delete(heroInspectionPhotos).where(eq(heroInspectionPhotos.inspectionId, id));
+  if (data.photos.length > 0) {
+    await db.insert(heroInspectionPhotos).values(
+      data.photos.map(p => ({
+        ...(p.id ? { id: p.id } : {}), // preserve old ID if it exists
+        inspectionId: id,
+        section: p.section,
+        imageUrl: p.imageUrl,
+        caption: p.caption,
+        sortOrder: p.sortOrder,
+      }))
+    );
+  }
+
+  revalidatePath("/dashboard/hse/tire-inspection");
+  revalidatePath(`/dashboard/hse/tire-inspection/detail/${id}`);
+  return { success: true };
 }
 
 export async function generateAiReport(id: string) {

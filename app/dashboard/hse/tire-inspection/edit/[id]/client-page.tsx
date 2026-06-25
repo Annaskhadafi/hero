@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,47 +12,45 @@ import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import { CalendarIcon, Loader2, Plus, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { createInspection } from "../actions"
+import { updateInspectionFull } from "../../actions"
 import { uploadFile } from "@/app/actions/upload"
 import { toast } from "sonner"
 
-const CHECKLIST_TEMPLATES = [
-  { section: "loading_area", question: "Apakah daerah loading relatif rata dan bebas tumpahan?" },
-  { section: "loading_area", question: "Apakah operator truk mengendarai & melintasinya dengan aman?" },
-  { section: "loading_area", question: "Apakah Dozer difungsikan?" },
-  { section: "loading_area", question: "Apakah frekuensi pembersihan jalan dari tumpahan sering dilakukan?" },
-  { section: "haul_road", question: "Adakah drainase di jalan tambang?" },
-  { section: "haul_road", question: "Apakah kemiringan jalan cukup membuat air mengalir ke drainase?" },
-  { section: "haul_road", question: "Apakah jalan bebas dari tumpahan material atau lubang?" },
-  { section: "haul_road", question: "Adakah genangan / kubangan air?" },
-  { section: "dumping_area", question: "Adakah tumpahan batuan di daerah lokasi dumping?" },
-  { section: "dumping_area", question: "Apakah permukaan jalan bebas dari lubang dan gelombang?" },
-  { section: "dumping_area", question: "Apakah semua operator menggunakan putaran L di dumping point?" },
-  { section: "dumping_area", question: "Apakah ada unit dozer selama di daerah dumpingan?" },
-];
-
-export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-inspection" }: { basePath?: string }) {
+export function TireInspectionEditClient({ detail, basePath = "/dashboard/hse/tire-inspection" }: { detail: any, basePath?: string }) {
   const router = useRouter()
+  const { inspection, checklists: initialChecklists, photos: initialPhotos } = detail
   const [loading, setLoading] = useState(false)
+  
   const [formData, setFormData] = useState({
-    siteName: "",
-    customerName: "",
-    inspectionDate: new Date(),
-    shift: "Siang",
-    unitName: "",
-    notes: "",
+    siteName: inspection.siteName || "",
+    customerName: inspection.customerName || "",
+    inspectionDate: new Date(inspection.inspectionDate),
+    shift: inspection.shift || "",
+    unitName: inspection.unitName || "",
+    notes: inspection.notes || "",
   })
 
-  const [attendees, setAttendees] = useState<Array<{ sn: string; name: string; dept: string }>>([])
+  const [attendees, setAttendees] = useState<Array<{ sn: string; name: string; dept: string }>>(
+    inspection.attendees || []
+  )
 
-  const [checklists, setChecklists] = useState(CHECKLIST_TEMPLATES.map(c => ({
+  const [checklists, setChecklists] = useState(initialChecklists.map((c: any) => ({
     ...c,
-    answer: true,
-    score: 10,
-    remarks: "",
+    answer: c.answer ?? true,
+    score: c.score ?? 10,
+    remarks: c.remarks ?? "",
   })))
 
-  const [photos, setPhotos] = useState<Array<{ section: string; file: File; caption: string }>>([])
+  // old photos have id, imageUrl. new photos have file.
+  const [photos, setPhotos] = useState<Array<{ id?: string; section: string; file?: File; imageUrl?: string; caption: string; readableImageUrl?: string }>>(
+    initialPhotos.map((p: any) => ({
+      id: p.id,
+      section: p.section,
+      imageUrl: p.imageUrl,
+      readableImageUrl: p.readableImageUrl,
+      caption: p.caption || "",
+    }))
+  )
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, section: string) => {
     if (e.target.files) {
@@ -68,26 +66,37 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
   const submitForm = async () => {
     setLoading(true)
     try {
-      // 1. Upload photos first
       const uploadedPhotos = []
       let sortOrder = 0;
       for (const p of photos) {
-        const fileData = new FormData()
-        fileData.append("file", p.file)
-        const res = await uploadFile(fileData)
-        if (res.success && res.url) {
+        if (p.file) {
+          // New photo upload
+          const fileData = new FormData()
+          fileData.append("file", p.file)
+          const res = await uploadFile(fileData)
+          if (res.success && res.url) {
+            uploadedPhotos.push({
+              section: p.section,
+              imageUrl: res.url,
+              caption: p.caption,
+              sortOrder: sortOrder++,
+            })
+          } else {
+            toast.error(`Gagal upload foto: ${p.file.name}`)
+          }
+        } else if (p.imageUrl) {
+          // Old photo, preserve
           uploadedPhotos.push({
+            id: p.id,
             section: p.section,
-            imageUrl: res.url,
+            imageUrl: p.imageUrl,
             caption: p.caption,
             sortOrder: sortOrder++,
           })
-        } else {
-          toast.error(`Gagal upload foto: ${p.file.name}`)
         }
       }
 
-      // 2. Format attendees
+      // Format attendees
       const processedAttendees = attendees.map(att => ({
         sn: att.sn,
         name: att.name,
@@ -96,8 +105,8 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
         signatureUrl: ""
       }))
 
-      // 3. Save to database
-      const result = await createInspection({
+      // Save to database
+      const result = await updateInspectionFull(inspection.id, {
         siteName: formData.siteName,
         customerName: formData.customerName,
         inspectionDate: formData.inspectionDate, // already a Date object
@@ -109,10 +118,10 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
         photos: uploadedPhotos,
       })
 
-      toast.success("Inspeksi berhasil disimpan. Memulai generasi laporan AI...")
-      router.push(`${basePath}/detail/${result.id}`)
+      toast.success("Perubahan data inspeksi berhasil disimpan.")
+      router.push(`${basePath}/detail/${inspection.id}`)
     } catch (err: any) {
-      toast.error(err.message || "Terjadi kesalahan")
+      toast.error(err.message || "Terjadi kesalahan saat menyimpan perubahan")
     } finally {
       setLoading(false)
     }
@@ -181,8 +190,8 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
               {section.replace("_", " ")}
             </h3>
             <div className="space-y-4">
-              {checklists.filter(c => c.section === section).map((item, idx) => {
-                const globalIdx = checklists.findIndex(c => c.section === section && c.question === item.question);
+              {checklists.filter((c: any) => c.section === section).map((item: any, idx: number) => {
+                const globalIdx = checklists.findIndex((c: any) => c.section === section && c.question === item.question);
                 return (
                   <div key={idx} className="flex flex-col gap-3 border-b border-slate-100 pb-5 md:grid md:grid-cols-12 md:items-start md:gap-4">
                     <div className="md:col-span-5 md:pt-2">
@@ -237,11 +246,12 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
             <div className="mt-4 rounded-xl border border-dashed bg-muted/20 p-4">
               <Label className="block mb-2">Unggah Foto Area Ini</Label>
               <Input type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, section)} />
-              {photos.filter(p => p.section === section).length > 0 && (
+              {photos.filter((p: any) => p.section === section).length > 0 && (
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
-                  {photos.map((p, pIdx) => p.section === section ? (
-                    <div key={pIdx} className="relative group border p-2 rounded">
-                      <img src={URL.createObjectURL(p.file)} alt="Preview" className="w-full h-24 object-cover rounded mb-2" />
+                  {photos.map((p: any, pIdx: number) => p.section === section ? (
+                    <div key={pIdx} className="relative group border p-2 rounded bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={p.file ? URL.createObjectURL(p.file) : (p.readableImageUrl || p.imageUrl)} alt="Preview" className="w-full h-24 object-cover rounded mb-2 bg-slate-100" />
                       <Input 
                         placeholder="Caption foto..." 
                         className="text-xs h-8"
@@ -254,7 +264,7 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
                       />
                       <button 
                         onClick={() => removePhoto(pIdx)}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hidden group-hover:flex"
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 items-center justify-center hidden group-hover:flex"
                       >
                         &times;
                       </button>
@@ -342,12 +352,12 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
       </div>
 
       <div className="grid gap-3 md:flex md:justify-end md:gap-4">
-        <Button className="h-11 rounded-xl" type="button" variant="outline" onClick={() => router.push(basePath)} disabled={loading}>
+        <Button className="h-11 rounded-xl" type="button" variant="outline" onClick={() => router.back()} disabled={loading}>
           Batal
         </Button>
         <Button className="h-11 rounded-xl bg-[#003f78] text-white" onClick={submitForm} disabled={loading}>
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Simpan Inspeksi
+          Simpan Perubahan
         </Button>
       </div>
     </div>
