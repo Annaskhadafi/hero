@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { useSidebar } from "@/components/ui/sidebar"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 
 type MasterHeadMap = {
@@ -327,11 +328,25 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     return approvalHistory?.find((step: any) => step.status === 'approved' && step.signatureDataUrl && roles.includes(step.approverRole))?.signatureDataUrl || ''
   }
 
+  const getApprovalMeta = (...roles: string[]) => {
+    return approvalHistory?.find((step: any) => step.status === 'approved' && roles.includes(step.approverRole))
+  }
+
+  const formatDateTime = (date: string | Date | null | undefined) => {
+    if (!date) return '-'
+    return new Date(date).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
+  }
+
   const leaderApprovalSig = getApprovedSignature('pjo_or_te_initial', 'section_head_initial')
   const employeeApprovalSig = getApprovedSignature('employee')
   const sectionHeadApprovalSig = getApprovedSignature('section_head_confirmation')
   const managerApprovalSig = getApprovedSignature('central_service_manager')
   const hrApprovalSig = getApprovedSignature('hr')
+  const leaderApprovalMeta = getApprovalMeta('pjo_or_te_initial', 'section_head_initial')
+  const employeeApprovalMeta = getApprovalMeta('employee')
+  const sectionHeadApprovalMeta = getApprovalMeta('section_head_confirmation')
+  const managerApprovalMeta = getApprovalMeta('central_service_manager')
+  const hrApprovalMeta = getApprovalMeta('hr')
 
   const handleSave = () => {
     startTransition(async () => {
@@ -650,6 +665,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.leaderName}</div>
             <div className="text-xs">{form.leaderTitle || 'Leader'}</div>
+            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(leaderApprovalMeta?.signedAt)}</div>
+            {leaderApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {leaderApprovalMeta.remarks}</div> : null}
           </div>
         )}
         <div>
@@ -659,6 +676,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </div>
           <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{selectedEmp?.name || form.employeeNameStr || '\u00A0'}</div>
           <div className="text-xs">{selectedEmp?.position || 'Employee'}</div>
+          <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(employeeApprovalMeta?.signedAt)}</div>
+          {employeeApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {employeeApprovalMeta.remarks}</div> : null}
         </div>
         {form.superiorName && (
           <div>
@@ -668,6 +687,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.superiorName}</div>
             <div className="text-xs">{form.superiorTitle || 'Superior'}</div>
+            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(sectionHeadApprovalMeta?.signedAt)}</div>
+            {sectionHeadApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {sectionHeadApprovalMeta.remarks}</div> : null}
           </div>
         )}
         {form.hrName && (
@@ -678,6 +699,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.hrName}</div>
             <div className="text-xs">{form.hrTitle || 'HR'}</div>
+            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(hrApprovalMeta?.signedAt)}</div>
+            {hrApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {hrApprovalMeta.remarks}</div> : null}
           </div>
         )}
         {form.nextSuperiorName && (
@@ -688,6 +711,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.nextSuperiorName}</div>
             <div className="text-xs">{form.nextSuperiorTitle || 'Manager'}</div>
+            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(managerApprovalMeta?.signedAt)}</div>
+            {managerApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {managerApprovalMeta.remarks}</div> : null}
           </div>
         )}
         <div>
@@ -725,7 +750,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       title="Contract & Probation Review" 
       description="Lengkapi evaluasi karyawan."
     >
-      <div className="grid gap-6 xl:grid-cols-[1fr_850px]">
+      <div className="grid gap-6 xl:grid-cols-2">
         {/* KIRI: Form Input */}
         <div className="flex flex-col gap-6 print:hidden">
           <div className="flex gap-4">
@@ -1110,22 +1135,42 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       </div>
 
       {/* KANAN: PDF Preview */}
-      <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto flex flex-col gap-8">
-        <div
-          id="pdf-page-1"
-          className="pdf-wrapper relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
-          style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
-        >
-          {pdfPreviewPage1}
-        </div>
-        
-        <div
-          id="pdf-page-2"
-          className="pdf-wrapper relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
-          style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
-        >
-          {pdfPreviewPage2}
-        </div>
+      <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto">
+        <Tabs defaultValue="letter" className="flex flex-col gap-4">
+          <TabsList className="grid w-full grid-cols-2 bg-white">
+            <TabsTrigger value="letter">Preview Surat</TabsTrigger>
+            <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
+          </TabsList>
+          <TabsContent value="letter" className="m-0 flex flex-col gap-8">
+            <div
+              id="pdf-page-1"
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+            >
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {pdfPreviewPage1}
+            </div>
+            <div
+              id="pdf-page-2"
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+            >
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {pdfPreviewPage2}
+            </div>
+          </TabsContent>
+          <TabsContent value="productivity" className="m-0">
+            {form.employeeId ? (
+              <iframe
+                title="Profil Produktivitas Karyawan"
+                src={`/embedded/hc/employee/${form.employeeId}`}
+                className="h-[78vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm"
+              />
+            ) : (
+              <Card className="bg-white">
+                <CardContent className="py-10 text-center text-sm text-muted-foreground">Pilih karyawan terlebih dahulu untuk melihat profil produktivitas.</CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   </AdminPageShell>

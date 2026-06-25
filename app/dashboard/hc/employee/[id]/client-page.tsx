@@ -114,11 +114,13 @@ interface EmployeeProfileClientPageProps {
     managerName: string | null;
   };
   hrEmployeeId: number;
+  embedded?: boolean;
 }
 
 export function EmployeeProfileClientPage({
   profile,
   hrEmployeeId,
+  embedded = false,
 }: EmployeeProfileClientPageProps) {
   const router = useRouter();
   const {
@@ -335,6 +337,25 @@ export function EmployeeProfileClientPage({
     >
       {/* Dynamic Printing Style overrides */}
       <style jsx global>{`
+        ${embedded ? `
+          [data-slot="sidebar"],
+          [data-slot="sidebar-gap"],
+          [data-admin-dashboard-shell] > header,
+          .no-print {
+            display: none !important;
+          }
+          [data-slot="sidebar-inset"] {
+            margin: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+          [data-admin-dashboard-shell] > div {
+            min-height: 100vh;
+          }
+          body {
+            background: #f8fafc !important;
+          }
+        ` : ''}
         @media print {
           body {
             background: white !important;
