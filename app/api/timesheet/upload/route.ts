@@ -1,12 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
+import { employees } from "@/db/schema/hero";
 import { timesheetImports, timesheetDailyRecords, timesheetValidationIssues } from "@/db/schema/timesheet";
 import { parseOTRecordExcel } from "@/lib/timesheet/parse-ot-record";
 import { parseSPLRecordExcel } from "@/lib/timesheet/parse-spl-record";
 import { validateOTTotal } from "@/lib/timesheet/calculation";
+import { getServerSession } from "@/lib/auth-session";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { eq } from "drizzle-orm";
+
+async function requireTimesheetAccess() {
+  const session = await getServerSession();
+
+  if (!session?.user?.email) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+
+  const [employee] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(eq(employees.email, session.user.email.trim().toLowerCase()))
+    .limit(1);
+
+  const allowedRoles = new Set(["Super Admin", "Admin", "HC Admin", "HR Admin", "Site Admin", "Payroll Admin"]);
+  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
+
+  return { session };
+}
+
+function sanitizeUploadFileName(fileName: string) {
+  const sanitized = fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/^_+/, "")
+    .slice(0, 120);
+
+  return sanitized || "timesheet-upload.xlsx";
+}
 
 /**
  * POST /api/timesheet/upload
@@ -14,13 +48,16 @@ import { eq } from "drizzle-orm";
  */
 export async function POST(request: NextRequest) {
   try {
+    const access = await requireTimesheetAccess();
+    if (access.error) return access.error;
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const siteId = parseInt(formData.get("siteId") as string);
     const importType = formData.get("importType") as "ot_record" | "spl_record";
     const periodMonth = parseInt(formData.get("periodMonth") as string);
     const periodYear = parseInt(formData.get("periodYear") as string);
-    const userId = formData.get("userId") as string;
+    const userId = access.session.user.id;
 
     if (!file || !siteId || !importType || !periodMonth || !periodYear) {
       return NextResponse.json(
@@ -35,7 +72,7 @@ export async function POST(request: NextRequest) {
     // Save file to storage
     const uploadDir = join(process.cwd(), "uploads", "timesheet", String(periodYear), String(periodMonth));
     await mkdir(uploadDir, { recursive: true });
-    const filename = `${Date.now()}_${file.name}`;
+    const filename = `${Date.now()}_${sanitizeUploadFileName(file.name)}`;
     const filePath = join(uploadDir, filename);
     await writeFile(filePath, buffer);
 

@@ -1,6 +1,7 @@
 "use server"
 
 import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3, uploadAttendancePhotoToS3 } from "@/lib/s3-storage";
+import { getServerSession } from "@/lib/auth-session";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -9,8 +10,19 @@ const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024;
 
+async function requireUploadSession() {
+  const session = await getServerSession();
+  if (!session?.user?.email) {
+    return { success: false as const, error: "Unauthorized" };
+  }
+  return { success: true as const, session };
+}
+
 export async function uploadFile(formData: FormData) {
   try {
+    const access = await requireUploadSession();
+    if (!access.success) return access;
+
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
@@ -42,6 +54,9 @@ export async function uploadFile(formData: FormData) {
 
 export async function uploadImageFromUrl(imageUrl: string) {
   try {
+    const access = await requireUploadSession();
+    if (!access.success) return access;
+
     if (!isS3UploadConfigured()) {
       return { success: false, error: "S3 Upload Driver is not properly configured." };
     }
@@ -98,6 +113,9 @@ function sanitizeFileName(fileName: string) {
 
 export async function uploadCurhatAttachment(formData: FormData) {
   try {
+    const access = await requireUploadSession();
+    if (!access.success) return access;
+
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
 

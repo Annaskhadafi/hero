@@ -1,4 +1,5 @@
 import { uploadProfilePhotoToS3 } from "@/lib/s3-storage";
+import { getServerSession } from "@/lib/auth-session";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 
@@ -6,6 +7,11 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const session = await getServerSession();
+    if (!session?.user?.email) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file");
 

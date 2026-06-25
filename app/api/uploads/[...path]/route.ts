@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage";
+import { getServerSession } from "@/lib/auth-session";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
 
 export const runtime = "nodejs";
+
+const ALLOWED_UPLOAD_PREFIXES = new Set([
+  "attendance-photos",
+  "curhat",
+  "profile-photos",
+  "upload",
+]);
 
 function getContentType(fileName: string) {
   const lower = fileName.toLowerCase();
@@ -19,18 +27,35 @@ function getContentType(fileName: string) {
   return "application/octet-stream";
 }
 
+function isValidPathSegment(segment: string) {
+  if (!segment || segment === "." || segment === "..") return false;
+  if (segment.includes("\\") || segment.includes("/") || segment.includes("..")) return false;
+  if (/[\u0000-\u001f\u007f]/.test(segment)) return false;
+  if (/^[a-zA-Z]:$/.test(segment)) return false;
+  return true;
+}
+
+function isAllowedUploadPath(path: string[]) {
+  if (!path.every(isValidPathSegment)) return false;
+  return ALLOWED_UPLOAD_PREFIXES.has(path[0]);
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  const session = await getServerSession();
+  if (!session?.user?.email) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
   const { path } = await params;
 
   if (!path || path.length === 0) {
     return NextResponse.json({ message: "Missing filename" }, { status: 400 });
   }
 
-  // Reject path traversal attempts
-  if (path.some((segment) => segment.includes("..") || segment.includes("\\"))) {
+  if (!isAllowedUploadPath(path)) {
     return NextResponse.json({ message: "Invalid path" }, { status: 400 });
   }
 
@@ -45,7 +70,7 @@ export async function GET(
       return new NextResponse(fileBuffer, {
         headers: {
           "Content-Type": getContentType(fileName),
-          "Cache-Control": "public, max-age=31536000, immutable",
+          "Cache-Control": "private, max-age=300",
         },
       });
     } catch (e) {
@@ -58,25 +83,12 @@ export async function GET(
     try {
       const object = await getS3ObjectForProxy(relativePath);
 
-      if (!object) {
-        // Fallback: try with default upload/ prefix
-        const prefixedKey = `upload/${relativePath}`;
-        const prefixedObject = await getS3ObjectForProxy(prefixedKey);
-        if (!prefixedObject) {
-          return NextResponse.json({ message: "File not found" }, { status: 404 });
-        }
-        return new NextResponse(Buffer.from(prefixedObject.body), {
-          headers: {
-            "Content-Type": prefixedObject.contentType || getContentType(fileName),
-            "Cache-Control": "public, max-age=31536000, immutable",
-          },
-        });
-      }
+      if (!object) return NextResponse.json({ message: "File not found" }, { status: 404 });
 
       return new NextResponse(Buffer.from(object.body), {
         headers: {
           "Content-Type": object.contentType || getContentType(fileName),
-          "Cache-Control": "public, max-age=31536000, immutable",
+          "Cache-Control": "private, max-age=300",
         },
       });
     } catch (error) {
