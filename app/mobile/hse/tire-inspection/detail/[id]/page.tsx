@@ -20,7 +20,7 @@ export default async function MobileTireInspectionDetailPage({
 
   return (
     <div className="space-y-4 pb-24">
-      <div className="px-5 pt-4">
+      <div className="px-5 pt-4 no-print">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]/60 mb-1">HSE • TIRE INSPECTION</p>
         <h1 className="text-xl font-black leading-tight text-[#082033]">Detail Laporan</h1>
       </div>
