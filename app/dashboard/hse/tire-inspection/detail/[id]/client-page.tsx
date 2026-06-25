@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { Loader2, FileEdit, Wand2, FileText, Download, ImageOff } from "lucide-react"
+import { Loader2, FileEdit, Wand2, FileText, Download, ImageOff, ArrowLeft } from "lucide-react"
 import { generateAiReport } from "../../actions"
 
 function getStarsData(score: number) {
@@ -70,7 +70,7 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
   const indexScore = Number(inspection.totalScore || 0)
 
   return (
-    <div id="print-root" className="mx-auto max-w-5xl space-y-4 pb-12">
+    <div id="print-root" className="mx-auto max-w-5xl space-y-4 pb-12 -mx-4 px-1 md:mx-auto md:px-0">
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page { size: A4 portrait; margin: 10mm; }
@@ -151,9 +151,14 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
       
       {/* Header Actions */}
       <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm md:flex md:flex-wrap md:items-center md:justify-between md:gap-4 no-print">
-        <div>
-          <h2 className="text-lg font-black text-[#082033] md:text-xl">Tire Inspection Report</h2>
-          <p className="text-sm font-semibold text-[#486275]">{inspection.siteName} - {inspection.customerName}</p>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" onClick={() => router.push(basePath)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h2 className="text-lg font-black text-[#082033] md:text-xl">Tire Inspection Report</h2>
+            <p className="text-sm font-semibold text-[#486275]">{inspection.siteName} - {inspection.customerName}</p>
+          </div>
         </div>
         <div className="mt-4 grid gap-2 md:mt-0 md:flex md:items-center">
           {access.canEdit && (
@@ -181,7 +186,7 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
         </div>
       </div>
 
-      <div className="pdf-wrapper shadow-sm md:shadow-md border bg-white overflow-hidden overflow-x-auto w-full">
+      <div className="pdf-wrapper shadow-sm md:shadow-md border bg-white overflow-hidden overflow-x-auto w-full rounded-xl md:rounded-none">
         <div className="pdf-document min-w-[800px] p-4 md:p-8 space-y-4">
           
           {/* Main Table - Page 1 */}
