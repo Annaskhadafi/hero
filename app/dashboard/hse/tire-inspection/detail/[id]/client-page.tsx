@@ -66,9 +66,8 @@ export function TireInspectionDetailClient({ detail, access, basePath = "/dashbo
     dumping_area: inspection.dumpingScore
   }
 
-  // Calculate max possible score (assuming 10 per question)
-  const maxPossibleScore = checklists.length * 10
-  const indexScore = maxPossibleScore > 0 ? (Number(inspection.totalScore || 0) / maxPossibleScore) * 100 : 0
+  // Calculate index score (totalScore is already a 0-100 percentage based on section averages)
+  const indexScore = Number(inspection.totalScore || 0)
 
   return (
     <div id="print-root" className="mx-auto max-w-5xl space-y-4 pb-12">
