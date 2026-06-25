@@ -137,7 +137,7 @@ export function ContractReviewClientPage({ reviews, employees, settings }: { rev
             <Button variant="outline" onClick={handleSendReminders} disabled={isReminderRunning}>
               {isReminderRunning ? 'Sending reminders...' : 'Send Reminders'}
             </Button>
-            <Button onClick={() => router.push('/dashboard/hc/contract-review/form')} className={hcPrimaryActionClassName}>
+            <Button onClick={() => router.push('/dashboard/hc/contract-review/new')} className={hcPrimaryActionClassName}>
               <Plus className="size-4" />Tambah Review
             </Button>
           </div>
@@ -176,8 +176,8 @@ export function ContractReviewClientPage({ reviews, employees, settings }: { rev
                     <EnterpriseActionButtons 
                       access={access} 
                       labels={{ view: "Print Preview", edit: "Edit", delete: "Hapus" }} 
-                      onView={() => router.push(`/dashboard/hc/contract-review/form/${row.id}?mode=print`)} 
-                      onEdit={() => router.push(`/dashboard/hc/contract-review/form/${row.id}`)} 
+                      onView={() => router.push(`/dashboard/hc/contract-review/${row.id}?mode=print`)} 
+                      onEdit={() => router.push(`/dashboard/hc/contract-review/${row.id}`)} 
                       onDelete={() => handleDelete(row.id)} 
                     />
                   </TableCell>
