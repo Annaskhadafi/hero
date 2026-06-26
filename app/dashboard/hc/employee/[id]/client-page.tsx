@@ -453,7 +453,7 @@ export function EmployeeProfileClientPage({
         </div>
 
         {/* ─── Grid Dashboard: Radar Kompetensi & Summary Widgets ────────────── */}
-        <div className="grid gap-6 md:grid-cols-3 mb-6 print:grid-cols-2">
+        <div className={cn("grid gap-6 md:grid-cols-3 mb-6 print:grid-cols-2", embedded && "order-2")}>
           {/* Radar Kompetensi Card */}
           <Card className="md:col-span-2 overflow-hidden border-violet-100 bg-gradient-to-b from-white to-violet-50/20 print:col-span-1">
             <CardHeader className="pb-2">
@@ -545,7 +545,7 @@ export function EmployeeProfileClientPage({
         </div>
 
         {/* ─── Tabs Layout & Content ────────────────────────────────────────── */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className={cn("w-full", embedded && "order-1")}>
           <TabsList className="grid grid-cols-2 md:grid-cols-7 h-auto p-1.5 gap-1 bg-surface-container-low border rounded-2xl mb-6 tabs-list-print">
             <TabsTrigger value="profile" className="flex items-center gap-1.5 py-2 px-3 text-xs font-medium rounded-xl">
               <IconUser className="size-4" /> Profil
