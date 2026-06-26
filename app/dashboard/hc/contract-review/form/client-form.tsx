@@ -1162,7 +1162,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               <iframe
                 title="Profil Produktivitas Karyawan"
                 src={`/embedded/hc/employee/${form.employeeId}`}
-                className="h-[78vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm"
+                className="h-[86vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm"
               />
             ) : (
               <Card className="bg-white">

@@ -395,7 +395,7 @@ export function EmployeeProfileClientPage({
       <div className="pdf-wrapper print-layout">
         
         {/* ─── Profile Header Glassmorphism Card ──────────────────────────────── */}
-        <div className="relative overflow-hidden rounded-[1.5rem] border border-white/20 bg-slate-900/90 p-6 text-white shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90 mb-6 print:bg-slate-950 print:text-white print:border-slate-800">
+        <div className={cn("relative overflow-hidden rounded-[1.5rem] border border-white/20 bg-slate-900/90 p-6 text-white shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90 mb-6 print:bg-slate-950 print:text-white print:border-slate-800", embedded && "hidden")}>
           <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-violet-500/20 blur-3xl no-print" />
           <div className="absolute left-1/3 bottom-0 -mb-16 h-48 w-48 rounded-full bg-emerald-500/10 blur-2xl no-print" />
 
