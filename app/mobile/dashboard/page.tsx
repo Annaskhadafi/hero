@@ -24,6 +24,7 @@ import { getApprovalCenterData } from "@/lib/approval-workspace";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { getSidebarDataForUser } from "@/lib/hero-admin";
+import { buildMobileAllowedLinks, getMobileUrlForDesktopUrl } from "@/lib/mobile-access";
 import { getMobileHc } from "@/lib/mobile-data";
 import { cn } from "@/lib/utils";
 
@@ -132,54 +133,6 @@ function MiniAvatar({ label, active = false }: { label: string; active?: boolean
   );
 }
 
-function getMobileUrlForDesktopUrl(desktopUrl: string, resource: string | undefined | null): string | null {
-  if (!desktopUrl) return null;
-  if (desktopUrl.startsWith("/mobile")) return desktopUrl;
-
-  const cleanUrl = desktopUrl.split("?")[0];
-
-  if (cleanUrl === "/dashboard/activity-hub/my-day") return "/mobile/activity/input";
-  if (cleanUrl.startsWith("/dashboard/activity-hub")) return "/mobile/activity";
-  if (cleanUrl === "/dashboard/overtime-requests" || cleanUrl.startsWith("/dashboard/overtime")) return "/mobile/overtime";
-  if (cleanUrl === "/dashboard/timesheet" || cleanUrl.startsWith("/dashboard/scheduling-timesheet")) return "/mobile/timesheet";
-  if (cleanUrl === "/dashboard/approval") return "/mobile/approval";
-  if (cleanUrl === "/dashboard/curhat") return "/mobile/curhat";
-  if (cleanUrl === "/dashboard/hr-counseling") return "/mobile/hr-counseling";
-  if (cleanUrl === "/dashboard/hse/checklist-generator") return "/mobile/hse/checklist";
-  if (cleanUrl === "/dashboard/hse/jsa") return "/mobile/hse/jsa";
-  if (cleanUrl === "/dashboard/hse/izin-kerja-ptw") return "/mobile/hse/ptw";
-  if (cleanUrl === "/dashboard/hse/tire-inspection") return "/mobile/hse/tire-inspection";
-  if (cleanUrl === "/dashboard/hse" || cleanUrl.startsWith("/dashboard/hse/")) return "/mobile/hse";
-  if (cleanUrl === "/dashboard/gamification") return "/mobile/gamification";
-  if (cleanUrl === "/dashboard/wellness") return "/mobile/wellness";
-  if (cleanUrl === "/dashboard/executive") return "/mobile/executive";
-  if (cleanUrl === "/dashboard/cargo-manifest") return "/mobile/cargo-manifest";
-  if (cleanUrl === "/dashboard/security/roles") return "/mobile/security/roles";
-  if (cleanUrl === "/dashboard/reports") return "/mobile/reports";
-  if (cleanUrl === "/dashboard/training") return "/mobile/training";
-  if (cleanUrl === "/dashboard/hc/permission") return "/mobile/attendance/permission";
-  if (cleanUrl === "/dashboard/attendance" || cleanUrl.startsWith("/dashboard/attendance/")) return "/mobile/attendance";
-  if (cleanUrl === "/dashboard/lms" || cleanUrl.startsWith("/api/lms")) return "/mobile/lms";
-  if (cleanUrl === "/dashboard/hc/leader-performance" || cleanUrl.startsWith("/dashboard/hc/leader-performance")) return "/mobile/leader-performance";
-
-  const segments = cleanUrl.split("/").filter(Boolean);
-  const lastSegment = segments[segments.length - 1];
-  
-  const knownMobilePages = [
-    "activity", "approval", "attendance", "cargo-manifest", "curhat",
-    "executive", "gamification", "hr-counseling", "hse", "lms",
-    "notifications", "overtime", "profile", "reports", "timesheet",
-    "training", "wellness", "leader-performance", "permission",
-    "checklist", "jsa", "ptw", "tire-inspection"
-  ];
-
-  if (knownMobilePages.includes(lastSegment)) {
-    return `/mobile/${lastSegment}`;
-  }
-
-  return null;
-}
-
 export default async function MobileDashboardPage() {
   const session = await getServerSession();
 
@@ -222,10 +175,15 @@ export default async function MobileDashboardPage() {
   const isHR = data.employee.section === "HRGA" || data.employee.section === "HR-GA";
 
   const rawSidebarItems = [...(sidebarData?.navMain ?? []), ...(sidebarData?.navSecondary ?? [])];
+  const allowedLinks = buildMobileAllowedLinks([
+    ...(sidebarData?.navMain ?? []),
+    ...(sidebarData?.navSecondary ?? []),
+    ...(sidebarData?.documents ?? []),
+  ]);
   const seenUrls = new Set<string>();
   const sidebarItems = rawSidebarItems
     .map((item) => {
-      const mobileUrl = getMobileUrlForDesktopUrl(item.url || "", item.resource);
+      const mobileUrl = getMobileUrlForDesktopUrl(item.url || "");
       if (!mobileUrl) return null;
       return {
         ...item,
@@ -283,7 +241,7 @@ export default async function MobileDashboardPage() {
 
 
 
-      <MobileDashboardServices isHR={isHR} sidebarItems={sidebarItems} />
+      <MobileDashboardServices isHR={isHR} sidebarItems={sidebarItems} allowedLinks={allowedLinks} />
 
       <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] border border-slate-100/80 border-l-4 border-l-[#f4b183]">
         <div className="flex items-center justify-between gap-3">

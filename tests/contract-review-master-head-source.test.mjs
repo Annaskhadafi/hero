@@ -31,3 +31,12 @@ test("contract review form receives master head map for signatory autofill", () 
   assert.match(formSource, /masterSectionHead/);
   assert.match(publicApprovalSource, /central_service_manager: 'Department Head'/);
 });
+
+test("contract review leader signature preview uses latest canvas data", () => {
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+
+  assert.match(formSource, /hasVisibleCanvasInk/);
+  assert.match(formSource, /const leaderCanvasSignature = getLeaderSignatureDataUrl\(\)/);
+  assert.match(formSource, /leaderCanvasSignature \|\| previewLeaderSig \|\| initialData\?\.leaderSignatureDataUrl/);
+  assert.match(formSource, /const leaderPreviewSignature = previewLeaderSig \|\| leaderApprovalSig/);
+});

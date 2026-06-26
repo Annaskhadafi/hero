@@ -115,12 +115,14 @@ interface EmployeeProfileClientPageProps {
   };
   hrEmployeeId: number;
   embedded?: boolean;
+  embeddedView?: "full" | "tabs";
 }
 
 export function EmployeeProfileClientPage({
   profile,
   hrEmployeeId,
   embedded = false,
+  embeddedView = "full",
 }: EmployeeProfileClientPageProps) {
   const router = useRouter();
   const {
@@ -298,10 +300,10 @@ export function EmployeeProfileClientPage({
 
   return (
     <AdminPageShell
-      title="Profil Produktivitas Karyawan"
+      title={embedded ? "" : "Profil Produktivitas Karyawan"}
       eyebrow="Profil & Kepegawaian"
       description="Analisis performa, riwayat pelatihan, absensi, dan kesehatan karyawan dalam satu panel terpadu."
-      actions={
+      actions={embedded ? undefined : (
         <div className="flex items-center gap-2 no-print">
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <IconPrinter className="w-4 h-4 mr-2" /> Cetak Profil
@@ -333,29 +335,10 @@ export function EmployeeProfileClientPage({
             <IconArrowLeft className="w-4 h-4 mr-2" /> Kembali
           </Button>
         </div>
-      }
+      )}
     >
       {/* Dynamic Printing Style overrides */}
       <style jsx global>{`
-        ${embedded ? `
-          [data-slot="sidebar"],
-          [data-slot="sidebar-gap"],
-          [data-admin-dashboard-shell] > header,
-          .no-print {
-            display: none !important;
-          }
-          [data-slot="sidebar-inset"] {
-            margin: 0 !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-          }
-          [data-admin-dashboard-shell] > div {
-            min-height: 100vh;
-          }
-          body {
-            background: #f8fafc !important;
-          }
-        ` : ''}
         @media print {
           body {
             background: white !important;
@@ -453,7 +436,7 @@ export function EmployeeProfileClientPage({
         </div>
 
         {/* ─── Grid Dashboard: Radar Kompetensi & Summary Widgets ────────────── */}
-        <div className={cn("grid gap-6 md:grid-cols-3 mb-6 print:grid-cols-2", embedded && "order-2")}>
+        {embeddedView === "full" && <div className={cn("grid gap-6 md:grid-cols-3 mb-6 print:grid-cols-2", embedded && "order-2")}>
           {/* Radar Kompetensi Card */}
           <Card className="md:col-span-2 overflow-hidden border-violet-100 bg-gradient-to-b from-white to-violet-50/20 print:col-span-1">
             <CardHeader className="pb-2">
@@ -542,7 +525,7 @@ export function EmployeeProfileClientPage({
               </CardContent>
             </Card>
           </div>
-        </div>
+        </div>}
 
         {/* ─── Tabs Layout & Content ────────────────────────────────────────── */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className={cn("w-full", embedded && "order-1")}>

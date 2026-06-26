@@ -46,6 +46,45 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const [isPending, startTransition] = useTransition()
   const leaderSigRef = useRef<SignatureCanvas | null>(null)
   const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(initialData?.leaderSignatureDataUrl || '')
+
+  const hasVisibleCanvasInk = (canvas: HTMLCanvasElement) => {
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context || canvas.width === 0 || canvas.height === 0) return false
+
+    try {
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+      for (let i = 0; i < pixels.length; i += 4) {
+        const alpha = pixels[i + 3]
+        const isDarkInk = pixels[i] < 245 || pixels[i + 1] < 245 || pixels[i + 2] < 245
+        if (alpha > 12 && isDarkInk) return true
+      }
+    } catch {
+      return false
+    }
+
+    return false
+  }
+
+  const getLeaderSignatureDataUrl = () => {
+    const signature = leaderSigRef.current
+    if (!signature) return ''
+
+    const canvas = signature.getCanvas()
+    const hasInk = hasVisibleCanvasInk(canvas) || !signature.isEmpty()
+    if (!hasInk) return ''
+
+    try {
+      return signature.getTrimmedCanvas().toDataURL('image/png')
+    } catch {
+      return signature.toDataURL('image/png')
+    }
+  }
+
+  const updateLeaderSignaturePreview = () => {
+    const dataUrl = getLeaderSignatureDataUrl()
+    if (dataUrl) setPreviewLeaderSig(dataUrl)
+    return dataUrl
+  }
   
   const [form, setForm] = useState({
     id: initialData?.id,
@@ -347,13 +386,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const sectionHeadApprovalMeta = getApprovalMeta('section_head_confirmation')
   const managerApprovalMeta = getApprovalMeta('central_service_manager')
   const hrApprovalMeta = getApprovalMeta('hr')
+  const leaderPreviewSignature = previewLeaderSig || leaderApprovalSig
 
   const handleSave = () => {
     startTransition(async () => {
       const { leaderTitle, superiorTitle, hrTitle, nextSuperiorTitle, ...formToSave } = form
-      const leaderSignatureDataUrl = leaderSigRef.current && !leaderSigRef.current.isEmpty()
-        ? leaderSigRef.current.getTrimmedCanvas().toDataURL('image/png')
-        : initialData?.leaderSignatureDataUrl || ''
+      const leaderCanvasSignature = getLeaderSignatureDataUrl()
+      const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || ''
       const payload = {
         ...formToSave,
         employeeId: form.employeeId ? parseInt(form.employeeId) : null,
@@ -433,6 +472,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             .capitalize { text-transform: capitalize; }
             .w-full { width: 100%; }
             .w-12 { width: 3rem; }
+            .h-16 { height: 4rem; }
+            .object-contain { object-fit: contain; }
             .border-b { border-bottom: 1px solid black; }
             .inline-block { display: inline-block; }
             .grid { display: grid; }
@@ -659,8 +700,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <div>
             <div className="text-xs text-muted-foreground mb-1">Leader Signature</div>
             <div className="h-20 flex items-end">
-              {leaderApprovalSig || previewLeaderSig ? (
-                <img src={leaderApprovalSig || previewLeaderSig} alt="Leader TTD" className="h-16 object-contain" />
+              {leaderPreviewSignature ? (
+                <img
+                  src={leaderPreviewSignature}
+                  alt="Leader TTD"
+                  className="h-16 object-contain"
+                  style={{ maxWidth: '45mm', maxHeight: '16mm' }}
+                />
               ) : null}
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.leaderName}</div>
@@ -1112,18 +1158,17 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             <div className="rounded-xl border border-slate-200 bg-white p-2">
               <SignatureCanvas
                 ref={leaderSigRef}
+                onEnd={updateLeaderSignaturePreview}
                 canvasProps={{ className: 'h-40 w-full rounded-lg bg-white' }}
                 backgroundColor="rgba(255,255,255,0)"
               />
             </div>
             <div className="mt-2 flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => leaderSigRef.current?.clear()}>Bersihkan</Button>
-              <Button type="button" variant="default" size="sm" onClick={() => {
-                if (leaderSigRef.current && !leaderSigRef.current.isEmpty()) {
-                  const dataUrl = leaderSigRef.current.getTrimmedCanvas().toDataURL('image/png')
-                  setPreviewLeaderSig(dataUrl)
-                }
-              }}>Tambahkan ke PDF</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                leaderSigRef.current?.clear()
+                setPreviewLeaderSig('')
+              }}>Bersihkan</Button>
+              <Button type="button" variant="default" size="sm" onClick={updateLeaderSignaturePreview}>Tambahkan ke PDF</Button>
               {initialData?.leaderSignatureDataUrl && !previewLeaderSig && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => {
                   setPreviewLeaderSig(initialData.leaderSignatureDataUrl)
@@ -1179,7 +1224,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             {form.employeeId ? (
               <iframe
                 title="Profil Produktivitas Karyawan"
-                src={`/embedded/hc/employee/${form.employeeId}`}
+                src={`/embedded/hc/employee/${form.employeeId}?view=tabs`}
                 className="h-[86vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm"
               />
             ) : (

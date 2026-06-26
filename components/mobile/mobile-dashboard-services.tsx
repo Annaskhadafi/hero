@@ -36,6 +36,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { isMobileHrefAllowed, type MobileAllowedLink } from "@/lib/mobile-access";
 
 const iconMap = {
   "book-open": IconBook,
@@ -67,14 +68,21 @@ type NavItem = {
 type DashboardServicesProps = {
   isHR: boolean;
   sidebarItems: NavItem[];
+  allowedLinks: MobileAllowedLink[];
 };
 
-export function MobileDashboardServices({ isHR, sidebarItems }: DashboardServicesProps) {
+export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: DashboardServicesProps) {
   const [open, setOpen] = useState(false);
+  const allowedResources = new Set(allowedLinks.map((link) => link.resource).filter(Boolean));
+  const isServiceAllowed = (service: { href: string; resource?: string }) => {
+    if (service.resource && allowedResources.has(service.resource)) return true;
+    return isMobileHrefAllowed(service.href, allowedLinks);
+  };
 
   const mainServices: Array<{
     title: string;
     href: string;
+    resource?: string;
     icon: typeof MapPin;
     bg: string;
     target?: string;
@@ -82,30 +90,35 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
     {
       title: "Check-In",
       href: "/mobile/attendance",
+      resource: "attendance",
       icon: MapPin,
       bg: "bg-sky-500/10 text-sky-600",
     },
     {
       title: "HSE Report",
       href: "/mobile/hse",
+      resource: "hse",
       icon: ShieldCheck,
       bg: "bg-emerald-500/10 text-emerald-600",
     },
     {
       title: "Input Progress",
       href: "/mobile/activity/input",
+      resource: "tire_service",
       icon: FileSignature,
       bg: "bg-amber-500/10 text-amber-600",
     },
     {
       title: "Izin & Terlambat",
       href: "/mobile/attendance/permission",
+      resource: "hc_attendance_permission",
       icon: ShieldCheck,
       bg: "bg-rose-500/10 text-rose-600",
     },
     {
       title: "Chitra LMS",
       href: "/api/lms/sso",
+      resource: "lms_integration",
       target: "_blank",
       icon: Sparkles,
       bg: "bg-purple-500/10 text-purple-600",
@@ -113,6 +126,7 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
     {
       title: "Curhat HR",
       href: "/mobile/curhat",
+      resource: "hr_counseling_user",
       icon: MessageSquare,
       bg: "bg-pink-500/10 text-pink-600",
     },
@@ -125,41 +139,47 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
     {
       title: "Wellness",
       href: "/mobile/wellness",
+      resource: "hc_mcu_wellness",
       icon: Dumbbell,
       bg: "bg-teal-500/10 text-teal-600",
     },
     {
       title: "Roster",
       href: "/mobile/timesheet",
+      resource: "scheduling_timesheet",
       icon: CalendarRange,
       bg: "bg-blue-500/10 text-blue-600",
     },
     {
       title: "Leaderboard",
       href: "/mobile/gamification",
+      resource: "point_setting",
       icon: Trophy,
       bg: "bg-yellow-500/10 text-yellow-600",
     },
     ...(isHR ? [{
       title: "Inbox HR",
       href: "/mobile/hr-counseling",
+      resource: "hr_counseling_admin",
       icon: Inbox,
       bg: "bg-indigo-500/10 text-indigo-600",
     }] : []),
     {
       title: "Approval",
       href: "/mobile/approval",
+      resource: "approval_inbox",
       icon: CheckCircle2,
       bg: "bg-rose-500/10 text-rose-600",
     },
   ];
 
-  const visibleServices = mainServices;
+  const visibleServices = mainServices.filter(isServiceAllowed);
 
   const extraServices = [
     {
       title: "Daily Activity Log",
       href: "/mobile/activity",
+      resource: "tire_service",
       icon: FileText,
       description: "Lihat riwayat progress aktivitas harian Anda",
       bg: "bg-blue-500/10 text-blue-600",
@@ -167,6 +187,7 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
     {
       title: "Attendance History",
       href: "/mobile/attendance",
+      resource: "attendance",
       icon: CalendarRange,
       description: "Riwayat absen dan keandalan bulanan",
       bg: "bg-teal-500/10 text-teal-600",
@@ -186,6 +207,7 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
       bg: "bg-slate-500/10 text-slate-600",
     },
   ];
+  const visibleExtraServices = extraServices.filter(isServiceAllowed);
 
   // Group sidebarItems by section
   const groupedSidebarItems = sidebarItems.reduce((acc, item) => {
@@ -240,7 +262,7 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
 
             {/* Direct Core Services */}
             <div className="grid grid-cols-4 gap-4">
-              {mainServices.map((service, index) => (
+              {visibleServices.map((service, index) => (
                 <Link
                   key={index}
                   href={service.href}
@@ -294,7 +316,7 @@ export function MobileDashboardServices({ isHR, sidebarItems }: DashboardService
             <div className="border-t border-slate-100 pt-5 space-y-3">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 pl-1">Aktivitas & Akun</h3>
               <div className="grid gap-3">
-                {extraServices.map((service, index) => (
+                {visibleExtraServices.map((service, index) => (
                   <Link
                     key={index}
                     href={service.href}

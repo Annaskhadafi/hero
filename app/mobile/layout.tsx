@@ -7,6 +7,8 @@ import { getServerSession } from "@/lib/auth-session";
 import { getMobileNotificationCount } from "@/lib/mobile-data";
 import { MobileBroadcastPopup } from "@/components/mobile/mobile-broadcast-popup";
 import { getEligibleBroadcastsForMobile } from "@/app/actions/broadcast";
+import { getSidebarDataForUser } from "@/lib/hero-admin";
+import { buildMobileAllowedLinks } from "@/lib/mobile-access";
 
 import "@/app/dashboard/theme.css";
 
@@ -31,6 +33,7 @@ export default async function MobileLayout({ children }: { children: ReactNode }
 
   let notificationCount = 0;
   let eligibleBroadcasts: Awaited<ReturnType<typeof getEligibleBroadcastsForMobile>> = [];
+  let allowedLinks: ReturnType<typeof buildMobileAllowedLinks> = buildMobileAllowedLinks([]);
 
   try {
     notificationCount = session.user.email
@@ -46,10 +49,24 @@ export default async function MobileLayout({ children }: { children: ReactNode }
     console.error("[mobile/layout] getEligibleBroadcastsForMobile failed:", err);
   }
 
+  try {
+    if (session.user.email) {
+      const sidebarData = await getSidebarDataForUser(session.user.email);
+      allowedLinks = buildMobileAllowedLinks([
+        ...sidebarData.navMain,
+        ...sidebarData.navSecondary,
+        ...sidebarData.documents,
+      ]);
+    }
+  } catch (err) {
+    console.error("[mobile/layout] getSidebarDataForUser failed:", err);
+  }
+
   return (
     <MobileAppShell
       userName={session.user.name || session.user.email || "HERO User"}
       notificationCount={notificationCount}
+      allowedLinks={allowedLinks}
     >
       {children}
       <MobileBroadcastPopup initialBroadcasts={eligibleBroadcasts} />

@@ -8,13 +8,10 @@ export const metadata = {
 
 export default async function EmployeeProfilePage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ embed?: string }>;
 }) {
   const resolvedParams = await params;
-  const resolvedSearchParams = searchParams ? await searchParams : {};
   const hrEmployeeId = parseInt(resolvedParams.id, 10);
 
   if (isNaN(hrEmployeeId)) {
@@ -31,7 +28,6 @@ export default async function EmployeeProfilePage({
     <EmployeeProfileClientPage
       profile={data as any}
       hrEmployeeId={hrEmployeeId}
-      embedded={resolvedSearchParams.embed === "1"}
     />
   );
 }

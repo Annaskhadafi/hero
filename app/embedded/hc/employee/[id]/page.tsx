@@ -7,7 +7,7 @@ export const metadata = {
   title: "Profil & Produktivitas Karyawan - Embed",
 }
 
-export default async function EmbeddedEmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EmbeddedEmployeeProfilePage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams: Promise<{ view?: string }> }) {
   const session = await getServerSession()
   if (!session?.user) redirect('/sign-in')
 
@@ -17,6 +17,7 @@ export default async function EmbeddedEmployeeProfilePage({ params }: { params: 
 
   const data = await getEmployeeFullProfile(hrEmployeeId)
   if (!data) notFound()
+  const resolvedSearchParams = await searchParams
 
-  return <EmployeeProfileClientPage profile={data as any} hrEmployeeId={hrEmployeeId} embedded />
+  return <EmployeeProfileClientPage profile={data as any} hrEmployeeId={hrEmployeeId} embedded embeddedView={resolvedSearchParams.view === 'tabs' ? 'tabs' : 'full'} />
 }

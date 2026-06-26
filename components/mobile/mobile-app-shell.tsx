@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/sheet'
 import { LogoutButton } from '@/components/logout-button'
 import { mobileActivityDrawerItem } from '@/lib/activity-navigation'
+import { isMobileHrefAllowed, type MobileAllowedLink } from '@/lib/mobile-access'
 import { cn } from '@/lib/utils'
 
 type NotificationCountResponse = {
@@ -96,14 +97,38 @@ export function MobileAppShell({
   children,
   userName,
   notificationCount = 0,
+  allowedLinks = [],
 }: {
   children: ReactNode
   userName: string
   notificationCount?: number
+  allowedLinks?: MobileAllowedLink[]
 }) {
   const pathname = usePathname()
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [liveNotificationCount, setLiveNotificationCount] = useState(notificationCount)
+  const isCurrentPathAllowed = isMobileHrefAllowed(pathname, allowedLinks)
+  const visibleBottomNavItems = bottomNavItems.filter((item) => isMobileHrefAllowed(item.href, allowedLinks))
+  const permittedDrawerItems = drawerItems.reduce<DrawerItem[]>((items, item) => {
+    if (item.type === 'section') {
+      items.push(item)
+      return items
+    }
+
+    if (isMobileHrefAllowed(item.href, allowedLinks)) {
+      items.push(item)
+    }
+
+    return items
+  }, [])
+  const visibleDrawerItems = permittedDrawerItems.filter((item, index, items) => {
+    if (item.type === 'link') return true
+    const nextSectionIndex = items.findIndex(
+      (nextItem, nextIndex) => nextIndex > index && nextItem.type === 'section',
+    )
+    const sectionItems = nextSectionIndex === -1 ? items.slice(index + 1) : items.slice(index + 1, nextSectionIndex)
+    return sectionItems.some((nextItem) => nextItem.type === 'link')
+  })
 
   useEffect(() => {
     setPendingHref(null)
@@ -256,7 +281,7 @@ export function MobileAppShell({
                   </div>
                 </SheetHeader>
                 <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
-                  {drawerItems.map((item, index) => {
+                  {visibleDrawerItems.map((item, index) => {
                     if (item.type === 'section') {
                       return (
                         <div
@@ -338,11 +363,37 @@ export function MobileAppShell({
             </div>
           ) : null}
           {children}
+          {!isCurrentPathAllowed ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#082033]/45 px-5 backdrop-blur-sm">
+              <div className="w-full max-w-[360px] rounded-[1.5rem] bg-white p-5 text-center shadow-[0_24px_80px_rgba(8,32,51,0.24)]">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-[#fff4e8] text-[#5a2200]">
+                  <ShieldAlert className="size-6" />
+                </div>
+                <h2 className="mt-4 text-lg font-black tracking-tight text-[#082033]">
+                  Anda tidak memiliki akses
+                </h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#486275]">
+                  Halaman ini dibatasi untuk role tertentu. Hubungi admin untuk membuka akses.
+                </p>
+                <Link
+                  prefetch={false}
+                  href="/mobile/dashboard"
+                  onClick={() => beginNavigation('/mobile/dashboard')}
+                  className="mt-5 flex h-12 items-center justify-center rounded-xl bg-[#003f78] text-xs font-black tracking-[0.12em] text-white uppercase active:scale-[0.98]"
+                >
+                  Kembali ke Dashboard
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </main>
 
         <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[430px] bg-white/94 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-18px_36px_rgba(8,32,51,0.08)] backdrop-blur-xl">
-          <div className="grid grid-cols-4 gap-2">
-            {bottomNavItems.map((item) => {
+          <div
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${Math.max(visibleBottomNavItems.length, 1)}, minmax(0, 1fr))` }}
+          >
+            {visibleBottomNavItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
 
