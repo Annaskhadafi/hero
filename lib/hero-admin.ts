@@ -5509,12 +5509,14 @@ export async function getSchedulingTimesheetOptions() {
         employeeSn: employees.employeeSn,
         role: employees.role,
         jobTitle: employees.jobTitle,
-        department: employees.department,
-        section: employees.section,
+        department: sql<string>`coalesce(${masterDepartments.name}, ${employees.department}, '')`,
+        section: sql<string>`coalesce(${masterSections.name}, ${employees.section}, '')`,
         siteId: employees.siteId,
         siteName: sites.name,
       })
       .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
       .leftJoin(sites, eq(employees.siteId, sites.id))
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name))
@@ -5523,6 +5525,7 @@ export async function getSchedulingTimesheetOptions() {
       .select({
         id: sites.id,
         name: sites.name,
+        location: sites.location,
         customerName: sites.customerName,
       })
       .from(sites)

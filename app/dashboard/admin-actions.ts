@@ -4622,7 +4622,7 @@ export async function manageSecurityUserAction(
           contractDurationStart,
           contractDurationEnd,
           permanentDate,
-          workLocation: selectedSite?.name || payload.workLocation || '',
+          workLocation: selectedSite?.location || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,
           employmentStatus: normalizedStatus.status,
@@ -6970,10 +6970,12 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
       if (Number.isNaN(siteId) || !siteName) {
         return { status: 'error', message: 'Site harus dipilih' }
       }
+      const [selectedSite] = await db.select().from(sites).where(eq(sites.id, siteId)).limit(1)
+      const locationName = selectedSite?.location || selectedSite?.name || siteName
 
       await db
         .update(employees)
-        .set({ siteId, workLocation: siteName })
+        .set({ siteId, workLocation: locationName })
         .where(inArray(employees.id, employeeIds))
 
       await logAuditEvent({
@@ -6981,14 +6983,14 @@ export async function bulkUserActionsAction(formData: FormData): Promise<AdminMu
         action: 'user.updated',
         entityType: 'user',
         entityLabel: `${employeeIds.length} users`,
-        description: `Bulk changed site to ${siteName}: ${employeeIds.join(', ')}`,
+        description: `Bulk changed site to ${locationName}: ${employeeIds.join(', ')}`,
         severity: 'info',
       })
 
       revalidateAdminSurfaces()
       return {
         status: 'success',
-        message: `Berhasil mengubah lokasi site ${employeeIds.length} user ke ${siteName}`,
+        message: `Berhasil mengubah lokasi site ${employeeIds.length} user ke ${locationName}`,
       }
     }
 

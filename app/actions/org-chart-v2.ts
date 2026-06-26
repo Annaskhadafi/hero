@@ -7,8 +7,6 @@ import {
   hrOrgNodes,
   hrPositions,
   hrSections,
-  hrSites,
-  hrWorkLocations,
   masterDepartments,
   masterSections,
   masterLevelStaff,
@@ -105,8 +103,8 @@ export async function getOrgChartV2Data(): Promise<OrgChartV2Node[]> {
       isActive: hrOrgNodes.isActive,
       departmentName: hrDepartments.name,
       sectionName: hrSections.name,
-      siteName: hrSites.name,
-      workLocationName: hrWorkLocations.name,
+      siteName: sites.name,
+      workLocationName: sites.location,
       departmentId: hrOrgNodes.departmentId,
       sectionId: hrOrgNodes.sectionId,
       siteId: hrOrgNodes.siteId,
@@ -115,8 +113,7 @@ export async function getOrgChartV2Data(): Promise<OrgChartV2Node[]> {
     .from(hrOrgNodes)
     .leftJoin(hrDepartments, eq(hrOrgNodes.departmentId, hrDepartments.id))
     .leftJoin(hrSections, eq(hrOrgNodes.sectionId, hrSections.id))
-    .leftJoin(hrSites, eq(hrOrgNodes.siteId, hrSites.id))
-    .leftJoin(hrWorkLocations, eq(hrOrgNodes.workLocationId, hrWorkLocations.id))
+    .leftJoin(sites, eq(hrOrgNodes.siteId, sites.id))
     .where(eq(hrOrgNodes.isActive, true))
     .orderBy(asc(hrOrgNodes.hierarchyLevel), asc(hrOrgNodes.name));
 
@@ -321,8 +318,8 @@ export async function getOrgChartV2ReferenceData(): Promise<OrgChartV2ReferenceD
   const [departmentsRaw, sectionsRaw, sitesData, workLocs, positions, levelStaff] = await Promise.all([
     db.select().from(masterDepartments).where(eq(masterDepartments.isActive, true)).orderBy(asc(masterDepartments.name)),
     db.select().from(masterSections).where(eq(masterSections.isActive, true)).orderBy(asc(masterSections.name)),
-    db.select().from(hrSites).where(eq(hrSites.isActive, true)).orderBy(asc(hrSites.name)),
-    db.select().from(hrWorkLocations).where(eq(hrWorkLocations.isActive, true)).orderBy(asc(hrWorkLocations.name)),
+    db.select({ id: sites.id, name: sites.name, location: sites.location }).from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.name)),
+    db.select({ id: sites.id, name: sites.location }).from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.location)),
     db.select().from(hrPositions).where(eq(hrPositions.isActive, true)).orderBy(asc(hrPositions.rankName)),
     db.select().from(masterLevelStaff).where(eq(masterLevelStaff.isActive, true)).orderBy(asc(masterLevelStaff.sortOrder)),
   ]);
@@ -353,7 +350,7 @@ export async function getOrgChartV2ReferenceData(): Promise<OrgChartV2ReferenceD
     departments,
     sections,
     sites: sitesData.map((s) => ({ id: s.id, name: s.name })),
-    workLocations: workLocs.map((w) => ({ id: w.id, name: w.name })),
+    workLocations: workLocs.map((w) => ({ id: w.id, name: w.name || sitesData.find((s) => s.id === w.id)?.name || `Site ${w.id}` })),
     positions: positions.map((p) => ({ id: p.id, rankName: p.rankName, levelName: p.levelName })),
     levelStaffs: levelStaff.map((l) => ({ name: l.name, sortOrder: l.sortOrder })),
   };

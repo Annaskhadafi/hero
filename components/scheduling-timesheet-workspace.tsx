@@ -95,6 +95,7 @@ type EmployeeOption = {
 type SiteOption = {
   id: number
   name: string
+  location?: string | null
   customerName: string
 }
 
@@ -1185,7 +1186,7 @@ export function SchedulingTimesheetWorkspace({
     if (!selectedSite) return []
 
     // Extract from selected site name
-    const selectedSiteExtracted = extractSiteNameLocal(selectedSite.name)
+    const selectedSiteExtracted = extractSiteNameLocal(selectedSite.location || selectedSite.name)
 
     const filtered = employees.filter((employee) => {
       // First priority: exact siteId match
@@ -1195,10 +1196,6 @@ export function SchedulingTimesheetWorkspace({
       return false
     })
 
-    // If no employees match, show all employees for attendance mode
-    if (filtered.length === 0 && mode === 'attendance') {
-      return employees
-    }
     return filtered
   }, [employees, isGenerated, mode, siteId, sites])
 
@@ -3404,7 +3401,7 @@ export function SchedulingTimesheetWorkspace({
                 { value: 'all', label: 'Pilih site dahulu' },
                 ...sites.map((item) => ({
                   value: String(item.id),
-                  label: extractSiteNameLocal(item.name) || item.name,
+                  label: extractSiteNameLocal(item.location || item.name) || item.name,
                 })),
               ]}
             />

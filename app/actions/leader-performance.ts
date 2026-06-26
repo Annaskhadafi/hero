@@ -4,7 +4,9 @@ import { db } from "@/db";
 import {
   hcLeaderPerformance,
   employees,
+  masterDepartments,
   masterSections,
+  sites,
 } from "@/db/schema/hero";
 import { aliasedTable } from "drizzle-orm/alias";
 import { and, avg, count, desc, eq, sql } from "drizzle-orm";
@@ -85,12 +87,14 @@ export async function getLeadersForReviewer(reviewerEmail: string, limitToSectio
       employeeSn: employees.employeeSn,
       email: employees.email,
       accessRole: employees.accessRole,
-      section: employees.section,
+      section: masterSections.name,
       sectionId: employees.sectionId,
-      workLocation: employees.workLocation,
+      workLocation: sites.location,
       directManagerId: employees.directManagerId,
     })
     .from(employees)
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .where(eq(sql`lower(${employees.email})`, reviewerEmail.toLowerCase()))
     .limit(1);
 
@@ -104,14 +108,17 @@ export async function getLeadersForReviewer(reviewerEmail: string, limitToSectio
       fullName: employees.name,
       email: employees.email,
       employeeSn: employees.employeeSn,
-      departmentName: employees.department,
+      departmentName: masterDepartments.name,
       positionName: employees.jobTitle,
       directManagerId: employees.directManagerId,
-      section: employees.section,
-      workLocation: employees.workLocation,
+      section: masterSections.name,
+      workLocation: sites.location,
       empId: employees.id, // Keep the numeric database id for section head checks
     })
     .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .where(eq(employees.isActive, true));
 
   // 3. Fetch all active section head mappings from masterSections
@@ -349,10 +356,12 @@ export async function createLeaderPerformanceReview(data: LeaderPerformanceRevie
   // Fetch leader details directly from employees table using employeeSn
   const [leaderEmp] = await db
     .select({
-      departmentName: employees.department,
-      workLocation: employees.workLocation,
+      departmentName: masterDepartments.name,
+      workLocation: sites.location,
     })
     .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .where(eq(employees.employeeSn, data.leaderId))
     .limit(1);
 
@@ -422,10 +431,12 @@ export async function updateLeaderPerformanceReview(
 
       const [leaderEmp] = await db
         .select({
-          departmentName: employees.department,
-          workLocation: employees.workLocation,
+          departmentName: masterDepartments.name,
+          workLocation: sites.location,
         })
         .from(employees)
+        .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+        .leftJoin(sites, eq(employees.siteId, sites.id))
         .where(eq(employees.employeeSn, activeLeaderSn))
         .limit(1);
 

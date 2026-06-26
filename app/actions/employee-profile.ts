@@ -104,7 +104,7 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
       departmentName: masterDepartments.name,
       sectionName: masterSections.name,
       siteName: sites.name,
-      location: employees.workLocation,
+      location: sites.location,
       authUserId: employees.authUserId,
     })
     .from(employees)

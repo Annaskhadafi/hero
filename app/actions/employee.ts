@@ -40,7 +40,7 @@ export async function getEmployeesForContract(filters?: {
       departmentName: sql<string | null>`coalesce(${masterDepartments.name}, ${employees.department})`.as('department_name'),
       sectionName: sql<string | null>`coalesce(${masterSections.name}, ${employees.section})`.as('section_name'),
       siteName: sites.name,
-      location: employees.workLocation,
+      location: sites.location,
       workLocationId: employees.siteId,
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
@@ -67,7 +67,7 @@ export async function getEmployeeFilterOptions() {
   const [departments, sections, locations] = await Promise.all([
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
     db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
-    db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
+    db.select({ id: sites.id, name: sites.location }).from(sites).where(eq(sites.isActive, true)),
   ]);
   return { departments, sections, locations };
 }

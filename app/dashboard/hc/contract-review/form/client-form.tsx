@@ -750,9 +750,9 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       title="Contract & Probation Review" 
       description="Lengkapi evaluasi karyawan."
     >
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className={cn("grid gap-6", isPrintMode ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
         {/* KIRI: Form Input */}
-        <div className="flex flex-col gap-6 print:hidden">
+        <div className={cn("flex flex-col gap-6 print:hidden", isPrintMode && "hidden")}>
           <div className="flex gap-4">
             <Button variant="outline" onClick={() => router.back()}>
               <ArrowLeft className="mr-2 size-4" /> Kembali
@@ -1135,6 +1135,24 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       </div>
 
       {/* KANAN: PDF Preview */}
+      {isPrintMode ? (
+        <div className="flex flex-col gap-8 overflow-auto rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)]">
+          <div
+            id="pdf-page-1"
+            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+          >
+            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+            {pdfPreviewPage1}
+          </div>
+          <div
+            id="pdf-page-2"
+            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+          >
+            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+            {pdfPreviewPage2}
+          </div>
+        </div>
+      ) : (
       <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto">
         <Tabs defaultValue="letter" className="flex flex-col gap-4">
           <TabsList className="grid w-full grid-cols-2 bg-white">
@@ -1172,6 +1190,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </TabsContent>
         </Tabs>
       </div>
+      )}
     </div>
   </AdminPageShell>
   )
