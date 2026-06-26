@@ -78,3 +78,13 @@ test("contract review pending approvals appear in mobile inbox and reminder uses
   assert.match(contractReviewSource, /new Set\(settings\.reminderDaysBefore\)/);
   assert.match(contractReviewPageSource, /Reminder Days Before/);
 });
+
+test("contract review public approval layout is mobile friendly", () => {
+  const publicApprovalSource = read("app/review/[token]/public-approval.tsx");
+
+  assert.match(publicApprovalSource, /flex-col items-stretch gap-4 xl:flex-row/);
+  assert.match(publicApprovalSource, /w-full shrink-0 space-y-4 xl:sticky/);
+  assert.match(publicApprovalSource, /touch-none rounded-lg bg-white/);
+  assert.match(publicApprovalSource, /overflow-x-auto pb-2/);
+  assert.match(publicApprovalSource, /h-\[72vh\].*sm:h-\[86vh\]/);
+});

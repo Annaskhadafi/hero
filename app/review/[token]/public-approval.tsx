@@ -453,16 +453,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   )
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto flex gap-4 items-start">
+    <main className="min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6">
+      <div className="mx-auto flex w-full max-w-[1800px] flex-col items-stretch gap-4 xl:flex-row xl:items-start">
         {/* ── KIRI: Header + Status + TTD ── */}
-        <div className="w-[380px] shrink-0 space-y-4 sticky top-6">
+        <div className="w-full shrink-0 space-y-4 xl:sticky xl:top-6 xl:w-[380px]">
           {/* Header */}
           <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contract Review Approval</p>
-                <h1 className="mt-1 text-xl font-semibold text-slate-950">{review.employeeNameStr || 'Employee Contract Review'}</h1>
+                <h1 className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{review.employeeNameStr || 'Employee Contract Review'}</h1>
                 <p className="mt-1 text-xs text-slate-500">Approver: {approval.approverName} ({ROLE_LABELS[approval.approverRole] || approval.approverRole})</p>
               </div>
               <Badge variant="outline" className="rounded-full px-3 py-1 capitalize">{done ? 'approved' : approval.status}</Badge>
@@ -470,9 +470,9 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </section>
 
           {/* Status Approval */}
-          <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70 sm:p-5">
             <h2 className="text-sm font-semibold text-slate-950 mb-3">Status Approval</h2>
-            <div className="space-y-2">
+            <div className="max-h-[44vh] space-y-2 overflow-y-auto pr-1 xl:max-h-none xl:overflow-visible xl:pr-0">
               {approvalHistoryForDisplay.map((step: any, idx: number) => (
                 <div key={idx} className="flex items-start justify-between gap-3 rounded-lg border p-2.5">
                   <div className="min-w-0">
@@ -574,11 +574,11 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">
-                  <SignatureCanvas ref={signatureRef} onEnd={updateSignaturePreview} canvasProps={{ className: 'h-40 w-full rounded-lg bg-white' }} />
+                  <SignatureCanvas ref={signatureRef} onEnd={updateSignaturePreview} canvasProps={{ className: 'h-44 w-full touch-none rounded-lg bg-white sm:h-40' }} />
                 </div>
                 <Textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Catatan opsional..." rows={2} />
                 {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Button type="button" variant="outline" size="sm" onClick={() => {
                     signatureRef.current?.clear()
                     setPreviewSignatureDataUrl('')
@@ -592,13 +592,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         </div>
 
         {/* ── KANAN: Preview Surat + Produktivitas ── */}
-        <div className="flex-1 rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto">
+        <div className="min-w-0 flex-1 rounded-[1.1rem] bg-slate-100 p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden sm:p-4">
           <Tabs defaultValue="letter" className="flex flex-col gap-4">
-            <TabsList className="grid w-full grid-cols-2 bg-white">
+            <TabsList className="grid h-auto w-full grid-cols-2 bg-white">
               <TabsTrigger value="letter">Preview Surat</TabsTrigger>
               <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
             </TabsList>
-            <TabsContent value="letter" className="m-0 flex flex-col gap-6">
+            <TabsContent value="letter" className="m-0 overflow-x-auto pb-2">
+              <div className="flex min-w-max flex-col gap-6">
               <div
                 id="pdf-page-1"
                 className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
@@ -613,13 +614,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               >
                 {pdfPage2}
               </div>
+              </div>
             </TabsContent>
             <TabsContent value="productivity" className="m-0">
               {review.employeeId ? (
                 <iframe
                   title="Profil Produktivitas Karyawan"
                   src={`/embedded/hc/employee/${review.employeeId}?view=tabs&contractReviewToken=${encodeURIComponent(token)}`}
-                  className="h-[86vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm"
+                  className="h-[72vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm sm:h-[86vh]"
                 />
               ) : (
                 <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
