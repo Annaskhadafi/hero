@@ -238,13 +238,29 @@ export function ContractReviewClientPage({ reviews, employees, settings }: { rev
                 <Label>PJO/TE Keywords</Label>
                 <Input value={settingsForm.approvalMatrix.pjoKeywords.join(', ')} onChange={(e) => setSettingsForm({ ...settingsForm, approvalMatrix: { ...settingsForm.approvalMatrix, pjoKeywords: e.target.value.split(',').map((v: string) => v.trim()).filter(Boolean) } })} />
               </div>
+
+              <div className="space-y-1">
+                <Label>Reminder Days Before (pisahkan koma)</Label>
+                <Input
+                  value={(settingsForm.reminderDaysBefore ?? [60, 30, 14, 7, 1]).join(', ')}
+                  onChange={(e) => setSettingsForm({
+                    ...settingsForm,
+                    reminderDaysBefore: e.target.value
+                      .split(',')
+                      .map((value: string) => Number(value.trim()))
+                      .filter((value: number) => Number.isFinite(value) && value >= 0),
+                  })}
+                  placeholder="60, 30, 14, 7, 1"
+                />
+                <p className="text-[10px] text-muted-foreground">Manual/cron reminder hanya dikirim saat sisa hari kontrak cocok dengan angka ini.</p>
+              </div>
             </div>
 
             {/* ── Email Templates ── */}
             <div className="space-y-5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Email Templates</h3>
               {(['reminder', 'employeeSignature', 'approverSignature'] as const).map((key) => {
-                const labels: Record<string, string> = { reminder: 'Reminder (H-60/H-30/H-14/H-7/H-1)', employeeSignature: 'Undangan TTD Karyawan', approverSignature: 'Notifikasi Approval' }
+                const labels: Record<string, string> = { reminder: `Reminder (${(settingsForm.reminderDaysBefore ?? [60, 30, 14, 7, 1]).map((day: number) => `H-${day}`).join('/')})`, employeeSignature: 'Undangan TTD Karyawan', approverSignature: 'Notifikasi Approval' }
                 return (
                   <div key={key} className="space-y-2 rounded-xl border p-3">
                     <p className="text-xs font-semibold text-muted-foreground">{labels[key]}</p>

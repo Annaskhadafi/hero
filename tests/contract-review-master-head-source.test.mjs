@@ -51,3 +51,30 @@ test("contract review public approval previews signature history notes and times
   assert.match(publicApprovalSource, /Waktu TTD:/);
   assert.match(publicApprovalSource, /Catatan:/);
 });
+
+test("contract review public approval exposes productivity tab with token-limited embed", () => {
+  const publicApprovalSource = read("app/review/[token]/public-approval.tsx");
+  const embeddedEmployeeSource = read("app/embedded/hc/employee/[id]/page.tsx");
+
+  assert.match(publicApprovalSource, /TabsTrigger value="productivity"/);
+  assert.match(publicApprovalSource, /Profil Produktivitas Karyawan/);
+  assert.match(publicApprovalSource, /contractReviewToken=\$\{encodeURIComponent\(token\)\}/);
+  assert.match(embeddedEmployeeSource, /getContractReviewApprovalByToken/);
+  assert.match(embeddedEmployeeSource, /Number\(tokenEmployeeId\) !== hrEmployeeId/);
+});
+
+test("contract review pending approvals appear in mobile inbox and reminder uses settings", () => {
+  const approvalWorkspaceSource = read("lib/approval-workspace.ts");
+  const mobileApprovalSource = read("components/mobile/mobile-approval-center.tsx");
+  const contractReviewSource = read("app/actions/contract-review.ts");
+  const contractReviewPageSource = read("app/dashboard/hc/contract-review/client-page.tsx");
+
+  assert.match(approvalWorkspaceSource, /getContractReviewInboxItems/);
+  assert.match(approvalWorkspaceSource, /contractReviewInboxItems/);
+  assert.match(approvalWorkspaceSource, /hcContractReviewApprovals/);
+  assert.match(mobileApprovalSource, /Buka TTD Contract Review/);
+  assert.match(mobileApprovalSource, /contractReviewItems/);
+  assert.match(contractReviewSource, /reminderDaysBefore/);
+  assert.match(contractReviewSource, /new Set\(settings\.reminderDaysBefore\)/);
+  assert.match(contractReviewPageSource, /Reminder Days Before/);
+});

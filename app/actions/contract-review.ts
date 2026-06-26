@@ -99,6 +99,7 @@ async function sendContractReviewEmail(params: {
 }
 
 const DEFAULT_CONTRACT_REVIEW_SETTINGS = {
+  reminderDaysBefore: [60, 30, 14, 7, 1],
   approvalMatrix: {
     hoSites: ['Balikpapan', 'Jakarta'],
     managerName: 'Romy Hidayat',
@@ -171,6 +172,8 @@ HR Department - PT Chitra Paratama`,
   },
 }
 
+type ContractReviewSettings = typeof DEFAULT_CONTRACT_REVIEW_SETTINGS
+
 let contractReviewWorkflowTablesPromise: Promise<void> | null = null
 
 async function ensureContractReviewWorkflowTables() {
@@ -238,10 +241,32 @@ export async function getContractReviewSettings() {
     .from(hcContractReviewSettings)
     .where(eq(hcContractReviewSettings.settingKey, 'contract_review_workflow'))
     .limit(1)
-  return (row?.settingValue as typeof DEFAULT_CONTRACT_REVIEW_SETTINGS | undefined) ?? DEFAULT_CONTRACT_REVIEW_SETTINGS
+  const stored = (row?.settingValue as Partial<ContractReviewSettings> | undefined) ?? {}
+  return {
+    ...DEFAULT_CONTRACT_REVIEW_SETTINGS,
+    ...stored,
+    approvalMatrix: {
+      ...DEFAULT_CONTRACT_REVIEW_SETTINGS.approvalMatrix,
+      ...stored.approvalMatrix,
+      sectionHeads: {
+        ...DEFAULT_CONTRACT_REVIEW_SETTINGS.approvalMatrix.sectionHeads,
+        ...stored.approvalMatrix?.sectionHeads,
+      },
+      hoSites: stored.approvalMatrix?.hoSites ?? DEFAULT_CONTRACT_REVIEW_SETTINGS.approvalMatrix.hoSites,
+      pjoKeywords: stored.approvalMatrix?.pjoKeywords ?? DEFAULT_CONTRACT_REVIEW_SETTINGS.approvalMatrix.pjoKeywords,
+    },
+    emailTemplates: {
+      ...DEFAULT_CONTRACT_REVIEW_SETTINGS.emailTemplates,
+      ...stored.emailTemplates,
+    },
+    reminderDaysBefore:
+      Array.isArray(stored.reminderDaysBefore) && stored.reminderDaysBefore.length > 0
+        ? stored.reminderDaysBefore.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0)
+        : DEFAULT_CONTRACT_REVIEW_SETTINGS.reminderDaysBefore,
+  } satisfies ContractReviewSettings
 }
 
-export async function saveContractReviewSettings(settings: typeof DEFAULT_CONTRACT_REVIEW_SETTINGS) {
+export async function saveContractReviewSettings(settings: ContractReviewSettings) {
   await ensureContractReviewWorkflowTables()
   const [existing] = await db
     .select({ id: hcContractReviewSettings.id })
@@ -591,10 +616,10 @@ export async function sendDueContractReviewReminders() {
     return { success: false as const, error: 'SMTP belum dikonfigurasi.', sent: 0, skipped: 0 }
   }
 
-  const reminderOffsets = new Set([60, 30, 14, 7, 1])
   const today = new Date()
   const baseUrl = await getBaseUrl()
   const settings = await getContractReviewSettings()
+  const reminderOffsets = new Set(settings.reminderDaysBefore)
 
   const reviews = await db
     .select()

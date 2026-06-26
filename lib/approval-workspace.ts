@@ -9,6 +9,8 @@ import {
   employees,
   formSubmissions,
   formTemplates,
+  hcContractReviewApprovals,
+  hcEmployeeContractReviews,
   orgChartStructures,
   sites,
 } from "@/db/schema/hero";
@@ -797,10 +799,70 @@ async function getEmployeeByEmail(email: string) {
   return employee ?? null;
 }
 
+function getContractReviewDueState(contractEndDate: Date, now: Date) {
+  const diffMs = contractEndDate.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays < 0) return "overdue";
+  if (diffDays <= 7) return "due_soon";
+  return "open";
+}
+
+async function getContractReviewInboxItems(email: string, currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>) {
+  const normalizedEmail = normalizeMatchValue(email);
+  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name);
+  const rows = await db
+    .select({
+      approvalId: hcContractReviewApprovals.id,
+      approvalToken: hcContractReviewApprovals.approvalToken,
+      approverName: hcContractReviewApprovals.approverName,
+      approverEmail: hcContractReviewApprovals.approverEmail,
+      approverEmployeeId: hcContractReviewApprovals.approverEmployeeId,
+      approverRole: hcContractReviewApprovals.approverRole,
+      stepOrder: hcContractReviewApprovals.stepOrder,
+      createdAt: hcContractReviewApprovals.createdAt,
+      reviewId: hcEmployeeContractReviews.id,
+      employeeName: hcEmployeeContractReviews.employeeNameStr,
+      reviewType: hcEmployeeContractReviews.reviewType,
+      contractEndDate: hcEmployeeContractReviews.contractEndDate,
+      updatedAt: hcEmployeeContractReviews.updatedAt,
+    })
+    .from(hcContractReviewApprovals)
+    .innerJoin(hcEmployeeContractReviews, eq(hcContractReviewApprovals.reviewId, hcEmployeeContractReviews.id))
+    .where(eq(hcContractReviewApprovals.status, "pending"))
+    .orderBy(desc(hcContractReviewApprovals.createdAt));
+
+  return rows
+    .filter((row) => {
+      const emailMatches = normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail;
+      const employeeMatches = currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id;
+      const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName;
+      return emailMatches || employeeMatches || nameMatches;
+    })
+    .map((row) => {
+      const contractEnd = row.contractEndDate ? new Date(`${row.contractEndDate}T00:00:00`) : row.createdAt;
+      return {
+        id: `contract-review-${row.approvalId}`,
+        approvalId: row.approvalId,
+        reviewId: row.reviewId,
+        title: `Contract Review - ${row.employeeName || "Employee"}`,
+        employeeName: row.employeeName || "Employee",
+        reviewType: row.reviewType || "contract",
+        approverName: row.approverName,
+        approverRole: row.approverRole,
+        stepLabel: `Step ${row.stepOrder}`,
+        submittedAt: row.updatedAt ?? row.createdAt,
+        dueAt: contractEnd,
+        dueState: getContractReviewDueState(contractEnd, new Date()),
+        url: `/review/${row.approvalToken}`,
+      };
+    });
+}
+
 export async function getApprovalCenterData(email: string) {
   const now = new Date();
   const currentEmployee = await getEmployeeByEmail(email);
   const approvalRows = await fetchApprovalRowsForUser(email, currentEmployee);
+  const contractReviewInboxItems = await getContractReviewInboxItems(email, currentEmployee);
   const queue = approvalRows
     .map((row) => enrichApprovalRow(row, now))
     .sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime());
@@ -1037,10 +1099,10 @@ export async function getApprovalCenterData(email: string) {
   return {
     currentUserName: currentEmployee?.name ?? email,
     inboxMetrics: {
-      pendingGroups: inboxGroups.length,
-      pendingActivities: inboxRows.length,
-      dueSoon: inboxRows.filter((item) => item.dueState === "due_soon").length,
-      overdue: inboxRows.filter((item) => item.dueState === "overdue").length,
+      pendingGroups: inboxGroups.length + contractReviewInboxItems.length,
+      pendingActivities: inboxRows.length + contractReviewInboxItems.length,
+      dueSoon: inboxRows.filter((item) => item.dueState === "due_soon").length + contractReviewInboxItems.filter((item) => item.dueState === "due_soon").length,
+      overdue: inboxRows.filter((item) => item.dueState === "overdue").length + contractReviewInboxItems.filter((item) => item.dueState === "overdue").length,
     },
     historyMetrics: {
       total: historyItems.length,
@@ -1049,6 +1111,7 @@ export async function getApprovalCenterData(email: string) {
       needsRevision: historyItems.filter((item) => item.status === "needs_revision").length,
       inReview: historyItems.filter((item) => item.status === "in_review" || item.status === "submitted").length,
     },
+    contractReviewInboxItems,
     inboxGroups,
     historyGroups,
   };

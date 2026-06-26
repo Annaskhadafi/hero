@@ -4,11 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { getApprovalCenterData } from "@/lib/approval-workspace";
+import Link from "next/link";
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>;
 
-function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) {
-  if (groups.length === 0) {
+function MobileInbox({
+  groups,
+  contractReviewItems,
+}: {
+  groups: ApprovalCenterData["inboxGroups"];
+  contractReviewItems: ApprovalCenterData["contractReviewInboxItems"];
+}) {
+  if (groups.length === 0 && contractReviewItems.length === 0) {
     return (
       <div className="rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
         Tidak ada pengajuan yang menunggu approval Anda.
@@ -18,6 +25,40 @@ function MobileInbox({ groups }: { groups: ApprovalCenterData["inboxGroups"] }) 
 
   return (
     <div className="space-y-3">
+      {contractReviewItems.map((item) => (
+        <div
+          key={item.id}
+          className="overflow-hidden rounded-[1.35rem] bg-white shadow-[0_16px_36px_rgba(8,32,51,0.08)]"
+        >
+          <div className="px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">Contract Review</p>
+                <p className="mt-1 text-base font-black tracking-tight text-[#082033]">{item.employeeName}</p>
+                <p className="mt-1 text-xs font-semibold text-[#486275]">
+                  {item.stepLabel} • {item.approverRole.replace(/_/g, " ")}
+                </p>
+              </div>
+              <AdminStatusBadge value={item.dueState} />
+            </div>
+            <div className="mt-3 rounded-[1.05rem] bg-[#f6fbff] px-4 py-3">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#486275]">Ringkasan</p>
+              <p className="mt-2 text-sm text-[#082033]">{item.title}</p>
+              <p className="mt-1 text-xs font-semibold text-[#486275]">
+                Due {item.dueAt.toLocaleDateString("id-ID")} • {item.reviewType}
+              </p>
+            </div>
+            <Link
+              prefetch={false}
+              href={item.url}
+              className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-full bg-[#003f78] px-4 text-sm font-black text-white active:scale-95 transition-transform"
+            >
+              Buka TTD Contract Review
+            </Link>
+          </div>
+        </div>
+      ))}
+
       {groups.map((group, groupIndex) => (
         <details
           key={group.id}
@@ -246,7 +287,7 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         </TabsList>
 
         <TabsContent value="inbox" className="space-y-3">
-          <MobileInbox groups={data.inboxGroups} />
+          <MobileInbox groups={data.inboxGroups} contractReviewItems={data.contractReviewInboxItems} />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-3">

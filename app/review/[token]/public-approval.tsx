@@ -6,6 +6,7 @@ import { approveContractReviewStep } from '@/app/actions/contract-review'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Download } from 'lucide-react'
 
 type PublicApprovalProps = {
@@ -590,22 +591,43 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </section>
         </div>
 
-        {/* ── KANAN: 2 PDF A4 Pages ── */}
-        <div className="flex-1 space-y-6 print:hidden overflow-auto">
-          <div
-            id="pdf-page-1"
-            className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
-            style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
-          >
-            {pdfPage1}
-          </div>
-          <div
-            id="pdf-page-2"
-            className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
-            style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
-          >
-            {pdfPage2}
-          </div>
+        {/* ── KANAN: Preview Surat + Produktivitas ── */}
+        <div className="flex-1 rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto">
+          <Tabs defaultValue="letter" className="flex flex-col gap-4">
+            <TabsList className="grid w-full grid-cols-2 bg-white">
+              <TabsTrigger value="letter">Preview Surat</TabsTrigger>
+              <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
+            </TabsList>
+            <TabsContent value="letter" className="m-0 flex flex-col gap-6">
+              <div
+                id="pdf-page-1"
+                className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
+                style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
+              >
+                {pdfPage1}
+              </div>
+              <div
+                id="pdf-page-2"
+                className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
+                style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
+              >
+                {pdfPage2}
+              </div>
+            </TabsContent>
+            <TabsContent value="productivity" className="m-0">
+              {review.employeeId ? (
+                <iframe
+                  title="Profil Produktivitas Karyawan"
+                  src={`/embedded/hc/employee/${review.employeeId}?view=tabs&contractReviewToken=${encodeURIComponent(token)}`}
+                  className="h-[86vh] w-full rounded-2xl border border-slate-200 bg-white shadow-sm"
+                />
+              ) : (
+                <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
+                  Data karyawan belum tersedia untuk melihat profil produktivitas.
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </main>
