@@ -74,6 +74,8 @@ type MenuRow = {
   title: string;
   url: string;
   resource: string;
+  sortOrder?: number | null;
+  groupLabel?: string | null;
 };
 
 type MenuPermissionRow = {
@@ -130,6 +132,33 @@ const MENU_AREA_META: Record<string, { label: string; description: string; icon:
     icon: <ListChecks className="size-4" />,
   },
 };
+
+const DESKTOP_MENU_ORDER = [
+  "Portal Chitra",
+  "Aktivitas Harian",
+  "Roster & Timesheet",
+  "Approval",
+  "Data Induk",
+  "Human Capital",
+  "Attendance",
+  "HSE",
+  "Central Service",
+  "Laporan",
+  "Pengaturan",
+] as const;
+
+const sectionLabelMap: Record<string, string> = {
+  "Daily Activity": "Aktivitas Harian",
+  "Central Service": "Central Service",
+  Approval: "Approval",
+  "Master Data": "Data Induk",
+  HR: "Human Capital",
+  HSE: "HSE",
+  Report: "Laporan",
+  Setting: "Pengaturan",
+};
+
+type ViewFilter = "all" | "desktop" | "mobile";
 
 const QUICK_PRESETS = [
   {
@@ -191,6 +220,20 @@ function formatScopeLabel(value: string) {
 
 function formatMenuArea(value: string) {
   return MENU_AREA_META[value]?.label ?? value.replaceAll("_", " ");
+}
+
+function getSidebarSection(menuItem: MenuRow) {
+  return sectionLabelMap[menuItem.section] ?? menuItem.section ?? "Menu";
+}
+
+function isDesktopMenu(menuItem: MenuRow) {
+  return !menuItem.url.startsWith("/mobile");
+}
+
+function matchesViewFilter(menuItem: MenuRow, viewFilter: ViewFilter) {
+  if (viewFilter === "mobile") return hasMobileCounterpart(menuItem.url, menuItem.resource);
+  if (viewFilter === "desktop") return isDesktopMenu(menuItem);
+  return true;
 }
 
 function hasMobileCounterpart(url: string | null | undefined, resource: string | null | undefined): boolean {
@@ -339,7 +382,7 @@ export function SecurityRoleManagement({
     buildDraftPermissions(roles[0]?.id ?? 0, menuItems, menuPermissions),
   );
   const [openMenuAreas, setOpenMenuAreas] = useState<Set<string>>(
-    () => new Set(menuItems.map((menuItem) => menuItem.menuArea)),
+    () => new Set(menuItems.map((menuItem) => getSidebarSection(menuItem))),
   );
   const [roleState, roleFormAction] = useActionState(
     manageSecurityRoleAction,
@@ -347,6 +390,7 @@ export function SecurityRoleManagement({
   );
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
 
   useEffect(() => {
     setDraftPermissions(
@@ -355,17 +399,40 @@ export function SecurityRoleManagement({
   }, [menuItems, menuPermissions, selectedRoleId]);
 
   useEffect(() => {
-    setOpenMenuAreas(new Set(menuItems.map((menuItem) => menuItem.menuArea)));
-  }, [menuItems]);
+    setOpenMenuAreas(
+      new Set(
+        menuItems
+          .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
+          .map((menuItem) => getSidebarSection(menuItem)),
+      ),
+    );
+  }, [menuItems, viewFilter]);
 
   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0];
   const groupedMenus = useMemo(() => {
-    return menuItems.reduce<Record<string, MenuRow[]>>((accumulator, menuItem) => {
-      accumulator[menuItem.menuArea] = accumulator[menuItem.menuArea] ?? [];
-      accumulator[menuItem.menuArea].push(menuItem);
+    const filteredItems = menuItems
+      .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
+      .sort((left, right) => {
+        const leftSection = getSidebarSection(left);
+        const rightSection = getSidebarSection(right);
+        const leftSectionIndex = DESKTOP_MENU_ORDER.indexOf(leftSection as (typeof DESKTOP_MENU_ORDER)[number]);
+        const rightSectionIndex = DESKTOP_MENU_ORDER.indexOf(rightSection as (typeof DESKTOP_MENU_ORDER)[number]);
+        const sectionDiff = (leftSectionIndex === -1 ? 999 : leftSectionIndex) - (rightSectionIndex === -1 ? 999 : rightSectionIndex);
+        if (sectionDiff !== 0) return sectionDiff;
+        return (left.sortOrder ?? 999) - (right.sortOrder ?? 999) || left.title.localeCompare(right.title);
+      });
+
+    return filteredItems.reduce<Array<{ section: string; items: MenuRow[] }>>((accumulator, menuItem) => {
+      const section = getSidebarSection(menuItem);
+      const group = accumulator.find((item) => item.section === section);
+      if (group) {
+        group.items.push(menuItem);
+      } else {
+        accumulator.push({ section, items: [menuItem] });
+      }
       return accumulator;
-    }, {});
-  }, [menuItems]);
+    }, []);
+  }, [menuItems, viewFilter]);
   const permissionByMenuId = useMemo(() => {
     return new Map(
       draftPermissions.map((permission) => [permission.menuItemId, permission]),
@@ -655,6 +722,21 @@ export function SecurityRoleManagement({
                         {preset.label}
                       </Button>
                     ))}
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        View
+                      </span>
+                      <Select value={viewFilter} onValueChange={(value) => setViewFilter(value as ViewFilter)}>
+                        <SelectTrigger className="h-8 w-[150px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua</SelectItem>
+                          <SelectItem value="desktop">Desktop</SelectItem>
+                          <SelectItem value="mobile">Mobile</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   {/* Permission Form */}
@@ -663,21 +745,20 @@ export function SecurityRoleManagement({
                     <input type="hidden" name="roleId" value={selectedRole ? `${selectedRole.id}` : ""} />
                     <input type="hidden" name="permissionsJson" value={JSON.stringify(draftPermissions)} />
 
-                    {Object.entries(groupedMenus).map(([menuArea, items]) => {
+                    {groupedMenus.map(({ section, items }) => {
                       const areaPermissions = items.map((menuItem) =>
                         permissionByMenuId.get(menuItem.id),
                       );
                       const activeCount = countEnabledPermissions(
                         areaPermissions.filter(Boolean) as DraftPermission[],
                       );
-                      const isOpen = openMenuAreas.has(menuArea);
-                      const meta = MENU_AREA_META[menuArea];
+                      const isOpen = openMenuAreas.has(section);
 
                       return (
                         <Collapsible
-                          key={menuArea}
+                          key={section}
                           open={isOpen}
-                          onOpenChange={() => toggleMenuArea(menuArea)}
+                          onOpenChange={() => toggleMenuArea(section)}
                           className="overflow-hidden rounded-xl bg-surface-container-low shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
                         >
                           <CollapsibleTrigger asChild>
@@ -692,12 +773,12 @@ export function SecurityRoleManagement({
                                   }`}
                                 />
                                 <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                                  {meta?.icon ?? <ListChecks className="size-4" />}
+                                  {MENU_AREA_META[items[0]?.menuArea]?.icon ?? <ListChecks className="size-4" />}
                                 </span>
                                 <div className="min-w-0">
-                                  <p className="font-medium">{formatMenuArea(menuArea)}</p>
+                                  <p className="font-medium">{section}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {meta?.description ?? `${items.length} menu`}
+                                    {items.length} menu mengikuti urutan sidebar
                                   </p>
                                 </div>
                               </div>
@@ -741,13 +822,25 @@ export function SecurityRoleManagement({
                                       return (
                                         <TableRow key={menuItem.id}>
                                           <TableCell>
-                                            <div className="flex items-center gap-2">
-                                              <p className="font-medium">{menuItem.title}</p>
+                                            <div className="space-y-1">
+                                              {menuItem.groupLabel && (
+                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                                  {menuItem.groupLabel}
+                                                </p>
+                                              )}
+                                              <div className="flex items-center gap-2">
+                                                <p className="font-medium">{menuItem.title}</p>
+                                                {!isDesktopMenu(menuItem) && (
+                                                  <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider">
+                                                    Mobile
+                                                  </Badge>
+                                                )}
                                               {isMobile && (
                                                 <Badge variant="secondary" className="gap-0.5 text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-700 border-none py-0.5 h-auto">
                                                   <Smartphone className="size-2.5" /> M
                                                 </Badge>
                                               )}
+                                              </div>
                                             </div>
                                           </TableCell>
                                           {PERMISSION_FIELDS.map((field) => (
@@ -800,7 +893,19 @@ export function SecurityRoleManagement({
                                     className="rounded-lg bg-surface-container-lowest p-4 shadow-[0_10px_22px_rgba(0,52,97,0.08)]"
                                   >
                                     <div className="flex items-center gap-2">
-                                      <p className="font-medium">{menuItem.title}</p>
+                                      <div className="min-w-0">
+                                        {menuItem.groupLabel && (
+                                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                                            {menuItem.groupLabel}
+                                          </p>
+                                        )}
+                                        <p className="font-medium">{menuItem.title}</p>
+                                      </div>
+                                      {!isDesktopMenu(menuItem) && (
+                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-wider">
+                                          Mobile
+                                        </Badge>
+                                      )}
                                       {isMobile && (
                                         <Badge variant="secondary" className="gap-0.5 text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-700 border-none py-0.5 h-auto">
                                           <Smartphone className="size-2.5" /> Mobile

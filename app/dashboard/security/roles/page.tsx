@@ -1,4 +1,4 @@
-import { SecurityRoleManagement } from "@/components/security-role-management";
+import { SecurityRoleManagementClient } from "@/components/security-role-management-client";
 import { getSecurityRolesData } from "@/lib/hero-admin";
 
 export default async function SecurityRolesPage() {
@@ -13,7 +13,7 @@ export default async function SecurityRolesPage() {
         </p>
       </div>
 
-      <SecurityRoleManagement
+      <SecurityRoleManagementClient
         roles={roles}
         menuItems={menuItems}
         menuPermissions={menuPermissions}

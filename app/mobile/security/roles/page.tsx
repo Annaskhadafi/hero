@@ -1,4 +1,4 @@
-import { MobileSecurityRoleManagement } from "@/components/mobile-security-role-management";
+import { MobileSecurityRoleManagementClient } from "@/components/mobile-security-role-management-client";
 import { getSecurityRolesData } from "@/lib/hero-admin";
 
 export default async function MobileSecurityRolesPage() {
@@ -29,7 +29,7 @@ export default async function MobileSecurityRolesPage() {
           <p className="text-xs text-muted-foreground">Atur akses menu per role</p>
         </div>
 
-        <MobileSecurityRoleManagement
+        <MobileSecurityRoleManagementClient
           roles={data.roles}
           menuItems={data.menuItems}
           menuPermissions={data.menuPermissions}

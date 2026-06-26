@@ -52,6 +52,8 @@ type MenuRow = {
   title: string;
   url: string;
   resource: string;
+  sortOrder?: number | null;
+  groupLabel?: string | null;
 };
 
 type MenuPermissionRow = {
@@ -93,12 +95,58 @@ function formatScopeLabel(value: string) {
 }
 
 function formatMenuArea(value: string) {
-  const labels: Record<string, string> = {
-    admin: "Admin",
-    central_service: "Central Service",
-    performance: "Performance",
-  };
-  return labels[value] ?? value.replaceAll("_", " ");
+  return sectionLabelMap[value] ?? value.replaceAll("_", " ");
+}
+
+const DESKTOP_MENU_ORDER = [
+  "Portal Chitra",
+  "Aktivitas Harian",
+  "Roster & Timesheet",
+  "Approval",
+  "Data Induk",
+  "Human Capital",
+  "Attendance",
+  "HSE",
+  "Central Service",
+  "Laporan",
+  "Pengaturan",
+] as const;
+
+const sectionLabelMap: Record<string, string> = {
+  "Daily Activity": "Aktivitas Harian",
+  "Central Service": "Central Service",
+  Approval: "Approval",
+  "Master Data": "Data Induk",
+  HR: "Human Capital",
+  HSE: "HSE",
+  Report: "Laporan",
+  Setting: "Pengaturan",
+};
+
+type ViewFilter = "all" | "desktop" | "mobile";
+
+function getSidebarSection(menuItem: MenuRow) {
+  return sectionLabelMap[menuItem.section] ?? menuItem.section ?? "Menu";
+}
+
+function hasMobileCounterpart(url: string) {
+  if (url.startsWith("/mobile")) return true;
+  const cleanUrl = url.split("?")[0];
+  return cleanUrl === "/dashboard/security/roles" || cleanUrl.startsWith("/dashboard/hse/") || [
+    "/dashboard/activity-hub/my-day",
+    "/dashboard/approval",
+    "/dashboard/lms",
+    "/dashboard/overtime-requests",
+    "/dashboard/timesheet",
+    "/dashboard/training",
+    "/dashboard/wellness",
+  ].includes(cleanUrl);
+}
+
+function matchesViewFilter(menuItem: MenuRow, viewFilter: ViewFilter) {
+  if (viewFilter === "mobile") return hasMobileCounterpart(menuItem.url);
+  if (viewFilter === "desktop") return !menuItem.url.startsWith("/mobile");
+  return true;
 }
 
 function SubmitButton({
@@ -165,6 +213,7 @@ export function MobileSecurityRoleManagement({
     buildDraftPermissions(roles[0]?.id ?? 0, menuItems, menuPermissions),
   );
   const [expandedMenuArea, setExpandedMenuArea] = useState<string | null>(null);
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [roleState, roleFormAction] = useActionState(
     manageSecurityRoleAction,
     INITIAL_STATE,
@@ -178,12 +227,29 @@ export function MobileSecurityRoleManagement({
 
   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? roles[0];
   const groupedMenus = useMemo(() => {
-    return menuItems.reduce<Record<string, MenuRow[]>>((accumulator, menuItem) => {
-      accumulator[menuItem.menuArea] = accumulator[menuItem.menuArea] ?? [];
-      accumulator[menuItem.menuArea].push(menuItem);
+    const filteredItems = menuItems
+      .filter((menuItem) => matchesViewFilter(menuItem, viewFilter))
+      .sort((left, right) => {
+        const leftSection = getSidebarSection(left);
+        const rightSection = getSidebarSection(right);
+        const leftIndex = DESKTOP_MENU_ORDER.indexOf(leftSection as (typeof DESKTOP_MENU_ORDER)[number]);
+        const rightIndex = DESKTOP_MENU_ORDER.indexOf(rightSection as (typeof DESKTOP_MENU_ORDER)[number]);
+        const sectionDiff = (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+        if (sectionDiff !== 0) return sectionDiff;
+        return (left.sortOrder ?? 999) - (right.sortOrder ?? 999) || left.title.localeCompare(right.title);
+      });
+
+    return filteredItems.reduce<Array<{ section: string; items: MenuRow[] }>>((accumulator, menuItem) => {
+      const section = getSidebarSection(menuItem);
+      const group = accumulator.find((item) => item.section === section);
+      if (group) {
+        group.items.push(menuItem);
+      } else {
+        accumulator.push({ section, items: [menuItem] });
+      }
       return accumulator;
-    }, {});
-  }, [menuItems]);
+    }, []);
+  }, [menuItems, viewFilter]);
 
   const permissionByMenuId = useMemo(() => {
     return new Map(draftPermissions.map((p) => [p.menuItemId, p]));
@@ -250,6 +316,16 @@ export function MobileSecurityRoleManagement({
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           Akses Menu
         </div>
+        <Select value={viewFilter} onValueChange={(value) => setViewFilter(value as ViewFilter)}>
+          <SelectTrigger className="h-10 bg-surface-container-lowest text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua view</SelectItem>
+            <SelectItem value="desktop">Desktop</SelectItem>
+            <SelectItem value="mobile">Mobile</SelectItem>
+          </SelectContent>
+        </Select>
 
         <form action={roleFormAction} className="space-y-3">
           <input type="hidden" name="intent" value="update-permissions" />
@@ -260,26 +336,26 @@ export function MobileSecurityRoleManagement({
             value={JSON.stringify(draftPermissions)}
           />
 
-          {Object.entries(groupedMenus).map(([menuArea, items]) => (
-            <div key={menuArea} className="space-y-2">
+          {groupedMenus.map(({ section, items }) => (
+            <div key={section} className="space-y-2">
               <button
                 type="button"
                 onClick={() =>
                   setExpandedMenuArea(
-                    expandedMenuArea === menuArea ? null : menuArea,
+                    expandedMenuArea === section ? null : section,
                   )
                 }
                 className="flex w-full items-center justify-between rounded-lg bg-surface-container-low px-3 py-2.5 text-sm font-medium transition-colors active:bg-surface-container-lowest"
               >
-                <span>{formatMenuArea(menuArea)}</span>
+                <span>{formatMenuArea(section)}</span>
                 <ChevronDown
                   className={`size-4 transition-transform ${
-                    expandedMenuArea === menuArea ? "rotate-180" : ""
+                    expandedMenuArea === section ? "rotate-180" : ""
                   }`}
                 />
               </button>
 
-              {expandedMenuArea === menuArea && (
+              {expandedMenuArea === section && (
                 <div className="space-y-2 pl-2">
                   {items.map((menuItem) => {
                     const currentPermission =
@@ -297,6 +373,11 @@ export function MobileSecurityRoleManagement({
                         className="rounded-lg bg-surface-container-lowest p-3"
                       >
                         <div className="mb-3">
+                          {menuItem.groupLabel && (
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                              {menuItem.groupLabel}
+                            </p>
+                          )}
                           <p className="text-sm font-medium">{menuItem.title}</p>
                           <p className="text-xs text-muted-foreground">
                             {menuItem.section}
