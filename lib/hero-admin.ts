@@ -6329,7 +6329,8 @@ export async function getSidebarDataForUser(email: string) {
       accessRole: employees.accessRole,
     })
     .from(employees)
-    .where(eq(employees.email, email))
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+    .where(or(eq(employees.email, email), eq(authUser.email, email)))
     .limit(1)
 
   const roleName = employee?.accessRole ?? 'Super Admin'
@@ -6425,7 +6426,8 @@ export async function getEmployeeDisplayDataByEmail(email: string) {
       workLocation: employees.workLocation,
     })
     .from(employees)
-    .where(eq(employees.email, email))
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+    .where(or(eq(employees.email, email), eq(authUser.email, email)))
     .limit(1)
 
   return employee ?? null

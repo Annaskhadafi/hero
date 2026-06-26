@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 
 import { db } from "@/db";
+import { user as authUser } from "@/db/schema/auth";
 import { employees, navbarMenuItems, roleMenuPermissions, securityRoles } from "@/db/schema/hero";
 import { getServerSession } from "@/lib/auth-session";
 
@@ -16,7 +17,8 @@ export async function getEmployeeAccessRoleByEmail(email: string) {
   const [employee] = await db
     .select({ accessRole: employees.accessRole })
     .from(employees)
-    .where(eq(employees.email, email))
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+    .where(or(eq(employees.email, email), eq(authUser.email, email)))
     .limit(1);
 
   return employee?.accessRole ?? null;
@@ -25,11 +27,22 @@ export async function getEmployeeAccessRoleByEmail(email: string) {
 export async function getCurrentEmployeeAccessRole() {
   const session = await getServerSession();
 
-  if (!session?.user?.email) {
+  if (!session?.user?.id && !session?.user?.email) {
     return null;
   }
 
-  return getEmployeeAccessRoleByEmail(session.user.email);
+  const [employee] = await db
+    .select({ accessRole: employees.accessRole })
+    .from(employees)
+    .where(
+      or(
+        session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
+        session.user.email ? eq(employees.email, session.user.email) : undefined,
+      ),
+    )
+    .limit(1);
+
+  return employee?.accessRole ?? null;
 }
 
 export async function getMenuPermissionForRole(roleName: string | null, resource: string): Promise<HeroMenuPermission> {

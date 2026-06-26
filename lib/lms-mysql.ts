@@ -1,6 +1,7 @@
 import mysql from "mysql2/promise";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { db } from "@/db";
+import { user as authUser } from "@/db/schema/auth";
 import { employees, trainingRecords } from "@/db/schema/hero";
 
 const lmsDbConfig = {
@@ -198,7 +199,8 @@ export async function syncLmsToTrainingRecords(email: string) {
         employeeSn: employees.employeeSn,
       })
       .from(employees)
-      .where(eq(employees.email, email))
+      .leftJoin(authUser, eq(employees.authUserId, authUser.id))
+      .where(or(eq(employees.email, email), eq(authUser.email, email)))
       .limit(1);
 
     if (!employee) return { success: false, message: "Employee not found in HERO" };

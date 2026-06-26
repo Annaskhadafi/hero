@@ -8,8 +8,9 @@ import {
   masterSections,
   sites,
 } from "@/db/schema/hero";
+import { user as authUser } from "@/db/schema/auth";
 import { aliasedTable } from "drizzle-orm/alias";
-import { and, avg, count, desc, eq, sql } from "drizzle-orm";
+import { and, avg, count, desc, eq, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import {
   buildHumanCapitalEmail,
@@ -93,9 +94,10 @@ export async function getLeadersForReviewer(reviewerEmail: string, limitToSectio
       directManagerId: employees.directManagerId,
     })
     .from(employees)
+    .leftJoin(authUser, eq(employees.authUserId, authUser.id))
     .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .leftJoin(sites, eq(employees.siteId, sites.id))
-    .where(eq(sql`lower(${employees.email})`, reviewerEmail.toLowerCase()))
+    .where(or(eq(sql`lower(${employees.email})`, reviewerEmail.toLowerCase()), eq(sql`lower(${authUser.email})`, reviewerEmail.toLowerCase())))
     .limit(1);
 
   console.log(`[getLeadersForReviewer] reviewerEmail: ${reviewerEmail}, limitToSection: ${limitToSection}`);

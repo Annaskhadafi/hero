@@ -1,6 +1,6 @@
 'use server'
 
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, or } from 'drizzle-orm'
 import { sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
@@ -41,9 +41,14 @@ async function ensureCorrectiveTable() {
 
 async function getActorEmployeeId() {
   const session = await getServerSession()
+  const userId = session?.user?.id
   const email = session?.user?.email?.toLowerCase().trim()
-  if (!email) return null
-  const [employee] = await db.select({ id: employees.id }).from(employees).where(eq(employees.email, email)).limit(1)
+  if (!userId && !email) return null
+  const [employee] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(or(userId ? eq(employees.authUserId, userId) : undefined, email ? eq(employees.email, email) : undefined))
+    .limit(1)
   return employee?.id ?? null
 }
 

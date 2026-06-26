@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, or } from "drizzle-orm";
 import { BookOpenCheck, Award, Compass, ExternalLink, AlertCircle } from "lucide-react";
 
 import { db } from "@/db";
@@ -26,7 +26,7 @@ export default async function MobileLmsDashboardPage({
 }) {
   const session = await getServerSession();
 
-  if (!session?.user?.email) {
+  if (!session?.user?.id && !session?.user?.email) {
     redirect("/sign-in");
   }
 
@@ -40,7 +40,12 @@ export default async function MobileLmsDashboardPage({
       accessRole: employees.accessRole,
     })
     .from(employees)
-    .where(eq(employees.email, session.user.email))
+    .where(
+      or(
+        session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
+        session.user.email ? eq(employees.email, session.user.email) : undefined,
+      ),
+    )
     .limit(1);
 
   if (!currentEmployee) {

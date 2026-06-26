@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { db } from "@/db";
+import { user as authUser } from "@/db/schema/auth";
 import { employees as dbEmployees } from "@/db/schema/hero";
-import { eq, sql } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import {
   getLeaderPerformanceReviews,
   getLeaderPerformanceStats,
@@ -34,7 +35,8 @@ export default async function MobileLeaderPerformancePage() {
         accessRole: dbEmployees.accessRole 
       })
       .from(dbEmployees)
-      .where(eq(sql`lower(${dbEmployees.email})`, session.user.email.toLowerCase()))
+      .leftJoin(authUser, eq(dbEmployees.authUserId, authUser.id))
+      .where(or(eq(dbEmployees.authUserId, session.user.id), eq(sql`lower(${dbEmployees.email})`, session.user.email.toLowerCase())))
       .limit(1)
       .then((rows) => rows[0] || null),
   ]);
