@@ -392,7 +392,7 @@ export function EmployeeProfileClientPage({
         }
       `}</style>
 
-      <div className="pdf-wrapper print-layout">
+      <div className={cn("pdf-wrapper print-layout", embedded && "flex flex-col")}>
         
         {/* ─── Profile Header Glassmorphism Card ──────────────────────────────── */}
         <div className={cn("relative overflow-hidden rounded-[1.5rem] border border-white/20 bg-slate-900/90 p-6 text-white shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/90 mb-6 print:bg-slate-950 print:text-white print:border-slate-800", embedded && "hidden")}>
